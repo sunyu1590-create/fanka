@@ -152,3 +152,69 @@
 #flip-history{scroll-margin-top:24px}
 
 .flip-stage{transform-origin:top left}
+/* Stable 3:4 card geometry for both sides of the flip. */
+.candidate-feed-card.flip-in-place,.candidate-feed-card.flip-in-place:nth-child(3n),.candidate-feed-card.flip-in-place:nth-child(4n){aspect-ratio:3/4;width:100%;height:auto}
+.flip-stage{width:min(100%,430px);height:auto;aspect-ratio:3/4;max-height:calc(100dvh - 100px)}
+.flip-inner{width:100%;height:100%;min-height:0;aspect-ratio:3/4}
+.flip-face{box-sizing:border-box;border-radius:8px;min-width:0;min-height:0}
+.flip-window-revealed{contain:layout paint;}
+.window-reveal-copy{min-height:0;overflow:auto;overscroll-behavior:contain}
+/* Compact heatmap for the real opened-card history. */
+.exploration-calendar-heading{margin:27px 0 11px}
+.exploration-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;padding:4px 0 12px}
+.calendar-day{width:100%;aspect-ratio:1;border:1px solid transparent;border-radius:3px;background:#f0efec;transition:background-color .16s ease,border-color .16s ease,transform .16s ease}
+.calendar-day.level-1{background:#d8d7d2}.calendar-day.level-2{background:#b5b4ae}.calendar-day.level-3{background:#77766f}.calendar-day.level-4{background:#393936}.calendar-day.level-5{background:#171717}
+.calendar-day.selected{border-color:#c2a34a;box-shadow:inset 0 0 0 1px #c2a34a}
+.calendar-day:active{transform:scale(.92)}
+.calendar-day-detail{padding:14px 0 4px;border-top:1px solid var(--line)}
+.calendar-day-detail>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.calendar-day-detail>div:first-child strong{font-size:13px}.calendar-day-detail>div:first-child span{font-size:11px;color:#86837a}
+.calendar-day-detail>.fineprint{margin:10px 0}
+.calendar-posts{margin-top:7px}
+.calendar-posts button{width:100%;min-height:42px;border:0;border-bottom:1px solid var(--line);padding:8px 0;background:transparent;display:flex;align-items:center;gap:10px;text-align:left}
+.calendar-posts button span{font-size:10px;color:#927b43}.calendar-posts button strong{flex:1;font-size:12px;font-weight:550}
+.calendar-missing{padding:10px 0;color:#888;font-size:12px}
+/* Settings controls have persistent states and clear disabled/permission feedback. */
+.settings-list button:active,.reading-mode-option:active{background:#f6f5f1}
+.switch-list{border-top:1px solid var(--line);margin:18px 0 20px}
+.switch-row{min-height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0}
+.switch-row>span{display:flex;flex-direction:column;gap:5px}.switch-row strong{font-size:13px;font-weight:600}.switch-row small{font-size:10px;color:#888}
+.toggle-switch{width:42px;height:25px;flex:0 0 42px;border:0;border-radius:20px;padding:3px;background:#d6d4ce;display:flex;align-items:center;transition:background-color .18s ease}
+.toggle-switch i{width:19px;height:19px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0002;transform:translateX(0);transition:transform .18s cubic-bezier(.2,.7,.2,1)}
+.toggle-switch.on{background:#262624}.toggle-switch.on i{transform:translateX(17px)}
+.toggle-switch:disabled{opacity:.4;cursor:not-allowed}
+.settings-note{font-size:12px;line-height:1.7;color:#777}.permission-state{padding:11px 0;color:#8a6e39;font-size:12px}
+.reading-mode-list{display:flex;flex-direction:column;margin:18px 0;border-top:1px solid var(--line)}
+.reading-mode-option{width:100%;min-height:78px;display:grid;grid-template-columns:36px 1fr 22px;align-items:center;gap:12px;border:0;border-bottom:1px solid var(--line);background:transparent;text-align:left;padding:11px 3px}
+.reading-mode-option>span:nth-child(2){display:flex;flex-direction:column;gap:5px}.reading-mode-option strong{font-size:13px;font-weight:600}.reading-mode-option small{font-size:10px;line-height:1.5;color:#888}
+.reading-mode-option>i{width:20px;height:20px;border:1px solid #cccac3;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px;font-style:normal}
+.reading-mode-option.selected>i{background:#20201e;border-color:#20201e}
+.reading-swatch{width:32px;height:40px;border:1px solid #e7e5df;border-radius:3px;background:#fff}
+.reading-swatch.focus{background:linear-gradient(90deg,#fff 0 15%,#f1f0ec 15% 85%,#fff 85%)}
+.reading-swatch.night{background:#20201f;border-color:#20201f}
+/* Reading mode changes stay inside the reading surface and use short blur fades. */
+.detail-body.reading-out{opacity:.18;filter:blur(4px);transition:opacity .145s ease,filter .145s ease}
+.detail-body.reading-in{animation:reading-reveal .22s ease both}
+@keyframes reading-reveal{from{opacity:.3;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
+.detail:has(.reading-night){background:#171716;color:#f0efe9;min-height:100vh}
+.reading-night{background:#171716;color:#f0efe9}
+.reading-night .byline,.reading-night .article{color:#d2d0c9}
+.reading-night .detail-comment-jump{color:#d5b45c}
+.reading-night .actions,.reading-night .section-head,.reading-night .comment{border-color:#ffffff24}
+.reading-night .actions button,.reading-night .actions span,.reading-night .comment p{color:#d5d3cc}
+.reading-night .comment-compose textarea{background:#242422;color:#f2f0e8;border-color:#45443f}
+.reading-night .back,.detail:has(.reading-night) .back{background:#171716;color:#f1efe8}
+.reading-focus .article{max-width:42em;margin-left:auto;margin-right:auto;font-size:17px;line-height:2.05}
+.reading-focus .detail-comment-jump{margin-top:5px}
+.detail-body .article{transition:color .18s ease}
+@media(prefers-reduced-motion:reduce){.calendar-day,.toggle-switch,.toggle-switch i,.reading-mode-option{transition:none}.detail-body.reading-out{filter:none;transition:opacity .1s linear}.detail-body.reading-in{animation:none}}
+
+.flip-stage{width:min(100%,430px,calc((100dvh - 100px)*.75))}
+.modal-backdrop{z-index:50}
+.modal.reading-out{opacity:.35;filter:blur(4px);transition:opacity .145s ease,filter .145s ease}
+.modal.reading-in{animation:reading-reveal .22s ease both}
+.detail-reading-setting{display:inline-flex;align-items:center;gap:2px;padding:5px 0;border:0;background:none;color:#8a7237;font-size:11px}
+.reading-night .detail-reading-setting{color:#d5b45c}
+.reading-focus .detail-reading-setting{margin-bottom:8px}
+
+@media(prefers-reduced-motion:reduce){.flip-stage{transform:none!important}.calendar-day:active{transform:none}}
