@@ -154,11 +154,16 @@
 .flip-stage{transform-origin:top left}
 /* Stable 3:4 card geometry for both sides of the flip. */
 .candidate-feed-card.flip-in-place,.candidate-feed-card.flip-in-place:nth-child(3n),.candidate-feed-card.flip-in-place:nth-child(4n){aspect-ratio:3/4;width:100%;height:auto}
-.flip-stage{width:min(100%,430px);height:auto;aspect-ratio:3/4;max-height:calc(100dvh - 100px)}
-.flip-inner{width:100%;height:100%;min-height:0;aspect-ratio:3/4}
-.flip-face{box-sizing:border-box;border-radius:8px;min-width:0;min-height:0}
-.flip-window-revealed{contain:layout paint;}
-.window-reveal-copy{min-height:0;overflow:auto;overscroll-behavior:contain}
+.flip-stage{position:relative;width:min(calc(100vw - 28px),430px,calc((100dvh - 100px)*.75));height:auto;aspect-ratio:3/4;max-height:calc(100dvh - 100px);flex:none;overflow:hidden;border-radius:8px}
+.flip-inner{position:absolute;inset:0;width:100%;height:100%;min-height:0;aspect-ratio:3/4}
+.flip-face{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;border-radius:8px;min-width:0;min-height:0;overflow:hidden;flex:none}
+.flip-window-revealed{contain:layout paint;background:#f8f7f4;color:#171717;padding:0}
+.flip-window-revealed>img{position:absolute;inset:0 0 auto;width:100%;height:36%;object-fit:cover;flex:none}
+.flip-window-face{background:#171717;color:#f8f7f4}
+.window-reveal-copy{position:absolute;inset:36% 0 0;display:flex;flex-direction:column;align-items:stretch;padding:16px 18px 14px;min-height:0;overflow:auto;overscroll-behavior:contain;background:#f8f7f4;color:#171717}
+.window-reveal-copy h2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#171717}
+.window-reveal-copy p{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;color:#555}
+.window-reveal-copy .window-quota{margin-top:auto}
 /* Compact heatmap for the real opened-card history. */
 .exploration-calendar-heading{margin:27px 0 11px}
 .exploration-calendar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;padding:4px 0 12px}
@@ -218,3 +223,54 @@
 .reading-focus .detail-reading-setting{margin-bottom:8px}
 
 @media(prefers-reduced-motion:reduce){.flip-stage{transform:none!important}.calendar-day:active{transform:none}}
+
+/* Editorial finish: warmer paper, quieter chrome, and abstract card fronts. */
+:root{--bg:#f1efe9;--ink:#171716;--muted:#77746d;--line:#e7e3da;--accent:#b99a52}
+body{background:var(--bg);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+.app{background:#fbfaf7;box-shadow:0 0 0 1px #28251c08,0 18px 70px #312c2010}
+.topline{height:68px;border-color:#eeebe4}
+.brand{letter-spacing:.1em}.brand i{color:#a69776;letter-spacing:.18em}
+.demo-pill{background:#f2f0eb;color:#817c72;letter-spacing:.015em}
+.page.editorial-home{padding-top:36px}
+.today-heading h1{font-family:"Songti SC",STSong,Georgia,serif;font-weight:600;letter-spacing:-.055em;font-size:34px}
+.today-heading .eyebrow{font-variant-numeric:tabular-nums;letter-spacing:.18em;color:#a28e62}
+.today-heading .lead{max-width:28em;color:#77746d;line-height:1.85}
+.today-heading .daily-progress i{height:2px;background:#e8e4da}.today-heading .daily-progress i.active{background:#b99a52}
+.candidate-feed{column-gap:12px}.candidate-feed-card{margin-bottom:17px;transition:transform .16s cubic-bezier(.2,.7,.2,1)}
+.candidate-feed-card:active{transform:scale(.975)}
+.card-flip-face{border-radius:6px}
+.card-flip-front{background-color:#171716;background-image:radial-gradient(ellipse at 52% 48%,#ffffff0c,transparent 56%),linear-gradient(145deg,#20201e,#111110 68%);}
+.card-flip-front::after{width:56%;border-color:#d9c89a35;box-shadow:0 0 0 15px #ffffff04,0 0 0 40px #ffffff03;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+.candidate-feed-card:nth-child(4n+2) .card-flip-front{background-image:linear-gradient(126deg,transparent 43%,#c2a55e14 43.3%,transparent 43.7%),linear-gradient(35deg,#1b1b19,#10100f 70%)}
+.candidate-feed-card:nth-child(4n+2) .card-flip-front::after{width:42%;border-radius:2px;transform:translate(-50%,-50%) rotate(45deg)}
+.candidate-feed-card:nth-child(4n+3) .card-flip-front{background-image:repeating-radial-gradient(ellipse at 75% 25%,transparent 0 17px,#ffffff0a 18px 19px,transparent 20px 34px),linear-gradient(160deg,#20201e,#111110 75%)}
+.candidate-feed-card:nth-child(4n+3) .card-flip-front::after{width:68%;border-radius:44% 56% 63% 37%;transform:translate(-50%,-50%) rotate(-18deg)}
+.candidate-feed-card:nth-child(4n) .card-flip-front{background-image:linear-gradient(90deg,transparent 49.8%,#ffffff0b 50%,transparent 50.2%),linear-gradient(transparent 49.8%,#ffffff0b 50%,transparent 50.2%),radial-gradient(ellipse at 50% 50%,#24231f,#111110 72%);background-size:30px 30px,30px 30px,auto}
+.candidate-feed-card:nth-child(4n) .card-flip-front::after{width:34%;border-radius:50% 50% 4px 4px;transform:translate(-50%,-50%) rotate(45deg)}
+.candidate-feed-card:hover .card-flip-front::after{transform:translate(-50%,-50%) scale(1.04)}
+.card-number{color:#c8c0ac;font-variant-numeric:tabular-nums;letter-spacing:.2em}
+.card-brand{font-family:"Songti SC",STSong,Georgia,serif;font-weight:500;letter-spacing:.2em;color:#e8e4da}
+.card-prompt{color:#aaa394;letter-spacing:.08em}
+.floating-count{backdrop-filter:blur(10px);background:#181816ed;border:1px solid #ffffff18;box-shadow:0 8px 24px #12110e24}
+.bottom-nav{box-shadow:0 -5px 22px #28251c08;border-color:#eeebe4}
+.bottom-nav button{color:#aaa69c;transition:color .2s ease,transform .2s ease}
+.bottom-nav button.active{color:#26241f}.bottom-nav button:active{transform:translateY(-1px)}
+.bottom-nav button.active span{letter-spacing:.04em}
+.section-head{margin-top:32px}
+.candidate-feed-card:focus-visible,.bottom-nav button:focus-visible,.settings-list button:focus-visible,.calendar-day:focus-visible{outline:2px solid #b99a52;outline-offset:3px}
+.flip-stage{border-radius:6px;box-shadow:0 22px 70px #0004}
+.flip-face{border-radius:6px}
+.flip-window-revealed>img{background:#e9e5dc}
+.window-reveal-copy{padding:clamp(14px,4vw,21px);}
+.window-reveal-copy h2{font-family:"Songti SC",STSong,Georgia,serif;line-height:1.3;margin:8px 0 6px}
+.window-reveal-copy p{line-height:1.7}
+.window-more{background:#1a1a18;transition:background-color .18s ease,transform .18s ease}
+.window-more:active{transform:scale(.985);background:#35332d}
+.detail-hero{position:relative;overflow:hidden}
+.detail-hero img{width:100%;height:100%;object-fit:cover}
+.detail-body h1{font-family:"Songti SC",STSong,Georgia,serif;font-weight:600}
+.actions button,.comment div button,.settings-list button,.recent-discoveries button{transition:color .18s ease,background-color .18s ease,transform .18s ease}
+@media(max-width:390px){.page.editorial-home{padding-top:30px}.today-heading h1{font-size:31px}.candidate-feed{column-gap:9px}}
+@media(prefers-reduced-motion:reduce){.candidate-feed-card,.card-flip-front::after,.bottom-nav button,.window-more{transition:none!important}}
+.flip-window-revealed>img[data-failed]{display:none}
+.flip-window-visual-fallback{position:absolute;inset:0 0 64%;display:grid;place-items:center;padding:20px;color:#332f27;font-family:"Songti SC",STSong,Georgia,serif;font-size:clamp(20px,5vw,34px);font-weight:600;text-align:center;letter-spacing:.04em;opacity:.86}
