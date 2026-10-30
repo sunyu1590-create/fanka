@@ -56,3 +56,43 @@
 .daily-progress i{transition:background-color .3s ease,transform .3s ease}
 .actions button{transition:color .2s ease,transform .2s ease}
 .actions button:active{transform:scale(.94)}
+/* The card stays in its masonry cell while its own two faces turn. */
+.candidate-feed-card.flip-in-place{display:inline-block;perspective:1100px;aspect-ratio:4/5;position:relative;margin-bottom:15px;vertical-align:top}
+.candidate-feed-card.flip-in-place:nth-child(3n){aspect-ratio:1/1.2}
+.candidate-feed-card.flip-in-place:nth-child(4n){aspect-ratio:1/1.48}
+.card-flip-inner{display:block;position:absolute;inset:0;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.22,.72,.18,1)}
+.flip-in-place.is-unlocked .card-flip-inner{transform:rotateY(180deg)}
+.card-flip-face{position:absolute;inset:0;display:block;overflow:hidden;border-radius:7px;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.card-flip-front{background:#171717;color:#f7f5ef}
+.card-flip-front::after{content:'';position:absolute;left:50%;top:48%;width:55%;aspect-ratio:1;border:1px solid #ffffff29;border-radius:50%;transform:translate(-50%,-50%)}
+.card-number{position:absolute;top:13px;left:13px;font-size:11px;letter-spacing:.16em;font-weight:600}
+.card-brand{position:absolute;left:13px;right:13px;top:45%;text-align:center;font-size:15px;letter-spacing:.14em;font-weight:650}
+.card-prompt{position:absolute;bottom:14px;left:13px;font-size:10px;color:#bbb}
+.card-flip-back{transform:rotateY(180deg);background:#e7e4dd;color:#171717}
+.card-flip-back img,.detail-transform-layer img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.card-flip-back:has(img)::after,.detail-transform-layer:has(img)::after{content:'';position:absolute;inset:35% 0 0;background:linear-gradient(transparent,#131313c9)}
+.card-back-copy{position:absolute;z-index:1;left:13px;right:13px;bottom:13px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left}
+.card-back-copy small{font-size:10px;letter-spacing:.06em}
+.card-back-copy strong{font-size:16px;line-height:1.35;letter-spacing:-.02em}
+.card-back-copy em{font-size:10px;font-style:normal;margin-top:5px}
+.card-flip-back:has(img) .card-back-copy,.detail-transform-layer:has(img) .card-back-copy{color:#fff}
+.flip-in-place.is-detail-source{visibility:hidden}
+.flip-confirm{position:relative;min-height:min(560px,75dvh);background:#171717;color:white;justify-content:center;align-items:center;gap:24px}
+.flip-confirm .card-number{top:23px;left:24px}
+.flip-confirm .card-brand{position:static;font-size:22px}
+.flip-confirm p{font-size:13px;color:#bbb}
+.flip-confirm .flip-button{background:#d5b45c;color:#171717}
+.detail-transform-layer{position:fixed;left:0;top:0;z-index:41;overflow:hidden;border-radius:7px;transform-origin:top left;will-change:transform,border-radius;pointer-events:none}
+.overlay.detail-preparing{overflow:hidden;pointer-events:none}
+.overlay.detail-preparing .detail{opacity:0}
+.overlay.detail-ready{overflow:auto;pointer-events:auto}
+.overlay.detail-ready .detail{animation:detail-content-in .2s ease both}
+.detail-comment-jump{border:0;background:none;color:#8a7237;padding:0;font-size:12px}
+#detail-comments{scroll-margin-top:24px}
+@media(prefers-reduced-motion:reduce){.card-flip-inner{transition:none}.detail-transform-layer{display:none}.overlay.detail-ready .detail{animation:none}}
+
+.overlay.detail-fallback-opening,.overlay.detail-fallback-closing{pointer-events:none;overflow:hidden}
+.overlay.detail-fallback-opening .detail,.overlay.detail-fallback-closing .detail{opacity:1}
+
+.overlay.detail-closing{pointer-events:none;overflow:hidden;opacity:0;transition:opacity .16s ease}
+.overlay.detail-closing .detail{opacity:1}
