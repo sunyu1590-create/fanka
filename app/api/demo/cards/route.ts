@@ -1,7 +1,10 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {posts} from '@/lib/server/content-data';
 
-export async function GET(){
+export async function GET(req:NextRequest){
+  if(req.nextUrl.searchParams.get('mode')==='discover'){
+    return NextResponse.json({data:posts},{headers:{'Cache-Control':'no-store'}});
+  }
   return NextResponse.json({data:posts.map(({id})=>({id}))},{headers:{'Cache-Control':'no-store'}});
 }
 
