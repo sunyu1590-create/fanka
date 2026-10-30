@@ -1,18 +1,5 @@
-import {NextRequest,NextResponse} from 'next/server';
-import {posts} from '@/lib/server/content-data';
-
-export async function GET(req:NextRequest){
-  if(req.nextUrl.searchParams.get('mode')==='discover'){
-    return NextResponse.json({data:posts},{headers:{'Cache-Control':'no-store'}});
-  }
-  return NextResponse.json({data:posts.map(({id})=>({id}))},{headers:{'Cache-Control':'no-store'}});
-}
-
-export async function POST(req:NextRequest){
-  const body=await req.json().catch(()=>null) as {id?:unknown}|null;
-  const id=Number(body?.id);
-  if(!Number.isInteger(id))return NextResponse.json({error:'卡片无效'},{status:400});
-  const post=posts.find(item=>item.id===id);
-  if(!post)return NextResponse.json({error:'卡片不存在'},{status:404});
-  return NextResponse.json({data:post},{headers:{'Cache-Control':'no-store'}});
-}
+import {NextRequest} from 'next/server';
+import {context,dbError,jsonBody,respond,ApiError} from '@/lib/server/api';
+import {libraryFields,present,type LibraryRow} from '@/lib/server/library';
+export async function GET(req:NextRequest){return respond(async()=>{const {db}=await context(req,false);if(req.nextUrl.searchParams.get('mode')!=='discover'){const {data,error}=await db.from('posts').select('client_id').eq('status','published').order('client_id').limit(1000);dbError(error);return data!.map(row=>({id:Number(row.client_id)}))}const {data,error}=await db.from('posts').select(libraryFields).eq('status','published').order('created_at',{ascending:false}).limit(1000);dbError(error);return (data as unknown as LibraryRow[]).map(present)})}
+export async function POST(req:NextRequest){return respond(async()=>{const {db}=await context(req,false);const body=await jsonBody(req);const id=Number(body.id);if(!Number.isSafeInteger(id))throw new ApiError(400,'卡片无效');const {data,error}=await db.from('posts').select(libraryFields).eq('client_id',id).single();dbError(error);return present(data as unknown as LibraryRow)})}
