@@ -1,5 +1,5 @@
 export const tags=['生活','摄影','设计','科技','游戏','情感','知识','艺术'] as const;
-export type Post={id:number;tag:string;title:string;body:string;cover:string;author:string;date:string};
+export type Post={id:number;tag:string;title:string;body:string;cover:string;author:string;date:string;image?:string};
 const seed:[string,string,string,string][]=[
 ['生活','给周末留一小时空白','不必把休息排成另一份任务清单。试着关掉提醒，带一本书去街角，观察光如何慢慢移过桌面。','一小时的慢'],
 ['摄影','雨后街道的五种颜色','湿润的地面会把平常被忽略的招牌、树影和天空叠在一起。试着蹲低一点，用倒影重新构图。','雨后的街道'],
@@ -33,7 +33,17 @@ const seed:[string,string,string,string][]=[
 ['艺术','手作留下的微小差异','每件手作物都有一点不规则。正是这些痕迹，让材料与制作者的时间被看见。','手的痕迹']
 ];
 const hues=['#d8d8cc','#d3d9d8','#dcd6cf','#d2d6df','#d8d1dd','#ded3d3','#d7dbce','#d8d4df'];
-export const posts:Post[]=seed.map(([tag,title,body,cover],i)=>({id:i+1,tag,title,body,cover,author:'黑卡编辑部',date:'2026-10-30'}));
+const editorialImages:Record<number,string>={
+ 1:'photo-1449247709967-d4461a6a6103',
+ 2:'photo-1519608487953-e999c86e7455',
+ 3:'photo-1567538096630-e0c55bd6374c',
+ 4:'photo-1518770660439-4636190af475',
+ 5:'photo-1542751371-adc38448a05e',
+ 6:'photo-1516589178581-6cd7833ae3b2',
+ 7:'photo-1544787219-7f47ccb76574',
+ 8:'photo-1579783902614-a3fb3927b6a5',
+};
+export const posts:Post[]=seed.map(([tag,title,body,cover],i)=>({id:i+1,tag,title,body,cover,author:'黑卡编辑部',date:'2026-10-30',image:editorialImages[i+1]?`https://images.unsplash.com/${editorialImages[i+1]}?auto=format&fit=crop&w=900&q=82`:undefined}));
 export function coverColor(tag:string){return hues[Math.max(0,tags.indexOf(tag as typeof tags[number]))]}
 export function dayKey(date=new Date(),zone='Asia/Shanghai'){return new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date)}
 export function deckFor(date:string,interests:string[]){const rank=(p:Post)=>interests.includes(p.tag)?1:0;const pool=[...posts].sort((a,b)=>rank(b)-rank(a)||a.id-b.id);const hash=[...date].reduce((v,c)=>v*31+c.charCodeAt(0),0)>>>0;const chosen:Post[]=[];const take=(list:Post[])=>{const available=list.filter(p=>!chosen.some(c=>c.id===p.id));const p=available[hash%available.length];if(p)chosen.push(p)};take(pool.filter(p=>interests.includes(p.tag)));take(pool.filter(p=>interests.includes(p.tag)));take(pool.filter(p=>!interests.includes(p.tag)));take(pool.slice(8,20));take(pool.slice(20));return chosen}
