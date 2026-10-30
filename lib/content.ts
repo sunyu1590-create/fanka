@@ -33,7 +33,7 @@ const seed:[string,string,string,string][]=[
 ['艺术','手作留下的微小差异','每件手作物都有一点不规则。正是这些痕迹，让材料与制作者的时间被看见。','手的痕迹']
 ];
 const hues=['#d8d8cc','#d3d9d8','#dcd6cf','#d2d6df','#d8d1dd','#ded3d3','#d7dbce','#d8d4df'];
-export const posts:Post[]=seed.map(([tag,title,body,cover],i)=>({id:i+1,tag,title,body,cover,author:'方卡编辑部',date:'2026-10-30'}));
+export const posts:Post[]=seed.map(([tag,title,body,cover],i)=>({id:i+1,tag,title,body,cover,author:'黑卡编辑部',date:'2026-10-30'}));
 export function coverColor(tag:string){return hues[Math.max(0,tags.indexOf(tag as typeof tags[number]))]}
 export function dayKey(date=new Date(),zone='Asia/Shanghai'){return new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date)}
 export function deckFor(date:string,interests:string[]){const rank=(p:Post)=>interests.includes(p.tag)?1:0;const pool=[...posts].sort((a,b)=>rank(b)-rank(a)||a.id-b.id);const hash=[...date].reduce((v,c)=>v*31+c.charCodeAt(0),0)>>>0;const chosen:Post[]=[];const take=(list:Post[])=>{const available=list.filter(p=>!chosen.some(c=>c.id===p.id));const p=available[hash%available.length];if(p)chosen.push(p)};take(pool.filter(p=>interests.includes(p.tag)));take(pool.filter(p=>interests.includes(p.tag)));take(pool.filter(p=>!interests.includes(p.tag)));take(pool.slice(8,20));take(pool.slice(20));return chosen}
