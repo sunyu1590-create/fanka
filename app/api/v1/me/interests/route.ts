@@ -1,0 +1,3 @@
+import {NextRequest} from 'next/server';
+import {context,jsonBody,dbError,respond,ApiError} from '@/lib/server/api';
+export async function PUT(req:NextRequest){return respond(async()=>{const {db,user}=await context(req),body=await jsonBody(req);if(!Array.isArray(body.tag_ids)||body.tag_ids.length<3||body.tag_ids.length>8||body.tag_ids.some(x=>!Number.isInteger(x))||new Set(body.tag_ids).size!==body.tag_ids.length)throw new ApiError(400,'请选择 3-8 个不同兴趣');const {error:deleteError}=await db.from('user_interests').delete().eq('user_id',user!.id);dbError(deleteError);const {data,error}=await db.from('user_interests').insert(body.tag_ids.map(tag_id=>({user_id:user!.id,tag_id}))).select('tag_id');dbError(error);return data})}

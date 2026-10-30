@@ -1,0 +1,5 @@
+import {NextRequest} from 'next/server';
+import {context,jsonBody,uuid,dbError,respond,ApiError} from '@/lib/server/api';
+type Params={params:Promise<{id:string}>};
+export async function POST(req:NextRequest,{params}:Params){return respond(async()=>{const {db,user}=await context(req),body=await jsonBody(req);if(body.kind!=='like'&&body.kind!=='insightful')throw new ApiError(400,'互动类型无效');const {data,error}=await db.from('comment_reactions').upsert({comment_id:uuid((await params).id),user_id:user!.id,kind:body.kind},{onConflict:'comment_id,user_id,kind'}).select().single();dbError(error);return data})}
+export async function DELETE(req:NextRequest,{params}:Params){return respond(async()=>{const {db,user}=await context(req);const kind=req.nextUrl.searchParams.get('kind');if(kind!=='like'&&kind!=='insightful')throw new ApiError(400,'互动类型无效');const {error}=await db.from('comment_reactions').delete().eq('comment_id',uuid((await params).id)).eq('user_id',user!.id).eq('kind',kind);dbError(error);return {removed:true}})}

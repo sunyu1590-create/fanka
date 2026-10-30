@@ -1,0 +1,5 @@
+import {NextRequest} from 'next/server';
+import {context,jsonBody,textField,uuid,dbError,respond} from '@/lib/server/api';
+type Params={params:Promise<{id:string}>};
+export async function GET(req:NextRequest,{params}:Params){return respond(async()=>{const {db}=await context(req,false);const id=uuid((await params).id);const sort=req.nextUrl.searchParams.get('sort')==='new'?'created_at':'created_at';const {data,error}=await db.from('comments').select('id,author_id,parent_id,body,created_at').eq('post_id',id).eq('status','visible').order(sort,{ascending:false}).limit(50);dbError(error);return data})}
+export async function POST(req:NextRequest,{params}:Params){return respond(async()=>{const {db,user}=await context(req),body=await jsonBody(req);const postId=uuid((await params).id);const {data,error}=await db.from('comments').insert({post_id:postId,author_id:user!.id,body:textField(body.body,'评论',1,1000),parent_id:body.parent_id?uuid(body.parent_id):null}).select().single();dbError(error);return data})}

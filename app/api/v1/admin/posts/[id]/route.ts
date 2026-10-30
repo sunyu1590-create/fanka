@@ -1,0 +1,3 @@
+import {NextRequest} from 'next/server';
+import {context,jsonBody,uuid,dbError,respond,ApiError} from '@/lib/server/api';
+export async function PATCH(req:NextRequest,{params}:{params:Promise<{id:string}>}){return respond(async()=>{const {db,user}=await context(req);const role=await db.from('profiles').select('role').eq('id',user!.id).single();dbError(role.error);if(role.data?.role!=='admin')throw new ApiError(403,'需要管理员权限');const body=await jsonBody(req);if(body.status!=='published'&&body.status!=='hidden')throw new ApiError(400,'帖子状态无效');const {data,error}=await db.from('posts').update({status:body.status}).eq('id',uuid((await params).id)).select().single();dbError(error);return data})}
