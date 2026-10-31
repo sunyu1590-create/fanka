@@ -38,6 +38,7 @@ import { cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
 import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
+import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 type Comment = {
   id: number;
   cloudId?: string;
@@ -70,6 +71,7 @@ type State = {
   deck: Record<string, number[]>;
   saved: number[];
   ratings: Record<number, number>;
+  facetSlots: Record<number, number>;
   comments: Comment[];
   own: Post[];
   name: string;
@@ -92,6 +94,7 @@ const initial: State = {
   deck: {},
   saved: [],
   ratings: {},
+  facetSlots: {},
   comments: [],
   own: [],
   name: "探索者",
@@ -236,6 +239,8 @@ export default function Community() {
   const cloudHydrated = useRef(false);
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
+  const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
+  const [detailImageTransition, setDetailImageTransition] = useState<{ rect: DOMRect; src: string } | null>(null);
   const [luckyReward, setLuckyReward] = useState<{ postId: number; amount: number } | null>(null);
   const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
@@ -267,6 +272,7 @@ export default function Community() {
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
     ratingPulseTimer = useRef<number | null>(null);
+  const ratingBusy = useRef(false);
   const [state, setState] = useState<State>(initial),
     [ready, setReady] = useState(false),
     [tab, setTab] = useState("today"),
@@ -489,11 +495,25 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const submitRating = (postId: number, score: number) => {
+  const submitRating = async (postId: number, score: number) => {
+    if (ratingBusy.current) return;
+    ratingBusy.current = true;
     update((s) => ({ ...s, ratings: { ...s.ratings, [postId]: score } }));
     setRatingPulse({ postId, score });
     if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
     ratingPulseTimer.current = window.setTimeout(() => setRatingPulse(null), 1100);
+    try {
+      if (!accountId) {
+        toast("评分已保存在本机；登录后可计入社区均分与推荐");
+        return;
+      }
+      const result = await cloudRequest(`/api/v1/posts/${postId}/rating`, { rating: score });
+      setCommunityRatings((current) => ({ ...current, [postId]: { average: result.average, count: result.count } }));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "评分暂未同步，请稍后重试");
+    } finally {
+      ratingBusy.current = false;
+    }
   };
   const toast = (msg: string) => {
     setNotice(msg);
@@ -555,6 +575,27 @@ export default function Community() {
       !all.some((p) => p.id === id)
     )
       return;
+    const selectedPost = all.find((item) => item.id === id);
+    const sourceCard = document.querySelector<HTMLElement>(
+      `[data-card-id="${id}"], [data-discover-id="${id}"], [data-window-card-id="${id}"]`,
+    );
+    const sourceImage = sourceCard?.matches("img")
+      ? sourceCard
+      : sourceCard?.querySelector<HTMLElement>(
+          ".candidate-cover img, .card-flip-back img, .flip-window-revealed img, .editorial-cover img, img",
+        );
+    const sourceRect = sourceImage?.getBoundingClientRect();
+    const sourceImageUrl = selectedPost?.images?.[0] || selectedPost?.image;
+    setDetailImageTransition(
+      sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
+        ? { rect: sourceRect, src: sourceImageUrl }
+        : null,
+    );
+    if (viewerId === id) {
+      setViewerId(null);
+      setViewerFlipped(false);
+      setViewerPhase(null);
+    }
     void cloudRequest("/api/v1/library-state", { action: "view", id }).catch(
       () => {},
     );
@@ -690,12 +731,22 @@ export default function Community() {
     const opening = transitionPhase === "opening";
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animation: Animation | undefined;
+    let imageAnimation: Animation | undefined;
+    let imageClone: HTMLImageElement | null = null;
+    let imageTarget: HTMLImageElement | null = null;
+    let cancelled = false;
+    let finished = false;
     const finish = () => {
+      if (finished || cancelled) return;
+      finished = true;
+      imageTarget?.style.removeProperty("visibility");
+      imageClone?.remove();
       if (opening) {
         setDetailReady(true);
       } else {
         setDetail(null);
         setDetailReady(false);
+        setDetailImageTransition(null);
       }
       setTransitionPhase(null);
       transitionBusy.current = false;
@@ -703,23 +754,80 @@ export default function Community() {
     const detailNode = document.querySelector<HTMLElement>(".overlay .detail");
     if (!detailNode || reduced) {
       finish();
-      return () => animation?.cancel();
+      return;
     }
     animation = detailNode.animate(
       opening
         ? [
-            { opacity: 0, transform: "translate3d(0,26px,0)", filter: "blur(3px)" },
-            { opacity: 1, transform: "translate3d(0,0,0)", filter: "blur(0)" },
+            { opacity: 1, transform: "translate3d(0,24px,0)" },
+            { opacity: 1, transform: "translate3d(0,0,0)" },
           ]
         : [
-            { opacity: 1, transform: "translate3d(0,0,0)", filter: "blur(0)" },
-            { opacity: 0, transform: "translate3d(0,18px,0)", filter: "blur(2px)" },
+            { opacity: 1, transform: "translate3d(0,0,0)" },
+            { opacity: 1, transform: "translate3d(0,18px,0)" },
           ],
-      { duration: opening ? 380 : 220, easing: "cubic-bezier(.2,.72,.18,1)", fill: "both" },
+      { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
     );
     animation.onfinish = finish;
-    return () => animation?.cancel();
-  }, [transitionPhase]);
+    const transitionImage = detailImageTransition;
+    if (transitionImage) {
+      imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
+      if (imageTarget) {
+        const animateImage = async () => {
+          imageTarget?.style.setProperty("visibility", "hidden");
+          try { await imageTarget?.decode(); } catch {}
+          if (cancelled || !imageTarget) return;
+          const targetRect = imageTarget.getBoundingClientRect();
+          const originRect = transitionImage.rect;
+          const from = opening ? originRect : targetRect;
+          const to = opening ? targetRect : originRect;
+          if (!from.width || !from.height || !to.width || !to.height || from.bottom < 0 || from.top > innerHeight || to.bottom < 0 || to.top > innerHeight) {
+            imageTarget.style.removeProperty("visibility");
+            return;
+          }
+          imageClone = new Image();
+          imageClone.src = opening ? transitionImage.src : imageTarget.currentSrc || imageTarget.src;
+          try { await imageClone.decode(); } catch {}
+          if (cancelled || !imageClone) return;
+          imageClone.alt = "";
+          imageClone.setAttribute("aria-hidden", "true");
+          Object.assign(imageClone.style, {
+            position: "fixed",
+            left: `${to.left}px`,
+            top: `${to.top}px`,
+            width: `${to.width}px`,
+            height: `${to.height}px`,
+            objectFit: "cover",
+            objectPosition: "center",
+            zIndex: "120",
+            pointerEvents: "none",
+            willChange: "left,top,width,height,border-radius",
+          });
+          document.body.appendChild(imageClone);
+          imageAnimation = imageClone.animate(
+            [
+              { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: "6px" },
+              { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: "0px" },
+            ],
+            { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+          );
+          imageAnimation.onfinish = () => {
+            imageTarget?.style.removeProperty("visibility");
+            imageClone?.remove();
+            imageClone = null;
+          };
+        };
+        void animateImage();
+      }
+    }
+    return () => {
+      cancelled = true;
+      animation?.cancel();
+      imageAnimation?.cancel();
+      imageTarget?.style.removeProperty("visibility");
+      imageClone?.remove();
+    };
+  }, [transitionPhase, detailImageTransition]);
   const toggleSave = async (id: number) => {
     const value = !state.saved.includes(id);
     try {
@@ -770,9 +878,17 @@ export default function Community() {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
     }
-    const candidate = pool[(facetIndex + facet) % pool.length];
+    const assigned = candidates.find((candidate, candidatePosition) =>
+      Boolean(state.revealed[candidate.id]) &&
+      (state.facetSlots?.[candidate.id] ?? candidatePosition % blackCardFacets.length) === facet,
+    );
+    const candidate = assigned || pool[(facetIndex + facet) % pool.length];
     const candidateIndex = candidates.findIndex((item) => item.id === candidate.id);
     setFacetIndex(candidateIndex + 1);
+    setState((current) => ({
+      ...current,
+      facetSlots: { ...(current.facetSlots || {}), [candidate.id]: facet },
+    }));
     flip(candidate.id, origin);
   };
   const completeFlip = async () => {
@@ -1037,22 +1153,32 @@ export default function Community() {
       setFeedError("内容加载失败，请重试");
     }
   };
+  const ratingIdsKey = [...new Set(all.map((post) => post.id))].sort((a, b) => a - b).join(",");
+  useEffect(() => {
+    if (!ready || !ratingIdsKey) return;
+    const controller = new AbortController();
+    fetch(`/api/v1/ratings?ids=${ratingIdsKey}`, { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.json())
+      .then((result) => {
+        if (!controller.signal.aborted && result.data && typeof result.data === "object")
+          setCommunityRatings(result.data as Record<number, CommunityRating>);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [ready, ratingIdsKey]);
   const filtered = useMemo(
-    () =>
-      publicFeed
-        .filter(
-          (p) =>
-            !state.dismissed?.includes(p.id) &&
-            (category === "全部" || p.tag === category) &&
-            (!query || `${p.title}${p.body}`.includes(query)),
-        )
-        .sort(
-          (a, b) =>
-            Number(state.interests.includes(b.tag)) -
-              Number(state.interests.includes(a.tag)) ||
-            Number(state.viewed.includes(a.id)) -
-              Number(state.viewed.includes(b.id)),
-        ),
+    () => rankRecommendations(
+      publicFeed.filter(
+        (p) =>
+          !state.dismissed?.includes(p.id) &&
+          (category === "全部" || p.tag === category) &&
+          (!query || `${p.title}${p.body}`.includes(query)),
+      ),
+      state.interests,
+      state.viewed,
+      state.ratings,
+      communityRatings,
+    ),
     [
       publicFeed,
       category,
@@ -1060,6 +1186,8 @@ export default function Community() {
       state.dismissed,
       state.interests,
       state.viewed,
+      state.ratings,
+      communityRatings,
     ],
   );
   const list = filtered.slice(0, page);
@@ -1317,6 +1445,17 @@ export default function Community() {
                       .filter(Boolean),
                   ]),
                 ],
+                ratings: {
+                  ...s.ratings,
+                  ...Object.fromEntries(
+                    data.interactions
+                      .filter((row: { rating: number | null }) => row.rating !== null)
+                      .map((row: { rating: number; posts: { client_id: number } }) => [
+                        Number(row.posts.client_id),
+                        Number(row.rating),
+                      ]),
+                  ),
+                },
                 dismissed: [
                   ...new Set<number>([
                     ...(s.dismissed || []),
@@ -1565,7 +1704,10 @@ export default function Community() {
                     <linearGradient id="facet-metal-d" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#34434a"/><stop offset=".46" stopColor="#8c999e"/><stop offset="1" stopColor="#4c5c63"/></linearGradient>
                   </defs>
                   {blackCardFacets.map((points, index) => {
-                    const hasUnlocked = candidates.some((candidate) => Boolean(state.revealed[candidate.id]));
+                    const hasUnlocked = candidates.some((candidate, candidatePosition) =>
+                      Boolean(state.revealed[candidate.id]) &&
+                      (state.facetSlots?.[candidate.id] ?? candidatePosition % blackCardFacets.length) === index,
+                    );
                     const unavailable = !candidates.length || (!hasUnlocked && opened.length >= dailyAllowance);
                     return <polygon
                       key={index}
@@ -1574,7 +1716,7 @@ export default function Community() {
                       clipPath="url(#black-facet-inset)"
                       role="button"
                       tabIndex={unavailable ? -1 : 0}
-                      aria-label={hasUnlocked ? `点击第 ${index + 1} 个菱面，打开黑卡` : `点击第 ${index + 1} 个菱面，选择新黑卡`}
+                      aria-label={hasUnlocked ? `第 ${index + 1} 个菱面已翻开，点击查看黑卡` : `第 ${index + 1} 个菱面未翻开，点击选择黑卡`}
                       onClick={(event) => !unavailable && chooseBlackFacet(index, event.currentTarget)}
                       onKeyDown={(event) => {
                         if ((event.key === "Enter" || event.key === " ") && !unavailable) {
@@ -1681,7 +1823,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.15</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.16</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1692,7 +1834,16 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.15</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.16</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.16</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>彩带从屏幕上方中心散开，加入多色飘落并移除浅色遮罩。</li>
+              <li>详情页采用图片连续扩展与正文上推动效，返回时按原路径收回。</li>
+              <li>加入全体用户评分汇总，并将个人评分信号用于内容推荐。</li>
+              <li>菱形卡片为已翻开的切面使用独立金属色状态。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.15</strong><small>2026.10.31</small></div>
             <ul>
@@ -2137,13 +2288,13 @@ export default function Community() {
           {flipRainId === viewerId && (
             <div className="flip-confetti" aria-hidden="true">
               {Array.from({ length: 48 }, (_, index) => {
-                const drift = ((index * 17) % 29) - 14;
+                const drift = ((index * 37) % 121) - 60;
+                const earlyFan = Math.round(drift * 0.38);
                 return <i key={index} style={{
-                  left: `${(index * 37) % 100}%`,
-                  top: `${-12 - (index % 4) * 9}vh`,
-                  animationDelay: `${(index % 8) * 72}ms`,
+                  animationDelay: `${(index % 8) * 54}ms`,
+                  "--fan-x": `${earlyFan}vw`,
                   "--fall-x": `${drift}vw`,
-                  "--fall-y": `${112 + (index % 5) * 7}vh`,
+                  "--fall-y": `${106 + (index % 5) * 8}vh`,
                   "--twist": `${(index % 2 ? 1 : -1) * (80 + (index % 5) * 65)}deg`,
                 } as CSSProperties} />;
               })}
@@ -2308,6 +2459,11 @@ export default function Community() {
                       <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
                     </button>
                   ))}</div>
+                  {communityRatings[post.id]?.count ? (
+                    <small className="community-rating" aria-live="polite">
+                      <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人
+                    </small>
+                  ) : <small className="community-rating">社区评分形成中</small>}
                   {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
                 </section>
                 <section id="detail-comments" className="detail-comments">
