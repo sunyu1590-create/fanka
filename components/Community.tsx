@@ -19,6 +19,10 @@ import {
   Check,
   ArrowRight,
   MessageSquare,
+  Share2,
+  MessageCircle,
+  ThumbsDown,
+  Bug,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -92,6 +96,7 @@ const initial: State = {
 const nav = [
   ["today", "首页", Home],
   ["discover", "发现", Compass],
+  ["debug", "调试", Bug],
   ["messages", "消息", MessageSquare],
   ["mine", "我的", UserRound],
 ] as const;
@@ -826,22 +831,6 @@ export default function Community() {
     }));
     toast("今日翻卡次数已清除");
   };
-  const restartMode = () => {
-    if (
-      !confirm("重新开始调试模式？兴趣、翻卡记录、收藏和本地发布内容都会清除。")
-    )
-      return;
-    try {
-      localStorage.removeItem("heika-demo-v1");
-    } catch {}
-    setState({ ...initial });
-    setTab("today");
-    setDetail(null);
-    setViewerId(null);
-    setViewerFlipped(false);
-    setModal(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
   const addComment = async () => {
     const value = draft.trim();
     if (!detail || !value) return;
@@ -1106,8 +1095,7 @@ export default function Community() {
         data-card-id={p.id}
         className={`candidate-feed-card flip-in-place${unlocked ? " is-unlocked" : ""}${justFlippedId === p.id ? " just-flipped" : ""}${detail === p.id ? " is-detail-source" : ""}`}
         onClick={() => flip(p.id)}
-        disabled={!unlocked && opened.length >= 5}
-        aria-label={unlocked ? `阅读 ${revealed.title}` : opened.length >= 5 ? "今日 5 张卡片已选完" : "选择并翻开一张未知卡片"}
+        aria-label={unlocked ? `阅读 ${revealed.title}` : opened.length >= 5 ? "今日 5 张已翻完，点击查看提示" : "选择并翻开一张未知卡片"}
       >
         <span className="card-flip-inner">
           <span className="card-flip-face card-flip-front">
@@ -1423,18 +1411,11 @@ export default function Community() {
     <main className="app">
       <div className="topline">
         <span className="brand">
-          晶选 · 黑卡 <i>HEIKA</i>
+          黑卡 <i>HEIKA</i>
         </span>
-        <div className="topline-actions">
-          <div className="home-mode-switch" role="group" aria-label="首页样式">
-            {([['waterfall', '瀑布流'], ['blackcard', '黑卡流']] as const).map(([mode, label]) => (
-              <button key={mode} type="button" aria-pressed={state.homeMode === mode} className={state.homeMode === mode ? "selected" : ""} onClick={() => update((current) => ({ ...current, homeMode: mode }))}>{label}</button>
-            ))}
-          </div>
         <span className="demo-pill">
           {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
         </span>
-        </div>
       </div>
       {tab === "today" && (
         <section
@@ -1454,19 +1435,20 @@ export default function Community() {
             pullStart.current = null;
           }}
         >
-          <div className="today-heading">
-            <div>
-              <div className="eyebrow">LUCENT // BLACK CARD</div>
-              <h1>
-                {state.homeMode === "blackcard" ? "精选" : "保存黑卡"}
-              </h1>
-              <p className="lead">
-                {state.homeMode === "blackcard"
-                  ? "轻触菱面 · 翻开今日黑卡"
-                  : "从兴趣出发，发现值得停留的内容。"}
-              </p>
+          {state.homeMode === "blackcard" ? (
+            <div className="today-heading">
+              <div>
+                <div className="eyebrow">LUCENT // BLACK CARD</div>
+                <h1>精选</h1>
+                <p className="lead">轻触菱面 · 翻开今日黑卡</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="daily-quota-summary" role="status" aria-live="polite">
+              <strong>今日已翻开 {Math.min(opened.length, 5)} / 5 张</strong>
+              <span>{opened.length >= 5 ? "今日额度已用完，已解锁卡片仍可查看" : `还可翻开 ${5 - opened.length} 张`}</span>
+            </div>
+          )}
           {state.homeMode === "waterfall" ? (
             <>
               <div className="candidate-feed waterfall-card-feed">
@@ -1478,9 +1460,6 @@ export default function Community() {
                   <button onClick={() => setPage((count) => count + 12)}>加载更多</button>
                 </div>
               )}
-              <p className="quota-note">
-                {opened.length >= 5 ? "今日 5 张已选完，已解锁内容仍可查看。" : `选择 5 张卡片翻开 · 已选 ${opened.length}/5`}
-              </p>
             </>
           ) : (
             <>
@@ -1604,17 +1583,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.3</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          <div className="settings-module">
-            <div className="settings-module-heading"><strong>调试</strong></div>
-            <div className="settings-list">
-              <button onClick={() => {
-                update((current) => ({ ...current, onboardingDone: false, interests: [], homeMode: "waterfall" }));
-                setTab("today");
-                requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-              }}><span>调试模式</span><small>重置为新人开始界面</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.4</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1625,7 +1594,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.3</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.4</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.4</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>移除首页顶栏的浏览模式切换，品牌标题简化为「黑卡」。</li>
+              <li>瀑布流明确显示每日翻卡进度，并在额度用完时提示。</li>
+              <li>调试模式独立成页，详情操作改为图标按钮。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.3</strong><small>2026.10.31</small></div>
             <ul>
@@ -1654,6 +1631,21 @@ export default function Community() {
             <div className="settings-module-heading"><strong>版本 1.0</strong><small>初始版本</small></div>
             <ul><li>黑卡内容探索、瀑布流浏览与每日翻卡。</li><li>收藏、消息、私聊及主题设置。</li></ul>
           </div>
+        </section>
+      )}
+      {tab === "debug" && (
+        <section className="page debug-page">
+          <div className="eyebrow">DEVELOPER TOOLS</div>
+          <h1>调试模式<span className="red-dot">.</span></h1>
+          <p className="lead">重新查看新人引导和主页样式选择。</p>
+          <button className="settings-entry-card" onClick={() => {
+            update((current) => ({ ...current, onboardingDone: false, interests: [], homeMode: "waterfall" }));
+            setTab("today");
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          }}>
+            <span><strong>重置为新人开始界面</strong><small>仅重置引导、兴趣和主页样式</small></span>
+            <RefreshCw size={18} />
+          </button>
         </section>
       )}
       {tab === "mine" && (
@@ -2078,7 +2070,9 @@ export default function Community() {
                 </figure>
               )}
               <button
-                className="soft-button"
+                className="icon-action"
+                aria-label="分享内容"
+                title="分享内容"
                 onClick={() => {
                   if (navigator.share)
                     void navigator.share({
@@ -2091,12 +2085,14 @@ export default function Community() {
                       .then(() => toast("内容已复制"));
                 }}
               >
-                分享内容
+                <Share2 size={18} />
               </button>
               <div className="deck-actions">
                 <button
-                  className="soft-button"
+                  className={`icon-action${state.liked?.includes(post.id) ? " chosen" : ""}`}
                   aria-pressed={state.liked?.includes(post.id) || false}
+                  aria-label={state.liked?.includes(post.id) ? "取消点赞" : "点赞"}
+                  title={state.liked?.includes(post.id) ? "取消点赞" : "点赞"}
                   onClick={() => {
                     void cloudRequest("/api/v1/library-state", {
                       action: "like",
@@ -2111,10 +2107,12 @@ export default function Community() {
                     }));
                   }}
                 >
-                  {state.liked?.includes(post.id) ? "已点赞" : "点赞"}
+                  <Heart size={18} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} />
                 </button>
                 <button
-                  className="text-button"
+                  className="icon-action"
+                  aria-label="不感兴趣"
+                  title="不感兴趣"
                   onClick={() => {
                     update((s) => ({
                       ...s,
@@ -2129,23 +2127,27 @@ export default function Community() {
                     toast("已减少类似内容推荐");
                   }}
                 >
-                  不感兴趣
+                  <ThumbsDown size={18} />
                 </button>
               </div>
               <button
                 className="detail-comment-jump"
+                aria-label="跳转到讨论"
+                title="讨论"
                 onClick={() =>
                   document
                     .getElementById("detail-comments")
                     ?.scrollIntoView({ behavior: "smooth", block: "start" })
                 }
               >
-                查看讨论 ↓
+                <MessageCircle size={19} />
               </button>
               <div className="actions">
                 <button
                   onClick={() => toggleSave(post.id)}
                   className={state.saved.includes(post.id) ? "chosen" : ""}
+                  aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"}
+                  title={state.saved.includes(post.id) ? "取消收藏" : "收藏"}
                 >
                   <Bookmark
                     size={18}
@@ -2153,9 +2155,8 @@ export default function Community() {
                       state.saved.includes(post.id) ? "currentColor" : "none"
                     }
                   />
-                  {state.saved.includes(post.id) ? "已收藏" : "收藏"}
                 </button>
-                <span>你的评分</span>
+                <span className="sr-only">你的评分</span>
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
                     key={n}
@@ -2180,8 +2181,9 @@ export default function Community() {
                 ))}
               </div>
               <div id="detail-comments" className="section-head">
-                <h2>
-                  讨论 ·{" "}
+                <h2 className="discussion-heading">
+                  <MessageCircle size={20} aria-hidden="true" />
+                  <span className="sr-only">讨论</span>
                   {state.comments.filter((c) => c.post === post.id).length}
                 </h2>
               </div>
@@ -2198,8 +2200,8 @@ export default function Community() {
                   placeholder="说说你的看法…"
                   maxLength={1000}
                 />
-                <button className="primary-button" onClick={addComment}>
-                  <Send size={15} /> 发表
+                <button className="primary-button icon-action" aria-label="发表讨论" title="发表讨论" onClick={addComment}>
+                  <Send size={17} />
                 </button>
               </div>
               {state.comments
@@ -2219,6 +2221,8 @@ export default function Community() {
                     <p>{c.body}</p>
                     <div>
                       <button
+                        aria-label="回复评论"
+                        title="回复评论"
                         onClick={() => {
                           if (!accountId) return toast("登录后可点赞");
                           void cloudRequest("/api/library-comments", {
@@ -2260,11 +2264,11 @@ export default function Community() {
                             ?.focus();
                         }}
                       >
-                        回复
+                        <MessageCircle size={15} />
                       </button>
                       {(!c.cloudId || c.authorId === accountId) && (
-                        <button onClick={() => void deleteComment(c)}>
-                          删除
+                        <button aria-label="删除评论" title="删除评论" onClick={() => void deleteComment(c)}>
+                          <Trash2 size={15} />
                         </button>
                       )}
                     </div>
