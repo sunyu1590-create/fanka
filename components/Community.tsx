@@ -220,7 +220,6 @@ export default function Community() {
   }, [fontChoice, fontReady]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
-    transitionLayerRef = useRef<HTMLDivElement | null>(null),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
@@ -234,7 +233,11 @@ export default function Community() {
   const [facetIndex, setFacetIndex] = useState(0);
   const [luckyReward, setLuckyReward] = useState<{ postId: number; amount: number } | null>(null);
   const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
+  const [selectedFlipPack, setSelectedFlipPack] = useState<number | null>(null);
   const luckyRewardTimer = useRef<number | null>(null);
+  const flipRainTimer = useRef<number | null>(null);
+  const [flipRainId, setFlipRainId] = useState<number | null>(null);
   const [dayTick, setDayTick] = useState(0),
     [viewerId, setViewerId] = useState<number | null>(null),
     [viewerRect, setViewerRect] = useState<DOMRect | null>(null),
@@ -265,7 +268,6 @@ export default function Community() {
     [transitionPhase, setTransitionPhase] = useState<
       "opening" | "closing" | null
     >(null),
-    [transitionRect, setTransitionRect] = useState<DOMRect | null>(null),
     [justFlippedId, setJustFlippedId] = useState<number | null>(null),
     [category, setCategory] = useState("全部"),
     [query, setQuery] = useState(""),
@@ -439,6 +441,7 @@ export default function Community() {
     readingTimer.current.forEach(window.clearTimeout);
     if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
     if (luckyRewardTimer.current !== null) window.clearTimeout(luckyRewardTimer.current);
+    if (flipRainTimer.current !== null) window.clearTimeout(flipRainTimer.current);
   }, []);
   useEffect(() => {
     if (!("Notification" in window)) {
@@ -549,8 +552,6 @@ export default function Community() {
       () => {},
     );
     transitionBusy.current = true;
-    const rect = findVisibleCard(id);
-    setTransitionRect(rect);
     setDetailReady(false);
     setDetail(id);
     setTransitionPhase("opening");
@@ -575,12 +576,11 @@ export default function Community() {
       return;
     }
     if (transitionBusy.current) {
-      window.setTimeout(() => closeDetail(true), transitionRect ? 560 : 260);
+      window.setTimeout(() => closeDetail(true), 420);
       return;
     }
     transitionBusy.current = true;
     setDetailReady(false);
-    setTransitionRect(findVisibleCard(detail));
     setTransitionPhase("closing");
   };
   useEffect(() => {
@@ -680,78 +680,39 @@ export default function Community() {
   }, [viewerPhase, viewerId, viewerRect]);
   useLayoutEffect(() => {
     if (!transitionPhase) return;
-    const opening = transitionPhase === "opening",
-      rect = transitionRect,
-      layer = transitionLayerRef.current;
+    const opening = transitionPhase === "opening";
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animation: Animation | undefined;
     const finish = () => {
       if (opening) {
         setDetailReady(true);
-        if (layer && !reduced) {
-          const fade = layer.animate([{ opacity: 1 }, { opacity: 0 }], {
-            duration: 130,
-            easing: "ease-out",
-            fill: "forwards",
-          });
-          fade.onfinish = () => {
-            setTransitionPhase(null);
-            transitionBusy.current = false;
-          };
-          return;
-        }
-        setTransitionPhase(null);
       } else {
         setDetail(null);
         setDetailReady(false);
-        setTransitionPhase(null);
       }
+      setTransitionPhase(null);
       transitionBusy.current = false;
     };
-    if (reduced) {
+    const detailNode = document.querySelector<HTMLElement>(".overlay .detail");
+    if (!detailNode || reduced) {
       finish();
-      return;
-    }
-    if (!rect || !layer) {
-      const overlay = document.querySelector<HTMLElement>(".overlay");
-      if (overlay) {
-        animation = overlay.animate(
-          opening
-            ? [
-                { opacity: 0, transform: "scale(.97)" },
-                { opacity: 1, transform: "scale(1)" },
-              ]
-            : [
-                { opacity: 1, transform: "scale(1)" },
-                { opacity: 0, transform: "scale(.96)" },
-              ],
-          { duration: 240, easing: "ease-out", fill: "forwards" },
-        );
-        animation.onfinish = finish;
-      } else finish();
       return () => animation?.cancel();
     }
-    const width = innerWidth,
-      height = innerHeight;
-    const first = `translate3d(${rect.left}px,${rect.top}px,0) scale(1)`;
-    const last = `translate3d(0,0,0) scale(${width / rect.width},${height / rect.height})`;
-    const frames = opening
-      ? [
-          { transform: first, borderRadius: "7px", opacity: 1 },
-          { transform: last, borderRadius: "0px", opacity: 1 },
-        ]
-      : [
-          { transform: last, borderRadius: "0px", opacity: 1 },
-          { transform: first, borderRadius: "7px", opacity: 1 },
-        ];
-    animation = layer.animate(frames, {
-      duration: 420,
-      easing: "cubic-bezier(.22,.72,.18,1)",
-      fill: "forwards",
-    });
+    animation = detailNode.animate(
+      opening
+        ? [
+            { opacity: 0, transform: "translate3d(0,26px,0)", filter: "blur(3px)" },
+            { opacity: 1, transform: "translate3d(0,0,0)", filter: "blur(0)" },
+          ]
+        : [
+            { opacity: 1, transform: "translate3d(0,0,0)", filter: "blur(0)" },
+            { opacity: 0, transform: "translate3d(0,18px,0)", filter: "blur(2px)" },
+          ],
+      { duration: opening ? 380 : 220, easing: "cubic-bezier(.2,.72,.18,1)", fill: "both" },
+    );
     animation.onfinish = finish;
     return () => animation?.cancel();
-  }, [transitionPhase, transitionRect]);
+  }, [transitionPhase]);
   const toggleSave = async (id: number) => {
     const value = !state.saved.includes(id);
     try {
@@ -855,12 +816,15 @@ export default function Community() {
         () => toast("阅读记录云端同步失败，本地已保留"),
       );
       setJustFlippedId(id);
+      if (flipRainTimer.current !== null) window.clearTimeout(flipRainTimer.current);
+      setFlipRainId(id);
+      flipRainTimer.current = window.setTimeout(() => setFlipRainId(null), 2150);
       if (document.activeElement instanceof HTMLElement)
         document.activeElement.blur();
       requestAnimationFrame(() =>
         window.scrollTo({ top: scrollBefore, behavior: "instant" }),
       );
-      window.setTimeout(() => setJustFlippedId(null), 1350);
+      window.setTimeout(() => setJustFlippedId(null), 950);
       toast(lucky ? `幸运加成 +${lucky} 次 · 今日额度已增加` : "已翻开 · 今日探索进度已更新");
     } catch {
       toast("内容加载失败，请重试");
@@ -1710,7 +1674,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.13</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.14</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1721,7 +1685,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.13</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.14</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.14</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>翻卡彩带改为从屏幕顶部向下飘落。</li>
+              <li>详情页改为图片淡出、内容从下方自然上推，移除拉伸卡片图的转场。</li>
+              <li>在「我的」增加 Plus / Pro 订阅与额外翻卡包入口。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.13</strong><small>2026.10.31</small></div>
             <ul>
@@ -1870,6 +1842,15 @@ export default function Community() {
               <strong>{state.saved.length}</strong>
               <span>我的收藏</span>
             </div>
+          </div>
+          <div className="mine-membership-section">
+            <div className="section-head"><h2>会员与翻卡额度</h2><span>PLUS / PRO</span></div>
+            <button className="mine-membership-card" onClick={() => setModal("subscription")}>
+              <span className="mine-membership-mark"><Crown size={19}/></span>
+              <span className="mine-membership-copy"><strong>订阅方案 · 额外翻卡</strong><small>Plus 每日 +4 次 · Pro 每日 +8 次</small></span>
+              <span className="mine-membership-count">今日 {dailyAllowance} 次</span>
+              <ChevronRight size={17}/>
+            </button>
           </div>
           <div className="section-head exploration-calendar-heading">
             <h2>我的探索日历</h2>
@@ -2139,18 +2120,17 @@ export default function Community() {
           >
             ×
           </button>
-          {justFlippedId === viewerId && (
+          {flipRainId === viewerId && (
             <div className="flip-confetti" aria-hidden="true">
               {Array.from({ length: 48 }, (_, index) => {
-                const angle = (index / 48) * Math.PI * 2;
-                const distance = 18 + (index % 5) * 5;
+                const drift = ((index * 17) % 29) - 14;
                 return <i key={index} style={{
-                  left: `${50 + Math.cos(angle) * 2}%`,
-                  top: `${50 + Math.sin(angle) * 2}%`,
-                  animationDelay: `${(index % 6) * 22}ms`,
-                  "--burst-x": `${Math.cos(angle) * distance}vw`,
-                  "--burst-y": `${Math.sin(angle) * distance * 1.3}vh`,
-                  "--twist": `${(index % 2 ? 1 : -1) * (280 + (index % 5) * 110)}deg`,
+                  left: `${(index * 37) % 100}%`,
+                  top: `${-12 - (index % 4) * 9}vh`,
+                  animationDelay: `${(index % 8) * 72}ms`,
+                  "--fall-x": `${drift}vw`,
+                  "--fall-y": `${112 + (index % 5) * 7}vh`,
+                  "--twist": `${(index % 2 ? 1 : -1) * (80 + (index % 5) * 65)}deg`,
                 } as CSSProperties} />;
               })}
             </div>
@@ -2225,7 +2205,7 @@ export default function Community() {
       )}
       {post && (
         <div
-          className={`overlay ${viewerId === post.id ? "from-flip-window " : ""}${detailReady ? "detail-ready" : transitionPhase && !transitionRect ? `detail-fallback-${transitionPhase}` : transitionPhase === "closing" ? "detail-closing" : "detail-preparing"}`}
+          className={`overlay ${viewerId === post.id ? "from-flip-window " : ""}${detailReady ? "detail-ready" : transitionPhase ? `detail-${transitionPhase}` : "detail-preparing"}`}
           inert={!detailReady}
           aria-hidden={!detailReady}
         >
@@ -2379,25 +2359,6 @@ export default function Community() {
           {previewImage && detailImages[activeImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[activeImageIndex]} alt={post.title} /></div>}
         </div>
       )}
-      {transitionPhase && transitionRect && post && (
-        <div
-          ref={transitionLayerRef}
-          className="detail-transform-layer"
-          style={{
-            background: coverColor(post.tag),
-            width: transitionRect.width,
-            height: transitionRect.height,
-          }}
-          aria-hidden="true"
-        >
-          {post.image && <img src={post.image} alt="" />}
-          <span className="card-back-copy">
-            <small>{post.tag}</small>
-            <strong>{post.title}</strong>
-            <em>阅读 ↗</em>
-          </span>
-        </div>
-      )}
       {authorProfile && (
         <PublicProfile
           id={authorProfile}
@@ -2427,21 +2388,31 @@ export default function Community() {
               <>
                 <div className="eyebrow">HEIKA / DAILY PASSES</div>
                 <h2>翻卡计划</h2>
-                <p className="settings-note">幸运加成独立累计；订阅方案支付入口暂未开放。</p>
-                <div className="subscription-current"><Sparkles size={17}/><span>当前免费额度</span><strong>每日 5 次</strong></div>
+                <p className="settings-note">选择 Plus、Pro 或一次性翻卡包。本页先展示并保留选择，暂不接支付或扣款。</p>
+                <div className="subscription-current"><Sparkles size={17}/><span>当前免费额度</span><strong>今日 {5 + luckyBonusToday} 次</strong></div>
                 <div className="subscription-plans">
-                  <article className="subscription-plan">
+                  <article className={`subscription-plan${selectedPlan === "plus" ? " selected" : ""}`}>
                     <div><span>PLUS</span><strong>¥12<small> / 月</small></strong></div>
                     <p>每天额外增加 4 次翻卡</p>
                     <b>每日共 9 次</b>
-                    <button type="button" disabled>即将开放</button>
+                    <button type="button" aria-pressed={selectedPlan === "plus"} onClick={() => setSelectedPlan("plus")}>{selectedPlan === "plus" ? "已选择 Plus" : "选择 Plus"}</button>
                   </article>
-                  <article className="subscription-plan pro">
+                  <article className={`subscription-plan pro${selectedPlan === "pro" ? " selected" : ""}`}>
                     <div><span>PRO</span><strong>¥16<small> / 月</small></strong></div>
                     <p>每天额外增加 8 次翻卡</p>
                     <b>每日共 13 次</b>
-                    <button type="button" disabled>即将开放</button>
+                    <button type="button" aria-pressed={selectedPlan === "pro"} onClick={() => setSelectedPlan("pro")}>{selectedPlan === "pro" ? "已选择 Pro" : "选择 Pro"}</button>
                   </article>
+                </div>
+                <button className="primary-button full subscription-continue" type="button" disabled={!selectedPlan} onClick={() => toast(`已选择 ${selectedPlan?.toUpperCase()} 方案，暂不扣款`)}>{selectedPlan ? `预览 ${selectedPlan.toUpperCase()} 订阅 · 暂不扣款` : "选择一个订阅方案"}</button>
+                <div className="extra-flip-packs">
+                  <div className="extra-flip-heading"><strong>额外翻卡包</strong><small>一次性补充次数 · 独立于每日额度</small></div>
+                  <div className="extra-flip-options">
+                    {[3, 5, 10].map((count) => <button type="button" key={count} className={selectedFlipPack === count ? "selected" : ""} aria-pressed={selectedFlipPack === count} onClick={() => setSelectedFlipPack(count)}>
+                      <strong>+{count}</strong><span>次翻卡</span><small>一次性卡包</small>
+                    </button>)}
+                  </div>
+                  <button className="soft-button full" type="button" disabled={!selectedFlipPack} onClick={() => toast(`已选择 +${selectedFlipPack} 次卡包，暂不扣款`)}>{selectedFlipPack ? `预览 +${selectedFlipPack} 次卡包 · 暂不扣款` : "先选择一个翻卡包"}</button>
                 </div>
                 <p className="subscription-footnote">单次概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%。幸运加成每日累计上限为 10 次。</p>
               </>
