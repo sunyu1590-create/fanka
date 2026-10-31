@@ -1666,7 +1666,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.10</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.11</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1677,7 +1677,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.10</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.11</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.11</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>浅色主题调整为更明亮的冷白底色。</li>
+              <li>详情页移除分类示例标签与正文下方分割线，减少阅读干扰。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.10</strong><small>2026.10.31</small></div>
             <ul>
@@ -2225,7 +2232,6 @@ export default function Community() {
                     <span>{post.tag} <i>· LUCENT</i></span>
                   </div>
                 )}
-                <small className="detail-category">{post.tag}{post.isDemo ? " · 示例内容" : ""}</small>
                 <h1>{post.title}</h1>
                 <p className="byline">
                   {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}>{post.author} ↗</button> : post.author}
