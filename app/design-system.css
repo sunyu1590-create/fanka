@@ -417,3 +417,18 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 .topline .brand i{flex:none;margin:0;font-size:8px;line-height:1;letter-spacing:.16em}
 .page.editorial-home:has(.search){padding-top:18px}
 .page.editorial-home:has(.search)>.search{margin-top:0}
+
+/* Daylight cards, readable reveal copy, and a softer reveal stage. */
+:root[data-theme="light"] .candidate-feed-card .card-flip-front{background-color:#393a36;background-image:linear-gradient(145deg,#50514b 0%,#343632 55%,#41423d 100%);border:1px solid #aaa79c;box-shadow:inset 0 0 0 4px #30312e,inset 0 0 0 5px #d5d1c755;color:#f5f3ec}
+:root[data-theme="light"] .candidate-feed-card .card-number,:root[data-theme="light"] .candidate-feed-card .card-prompt,:root[data-theme="light"] .candidate-feed-card .card-brand{color:#f1efe8}
+.flip-window-face .window-brand-cn{color:#f5f4ef!important;text-shadow:0 1px 14px #ffffff28}
+.flip-window-face .window-brand-en{color:#d8d6cf!important}
+.flip-overlay{background:rgba(15,17,18,.52);backdrop-filter:blur(14px) saturate(115%);-webkit-backdrop-filter:blur(14px) saturate(115%)}
+:root[data-theme="light"] .flip-overlay{background:rgba(16,18,19,.4)}
+.flip-confetti{position:absolute;inset:0;z-index:2;overflow:hidden;pointer-events:none}
+.flip-confetti i{position:absolute;top:36%;width:7px;height:13px;border-radius:1px;background:#d7b967;animation:flip-confetti-fall .82s cubic-bezier(.2,.65,.25,1) both}
+.flip-confetti i:nth-child(3n){background:#dce6e3;width:5px;height:9px;--drift:12vw;--twist:520deg}
+.flip-confetti i:nth-child(3n + 1){--drift:-13vw;--twist:-620deg}
+.flip-confetti i:nth-child(3n + 2){background:#c89078;width:6px;height:11px;--drift:7vw;--twist:760deg}
+@keyframes flip-confetti-fall{0%{opacity:0;transform:translate3d(0,-12px,0) rotate(0) scale(.7)}12%{opacity:1}100%{opacity:0;transform:translate3d(var(--drift, -8vw),42vh,0) rotate(var(--twist, 620deg)) scale(.85)}}
+@media(prefers-reduced-motion:reduce){.flip-confetti{display:none}}

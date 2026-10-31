@@ -158,6 +158,24 @@ const topicOptions = [
       "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&w=1000&q=85",
   },
 ];
+const blackCardFacetRows = [
+  [[0, 0], [35, 0], [72, 0], [100, 0]],
+  [[0, 29], [30, 35], [74, 27], [100, 33]],
+  [[0, 63], [33, 58], [68, 66], [100, 60]],
+  [[0, 94], [29, 89], [73, 97], [100, 91]],
+  [[0, 125], [36, 120], [69, 125], [100, 125]],
+] as const;
+const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
+  top.slice(0, -1).flatMap((a, column) => {
+    const b = top[column + 1];
+    const c = blackCardFacetRows[row + 1][column + 1];
+    const d = blackCardFacetRows[row + 1][column];
+    const pieces = (row + column) % 2 === 0
+      ? [[a, b, c], [a, c, d]]
+      : [[a, b, d], [b, c, d]];
+    return pieces.map((piece) => piece.map(([x, y]) => `${x},${y}`).join(" "));
+  }),
+);
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
@@ -1524,22 +1542,9 @@ export default function Community() {
               <div className="black-facet-card" aria-label="黑卡菱形切面选择区">
                 <span className="black-facet-brand">HEIKA · BLACK CARD</span>
                 <span className="black-facet-hint">选择一个菱面，翻开一张黑卡</span>
-                <svg className="black-facet-matrix" viewBox="0 0 100 125" role="group" aria-label="选择要翻开的黑卡">
-                  <defs><clipPath id="black-facet-inset"><rect x="1" y="1" width="98" height="123" /></clipPath></defs>
-                  {[
-                    "0,0 36,0 30,31 0,31",
-                    "36,0 70,0 72,31 30,31",
-                    "70,0 100,0 100,31 72,31",
-                    "0,31 30,31 34,62 0,62",
-                    "30,31 72,31 67,62 34,62",
-                    "72,31 100,31 100,62 67,62",
-                    "0,62 34,62 31,94 0,94",
-                    "34,62 67,62 70,94 31,94",
-                    "67,62 100,62 100,94 70,94",
-                    "0,94 31,94 36,125 0,125",
-                    "31,94 70,94 69,125 36,125",
-                    "70,94 100,94 100,125 69,125",
-                  ].map((points, index) => {
+                <svg className="black-facet-matrix" viewBox="0 0 100 125" preserveAspectRatio="none" role="group" aria-label="选择要翻开的黑卡">
+                  <defs><clipPath id="black-facet-inset"><rect x="0" y="0" width="100" height="125" /></clipPath></defs>
+                  {blackCardFacets.map((points, index) => {
                     const hasUnlocked = candidates.some((candidate) => Boolean(state.revealed[candidate.id]));
                     const unavailable = !candidates.length || (!hasUnlocked && opened.length >= 5);
                     return <polygon
@@ -1655,7 +1660,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.8</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.9</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1666,7 +1671,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.8</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.9</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.9</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>浅色瀑布流卡面提亮，并提升翻卡内容的文字对比度。</li>
+              <li>黑卡切面铺满卡面，改为不规则碎片拼接，消除上下空条。</li>
+              <li>翻卡背景改用柔和模糊，并加入轻盈彩带动效。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.8</strong><small>2026.10.31</small></div>
             <ul>
@@ -2046,6 +2059,19 @@ export default function Community() {
           >
             ×
           </button>
+          {justFlippedId === viewerId && (
+            <div className="flip-confetti" aria-hidden="true">
+              {Array.from({ length: 28 }, (_, index) => (
+                <i
+                  key={index}
+                  style={{
+                    left: `${16 + ((index * 29) % 68)}%`,
+                    animationDelay: `${(index % 4) * 28}ms`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
           {(() => {
             const revealed = state.revealed[viewerId];
             return (
