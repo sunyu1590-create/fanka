@@ -51,6 +51,28 @@ export async function POST(req: NextRequest) {
     const { db, user } = await context(req);
     const b = await jsonBody(req);
     const action = b.action;
+    if (action === "reset") {
+      const results = await Promise.all([
+        db.from("user_interests").delete().eq("user_id", user!.id),
+        db.from("bookmarks").delete().eq("user_id", user!.id),
+        db.from("user_interactions").delete().eq("user_id", user!.id),
+        db.from("comment_reactions").delete().eq("user_id", user!.id),
+        db.from("user_blocks").delete().eq("owner_id", user!.id),
+        db.from("dm_reads").delete().eq("user_id", user!.id),
+        db.from("browsing_preferences").delete().eq("user_id", user!.id),
+      ]);
+      for (const result of results) dbError(result.error);
+      const { error } = await db
+        .from("profiles")
+        .update({
+          nickname: "探索者",
+          bio: "收藏那些值得再读的瞬间",
+          avatar_url: null,
+        })
+        .eq("id", user!.id);
+      dbError(error);
+      return { reset: true };
+    }
     if (action === "preferences") {
       const mode = b.homeMode,
         reading = b.readingMode;

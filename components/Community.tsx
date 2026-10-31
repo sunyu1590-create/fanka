@@ -22,7 +22,6 @@ import {
   Share2,
   MessageCircle,
   ThumbsDown,
-  Bug,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -96,7 +95,6 @@ const initial: State = {
 const nav = [
   ["today", "首页", Home],
   ["discover", "发现", Compass],
-  ["debug", "调试", Bug],
   ["messages", "消息", MessageSquare],
   ["mine", "我的", UserRound],
 ] as const;
@@ -161,10 +159,16 @@ const topicOptions = [
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
+  const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
+  const [fontReady, setFontReady] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
   useEffect(() => {
     const saved = localStorage.getItem("heika-theme");
     if (saved === "dark" || saved === "light" || saved === "system") setTheme(saved);
     setThemeReady(true);
+    const savedFont = localStorage.getItem("heika-font");
+    if (savedFont === "oppo" || savedFont === "system") setFontChoice(savedFont);
+    setFontReady(true);
   }, []);
   useEffect(() => {
     if (!themeReady) return;
@@ -176,6 +180,11 @@ export default function Community() {
     localStorage.setItem("heika-theme", theme);
     return () => media.removeEventListener("change", apply);
   }, [theme, themeReady]);
+  useEffect(() => {
+    if (!fontReady) return;
+    document.documentElement.dataset.font = fontChoice;
+    localStorage.setItem("heika-font", fontChoice);
+  }, [fontChoice, fontReady]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     transitionLayerRef = useRef<HTMLDivElement | null>(null),
@@ -419,6 +428,37 @@ export default function Community() {
   const toast = (msg: string) => {
     setNotice(msg);
     setTimeout(() => setNotice(""), 3000);
+  };
+  const resetToFreshStart = async () => {
+    if (resetBusy) return;
+    setResetBusy(true);
+    try {
+      if (accountId) await cloudRequest("/api/v1/library-state", { action: "reset" });
+      localStorage.removeItem("heika-demo-v1");
+      localStorage.removeItem(storageKey);
+      if (accountId) localStorage.removeItem(`heika-user-${accountId}`);
+      localStorage.removeItem("heika-theme");
+      localStorage.removeItem("heika-font");
+      setState({ ...initial, cardIds: state.cardIds });
+      setTheme("dark");
+      setFontChoice("oppo");
+      setSelectedCalendarDate("");
+      setTab("today");
+      setDetail(null);
+      setDetailReady(false);
+      setTransitionPhase(null);
+      setViewerId(null);
+      setViewerPhase(null);
+      setViewerFlipped(false);
+      setModal(null);
+      setPage(12);
+      window.scrollTo({ top: 0, behavior: "instant" });
+      toast("已重置为新人状态");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "重置失败，请稍后重试");
+    } finally {
+      setResetBusy(false);
+    }
   };
   const findVisibleCard = (id: number) => {
     const selector =
@@ -1565,6 +1605,17 @@ export default function Community() {
             </div>
           </div>
           <div className="settings-module">
+            <div className="settings-module-heading"><strong>字体</strong><small>全局字体</small></div>
+            <div className="font-options" role="radiogroup" aria-label="字体选择">
+              {([['oppo', 'OPPO Sans 4.0', '优先使用 OPPO 字体'], ['system', '系统字体', '跟随设备默认字体']] as const).map(([value, label, description]) => (
+                <button key={value} role="radio" aria-checked={fontChoice === value} className={`font-option${fontChoice === value ? " selected" : ""}`} onClick={() => setFontChoice(value)}>
+                  <span><strong>{label}</strong><small>{description}</small></span>
+                  <i>{fontChoice === value ? "✓" : ""}</i>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-module">
             <div className="settings-module-heading"><strong>浏览与阅读</strong></div>
             <div className="settings-list">
               <button onClick={() => setModal("browsing")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
@@ -1583,7 +1634,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.4</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.5</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1594,7 +1645,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.4</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.5</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.5</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>调试入口移至个人页，可一键重置个人资料、偏好、收藏与翻卡记录。</li>
+              <li>个人设置新增 OPPO Sans 4.0 与系统字体选项。</li>
+              <li>调整顶部黑卡标识的位置与比例。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.4</strong><small>2026.10.31</small></div>
             <ul>
@@ -1637,14 +1696,9 @@ export default function Community() {
         <section className="page debug-page">
           <div className="eyebrow">DEVELOPER TOOLS</div>
           <h1>调试模式<span className="red-dot">.</span></h1>
-          <p className="lead">重新查看新人引导和主页样式选择。</p>
-          <button className="settings-entry-card" onClick={() => {
-            update((current) => ({ ...current, onboardingDone: false, interests: [], homeMode: "waterfall" }));
-            setTab("today");
-            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-          }}>
-            <span><strong>重置为新人开始界面</strong><small>仅重置引导、兴趣和主页样式</small></span>
-            <RefreshCw size={18} />
+          <p className="lead">一键清空个人偏好、翻卡与收藏状态，重新开始新人引导。</p>
+          <button className="primary-button full debug-reset-button" disabled={resetBusy} onClick={() => void resetToFreshStart()}>
+            <RefreshCw size={17} /> {resetBusy ? "正在重置…" : "一键重置，重新开始"}
           </button>
         </section>
       )}
@@ -1867,6 +1921,13 @@ export default function Community() {
             requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
           }}>
             <span><strong>个人设置</strong><small>外观、浏览、阅读与隐私偏好</small></span>
+            <ChevronRight size={18} />
+          </button>
+          <button className="settings-entry-card debug-entry-card" onClick={() => {
+            setTab("debug");
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          }}>
+            <span><strong>调试模式</strong><small>重置为新人开始界面</small></span>
             <ChevronRight size={18} />
           </button>
         </section>
