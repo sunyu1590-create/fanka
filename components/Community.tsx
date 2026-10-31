@@ -1352,6 +1352,24 @@ export default function Community() {
               5 张，作为今日优先翻看的入口；翻完之后，还可以继续探索更多。
             </p>
           </div>
+          <div className="onboarding-mode-picker" role="group" aria-label="选择主页样式">
+            <strong className="onboarding-mode-title">选择主页样式</strong>
+            <div className="onboarding-mode-options">
+              {([['waterfall', '瀑布流', '多张黑卡并列浏览'], ['blackcard', '黑卡', '菱形切面组成的单张黑卡']] as const).map(([mode, label, description]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`onboarding-mode-option${state.homeMode === mode ? ' selected' : ''}`}
+                  aria-pressed={state.homeMode === mode}
+                  onClick={() => update((current) => ({ ...current, homeMode: mode }))}
+                >
+                  <span className={`mode-preview ${mode}`} aria-hidden="true" />
+                  <span className="onboarding-mode-copy"><b>{label}</b><small>{description}</small></span>
+                  <span className="onboarding-mode-check" aria-hidden="true">{state.homeMode === mode ? '✓' : ''}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="topic-grid">
             {topicOptions.map((topic, index) => {
               const selected = state.interests.includes(topic.tag);
@@ -1555,7 +1573,6 @@ export default function Community() {
             setTab("mine");
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> 我的</button>
-          <div className="eyebrow">PREFERENCES / ACCOUNT</div>
           <h1>设置<span className="red-dot">.</span></h1>
           <p className="lead">按模块管理你的黑卡体验。</p>
           <div className="settings-module">
@@ -1583,7 +1600,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.1</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.2</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1594,7 +1611,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.1</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.2</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.2</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>首次进入即可选择瀑布流或黑卡主页样式。</li>
+              <li>精简个人页信息，并统一设置项状态的右侧对齐。</li>
+              <li>调整浅色模式下的探索日历色阶。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.1</strong><small>2026.10.31</small></div>
             <ul>
@@ -1610,11 +1635,8 @@ export default function Community() {
         </section>
       )}
       {tab === "mine" && (
-        <section className="page">
-          <div className="eyebrow">MY SPACE / PROFILE</div>
-          <h1>
-            我的兴趣空间<span className="red-dot">.</span>
-          </h1>
+        <section className="page mine-page">
+          <h1 className="mine-title">{state.name}</h1>
           <div className="profile-card">
             <div className="avatar">
               {state.avatar ? (
@@ -1624,7 +1646,6 @@ export default function Community() {
               )}
             </div>
             <div>
-              <h2>{state.name}</h2>
               <p>{state.bio}</p>
             </div>
             <button aria-label="编辑资料" onClick={() => setModal("profile")}>
@@ -1735,22 +1756,6 @@ export default function Community() {
               翻开第一张卡片后，这里会留下你的近期发现。
             </div>
           )}
-          <div className="section-head">
-            <h2>兴趣偏好</h2>
-            <button
-              className="text-button"
-              onClick={() => setModal("interests")}
-            >
-              编辑 <ChevronRight size={15} />
-            </button>
-          </div>
-          <div className="filters">
-            {state.interests.map((t) => (
-              <span className="tag-chip" key={t}>
-                {t}
-              </span>
-            ))}
-          </div>
           <div className="section-head">
             <h2>我的收藏</h2>
           </div>
