@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Home,
   Compass,
@@ -23,6 +23,8 @@ import {
   MessageCircle,
   ThumbsDown,
   MoreHorizontal,
+  Sparkles,
+  Crown,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -55,6 +57,7 @@ type State = {
   dismissed?: number[];
   homeMode: "waterfall" | "blackcard";
   dailyCount: number;
+  luckyBonus: Record<string, number>;
   interests: string[];
   onboardingDone?: boolean;
   cardIds: number[];
@@ -76,6 +79,7 @@ type State = {
 const initial: State = {
   homeMode: "waterfall",
   dailyCount: 5,
+  luckyBonus: {},
   interests: [],
   onboardingDone: false,
   cardIds: [],
@@ -94,6 +98,15 @@ const initial: State = {
   bio: "收藏那些值得再读的瞬间",
   viewed: [],
 };
+
+function drawLuckyBonus() {
+  const roll = Math.random();
+  if (roll < 0.001) return 10;
+  if (roll < 0.016) return 5;
+  if (roll < 0.066) return 3;
+  if (roll < 0.166) return 2;
+  return 0;
+}
 const nav = [
   ["today", "首页", Home],
   ["discover", "发现", Compass],
@@ -219,6 +232,9 @@ export default function Community() {
   const cloudHydrated = useRef(false);
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
+  const [luckyReward, setLuckyReward] = useState<{ postId: number; amount: number } | null>(null);
+  const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
+  const luckyRewardTimer = useRef<number | null>(null);
   const [dayTick, setDayTick] = useState(0),
     [viewerId, setViewerId] = useState<number | null>(null),
     [viewerRect, setViewerRect] = useState<DOMRect | null>(null),
@@ -239,7 +255,8 @@ export default function Community() {
       "default" | "granted" | "denied" | "unsupported"
     >("default");
   const readingTimer = useRef<number[]>([]),
-    scrollBeforeDetail = useRef(0);
+    scrollBeforeDetail = useRef(0),
+    ratingPulseTimer = useRef<number | null>(null);
   const [state, setState] = useState<State>(initial),
     [ready, setReady] = useState(false),
     [tab, setTab] = useState("today"),
@@ -263,6 +280,7 @@ export default function Community() {
       | "notifications"
       | "reading"
       | "browsing"
+      | "subscription"
       | null
     >(null),
     [title, setTitle] = useState(""),
@@ -297,6 +315,8 @@ export default function Community() {
     ).values(),
   ];
   const opened = state.opened[today] || [];
+  const luckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
+  const dailyAllowance = 5 + luckyBonusToday;
   const candidatePosts = state.cardIds.map(
     (id) =>
       state.revealed[id] ||
@@ -415,7 +435,11 @@ export default function Community() {
   useEffect(() => {
     if (ready) localStorage.setItem(storageKey, JSON.stringify(state));
   }, [state, ready, storageKey]);
-  useEffect(() => () => readingTimer.current.forEach(window.clearTimeout), []);
+  useEffect(() => () => {
+    readingTimer.current.forEach(window.clearTimeout);
+    if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
+    if (luckyRewardTimer.current !== null) window.clearTimeout(luckyRewardTimer.current);
+  }, []);
   useEffect(() => {
     if (!("Notification" in window)) {
       setNotificationPermission("unsupported");
@@ -455,6 +479,12 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
+  const submitRating = (postId: number, score: number) => {
+    update((s) => ({ ...s, ratings: { ...s.ratings, [postId]: score } }));
+    setRatingPulse({ postId, score });
+    if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
+    ratingPulseTimer.current = window.setTimeout(() => setRatingPulse(null), 1100);
+  };
   const toast = (msg: string) => {
     setNotice(msg);
     setTimeout(() => setNotice(""), 3000);
@@ -749,8 +779,8 @@ export default function Community() {
       setViewerPhase("opening");
       return;
     }
-    if (opened.length >= 5) {
-      toast("今天的 5 张卡片已经选完，明天再来。");
+    if (opened.length >= dailyAllowance) {
+      toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
     }
     setViewerFlipped(false);
@@ -767,9 +797,9 @@ export default function Community() {
       (candidate) => !state.revealed[candidate.id] && !opened.includes(candidate.id),
     );
     const unlocked = candidates.filter((candidate) => Boolean(state.revealed[candidate.id]));
-    const pool = opened.length < 5 ? [...available, ...unlocked] : unlocked;
+    const pool = opened.length < dailyAllowance ? [...available, ...unlocked] : unlocked;
     if (!pool.length) {
-      toast("今天的 5 张卡片已经选完，明天再来。");
+      toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
     }
     const candidate = pool[(facetIndex + facet) % pool.length];
@@ -782,8 +812,8 @@ export default function Community() {
     const id = viewerId,
       used = state.opened[today] || [],
       scrollBefore = window.scrollY;
-    if (used.length >= 5 && !used.includes(id)) {
-      toast("今天的 5 张卡片已经选完，明天再来。");
+    if (used.length >= dailyAllowance && !used.includes(id)) {
+      toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       closeViewer();
       return;
     }
@@ -798,17 +828,29 @@ export default function Community() {
       const result = await response.json();
       if (!response.ok || !result.data)
         throw new Error(result.error || "卡片加载失败");
+      const lucky = used.includes(id) || luckyBonusToday >= 10
+        ? 0
+        : Math.min(drawLuckyBonus(), 10 - luckyBonusToday);
+      const nextLuckyBonus = lucky
+        ? { ...state.luckyBonus, [today]: luckyBonusToday + lucky }
+        : state.luckyBonus;
       const next = {
         ...state,
+        luckyBonus: nextLuckyBonus,
         revealed: { ...state.revealed, [id]: result.data },
         opened: {
           ...state.opened,
-          [today]: openDailyCard(used, id, 5),
+          [today]: openDailyCard(used, id, dailyAllowance),
         },
       };
       localStorage.setItem(storageKey, JSON.stringify(next));
       setState(next);
       setViewerFlipped(true);
+      if (lucky) {
+        if (luckyRewardTimer.current !== null) window.clearTimeout(luckyRewardTimer.current);
+        setLuckyReward({ postId: id, amount: lucky });
+        luckyRewardTimer.current = window.setTimeout(() => setLuckyReward(null), 2800);
+      }
       void cloudRequest("/api/v1/library-state", { action: "open", id }).catch(
         () => toast("阅读记录云端同步失败，本地已保留"),
       );
@@ -818,8 +860,8 @@ export default function Community() {
       requestAnimationFrame(() =>
         window.scrollTo({ top: scrollBefore, behavior: "instant" }),
       );
-      window.setTimeout(() => setJustFlippedId(null), 950);
-      toast("已翻开 · 今日探索进度已更新");
+      window.setTimeout(() => setJustFlippedId(null), 1350);
+      toast(lucky ? `幸运加成 +${lucky} 次 · 今日额度已增加` : "已翻开 · 今日探索进度已更新");
     } catch {
       toast("内容加载失败，请重试");
     } finally {
@@ -1171,7 +1213,7 @@ export default function Community() {
         data-card-id={p.id}
         className={`candidate-feed-card flip-in-place${unlocked ? " is-unlocked" : ""}${justFlippedId === p.id ? " just-flipped" : ""}${detail === p.id ? " is-detail-source" : ""}`}
         onClick={() => flip(p.id)}
-        aria-label={unlocked ? `阅读 ${revealed.title}` : opened.length >= 5 ? "今日 5 张已翻完，点击查看提示" : "选择并翻开一张未知卡片"}
+        aria-label={unlocked ? `阅读 ${revealed.title}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
       >
         <span className="card-flip-inner">
           <span className="card-flip-face card-flip-front">
@@ -1521,8 +1563,9 @@ export default function Community() {
             </div>
           ) : (
             <div className="daily-quota-summary" role="status" aria-live="polite">
-              <strong>今日已翻开 {Math.min(opened.length, 5)} / 5 张</strong>
-              <span>{opened.length >= 5 ? "今日额度已用完，已解锁卡片仍可查看" : `还可翻开 ${5 - opened.length} 张`}</span>
+              <strong>今日已翻开 {Math.min(opened.length, dailyAllowance)} / {dailyAllowance} 张</strong>
+              <span>{opened.length >= dailyAllowance ? "今日额度已用完，已解锁卡片仍可查看" : `还可翻开 ${dailyAllowance - opened.length} 张`}</span>
+              <button className="quota-plan-link" onClick={() => setModal("subscription")}><Crown size={14}/> 翻卡方案</button>
             </div>
           )}
           {state.homeMode === "waterfall" ? (
@@ -1552,7 +1595,7 @@ export default function Community() {
                   </defs>
                   {blackCardFacets.map((points, index) => {
                     const hasUnlocked = candidates.some((candidate) => Boolean(state.revealed[candidate.id]));
-                    const unavailable = !candidates.length || (!hasUnlocked && opened.length >= 5);
+                    const unavailable = !candidates.length || (!hasUnlocked && opened.length >= dailyAllowance);
                     return <polygon
                       key={index}
                       points={points}
@@ -1571,11 +1614,12 @@ export default function Community() {
                     />;
                   })}
                 </svg>
-                <span className="black-facet-progress">今日已翻 {Math.min(opened.length, 5)} / 5</span>
+                <span className="black-facet-progress">今日已翻 {Math.min(opened.length, dailyAllowance)} / {dailyAllowance}</span>
               </div>
-              <p className="fineprint">
-                每日最多翻开 5 张 · 已选 {Math.min(opened.length, 5)}/5
-              </p>
+              <div className="black-card-quota-meta">
+                <p className="fineprint">每日基础 5 次{luckyBonusToday ? ` · 幸运加成 +${luckyBonusToday}` : ""} · 已选 {Math.min(opened.length, dailyAllowance)}/{dailyAllowance}</p>
+                <button className="quota-plan-link" onClick={() => setModal("subscription")}><Crown size={14}/> 翻卡方案</button>
+              </div>
             </>
           )}
         </section>
@@ -1666,7 +1710,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.12</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.13</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1677,7 +1721,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.12</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.13</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.13</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>加入每日幸运翻卡加成与 Plus / Pro 方案说明入口。</li>
+              <li>翻卡庆祝扩展为全屏金属绽放，评分改为信号校准动效。</li>
+              <li>支付入口保持关闭，幸运次数和翻卡进度按每日记录保存。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.12</strong><small>2026.10.31</small></div>
             <ul>
@@ -2019,13 +2071,13 @@ export default function Community() {
       )}
       {tab === "today" && viewerId === null && (
         <div
-          className={`floating-count ${opened.length >= 5 ? "is-complete" : ""}`}
+          className={`floating-count ${opened.length >= dailyAllowance ? "is-complete" : ""}`}
         >
           <span className="floating-card-icon">▰</span>
           <span>
-            {opened.length >= 5 ? "今日已完成" : "今日已翻"}{" "}
-            <b key={opened.length}>{Math.min(opened.length, 5)}/5</b>
-            {opened.length < 5 ? ` · 剩余 ${5 - opened.length} 次` : ""}
+            {opened.length >= dailyAllowance ? "今日已完成" : "今日已翻"}{" "}
+            <b key={opened.length}>{Math.min(opened.length, dailyAllowance)}/{dailyAllowance}</b>
+            {opened.length < dailyAllowance ? ` · 剩余 ${dailyAllowance - opened.length} 次` : ""}
           </span>
         </div>
       )}
@@ -2089,15 +2141,23 @@ export default function Community() {
           </button>
           {justFlippedId === viewerId && (
             <div className="flip-confetti" aria-hidden="true">
-              {Array.from({ length: 28 }, (_, index) => (
-                <i
-                  key={index}
-                  style={{
-                    left: `${16 + ((index * 29) % 68)}%`,
-                    animationDelay: `${(index % 4) * 28}ms`,
-                  }}
-                />
-              ))}
+              {Array.from({ length: 48 }, (_, index) => {
+                const angle = (index / 48) * Math.PI * 2;
+                const distance = 18 + (index % 5) * 5;
+                return <i key={index} style={{
+                  left: `${50 + Math.cos(angle) * 2}%`,
+                  top: `${50 + Math.sin(angle) * 2}%`,
+                  animationDelay: `${(index % 6) * 22}ms`,
+                  "--burst-x": `${Math.cos(angle) * distance}vw`,
+                  "--burst-y": `${Math.sin(angle) * distance * 1.3}vh`,
+                  "--twist": `${(index % 2 ? 1 : -1) * (280 + (index % 5) * 110)}deg`,
+                } as CSSProperties} />;
+              })}
+            </div>
+          )}
+          {luckyReward?.postId === viewerId && (
+            <div className="lucky-reward-burst" role="status" aria-live="polite">
+              <Sparkles size={17}/><span>幸运加成</span><strong>+{luckyReward.amount}</strong><small>今日翻卡次数</small>
             </div>
           )}
           {(() => {
@@ -2146,7 +2206,7 @@ export default function Community() {
                         {(revealed?.body?.length || 0) > 220 ? "…" : ""}
                       </p>
                       <small className="window-quota">
-                        今日已翻 {opened.length} 张 · 可继续探索
+                        今日已翻 {opened.length} / {dailyAllowance} 张 · 还可翻 {Math.max(0, dailyAllowance - opened.length)} 张
                       </small>
                       <button
                         className="window-more"
@@ -2247,14 +2307,14 @@ export default function Community() {
                   阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
                 </button>
                 <EditorialArticle post={post} />
-                <section className="detail-rating" aria-label="内容评分">
+                <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <span>给这篇内容评分</span>
                   <div>{[1, 2, 3, 4, 5].map((n) => (
-                    <button key={n} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => update((s) => ({ ...s, ratings: { ...s.ratings, [post.id]: n } }))}>
+                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms` }} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
                       <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
                     </button>
                   ))}</div>
-                  {state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
+                  {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
                 </section>
                 <section id="detail-comments" className="detail-comments">
                   <div className="comments-heading">
@@ -2363,7 +2423,29 @@ export default function Community() {
             >
               <X size={20} />
             </button>
-            {modal === "browsing" ? (
+            {modal === "subscription" ? (
+              <>
+                <div className="eyebrow">HEIKA / DAILY PASSES</div>
+                <h2>翻卡计划</h2>
+                <p className="settings-note">幸运加成独立累计；订阅方案支付入口暂未开放。</p>
+                <div className="subscription-current"><Sparkles size={17}/><span>当前免费额度</span><strong>每日 5 次</strong></div>
+                <div className="subscription-plans">
+                  <article className="subscription-plan">
+                    <div><span>PLUS</span><strong>¥12<small> / 月</small></strong></div>
+                    <p>每天额外增加 4 次翻卡</p>
+                    <b>每日共 9 次</b>
+                    <button type="button" disabled>即将开放</button>
+                  </article>
+                  <article className="subscription-plan pro">
+                    <div><span>PRO</span><strong>¥16<small> / 月</small></strong></div>
+                    <p>每天额外增加 8 次翻卡</p>
+                    <b>每日共 13 次</b>
+                    <button type="button" disabled>即将开放</button>
+                  </article>
+                </div>
+                <p className="subscription-footnote">单次概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%。幸运加成每日累计上限为 10 次。</p>
+              </>
+            ) : modal === "browsing" ? (
               <>
                 <div className="eyebrow">BROWSING / PREFERENCES</div>
                 <h2>首页浏览模式</h2>
