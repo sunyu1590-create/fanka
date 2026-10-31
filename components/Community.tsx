@@ -70,7 +70,7 @@ type State = {
 };
 const initial: State = {
   homeMode: "waterfall",
-  dailyCount: 7,
+  dailyCount: 5,
   interests: [],
   onboardingDone: false,
   cardIds: [],
@@ -155,11 +155,14 @@ const topicOptions = [
 ];
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
+  const [themeReady, setThemeReady] = useState(false);
   useEffect(() => {
     const saved = localStorage.getItem("heika-theme");
     if (saved === "dark" || saved === "light" || saved === "system") setTheme(saved);
+    setThemeReady(true);
   }, []);
   useEffect(() => {
+    if (!themeReady) return;
     const root = document.documentElement;
     const media = window.matchMedia("(prefers-color-scheme: light)");
     const apply = () => { root.dataset.theme = theme === "system" ? (media.matches ? "light" : "dark") : theme; };
@@ -167,7 +170,7 @@ export default function Community() {
     media.addEventListener("change", apply);
     localStorage.setItem("heika-theme", theme);
     return () => media.removeEventListener("change", apply);
-  }, [theme]);
+  }, [theme, themeReady]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     transitionLayerRef = useRef<HTMLDivElement | null>(null),
@@ -312,6 +315,7 @@ export default function Community() {
           loaded = {
             ...initial,
             ...saved,
+            dailyCount: 5,
             revealed: saved.revealed || {},
             notifications: saved.notifications || initial.notifications,
             readingMode:
@@ -663,6 +667,10 @@ export default function Community() {
       setViewerPhase("opening");
       return;
     }
+    if (opened.length >= 5) {
+      toast("今天的 5 张卡片已经选完，明天再来。");
+      return;
+    }
     setViewerFlipped(false);
     setViewerRect(findVisibleCard(id));
     setViewerId(id);
@@ -673,6 +681,11 @@ export default function Community() {
     const id = viewerId,
       used = state.opened[today] || [],
       scrollBefore = window.scrollY;
+    if (used.length >= 5 && !used.includes(id)) {
+      toast("今天的 5 张卡片已经选完，明天再来。");
+      closeViewer();
+      return;
+    }
     flipBusy.current = true;
     setFlippingId(id);
     try {
@@ -689,7 +702,7 @@ export default function Community() {
         revealed: { ...state.revealed, [id]: result.data },
         opened: {
           ...state.opened,
-          [today]: openDailyCard(used, id, Number.MAX_SAFE_INTEGER),
+          [today]: openDailyCard(used, id, 5),
         },
       };
       localStorage.setItem(storageKey, JSON.stringify(next));
@@ -708,7 +721,7 @@ export default function Community() {
       requestAnimationFrame(() =>
         window.scrollTo({ top: scrollBefore, behavior: "instant" }),
       );
-      window.setTimeout(() => setJustFlippedId(null), 650);
+      window.setTimeout(() => setJustFlippedId(null), 950);
       toast("已翻开 · 今日探索进度已更新");
     } catch {
       toast("内容加载失败，请重试");
@@ -717,6 +730,16 @@ export default function Community() {
       flipBusy.current = false;
     }
   };
+  useEffect(() => {
+    if (
+      state.homeMode === "waterfall" &&
+      viewerId !== null &&
+      viewerPhase === null &&
+      !state.revealed[viewerId]
+    ) {
+      void completeFlip();
+    }
+  }, [state.homeMode, viewerId, viewerPhase, state.revealed]);
   const closeViewer = () => {
     if (
       viewerId === null ||
@@ -1069,7 +1092,8 @@ export default function Community() {
         data-card-id={p.id}
         className={`candidate-feed-card flip-in-place${unlocked ? " is-unlocked" : ""}${justFlippedId === p.id ? " just-flipped" : ""}${detail === p.id ? " is-detail-source" : ""}`}
         onClick={() => flip(p.id)}
-        aria-label={unlocked ? `阅读 ${revealed.title}` : "翻开一张未知卡片"}
+        disabled={!unlocked && opened.length >= 5}
+        aria-label={unlocked ? `阅读 ${revealed.title}` : opened.length >= 5 ? "今日 5 张卡片已选完" : "选择并翻开一张未知卡片"}
       >
         <span className="card-flip-inner">
           <span className="card-flip-face card-flip-front">
@@ -1216,7 +1240,7 @@ export default function Community() {
                 ...(data.prefs
                   ? {
                       homeMode: data.prefs.home_mode,
-                      dailyCount: data.prefs.daily_count,
+                      dailyCount: 5,
                       readingMode: data.prefs.reading_mode,
                       notifications: data.prefs.notifications,
                     }
@@ -1369,9 +1393,6 @@ export default function Community() {
         <span className="brand">
           晶选 · 黑卡 <i>HEIKA</i>
         </span>
-        <button className="theme-toggle" onClick={() => setTheme((value) => value === "dark" ? "light" : value === "light" ? "system" : "dark")}>
-          外观 · {{ dark: "深色", light: "浅色", system: "跟随系统" }[theme]}
-        </button>
         <span className="demo-pill">
           {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
         </span>
@@ -1408,7 +1429,20 @@ export default function Community() {
             </div>
           </div>
           {state.homeMode === "waterfall" ? (
-            feed(list)
+            <>
+              <div className="candidate-feed waterfall-card-feed">
+                {visibleCandidates.map(renderCandidate)}
+              </div>
+              {visibleCandidates.length < candidates.length && (
+                <div ref={loadMoreRef} className="feed-sentinel">
+                  <span>继续浏览未解锁的卡片</span>
+                  <button onClick={() => setPage((count) => count + 12)}>加载更多</button>
+                </div>
+              )}
+              <p className="quota-note">
+                {opened.length >= 5 ? "今日 5 张已选完，已解锁内容仍可查看。" : `选择 5 张卡片翻开 · 已选 ${opened.length}/5`}
+              </p>
+            </>
           ) : (
             <>
               <div className="black-card-focus">
@@ -1439,8 +1473,7 @@ export default function Community() {
                 </button>
               </div>
               <p className="fineprint">
-                今日精选 {state.dailyCount} 张 · 已探索 {opened.length}{" "}
-                张，仍可继续翻开。
+                每日最多翻开 5 张 · 已选 {Math.min(opened.length, 5)}/5
               </p>
             </>
           )}
@@ -1490,6 +1523,46 @@ export default function Community() {
           initialPeer={messagePeer}
           onPeerOpened={() => setMessagePeer(null)}
         />
+      )}
+      {tab === "settings" && (
+        <section className="page settings-page">
+          <button className="back settings-back" onClick={() => {
+            setTab("mine");
+            requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" }));
+          }}><ArrowLeft size={18} /> 我的</button>
+          <div className="eyebrow">PREFERENCES / ACCOUNT</div>
+          <h1>设置<span className="red-dot">.</span></h1>
+          <p className="lead">按模块管理你的黑卡体验。</p>
+          <div className="settings-module">
+            <div className="settings-module-heading"><strong>外观</strong><small>主题</small></div>
+            <div className="theme-options" role="radiogroup" aria-label="外观主题">
+              {([['dark','深色'],['light','浅色'],['system','跟随系统']] as const).map(([value,label])=><button key={value} role="radio" aria-checked={theme===value} className={`theme-option${theme===value?' selected':''}`} onClick={()=>setTheme(value)}><span className={`theme-swatch ${value}`} /><span>{label}</span><i>{theme===value?'✓':''}</i></button>)}
+            </div>
+          </div>
+          <div className="settings-module">
+            <div className="settings-module-heading"><strong>浏览与阅读</strong></div>
+            <div className="settings-list">
+              <button onClick={() => setModal("browsing")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => setModal("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
+            </div>
+          </div>
+          <div className="settings-module">
+            <div className="settings-module-heading"><strong>消息与隐私</strong></div>
+            <div className="settings-list">
+              <button onClick={() => setModal("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("messages")}><span>私聊权限与黑名单</span><small>在消息页管理</small><ChevronRight size={16}/></button>
+            </div>
+          </div>
+          <div className="settings-module">
+            <div className="settings-module-heading"><strong>账号</strong></div>
+            <div className="settings-list">
+              <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
+              <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
+              <button onClick={() => toast("黑卡 HEIKA · Editorial Discovery")}><span>关于黑卡</span><small>版本 1.0</small><ChevronRight size={16}/></button>
+            </div>
+          </div>
+          {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
+        </section>
       )}
       {tab === "mine" && (
         <section className="page">
@@ -1721,86 +1794,17 @@ export default function Community() {
           {!Object.keys(state.opened).length && (
             <div className="empty">翻开第一张卡，开始记录。</div>
           )}
-          <div className="section-head">
-            <h2>调试设置</h2>
+          <div className="section-head profile-settings-entry">
+            <h2>设置</h2>
           </div>
-          <div className="debug-settings">
-            <div>
-              <strong>今日翻卡额度</strong>
-              <span>{opened.length} 张已探索</span>
-              <button onClick={clearTodayFlips} disabled={!opened.length}>
-                清除今日翻卡次数
-              </button>
-            </div>
-            <div>
-              <strong>重新开始模式</strong>
-              <span>清除本浏览器的兴趣、翻卡记录、收藏和发布内容</span>
-              <button className="danger-button" onClick={restartMode}>
-                重置并重新开始
-              </button>
-            </div>
-          </div>
-          <div className="section-head">
-            <h2>个人设置</h2>
-          </div>
-          <div className="settings-list">
-            <button onClick={() => setModal("browsing")}>
-              <span>浏览偏好</span>
-              <small>
-                {state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}
-              </small>
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => setModal("profile")}>
-              <span>账号与资料</span>
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => setModal("interests")}>
-              <span>兴趣管理</span>
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => setModal("notifications")}>
-              <span>通知设置</span>
-              <small>
-                {notificationPermission === "unsupported"
-                  ? "浏览器不支持"
-                  : notificationPermission === "denied"
-                    ? "权限已拒绝"
-                    : Object.values(state.notifications).some(Boolean)
-                      ? "偏好已开启"
-                      : "已关闭"}
-              </small>
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => setModal("reading")}>
-              <span>阅读模式</span>
-              <small>
-                {
-                  {
-                    standard: "标准模式",
-                    focus: "专注模式",
-                    night: "夜间模式",
-                  }[state.readingMode]
-                }
-              </small>
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => toast("黑卡 HEIKA · Editorial Discovery")}>
-              <span>关于黑卡</span>
-              <ChevronRight size={16} />
-            </button>
-            <button
-              onClick={() =>
-                toast("演示数据仅保存在当前浏览器，可在调试设置中清除。")
-              }
-            >
-              <span>数据与隐私</span>
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <p className="fineprint">
-            访客数据保存在当前浏览器。登录后可同步收藏、阅读记录与偏好。
-          </p>
+          <button className="settings-entry-card" onClick={() => {
+            scrollPositions.current.mine = window.scrollY;
+            setTab("settings");
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          }}>
+            <span><strong>个人设置</strong><small>外观、浏览、阅读与隐私偏好</small></span>
+            <ChevronRight size={18} />
+          </button>
         </section>
       )}
       {tab === "today" && viewerId === null && (
@@ -1831,7 +1835,7 @@ export default function Community() {
         {nav.map(([id, label, Icon]) => (
           <button
             key={id}
-            className={tab === id ? "active" : ""}
+            className={tab === id || (tab === "settings" && id === "mine") ? "active" : ""}
             onClick={() => {
               scrollPositions.current[tab] = window.scrollY;
               const next = id;
@@ -2283,32 +2287,14 @@ export default function Community() {
                         </strong>
                         <small>
                           {mode === "waterfall"
-                            ? "双列图文，自由浏览"
-                            : "逐张探索，触碰翻开"}
+                            ? "未翻开前隐藏内容，每日选 5 张"
+                            : "逐张探索，每日最多翻开 5 张"}
                         </small>
                       </span>
                       <i>{state.homeMode === mode ? "✓" : ""}</i>
                     </button>
                   ))}
                 </div>
-                <label>
-                  每日精选数量
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={state.dailyCount}
-                    onChange={(e) =>
-                      update((s) => ({
-                        ...s,
-                        dailyCount: Math.max(
-                          1,
-                          Math.min(30, Number(e.target.value) || 7),
-                        ),
-                      }))
-                    }
-                  />
-                </label>
                 <button
                   className="primary-button full"
                   onClick={() => setModal(null)}

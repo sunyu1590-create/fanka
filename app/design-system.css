@@ -274,3 +274,20 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 .article-figure{margin:2.2em 24px}.article-figure img{display:block;width:100%;height:auto;max-height:75vh;object-fit:contain;background:var(--surface);animation:media-reveal .45s ease both}.article-figure figcaption{font-size:11px;color:var(--muted);margin-top:9px;letter-spacing:.04em}
 @keyframes media-reveal{from{opacity:.35}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.shard-svg polygon{transition:none}.article-figure img{animation:none}}
+
+/* Settings are a separate second-level page with grouped rows. */
+.settings-page{min-height:calc(100svh - 150px)}
+.settings-back{padding:8px 0 24px;background:transparent;color:var(--muted)}
+.settings-module{margin:28px 0 0;border-top:1px solid var(--line)}
+.settings-module-heading{display:flex;align-items:baseline;justify-content:space-between;padding:18px 0 9px;color:var(--ink)}
+.settings-module-heading strong{font-size:14px;font-weight:600}.settings-module-heading small{font-size:11px;color:var(--muted)}
+.settings-page .settings-list{margin:0;border-top:0}.settings-page .settings-list button{min-height:52px}
+.theme-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:4px 0 14px}
+.theme-option{min-height:66px;padding:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 7px;text-align:left;font-size:11px}
+.theme-option.selected{border-color:var(--action);color:var(--ink);box-shadow:inset 0 0 0 1px var(--action)}
+.theme-option i{font-style:normal;color:var(--action)}.theme-swatch{grid-column:1/3;height:20px;border:1px solid var(--line)}.theme-swatch.dark{background:linear-gradient(120deg,#111416,#30383b)}.theme-swatch.light{background:linear-gradient(120deg,#fffefa,#e8e4db)}.theme-swatch.system{background:linear-gradient(90deg,#17191b 0 50%,#f4f1e9 50%)}
+.settings-entry-card{width:100%;display:flex;justify-content:space-between;align-items:center;padding:16px 0;border:0;border-block:1px solid var(--line);background:transparent;color:var(--ink);text-align:left}
+.settings-entry-card>span{display:flex;flex-direction:column;gap:6px}.settings-entry-card strong{font-size:14px;font-weight:600}.settings-entry-card small{font-size:11px;color:var(--muted)}
+.waterfall-card-feed{margin-top:8px}.candidate-feed-card:disabled{opacity:.72;cursor:not-allowed;filter:saturate(.72)}
+.quota-note{padding:10px 0;border-top:1px solid var(--line);font-size:11px}
+@media(max-width:360px){.theme-options{gap:5px}.theme-option{padding:6px;font-size:10px}}
