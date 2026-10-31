@@ -40,11 +40,13 @@ import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 
-const FLIP_RAIN_PARTICLES = 72;
-const FLIP_RAIN_DURATION_MS = 1850;
-const FLIP_RAIN_LEAD_MS = 520;
-const FLIP_RAIN_STAGGER_MS = 8;
-const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_DURATION_MS + 5 * FLIP_RAIN_STAGGER_MS + 120;
+const FLIP_RAIN_PARTICLES = 112;
+const FLIP_RAIN_DURATION_MIN_MS = 2900;
+const FLIP_RAIN_DURATION_SPREAD_MS = 900;
+const FLIP_RAIN_LEAD_MS = 240;
+const FLIP_RAIN_STAGGER_WINDOW_MS = 900;
+const FLIP_RAIN_JITTER_MS = 90;
+const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
 
 type Comment = {
   id: number;
@@ -1869,7 +1871,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.18</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.19</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1880,7 +1882,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.18</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.19</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.19</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>翻卡彩带改为从屏幕顶部多点错落飘下，增加数量并放慢速度。</li>
+              <li>为彩带加入轻微横向漂移、旋转和不同落速，延长自然飘落层次。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.18</strong><small>2026.10.31</small></div>
             <ul>
@@ -2351,15 +2360,19 @@ export default function Community() {
             <div key={flipRainId} className="flip-confetti" aria-hidden="true">
               {Array.from({ length: FLIP_RAIN_PARTICLES }, (_, index) => {
                 const spread = index / (FLIP_RAIN_PARTICLES - 1);
-                const drift = Math.round((spread * 2 - 1) * 68);
-                const fanHeight = 12 + ((index * 29) % 78);
+                const startX = -2 + spread * 104;
+                const drift = ((index * 37) % 25) - 12;
+                const sway = ((index * 19) % 17) - 8;
+                const duration = FLIP_RAIN_DURATION_MIN_MS + ((index * 97) % (FLIP_RAIN_DURATION_SPREAD_MS + 1));
+                const stagger = ((index * 37) % FLIP_RAIN_PARTICLES) / (FLIP_RAIN_PARTICLES - 1);
+                const delay = FLIP_RAIN_LEAD_MS + Math.round(stagger * FLIP_RAIN_STAGGER_WINDOW_MS) + ((index * 13) % FLIP_RAIN_JITTER_MS);
                 return <i key={index} style={{
-                  animationDelay: `${FLIP_RAIN_LEAD_MS + (index % 6) * FLIP_RAIN_STAGGER_MS}ms`,
-                  "--rain-duration": `${FLIP_RAIN_DURATION_MS}ms`,
-                  "--fan-x": `${drift}vw`,
-                  "--fan-y": `${fanHeight}vh`,
-                  "--fall-x": `${Math.round(drift * 1.12)}vw`,
-                  "--fall-y": `${105 + ((index * 17) % 35)}vh`,
+                  left: `${startX}%`,
+                  animationDelay: `${delay}ms`,
+                  "--rain-duration": `${duration}ms`,
+                  "--sway-x": `${sway}vw`,
+                  "--fall-x": `${drift}vw`,
+                  "--fall-y": `${108 + ((index * 17) % 24)}vh`,
                   "--twist": `${(index % 2 ? 1 : -1) * (80 + (index % 5) * 65)}deg`,
                 } as CSSProperties} />;
               })}

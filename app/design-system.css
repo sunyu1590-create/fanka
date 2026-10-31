@@ -718,21 +718,20 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 @media(max-width:430px){.topline{padding-inline:18px}.page,.page.editorial-home{padding-inline:18px}.home-blackcard{padding-top:20px!important}.black-facet-card{width:min(100%,calc((100dvh - 320px)*.75));min-width:200px}.detail-metal-art{width:calc(100% + 36px);margin-inline:-18px}}
 @media(prefers-reduced-motion:reduce){.editorial-cover img,.black-facet,.detail-image-button img{transition:none!important}}
 
-/* One coordinated, full-screen fan with a shared top-centre origin. */
+/* A full-width cascade that starts at staggered points along the top edge. */
 .flip-close{z-index:5}
 .flip-confetti{position:absolute;inset:0;z-index:3;overflow:hidden;pointer-events:none;contain:layout paint}
 .flip-confetti i{
   position:absolute;
-  left:calc(50% - 2px);
-  top:calc(env(safe-area-inset-top) + 2px);
-  width:4px;
-  height:15px;
+  top:calc(env(safe-area-inset-top) - 12px);
+  width:5px;
+  height:16px;
   border-radius:1px;
   opacity:0;
   transform-origin:center;
-  animation-name:flip-confetti-bloom;
-  animation-duration:var(--rain-duration,1850ms);
-  animation-timing-function:cubic-bezier(.16,.62,.28,1);
+  animation-name:flip-confetti-fall;
+  animation-duration:var(--rain-duration,3400ms);
+  animation-timing-function:cubic-bezier(.34,.04,.64,1);
   animation-fill-mode:both;
 }
 .flip-confetti i:nth-child(8n + 1){background:#f2c45e}
@@ -743,13 +742,15 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 .flip-confetti i:nth-child(8n + 6){background:#6f91f5}
 .flip-confetti i:nth-child(8n + 7){background:#b581e8}
 .flip-confetti i:nth-child(8n){background:#f276c0}
-.flip-confetti i:nth-child(4n){width:3px;height:21px}
-.flip-confetti i:nth-child(5n){width:6px;height:11px}
-@keyframes flip-confetti-bloom{
-  0%{opacity:0;transform:translate3d(0,0,0) rotate(0) scale(.45)}
-  6%{opacity:1}
-  26%{opacity:1;transform:translate3d(var(--fan-x),var(--fan-y),0) rotate(160deg) scale(1.04)}
-  76%{opacity:.92}
+.flip-confetti i:nth-child(4n){width:3px;height:23px}
+.flip-confetti i:nth-child(5n){width:7px;height:12px}
+.flip-confetti i:nth-child(7n){width:8px;height:8px;border-radius:1px}
+.flip-confetti i:nth-child(11n){width:7px;height:7px;border-radius:50%}
+@keyframes flip-confetti-fall{
+  0%{opacity:0;transform:translate3d(0,-5vh,0) rotate(0) scale(.7)}
+  10%{opacity:.96}
+  38%{opacity:1;transform:translate3d(var(--sway-x),38vh,0) rotate(155deg) scale(1)}
+  72%{opacity:.9;transform:translate3d(var(--fall-x),76vh,0) rotate(285deg) scale(.96)}
   100%{opacity:0;transform:translate3d(var(--fall-x),var(--fall-y),0) rotate(var(--twist)) scale(.82)}
 }
 @media(prefers-reduced-motion:reduce){.flip-confetti{display:none!important}}
