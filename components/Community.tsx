@@ -1543,14 +1543,20 @@ export default function Community() {
                 <span className="black-facet-brand">HEIKA · BLACK CARD</span>
                 <span className="black-facet-hint">选择一个菱面，翻开一张黑卡</span>
                 <svg className="black-facet-matrix" viewBox="0 0 100 125" preserveAspectRatio="none" role="group" aria-label="选择要翻开的黑卡">
-                  <defs><clipPath id="black-facet-inset"><rect x="0" y="0" width="100" height="125" /></clipPath></defs>
+                  <defs>
+                    <clipPath id="black-facet-inset"><rect x="0" y="0" width="100" height="125" /></clipPath>
+                    <linearGradient id="facet-metal-a" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#d2dcdf"/><stop offset=".48" stopColor="#74868e"/><stop offset="1" stopColor="#c2cdd0"/></linearGradient>
+                    <linearGradient id="facet-metal-b" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#82949c"/><stop offset=".52" stopColor="#33424a"/><stop offset="1" stopColor="#aab9be"/></linearGradient>
+                    <linearGradient id="facet-metal-c" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#e0e5e5"/><stop offset=".55" stopColor="#89999f"/><stop offset="1" stopColor="#43535a"/></linearGradient>
+                    <linearGradient id="facet-metal-d" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#52646c"/><stop offset=".46" stopColor="#b7c4c8"/><stop offset="1" stopColor="#6a7a82"/></linearGradient>
+                  </defs>
                   {blackCardFacets.map((points, index) => {
                     const hasUnlocked = candidates.some((candidate) => Boolean(state.revealed[candidate.id]));
                     const unavailable = !candidates.length || (!hasUnlocked && opened.length >= 5);
                     return <polygon
                       key={index}
                       points={points}
-                      className={`black-facet${hasUnlocked ? " unlocked" : ""}${unavailable ? " unavailable" : ""}`}
+                      className={`black-facet facet-tone-${index % 4}${hasUnlocked ? " unlocked" : ""}${unavailable ? " unavailable" : ""}`}
                       clipPath="url(#black-facet-inset)"
                       role="button"
                       tabIndex={unavailable ? -1 : 0}
@@ -1660,7 +1666,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.9</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.10</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1671,7 +1677,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.9</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.10</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.10</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>将冷银金属、细分割线与精密栏目眉题延伸到首页、个人页和详情页。</li>
+              <li>黑卡切面加入银蓝渐变，详情无图内容使用同系列菱面视觉。</li>
+              <li>保留现有翻卡、收藏、消息、设置与主题交互。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.9</strong><small>2026.10.31</small></div>
             <ul>
@@ -1761,7 +1775,7 @@ export default function Community() {
       )}
       {tab === "mine" && (
         <section className="page mine-page">
-          <h1 className="mine-title">{state.name}</h1>
+          <h1 className="mine-title">我</h1>
           <div className="profile-card">
             <div className="avatar">
               {state.avatar ? (
@@ -1771,6 +1785,7 @@ export default function Community() {
               )}
             </div>
             <div>
+              <h2>{state.name}</h2>
               <p>{state.bio}</p>
             </div>
             <button aria-label="编辑资料" onClick={() => setModal("profile")}>
@@ -2146,7 +2161,7 @@ export default function Community() {
               <button className="detail-back" aria-label="返回" onClick={() => closeDetail()}>
                 <ArrowLeft size={21} />
               </button>
-              <span>内容详情</span>
+              <span>精选 <i>· HEIKA</i></span>
               <div className="detail-more-wrap">
                 <button className="detail-more-button" aria-label="更多操作" aria-expanded={detailMoreOpen} onClick={() => setDetailMoreOpen((open) => !open)}>
                   <MoreHorizontal size={22} />
@@ -2187,6 +2202,27 @@ export default function Community() {
                     <span>{activeImageIndex + 1} / {detailImages.length}</span>
                     <button aria-label="下一张图片" onClick={() => setActiveImageIndex((index) => (index + 1) % detailImages.length)}><ArrowRight size={15} /></button>
                   </div>}
+                  </div>
+                )}
+                {!detailImages.length && (
+                  <div className="detail-metal-art" aria-hidden="true">
+                    <svg viewBox="0 0 100 100" role="presentation">
+                      <defs>
+                        <linearGradient id="detail-metal-one" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#d3dcdf"/><stop offset="1" stopColor="#485960"/></linearGradient>
+                        <linearGradient id="detail-metal-two" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#aebdc2"/><stop offset="1" stopColor="#26353c"/></linearGradient>
+                        <linearGradient id="detail-metal-three" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#778a92"/><stop offset="1" stopColor="#d0d9db"/></linearGradient>
+                        <linearGradient id="detail-metal-four" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#394a52"/><stop offset="1" stopColor="#aebcc1"/></linearGradient>
+                      </defs>
+                      <rect width="100" height="100" fill="#172126"/>
+                      <path d="M50 10 90 50 50 50Z" fill="url(#detail-metal-one)"/>
+                      <path d="M50 10 50 50 10 50Z" fill="url(#detail-metal-two)"/>
+                      <path d="M10 50 50 50 50 90Z" fill="url(#detail-metal-three)"/>
+                      <path d="M50 50 90 50 50 90Z" fill="url(#detail-metal-four)"/>
+                      <path d="M50 10 90 50 50 90 10 50Z" fill="none" stroke="#121a1e" strokeWidth=".8"/>
+                      <path d="M50 10V90M10 50H90" fill="none" stroke="#e0e7e8" strokeOpacity=".28" strokeWidth=".35"/>
+                      <rect x="2" y="2" width="96" height="96" fill="none" stroke="#c0cdd0" strokeOpacity=".42" strokeWidth=".45"/>
+                    </svg>
+                    <span>{post.tag} <i>· LUCENT</i></span>
                   </div>
                 )}
                 <small className="detail-category">{post.tag}{post.isDemo ? " · 示例内容" : ""}</small>
