@@ -8,12 +8,14 @@ export type LibraryRow = {
   author_id: string | null;
   created_at: string;
   is_demo: boolean;
+  status?: "draft" | "pending_review" | "published" | "hidden";
   interest_tags: { name: string } | null;
   profiles: { nickname: string } | null;
   post_media?: { storage_path: string; sort_order: number }[];
+  post_topics?: { interest_tags: { name: string } | null }[];
 };
 export const libraryFields =
-  "id,client_id,title,body,cover_text,image_url,author_id,created_at,is_demo,interest_tags(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order)";
+  "id,client_id,title,body,cover_text,image_url,author_id,created_at,is_demo,status,interest_tags(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order),post_topics(interest_tags(name))";
 export function present(row: LibraryRow) {
   const images = [
     ...(row.image_url ? [row.image_url] : []),
@@ -26,6 +28,7 @@ export function present(row: LibraryRow) {
     id: Number(row.client_id),
     cloudId: row.id,
     tag: row.interest_tags?.name || "生活",
+    topics: (row.post_topics || []).flatMap((item) => item.interest_tags?.name ? [item.interest_tags.name] : []),
     title: row.title,
     body: row.body,
     cover: row.cover_text || row.title.slice(0, 12),
@@ -35,5 +38,6 @@ export function present(row: LibraryRow) {
     authorId: row.author_id || undefined,
     date: row.created_at.slice(0, 10),
     isDemo: row.is_demo,
+    status: row.status || "published",
   };
 }

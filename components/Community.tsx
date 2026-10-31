@@ -23,6 +23,7 @@ import {
   MessageCircle,
   ThumbsDown,
   MoreHorizontal,
+  Flag,
   Sparkles,
   Crown,
 } from "lucide-react";
@@ -30,15 +31,22 @@ import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
   loading: () => <div className="empty">正在加载消息…</div>,
 });
+const AdminModeration = dynamic(() => import("./AdminModeration"), {
+  loading: () => <div className="empty">正在加载审核队列…</div>,
+});
 import EditorialArticle from "./EditorialArticle";
 import AccountProfile from "./AccountProfile";
 import PublicProfile from "./PublicProfile";
 import InboxBadge from "./InboxBadge";
 import { cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
+import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
+import { validateComposerFiles } from "@/lib/composer-validation";
+import type { TopicSummary } from "@/lib/topics";
 import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
+import { REPORT_REASONS } from "@/lib/report-validation";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -61,6 +69,8 @@ type Comment = {
   likes: number;
   liked?: boolean;
 };
+type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
+type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type State = {
   avatar?: string;
   liked?: number[];
@@ -245,6 +255,11 @@ export default function Community() {
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [reportPostId, setReportPostId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportNote, setReportNote] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const cloudHydrated = useRef(false);
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
@@ -311,11 +326,27 @@ export default function Community() {
       | "reading"
       | "browsing"
       | "subscription"
+      | "report"
       | null
     >(null),
     [title, setTitle] = useState(""),
     [body, setBody] = useState(""),
     [writeTag, setWriteTag] = useState<string>(tags[0]),
+    [writeTopics, setWriteTopics] = useState<string[]>([]),
+    [topicSearch, setTopicSearch] = useState(""),
+    [composerImages, setComposerImages] = useState<ComposerImage[]>([]),
+    [uploadingImages, setUploadingImages] = useState(false),
+    [coverIndex, setCoverIndex] = useState(0),
+    [draftSaved, setDraftSaved] = useState(false),
+    [composerEditingPublished, setComposerEditingPublished] = useState(false),
+    [draftSaving, setDraftSaving] = useState(false),
+    [topicSummary, setTopicSummary] = useState<TopicSummary | null>(null),
+    [topicPosts, setTopicPosts] = useState<Post[]>([]),
+    [topicPage, setTopicPage] = useState(1),
+    [topicTotal, setTopicTotal] = useState(0),
+    [topicLoading, setTopicLoading] = useState(false),
+    [topicReturnPostId, setTopicReturnPostId] = useState<number | null>(null),
+    [topicReturnTab, setTopicReturnTab] = useState("discover"),
     [editing, setEditing] = useState<number | null>(null),
     [notice, setNotice] = useState(""),
     [noticeId, setNoticeId] = useState(0),
@@ -329,6 +360,8 @@ export default function Community() {
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastDraftPayload = useRef("");
+  const draftMediaBusy = useRef(new Set<string>());
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
   const selectedDay = selectedCalendarDate || today;
@@ -341,7 +374,7 @@ export default function Community() {
   const selectedDayIds = state.opened[selectedDay] || [];
   const all = [
     ...new Map(
-      [...publicFeed, ...Object.values(state.revealed), ...state.own].map(
+      [...publicFeed, ...topicPosts, ...Object.values(state.revealed), ...state.own].map(
         (post) => [post.id, post],
       ),
     ).values(),
@@ -551,6 +584,20 @@ export default function Community() {
         noticeTimer.current = null;
       }, 330);
     }, 2700);
+  };
+  const submitContentReport = async () => {
+    if (reportSubmitting) return;
+    if (!accountId) return toast("登录后可以举报内容");
+    if (!reportPostId || !reportReason) return toast("请选择举报原因");
+    setReportSubmitting(true);
+    try {
+      const result = await cloudRequest("/api/v1/reports", { post_id: reportPostId, reason: reportReason, note: reportNote });
+      if (!result?.submitted) throw new Error("登录状态已失效，请重新登录后重试");
+      setModal(null); setReportPostId(null); setReportReason(""); setReportNote("");
+      toast(result?.duplicate ? "你已举报过这篇内容，平台会继续处理" : "举报已提交，平台会进行人工复核");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "举报提交失败，请稍后重试");
+    } finally { setReportSubmitting(false); }
   };
   const resetToFreshStart = async () => {
     if (resetBusy) return;
@@ -1153,17 +1200,55 @@ export default function Community() {
       toast(e instanceof Error ? e.message : "删除失败");
     }
   };
+  const uploadImageToPost = async (image: ComposerImage, postId: string, sortOrder: number): Promise<ComposerImage> => {
+    if (image.external) return image;
+    if (image.path) {
+      await cloudRequest(`/api/v1/posts/${postId}/media`, { path: image.path, sort_order: sortOrder });
+      return { ...image, sortOrder };
+    }
+    if (!image.file || !accountId) throw new Error("登录后可同步草稿图片");
+    const db = await browserDb(); const { data: session } = await db.auth.getSession();
+    if (!session.session) throw new Error("登录状态已失效，请重新登录");
+    const form = new FormData(); form.set("file", image.file); form.set("post_id", postId); form.set("sort_order", String(sortOrder)); form.set("upload_id", image.id);
+    const response = await fetch("/api/v1/media", { method: "POST", headers: { Authorization: `Bearer ${session.session.access_token}` }, body: form });
+    const result = await response.json(); if (!response.ok) throw new Error(result.error || "图片上传失败");
+    return { ...image, path: result.data.path, status: "ready", sortOrder };
+  };
   const publish = async () => {
     if (!title.trim() || !body.trim()) return toast("请填写标题和正文");
     if (!accountId) return toast("请先在消息页面登录，当前输入会保留");
+    if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
     try {
       const old = state.own.find((p) => p.id === editing);
+      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
+      if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
+      const cover = composerImages[coverIndex];
+      const storageImages = composerImages.filter((image) => !image.external);
+      const orderedImages = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
+      const uploaded: ComposerImage[] = [];
+      setUploadingImages(true);
+      for (const [index, image] of orderedImages.entries()) {
+        draftMediaBusy.current.add(image.id);
+        setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading" } : item));
+        try {
+          const current = await uploadImageToPost(image, draft.cloudId, index);
+          uploaded.push(current);
+          setComposerImages((items) => items.map((item) => item.id === image.id ? current : item));
+        } catch (error) {
+          setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
+          throw error;
+        } finally { draftMediaBusy.current.delete(image.id); }
+      }
+      setUploadingImages(false);
       const item = await cloudRequest("/api/v1/library-state", {
         action: "publish",
-        id: old?.cloudId ? editing : undefined,
+        id: draft.id,
         title,
         body,
         tag: writeTag,
+        topics: writeTopics,
+        mediaPaths: uploaded.map((image) => image.path!),
+        coverUrl: cover?.external ? cover.url : null,
       });
       if (!item) return;
       update((s) => ({
@@ -1172,16 +1257,240 @@ export default function Community() {
           item,
           ...s.own.filter((p) => p.id !== editing && p.id !== item.id),
         ],
-        cardIds: [...new Set([...s.cardIds, item.id])],
+        cardIds: item.status === "published" ? [...new Set([...s.cardIds, item.id])] : s.cardIds,
       }));
-      setPublicFeed((s) => [item, ...s.filter((p) => p.id !== item.id)]);
+      setPublicFeed((s) => item.status === "published" ? [item, ...s.filter((p) => p.id !== item.id)] : s.filter((p) => p.id !== item.id));
       setModal(null);
       setTitle("");
       setBody("");
+      composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
+      setComposerImages([]);
+      setCoverIndex(0);
       setEditing(null);
-      toast("内容已保存到云端");
+      setComposerEditingPublished(false);
+      const owner = accountId || "guest";
+      localStorage.removeItem(`heika-compose-${owner}`);
+      await clearDraftFiles(owner).catch(() => {});
+      if (accountId) { localStorage.removeItem("heika-compose-guest"); await clearDraftFiles("guest").catch(() => {}); }
+      toast("内容已提交人工审核，通过后将公开展示");
     } catch (e) {
+      setUploadingImages(false);
       toast(e instanceof Error ? e.message : "发布失败，请重试");
+    }
+  };
+  const openComposer = async (post?: Post) => {
+    const stored = !post ? state.own.find((item) => item.status === "draft") : undefined;
+    const initialPost = post || stored;
+    setEditing(initialPost?.id ?? null);
+    setComposerEditingPublished(Boolean(post && post.status !== "draft"));
+    setTitle(initialPost?.title || "");
+    setBody(initialPost?.body || "");
+    setWriteTag(initialPost?.tag || tags[0]);
+    setWriteTopics(initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [tags[0]]);
+    setTopicSearch("");
+    setComposerImages([]);
+    setCoverIndex(0);
+    lastDraftPayload.current = "";
+    if (initialPost?.cloudId) {
+      try {
+        const data = await cloudRequest(`/api/v1/posts/${initialPost.cloudId}`) as { post_media?: { storage_path: string; sort_order: number }[] } | null;
+        if (data?.post_media?.length) {
+          const db = await browserDb();
+          const images = await Promise.all(data.post_media.sort((a,b) => a.sort_order-b.sort_order).map(async (item, index) => {
+            const signed = await db.storage.from("post-covers").createSignedUrl(item.storage_path, 3600);
+            return signed.data?.signedUrl ? { id: `saved-${index}-${item.storage_path}`, path: item.storage_path, url: signed.data.signedUrl, status: "ready" as const, sortOrder: index } : null;
+          }));
+          const external = initialPost.image ? [{ id: "legacy-cover", url: initialPost.image, status: "ready" as const, external: true }] : [];
+          setComposerImages([...external, ...images.filter((image): image is NonNullable<typeof image> => Boolean(image))]);
+        }
+      } catch { toast("已恢复草稿文字，图片列表暂时无法读取"); }
+    }
+    const owner = accountId || "guest";
+    if (!initialPost || initialPost.status === "draft") {
+      try {
+        const ownRaw = localStorage.getItem(`heika-compose-${owner}`);
+        const raw = ownRaw || (accountId ? localStorage.getItem("heika-compose-guest") : null);
+        const fileOwner = ownRaw || !accountId ? owner : "guest";
+        if (raw) {
+          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[] };
+          setTitle(saved.title || "");
+          setBody(saved.body || "");
+          setWriteTag(saved.tag || tags[0]);
+          setWriteTopics(saved.topics || [saved.tag || tags[0]]);
+          if (saved.images?.length) {
+            const db = await browserDb();
+            const files = await loadDraftFiles(fileOwner);
+              const restored = await Promise.all(saved.images.map(async (image, index) => {
+              if (image.path) {
+                const { data } = await db.storage.from("post-covers").createSignedUrl(image.path, 3600);
+                if (data?.signedUrl) return { id: image.id, path: image.path, url: data.signedUrl, status: "ready" as const, sortOrder: index };
+                const file = files.find((item) => item.id === image.id)?.file;
+                return file ? { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const, sortOrder: index } : null;
+              }
+              if (image.external && image.url) return { id: image.id, url: image.url, status: "ready" as const, external: true };
+              const file = files.find((item) => item.id === image.id)?.file;
+              if (file) return { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const };
+              return null;
+            }));
+            setComposerImages(restored.filter((image): image is NonNullable<typeof image> => Boolean(image?.url)));
+          }
+          setCoverIndex(Math.min(saved.coverIndex || 0, Math.max(0, (saved.images?.length || 1) - 1)));
+          toast("已恢复上次保存的草稿");
+        }
+      } catch { toast("草稿恢复失败，可继续新建内容"); }
+    }
+    setDraftSaved(false);
+    setModal("write");
+  };
+  useEffect(() => {
+    if (modal !== "write") return;
+    const timer = window.setTimeout(() => {
+      if (!title && !body && !composerImages.length) return;
+      const persist = async () => {
+        const owner = accountId || "guest";
+        await saveDraftFiles(owner, composerImages.map(({ id, file }) => ({ id, file })));
+        const draftData = { title, body, tag: writeTag, topics: writeTopics, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), savedAt: Date.now() };
+        localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData)); setDraftSaved(true);
+        if (accountId && !composerEditingPublished) {
+          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, coverIndex });
+          let cloudDraft = state.own.find((item) => item.id === editing && item.status === "draft");
+          if (lastDraftPayload.current !== signature || !cloudDraft) {
+            lastDraftPayload.current = signature; setDraftSaving(true);
+            try {
+              const cover = composerImages[coverIndex];
+              const saved = await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId, title, body, tag: writeTag, topics: writeTopics, coverUrl: cover?.external ? cover.url : null }) as Post | null;
+              if (saved) { cloudDraft = saved; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] })); }
+            } catch { setDraftSaved(false); toast("云端草稿保存失败，已保留本机草稿"); }
+            finally { setDraftSaving(false); }
+          }
+          if (cloudDraft?.cloudId) {
+            const cover = composerImages[coverIndex];
+            const storageImages = composerImages.filter((image) => !image.external);
+            const ordered = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
+            for (const [index, image] of ordered.entries()) {
+              if (image.external) continue;
+              const needsUpload = Boolean(image.file && !image.path);
+              const needsReorder = Boolean(image.path && image.sortOrder !== index);
+              if ((!needsUpload && !needsReorder) || image.status === "failed" || draftMediaBusy.current.has(image.id)) continue;
+              draftMediaBusy.current.add(image.id);
+              setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading" } : item));
+              try {
+                const synced = await uploadImageToPost(image, cloudDraft.cloudId, index);
+                setComposerImages((items) => items.map((item) => item.id === image.id ? synced : item));
+              } catch (error) {
+                setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
+                toast(error instanceof Error ? error.message : "图片上传失败，可重试");
+              } finally { draftMediaBusy.current.delete(image.id); }
+            }
+          }
+        }
+      };
+      void persist().catch(() => toast("本机草稿保存失败，请检查设备存储空间"));
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, coverIndex, composerImages, composerEditingPublished]);
+  const chooseComposerImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const validation = validateComposerFiles(Array.from(files), composerImages.length);
+    if (validation.error) toast(validation.error);
+    const next = validation.accepted.map((file) => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file), status: "ready" as const }));
+    setComposerImages((current) => [...current, ...next]);
+    if (!composerImages.length) setCoverIndex(0);
+  };
+  const moveComposerImage = (index: number, delta: -1 | 1) => {
+    const target = index + delta;
+    if (target < 0 || target >= composerImages.length) return;
+    setComposerImages((current) => { const next = [...current]; [next[index], next[target]] = [next[target], next[index]]; return next; });
+    if (coverIndex === index) setCoverIndex(target); else if (coverIndex === target) setCoverIndex(index);
+  };
+  const removeComposerImage = async (index: number) => {
+    const image = composerImages[index];
+    const old = state.own.find((item) => item.id === editing);
+    if (image.path && old?.cloudId) {
+      try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: image.path }, "DELETE"); }
+      catch (error) { toast(error instanceof Error ? error.message : "图片移除失败"); return; }
+    } else if (image.file && accountId && old?.cloudId) {
+      try { await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: old.cloudId }, "DELETE"); }
+      catch (error) { toast(error instanceof Error ? error.message : "图片移除失败"); return; }
+    }
+    if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url);
+    setComposerImages((items) => items.filter((_, i) => i !== index));
+    setCoverIndex((current) => index < current ? current - 1 : current > index ? current : 0);
+  };
+  const retryComposerImage = async (imageId: string) => {
+    const image = composerImages.find((item) => item.id === imageId);
+    if (!image?.file || !accountId) return toast("登录后可重试图片上传");
+    setUploadingImages(true);
+    setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "uploading" } : item));
+    try {
+      const old = state.own.find((item) => item.id === editing);
+      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag }) as Post | null;
+      if (!draft?.cloudId) throw new Error("草稿保存失败");
+      const synced = await uploadImageToPost(image, draft.cloudId, composerImages.indexOf(image));
+      setEditing(draft.id); update((current) => ({ ...current, own: [draft, ...current.own.filter((item) => item.id !== draft.id)] }));
+      setComposerImages((items) => items.map((item) => item.id === imageId ? synced : item));
+      toast("图片已上传");
+    } catch (error) { setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "failed" } : item)); toast(error instanceof Error ? error.message : "图片上传失败"); }
+    finally { setUploadingImages(false); }
+  };
+  const discardComposerDraft = async () => {
+    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id))) return toast("草稿正在同步，请稍后再删除");
+    if (!confirm("删除这份草稿及其图片？此操作无法撤销。")) return;
+    let old = state.own.find((item) => item.id === editing);
+    if (accountId && !composerEditingPublished) {
+      try {
+        const draft = await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag }) as Post | null;
+        if (draft?.cloudId) {
+          old = draft;
+          for (const image of composerImages) if (image.file && !image.path) await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: draft.cloudId }, "DELETE");
+          await cloudRequest("/api/v1/library-state", { action: "delete", id: draft.id });
+          update((current) => ({ ...current, own: current.own.filter((item) => item.id !== draft.id) }));
+        }
+      } catch (error) { toast(error instanceof Error ? error.message : "草稿删除失败"); return; }
+    }
+    const owner = accountId || "guest";
+    localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(owner).catch(() => {});
+    composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
+    setComposerImages([]); setTitle(""); setBody(""); setEditing(null); setModal(null); toast("草稿已删除");
+  };
+  const openTopic = async (name: string) => {
+    setTopicLoading(true);
+    try {
+      const listResponse = await fetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
+      const listResult = await listResponse.json();
+      if (!listResponse.ok) throw new Error(listResult.error || "话题读取失败");
+      const topic = (listResult.data as TopicSummary[]).find((item) => item.name === name);
+      if (!topic) throw new Error("话题不存在");
+      const response = await fetch(`/api/v1/topics/${topic.id}?page=1&limit=12`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "话题内容读取失败");
+      const page = result.data as TopicPageResponse;
+      setTopicSummary(page.topic); setTopicPosts(page.items); setTopicTotal(page.total); setTopicPage(1);
+      setTopicReturnPostId(detail); setTopicReturnTab(detail === null ? tab : detailSource.current);
+      if (detail !== null) { setDetail(null); setDetailReady(false); }
+      scrollPositions.current[tab] = window.scrollY;
+      setTab("topic"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    } catch (error) { toast(error instanceof Error ? error.message : "话题读取失败"); }
+    finally { setTopicLoading(false); }
+  };
+  const loadMoreTopicPosts = async () => {
+    if (!topicSummary || topicLoading || topicPosts.length >= topicTotal) return;
+    const nextPage = topicPage + 1; setTopicLoading(true);
+    try {
+      const response = await fetch(`/api/v1/topics/${topicSummary.id}?page=${nextPage}&limit=12`);
+      const result = await response.json(); if (!response.ok) throw new Error(result.error || "内容读取失败");
+      const page = result.data as TopicPageResponse;
+      setTopicPosts((items) => [...items, ...page.items]); setTopicTotal(page.total); setTopicPage(nextPage);
+    } catch (error) { toast(error instanceof Error ? error.message : "内容读取失败"); }
+    finally { setTopicLoading(false); }
+  };
+  const closeTopicPage = () => {
+    const backTab = topicReturnTab;
+    setTab(backTab); setTopicSummary(null); setTopicPosts([]); setTopicTotal(0); setTopicPage(1);
+    requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[backTab] || 0, behavior: "instant" }));
+    if (topicReturnPostId !== null) {
+      const postId = topicReturnPostId;
+      setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
     }
   };
   useEffect(() => {
@@ -1429,6 +1738,7 @@ export default function Community() {
           if (!alive) return;
           setAccountId(user?.id || null);
           if (!user) {
+            setIsAdmin(false);
             setStorageKey("heika-demo-v1");
             try {
               const guest = JSON.parse(
@@ -1442,6 +1752,7 @@ export default function Community() {
           try {
             const data = await cloudRequest("/api/v1/library-state");
             if (!alive || !data) return;
+            setIsAdmin(data.profile?.role === "admin");
             setStorageKey(`heika-user-${user.id}`);
             setState((previous) => {
               let local;
@@ -1819,6 +2130,9 @@ export default function Community() {
               }}
             />
           </div>
+          <div className="discover-topic-list" aria-label="精选话题">
+            {tags.map((topic) => <button key={topic} className="discover-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}
+          </div>
           <div className="filters editorial-filters">
             {["全部", ...tags].map((t) => (
               <button
@@ -1840,7 +2154,20 @@ export default function Community() {
           {feed(list)}
         </section>
       )}
-
+      {tab === "topic" && topicSummary && (
+        <section className="page editorial-home topic-detail-page">
+          <button className="back settings-back" onClick={closeTopicPage}><ArrowLeft size={18} /> 返回</button>
+          <div className="eyebrow">TOPIC / HEIKA</div>
+          <h1>#{topicSummary.name}</h1>
+          <p className="lead">{topicSummary.description}</p>
+          <div className="topic-detail-stats">
+            <span><strong>{topicSummary.postCount}</strong> 篇公开内容</span>
+            <span><strong>{topicSummary.participantCount}</strong> 位创作者</span>
+          </div>
+          {topicPosts.length ? <div className="masonry">{topicPosts.map((item) => postCard(item, "discover"))}</div> : <p className="topic-empty-state">这个话题还没有公开内容，来分享你的第一篇发现。</p>}
+          {topicPosts.length < topicTotal && <button className="feed-refresh" disabled={topicLoading} onClick={() => void loadMoreTopicPosts()}>{topicLoading ? "正在加载…" : "加载更多"}</button>}
+        </section>
+      )}
       {tab === "messages" && (
         <Messages
           initialPeer={messagePeer}
@@ -1891,18 +2218,36 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.20</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.22</small><ChevronRight size={16}/></button>
             </div>
           </div>
+          {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
         </section>
       )}
+      {tab === "moderation" && isAdmin && <AdminModeration onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
       {tab === "about" && (
         <section className="page about-page">
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.20</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.22</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.22</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>举报支持固定原因、补充说明与重复提交保护。</li>
+              <li>新增管理员举报与内容人工审核队列，记录处理说明和时间。</li>
+              <li>新发布或编辑的内容先保持待审核状态，通过后才公开；图片未启用自动识别。</li>
+            </ul>
+          </div>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.21</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>发布编辑器支持多图预览、排序、封面选择、移除与失败重试。</li>
+              <li>新增本机与账号草稿自动保存、恢复；图片关联草稿后再发布。</li>
+              <li>删除草稿时同步清理已上传图片，保留现有登录与文章权限校验。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.20</strong><small>2026.10.31</small></div>
             <ul>
@@ -2241,12 +2586,7 @@ export default function Community() {
             <h2>我的内容</h2>
             <button
               className="text-button"
-              onClick={() => {
-                setEditing(null);
-                setTitle("");
-                setBody("");
-                setModal("write");
-              }}
+              onClick={() => void openComposer()}
             >
               发布 <Plus size={15} />
             </button>
@@ -2254,16 +2594,10 @@ export default function Community() {
           {state.own.length ? (
             state.own.map((p) => (
               <div className="own-row" key={p.id}>
-                <button onClick={() => openPost(p.id)}>{p.title}</button>
+                <button onClick={() => p.status === "draft" ? void openComposer(p) : openPost(p.id)}>{p.status === "draft" ? `草稿 · ${p.title || "未命名内容"}` : p.status === "pending_review" ? `审核中 · ${p.title}` : p.status === "hidden" ? `审核未通过 · ${p.title}` : p.title}</button>
                 <button
                   aria-label="编辑"
-                  onClick={() => {
-                    setEditing(p.id);
-                    setTitle(p.title);
-                    setBody(p.body);
-                    setWriteTag(p.tag);
-                    setModal("write");
-                  }}
+                  onClick={() => void openComposer(p)}
                 >
                   <PenLine size={16} />
                 </button>
@@ -2328,12 +2662,7 @@ export default function Community() {
       <button
         className="compose"
         aria-label="发布内容"
-        onClick={() => {
-          setEditing(null);
-          setTitle("");
-          setBody("");
-          setModal("write");
-        }}
+        onClick={() => void openComposer()}
       >
         <Plus size={22} />
       </button>
@@ -2341,7 +2670,7 @@ export default function Community() {
         {nav.map(([id, label, Icon]) => (
           <button
             key={id}
-            className={tab === id || (tab === "settings" && id === "mine") ? "active" : ""}
+            className={tab === id || (tab === "settings" && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
             onClick={() => {
               scrollPositions.current[tab] = window.scrollY;
               const next = id;
@@ -2500,6 +2829,10 @@ export default function Community() {
                       void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
                       setDetailMoreOpen(false);
                     }}><Share2 size={16} /> 复制链接</button>
+                    {post.cloudId && post.status === "published" && <button onClick={() => {
+                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以举报内容"); return; }
+                      setReportPostId(post.cloudId!); setReportReason(""); setReportNote(""); setDetailMoreOpen(false); setModal("report");
+                    }}><Flag size={16} /> 举报内容</button>}
                   </div>
                 )}
               </div>
@@ -2554,6 +2887,7 @@ export default function Community() {
                 <button className="detail-reading-setting" onClick={() => setModal("reading")}>
                   阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
                 </button>
+                {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
                 <EditorialArticle post={post} />
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <span>给这篇内容评分</span>
@@ -2657,7 +2991,16 @@ export default function Community() {
             >
               <X size={20} />
             </button>
-            {modal === "subscription" ? (
+            {modal === "report" ? (
+              <div className="report-dialog">
+                <div className="eyebrow">COMMUNITY / REPORT</div>
+                <h2>举报内容</h2>
+                <p>举报信息仅用于平台安全与人工复核，不会公开举报者身份。</p>
+                <fieldset className="report-reasons"><legend>选择原因</legend>{REPORT_REASONS.map((reason) => <label key={reason} className={reportReason === reason ? "selected" : ""}><input type="radio" name="report-reason" value={reason} checked={reportReason === reason} onChange={() => setReportReason(reason)} />{reason}</label>)}</fieldset>
+                <label className="report-note-label">补充说明 <span>选填</span><textarea value={reportNote} maxLength={300} onChange={(event) => setReportNote(event.target.value)} placeholder="可简要说明你认为不合适的部分" /></label>
+                <button className="primary-button full" disabled={!reportReason || reportSubmitting} onClick={() => void submitContentReport()}>{reportSubmitting ? "正在提交…" : "提交举报"}</button>
+              </div>
+            ) : modal === "subscription" ? (
               <div className="subscription-layout">
                 <header className="subscription-header"><h2>翻卡计划</h2></header>
                 <div className="subscription-scroll">
@@ -2924,6 +3267,21 @@ export default function Community() {
                     ))}
                   </select>
                 </label>
+                <section className="composer-topic-section" aria-label="选择话题">
+                  <div className="composer-section-heading"><span><strong>话题</strong><small>使用黑卡精选话题，最多选择 5 个</small></span><span>{writeTopics.length}/5</span></div>
+                  <label className="composer-topic-search"><Search size={16} /><input value={topicSearch} onChange={(event) => setTopicSearch(event.target.value)} placeholder="搜索话题" aria-label="搜索话题" /></label>
+                  <div className="composer-topic-options">
+                    {tags.filter((topic) => topic.includes(topicSearch.trim())).map((topic) => {
+                      const selected = writeTopics.includes(topic);
+                      return <button type="button" key={topic} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => {
+                        if (selected) setWriteTopics((current) => current.filter((item) => item !== topic));
+                        else if (writeTopics.length >= 5) toast("最多选择 5 个话题");
+                        else setWriteTopics((current) => [...current, topic]);
+                      }}>#{topic}</button>;
+                    })}
+                    {!tags.some((topic) => topic.includes(topicSearch.trim())) && <small className="composer-topic-empty">没有匹配的官方话题</small>}
+                  </div>
+                </section>
                 <label>
                   正文
                   <textarea
@@ -2934,15 +3292,40 @@ export default function Community() {
                     rows={7}
                   />
                 </label>
+                <section className="composer-media-section" aria-label="内容图片">
+                  <div className="composer-section-heading"><span><strong>图片</strong><small>最多 9 张 · JPG、PNG、WebP，每张不超过 5 MB</small></span><span>{composerImages.length}/9</span></div>
+                  <div className="composer-image-grid">
+                    {composerImages.map((image, index) => (
+                      <figure className={`composer-image${coverIndex === index ? " is-cover" : ""}`} key={image.id}>
+                        <img src={image.url} alt={`第 ${index + 1} 张图片预览`} />
+                        {coverIndex === index && <span className="composer-cover-badge">封面</span>}
+                        {image.status === "uploading" && <span className="composer-image-state">上传中…</span>}
+                        {image.status === "failed" && <button type="button" className="composer-image-retry" disabled={uploadingImages} onClick={() => void retryComposerImage(image.id)}>上传失败 · 重试</button>}
+                        <div className="composer-image-tools">
+                          {coverIndex !== index && <button type="button" onClick={() => setCoverIndex(index)}>设为封面</button>}
+                          <button type="button" aria-label={`第 ${index + 1} 张前移`} disabled={!index} onClick={() => moveComposerImage(index, -1)}>←</button>
+                          <button type="button" aria-label={`第 ${index + 1} 张后移`} disabled={index === composerImages.length - 1} onClick={() => moveComposerImage(index, 1)}>→</button>
+                          <button type="button" aria-label={`移除第 ${index + 1} 张`} onClick={() => void removeComposerImage(index)}>移除</button>
+                        </div>
+                      </figure>
+                    ))}
+                    {composerImages.length < 9 && <label className="composer-image-add">
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
+                      <Plus size={22} /><span>添加图片</span>
+                    </label>}
+                  </div>
+                  <p className="composer-draft-status" role="status">{draftSaving ? "正在同步草稿…" : draftSaved ? "草稿已自动保存" : "输入内容后自动保存草稿"}</p>
+                </section>
                 <div className="preview">
                   <strong>预览 · {title || "未命名内容"}</strong>
                   <p>{body || "正文预览将显示在这里"}</p>
                 </div>
-                <button className="primary-button full" onClick={publish}>
-                  {editing ? "保存修改" : "发布内容"}
+                <button className="primary-button full" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={publish}>
+                  {uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}
                 </button>
+                {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
                 <p className="fineprint">
-                  登录后发布的内容保存在云端，并显示在公开主页。
+                  {accountId ? "草稿会自动同步到当前账号，发布后图片与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
                 </p>
               </>
             )}
