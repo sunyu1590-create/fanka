@@ -98,6 +98,11 @@ const initial: State = {
   bio: "收藏那些值得再读的瞬间",
   viewed: [],
 };
+const membershipPlans = [
+  { id: "plus", name: "Plus", price: 12, dailyFlips: 9 },
+  { id: "pro", name: "Pro", price: 16, dailyFlips: 13 },
+] as const;
+const extraFlipPacks = [3, 5, 10] as const;
 
 function drawLuckyBonus() {
   const roll = Math.random();
@@ -235,6 +240,8 @@ export default function Community() {
   const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
   const [selectedFlipPack, setSelectedFlipPack] = useState<number | null>(null);
+  const [extraPacksOpen, setExtraPacksOpen] = useState(false);
+  const [subscriptionRulesOpen, setSubscriptionRulesOpen] = useState(false);
   const luckyRewardTimer = useRef<number | null>(null);
   const flipRainTimer = useRef<number | null>(null);
   const [flipRainId, setFlipRainId] = useState<number | null>(null);
@@ -1674,7 +1681,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.14</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.15</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1685,7 +1692,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.14</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.15</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.15</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>精简翻卡方案页面，使用紧凑套餐选择与折叠说明。</li>
+              <li>优化浅色和深色主题下的订阅弹窗层级及安全区域适配。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.14</strong><small>2026.10.31</small></div>
             <ul>
@@ -2375,7 +2389,7 @@ export default function Community() {
       {modal && (
         <div className="modal-backdrop">
           <div
-            className={`modal ${readingTransition ? `reading-${readingTransition}` : ""}`}
+            className={`modal ${modal === "subscription" ? "subscription-dialog" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
           >
             <button
               className="close"
@@ -2385,37 +2399,56 @@ export default function Community() {
               <X size={20} />
             </button>
             {modal === "subscription" ? (
-              <>
-                <div className="eyebrow">HEIKA / DAILY PASSES</div>
-                <h2>翻卡计划</h2>
-                <p className="settings-note">选择 Plus、Pro 或一次性翻卡包。本页先展示并保留选择，暂不接支付或扣款。</p>
-                <div className="subscription-current"><Sparkles size={17}/><span>当前免费额度</span><strong>今日 {5 + luckyBonusToday} 次</strong></div>
-                <div className="subscription-plans">
-                  <article className={`subscription-plan${selectedPlan === "plus" ? " selected" : ""}`}>
-                    <div><span>PLUS</span><strong>¥12<small> / 月</small></strong></div>
-                    <p>每天额外增加 4 次翻卡</p>
-                    <b>每日共 9 次</b>
-                    <button type="button" aria-pressed={selectedPlan === "plus"} onClick={() => setSelectedPlan("plus")}>{selectedPlan === "plus" ? "已选择 Plus" : "选择 Plus"}</button>
-                  </article>
-                  <article className={`subscription-plan pro${selectedPlan === "pro" ? " selected" : ""}`}>
-                    <div><span>PRO</span><strong>¥16<small> / 月</small></strong></div>
-                    <p>每天额外增加 8 次翻卡</p>
-                    <b>每日共 13 次</b>
-                    <button type="button" aria-pressed={selectedPlan === "pro"} onClick={() => setSelectedPlan("pro")}>{selectedPlan === "pro" ? "已选择 Pro" : "选择 Pro"}</button>
-                  </article>
-                </div>
-                <button className="primary-button full subscription-continue" type="button" disabled={!selectedPlan} onClick={() => toast(`已选择 ${selectedPlan?.toUpperCase()} 方案，暂不扣款`)}>{selectedPlan ? `预览 ${selectedPlan.toUpperCase()} 订阅 · 暂不扣款` : "选择一个订阅方案"}</button>
-                <div className="extra-flip-packs">
-                  <div className="extra-flip-heading"><strong>额外翻卡包</strong><small>一次性补充次数 · 独立于每日额度</small></div>
-                  <div className="extra-flip-options">
-                    {[3, 5, 10].map((count) => <button type="button" key={count} className={selectedFlipPack === count ? "selected" : ""} aria-pressed={selectedFlipPack === count} onClick={() => setSelectedFlipPack(count)}>
-                      <strong>+{count}</strong><span>次翻卡</span><small>一次性卡包</small>
-                    </button>)}
+              <div className="subscription-layout">
+                <header className="subscription-header"><h2>翻卡计划</h2></header>
+                <div className="subscription-scroll">
+                  <div className="subscription-quota" aria-live="polite"><span>当前额度</span><strong>{dailyAllowance} 次</strong></div>
+                  <div className="subscription-section-label"><strong>选择套餐</strong></div>
+                  <div className="subscription-plans" role="group" aria-label="选择会员套餐">
+                    {membershipPlans.map((plan) => {
+                      const selected = selectedPlan === plan.id;
+                      return <button type="button" key={plan.id} className={`subscription-plan${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setSelectedPlan(plan.id)}>
+                        <span className="subscription-plan-name">{plan.name}</span>
+                        <span className="subscription-plan-daily">{plan.dailyFlips} 次 <small>/ 日</small></span>
+                        <span className="subscription-plan-price">¥{plan.price}<small> / 月</small></span>
+                        <span className="subscription-plan-check" aria-hidden="true">{selected ? <Check size={15}/> : null}</span>
+                      </button>;
+                    })}
                   </div>
-                  <button className="soft-button full" type="button" disabled={!selectedFlipPack} onClick={() => toast(`已选择 +${selectedFlipPack} 次卡包，暂不扣款`)}>{selectedFlipPack ? `预览 +${selectedFlipPack} 次卡包 · 暂不扣款` : "先选择一个翻卡包"}</button>
+                  <button className="primary-button full subscription-continue" type="button" disabled={!selectedPlan} onClick={() => toast("当前仅预览，不会扣款")}>{selectedPlan ? `预览 ${membershipPlans.find((plan) => plan.id === selectedPlan)?.name} 订阅` : "请选择套餐"}</button>
+                  <p className="subscription-preview-note">当前仅预览 · 不会扣款或开通套餐</p>
+                  <section className="membership-disclosure-group">
+                    <button type="button" className="membership-disclosure" aria-expanded={extraPacksOpen} onClick={() => setExtraPacksOpen((open) => !open)}>
+                      <span><strong>额外翻卡包</strong><small>{selectedFlipPack ? `已选 +${selectedFlipPack} 次` : "一次性补充翻卡机会"}</small></span>
+                      <ChevronRight size={17}/>
+                    </button>
+                    <div className={`membership-collapsible${extraPacksOpen ? " open" : ""}`} aria-hidden={!extraPacksOpen} inert={!extraPacksOpen}>
+                      <div className="membership-collapsible-inner">
+                        <div className="extra-flip-options">
+                          {extraFlipPacks.map((count) => <button type="button" key={count} className={selectedFlipPack === count ? "selected" : ""} aria-pressed={selectedFlipPack === count} onClick={() => setSelectedFlipPack(count)}>
+                            <strong>+{count}</strong><span>次翻卡</span>
+                          </button>)}
+                        </div>
+                        {selectedFlipPack && <button className="soft-button full extra-pack-preview" type="button" onClick={() => toast("当前仅预览，不会扣款")}>预览 +{selectedFlipPack} 次卡包</button>}
+                        <p className="subscription-preview-note">一次性补充机会；当前仅预览，不会扣款。</p>
+                      </div>
+                    </div>
+                  </section>
+                  <section className="membership-disclosure-group rules-disclosure-group">
+                    <button type="button" className="membership-disclosure" aria-expanded={subscriptionRulesOpen} onClick={() => setSubscriptionRulesOpen((open) => !open)}>
+                      <span><strong>翻卡与订阅规则</strong><small>权益、概率与额度说明</small></span>
+                      <ChevronRight size={17}/>
+                    </button>
+                    <div className={`membership-collapsible${subscriptionRulesOpen ? " open" : ""}`} aria-hidden={!subscriptionRulesOpen} inert={!subscriptionRulesOpen}>
+                      <div className="membership-collapsible-inner subscription-rules-copy">
+                        <p>免费每日 5 次；Plus 每日共 9 次，Pro 每日共 13 次。会员次数按天刷新，幸运加成另行累计。</p>
+                        <p>每次翻卡的幸运奖励概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%；幸运加成每日最多累计 10 次。</p>
+                        <p>额外翻卡包为一次性补充。当前页面仅供预览，不会扣款、创建订单或开通权益。</p>
+                      </div>
+                    </div>
+                  </section>
                 </div>
-                <p className="subscription-footnote">单次概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%。幸运加成每日累计上限为 10 次。</p>
-              </>
+              </div>
             ) : modal === "browsing" ? (
               <>
                 <div className="eyebrow">BROWSING / PREFERENCES</div>
