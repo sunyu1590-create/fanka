@@ -183,7 +183,7 @@ export default function Community() {
   const [accountId, setAccountId] = useState<string | null>(null);
   const cloudHydrated = useRef(false);
   const pullStart = useRef<number | null>(null);
-  const [blackIndex, setBlackIndex] = useState(0);
+  const [facetIndex, setFacetIndex] = useState(0);
   const [dayTick, setDayTick] = useState(0),
     [viewerId, setViewerId] = useState<number | null>(null),
     [viewerRect, setViewerRect] = useState<DOMRect | null>(null),
@@ -675,6 +675,25 @@ export default function Community() {
     setViewerRect(findVisibleCard(id));
     setViewerId(id);
     setViewerPhase("opening");
+  };
+  const chooseBlackFacet = (facet: number) => {
+    if (!candidates.length) {
+      toast("内容池暂时为空，请稍后刷新。");
+      return;
+    }
+    const available = candidates.filter(
+      (candidate) => !state.revealed[candidate.id] && !opened.includes(candidate.id),
+    );
+    const unlocked = candidates.filter((candidate) => Boolean(state.revealed[candidate.id]));
+    const pool = opened.length < 5 ? [...available, ...unlocked] : unlocked;
+    if (!pool.length) {
+      toast("今天的 5 张卡片已经选完，明天再来。");
+      return;
+    }
+    const candidate = pool[(facetIndex + facet) % pool.length];
+    const candidateIndex = candidates.findIndex((item) => item.id === candidate.id);
+    setFacetIndex(candidateIndex + 1);
+    flip(candidate.id);
   };
   const completeFlip = async () => {
     if (viewerId === null || flipBusy.current) return;
@@ -1419,11 +1438,11 @@ export default function Community() {
             <div>
               <div className="eyebrow">LUCENT // BLACK CARD</div>
               <h1>
-                {state.homeMode === "blackcard" ? "黑卡。" : "今日，晶选。"}
+                保存黑卡
               </h1>
               <p className="lead">
                 {state.homeMode === "blackcard"
-                  ? "轻触翻面 · 查看更多以深入"
+                  ? "轻触菱面 · 翻开今日黑卡"
                   : "从兴趣出发，发现值得停留的内容。"}
               </p>
             </div>
@@ -1445,32 +1464,38 @@ export default function Community() {
             </>
           ) : (
             <>
-              <div className="black-card-focus">
-                {candidates[blackIndex] ? (
-                  renderCandidate(candidates[blackIndex])
-                ) : (
-                  <div className="empty">内容池暂时为空，请稍后刷新。</div>
-                )}
-              </div>
-              <div className="black-card-controls">
-                <button
-                  className="text-button"
-                  disabled={blackIndex === 0}
-                  onClick={() => setBlackIndex((n) => n - 1)}
-                >
-                  ← 上一张
-                </button>
-                <span>
-                  FACET MATRIX / {String(blackIndex + 1).padStart(2, "0")} —{" "}
-                  {candidates.length}
-                </span>
-                <button
-                  className="text-button"
-                  disabled={blackIndex >= candidates.length - 1}
-                  onClick={() => setBlackIndex((n) => n + 1)}
-                >
-                  下一张 →
-                </button>
+              <div className="black-facet-card" aria-label="黑卡菱形切面选择区">
+                <span className="black-facet-brand">HEIKA · BLACK CARD</span>
+                <span className="black-facet-hint">选择一个菱面，翻开一张黑卡</span>
+                <svg className="black-facet-matrix" viewBox="0 0 100 125" role="group" aria-label="选择要翻开的黑卡">
+                  {[
+                    "0,0 48,0 25,38 0,51",
+                    "48,0 100,0 78,35 25,38",
+                    "0,51 25,38 48,66 0,90",
+                    "25,38 78,35 100,65 48,66",
+                    "0,90 48,66 58,125 0,125",
+                    "48,66 100,65 100,125 58,125",
+                  ].map((points, index) => {
+                    const hasUnlocked = candidates.some((candidate) => Boolean(state.revealed[candidate.id]));
+                    const unavailable = !candidates.length || (!hasUnlocked && opened.length >= 5);
+                    return <polygon
+                      key={index}
+                      points={points}
+                      className={`black-facet${hasUnlocked ? " unlocked" : ""}${unavailable ? " unavailable" : ""}`}
+                      role="button"
+                      tabIndex={unavailable ? -1 : 0}
+                      aria-label={hasUnlocked ? `点击第 ${index + 1} 个菱面，打开黑卡` : `点击第 ${index + 1} 个菱面，选择新黑卡`}
+                      onClick={() => !unavailable && chooseBlackFacet(index)}
+                      onKeyDown={(event) => {
+                        if ((event.key === "Enter" || event.key === " ") && !unavailable) {
+                          event.preventDefault();
+                          chooseBlackFacet(index);
+                        }
+                      }}
+                    />;
+                  })}
+                </svg>
+                <span className="black-facet-progress">今日已翻 {Math.min(opened.length, 5)} / 5</span>
               </div>
               <p className="fineprint">
                 每日最多翻开 5 张 · 已选 {Math.min(opened.length, 5)}/5
@@ -1558,10 +1583,30 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => toast("黑卡 HEIKA · Editorial Discovery")}><span>关于黑卡</span><small>版本 1.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.1</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
+        </section>
+      )}
+      {tab === "about" && (
+        <section className="page about-page">
+          <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
+          <div className="eyebrow">HEIKA / RELEASE NOTES</div>
+          <h1>关于黑卡<span className="red-dot">.</span></h1>
+          <p className="lead">黑卡 HEIKA · 版本 1.1</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.1</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>首页标题更新为「保存黑卡」。</li>
+              <li>黑卡模式改为由可交互菱形切面组成的固定卡面，点选切面即可选择并翻开内容。</li>
+              <li>保留每日最多翻开 5 张的额度与已解锁记录。</li>
+            </ul>
+          </div>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.0</strong><small>初始版本</small></div>
+            <ul><li>黑卡内容探索、瀑布流浏览与每日翻卡。</li><li>收藏、消息、私聊及主题设置。</li></ul>
+          </div>
         </section>
       )}
       {tab === "mine" && (
