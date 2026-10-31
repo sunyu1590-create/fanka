@@ -9,7 +9,7 @@ import {
 } from "@/lib/server/api";
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await context(req, false);
+    const { db, user } = await context(req, false);
     const { data: post, error } = await db
       .from("posts")
       .select("id")
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const { data, error: read } = await db
       .from("comments")
       .select(
-        "id,client_id,body,author_id,created_at,parent_id,profiles!comments_author_id_fkey(nickname),comment_reactions(user_id)",
+        "id,client_id,body,author_id,created_at,parent_id,profiles!comments_author_id_fkey(nickname,avatar_url),comment_reactions(user_id)",
       )
       .eq("post_id", post!.id)
       .eq("status", "visible")
@@ -34,12 +34,14 @@ export async function GET(req: NextRequest) {
       authorId: c.author_id,
       name:
         (c.profiles as unknown as { nickname: string })?.nickname || "探索者",
+      avatar: (c.profiles as unknown as { avatar_url?: string })?.avatar_url || undefined,
       parent: c.parent_id
         ? Number(data!.find((p) => p.id === c.parent_id)?.client_id) ||
           undefined
         : undefined,
       time: new Date(c.created_at).getTime(),
       likes: c.comment_reactions.length,
+      liked: !!user && c.comment_reactions.some((r: { user_id: string }) => r.user_id === user.id),
     }));
   });
 }
@@ -103,12 +105,19 @@ export async function POST(req: NextRequest) {
       .single();
     dbError(write);
     if (!data) throw new ApiError(500, "评论未保存");
+    const { data: profile } = await db
+      .from("profiles")
+      .select("nickname,avatar_url")
+      .eq("id", user!.id)
+      .maybeSingle();
     return {
       id: Number(data.client_id),
       cloudId: data.id,
       post: Number(b.post),
       body: data.body,
       authorId: user!.id,
+      name: profile?.nickname || "探索者",
+      avatar: profile?.avatar_url || undefined,
       parent: b.parent || undefined,
       time: new Date(data.created_at).getTime(),
       likes: 0,

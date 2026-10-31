@@ -22,6 +22,7 @@ import {
   Share2,
   MessageCircle,
   ThumbsDown,
+  MoreHorizontal,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -40,6 +41,7 @@ type Comment = {
   cloudId?: string;
   authorId?: string;
   name?: string;
+  avatar?: string;
   post: number;
   body: string;
   parent?: number;
@@ -191,6 +193,7 @@ export default function Community() {
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
+  const sharedPostHandled = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
@@ -249,6 +252,15 @@ export default function Community() {
     [writeTag, setWriteTag] = useState<string>(tags[0]),
     [editing, setEditing] = useState<number | null>(null),
     [notice, setNotice] = useState("");
+  const [detailSort, setDetailSort] = useState<"热度" | "最新">("最新");
+  const [commentSending, setCommentSending] = useState(false);
+  const [likeBusy, setLikeBusy] = useState(false);
+  const [previewImage, setPreviewImage] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const imageTouchStart = useRef<number | null>(null);
+  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
+  const [detailMoreOpen, setDetailMoreOpen] = useState(false);
+  const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
   const selectedDay = selectedCalendarDate || today;
@@ -500,6 +512,14 @@ export default function Community() {
       viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
     }));
   };
+  useEffect(() => {
+    const sharedId = new URLSearchParams(location.search).get("post");
+    if (!ready || !sharedId || detail !== null || sharedPostHandled.current === sharedId) return;
+    const id = Number(sharedId);
+    if (!Number.isFinite(id) || !all.some((item) => item.id === id)) return;
+    sharedPostHandled.current = sharedId;
+    openPost(id, "discover");
+  }, [ready, detail, publicFeed, state.own, state.revealed]);
   const closeDetail = (fromHistory = false) => {
     if (detail === null || transitionPhase === "closing") return;
     if (!fromHistory && history.state?.heikaDetail === detail) {
@@ -873,12 +893,13 @@ export default function Community() {
   };
   const addComment = async () => {
     const value = draft.trim();
-    if (!detail || !value) return;
+    if (!detail || !value || commentSending) return;
     if (!accountId) {
       toast("登录后可发表评论");
       setTab("messages");
       return;
     }
+    setCommentSending(true);
     try {
       const comment = await cloudRequest("/api/library-comments", {
         post: detail,
@@ -892,6 +913,8 @@ export default function Community() {
       toast("评论已发布");
     } catch (e) {
       toast(e instanceof Error ? e.message : "评论保存失败");
+    } finally {
+      setCommentSending(false);
     }
   };
   const deleteOwn = async (p: Post) => {
@@ -919,7 +942,7 @@ export default function Community() {
         });
       update((s) => ({
         ...s,
-        comments: s.comments.filter((x) => x.id !== c.id),
+        comments: s.comments.filter((x) => x.id !== c.id && x.parent !== c.id),
       }));
     } catch (e) {
       toast(e instanceof Error ? e.message : "删除失败");
@@ -958,6 +981,8 @@ export default function Community() {
   };
   useEffect(() => {
     if (detail === null) return;
+    setActiveImageIndex(0);
+    setPreviewImage(false);
     let alive = true;
     void fetch(`/api/library-comments?id=${detail}`)
       .then((r) => r.json())
@@ -1063,6 +1088,9 @@ export default function Community() {
     };
   }, [detailReady, detail]);
   const post = detail === null ? null : all.find((p) => p.id === detail);
+  const detailImages = post
+    ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
+    : [];
   const postCard = (p: Post, source: "today" | "discover" = "discover") => (
     <button
       className="post-card editorial-post"
@@ -1634,7 +1662,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.6</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.7</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1645,7 +1673,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.6</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.7</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.7</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>重构内容详情的阅读层级与底部互动栏。</li>
+              <li>新增图片预览、多图切换、评论排序与分层回复。</li>
+              <li>改进评论头像、点赞状态和可分享的详情链接。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.6</strong><small>2026.10.31</small></div>
             <ul>
@@ -2079,274 +2115,133 @@ export default function Community() {
           aria-hidden={!detailReady}
         >
           <div className="detail">
-            <button className="back" onClick={() => closeDetail()}>
-              <ArrowLeft size={19} /> 返回
-            </button>
-            <div
-              className="detail-hero"
-              style={{ background: coverColor(post.tag) }}
-            >
-              <span>{post.cover}</span>
-              {post.image && (
-                <img
-                  src={post.image}
-                  alt=""
-                  onError={(e) => {
-                    e.currentTarget.dataset.failed = "true";
-                  }}
-                />
-              )}
-            </div>
-            <div
-              className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}
-            >
-              <small>
-                {post.tag}
-                {post.isDemo ? " · 示例内容" : ""}
-              </small>
-              <h1>{post.title}</h1>
-              <p className="byline">
-                {post.authorId ? (
-                  <button
-                    className="text-button"
-                    onClick={() => setAuthorProfile(post.authorId!)}
-                  >
-                    {post.author} ↗
-                  </button>
-                ) : (
-                  post.author
-                )}{" "}
-                · {post.date}
-              </p>
-              <button
-                className="detail-reading-setting"
-                onClick={() => setModal("reading")}
-              >
-                阅读模式 ·{" "}
-                {
-                  { standard: "标准", focus: "专注", night: "夜间" }[
-                    state.readingMode
-                  ]
-                }{" "}
-                <ChevronRight size={14} />
+            <header className="detail-header">
+              <button className="detail-back" aria-label="返回" onClick={() => closeDetail()}>
+                <ArrowLeft size={21} />
               </button>
-              <EditorialArticle post={post} />
-              {post.image && (
-                <figure className="article-figure">
-                  <img src={post.image} alt={post.title} loading="lazy" />
-                  <figcaption>{post.cover}</figcaption>
-                </figure>
-              )}
-              <button
-                className="icon-action"
-                aria-label="分享内容"
-                title="分享内容"
-                onClick={() => {
-                  if (navigator.share)
-                    void navigator.share({
-                      title: post.title,
-                      text: post.body,
-                    });
-                  else
-                    void navigator.clipboard
-                      .writeText(`${post.title}\n${post.body}`)
-                      .then(() => toast("内容已复制"));
-                }}
-              >
-                <Share2 size={18} />
-              </button>
-              <div className="deck-actions">
-                <button
-                  className={`icon-action${state.liked?.includes(post.id) ? " chosen" : ""}`}
-                  aria-pressed={state.liked?.includes(post.id) || false}
-                  aria-label={state.liked?.includes(post.id) ? "取消点赞" : "点赞"}
-                  title={state.liked?.includes(post.id) ? "取消点赞" : "点赞"}
-                  onClick={() => {
-                    void cloudRequest("/api/v1/library-state", {
-                      action: "like",
-                      id: post.id,
-                      value: !state.liked?.includes(post.id),
-                    }).catch(() => toast("点赞同步失败"));
-                    update((s) => ({
-                      ...s,
-                      liked: s.liked?.includes(post.id)
-                        ? s.liked.filter((id) => id !== post.id)
-                        : [...(s.liked || []), post.id],
-                    }));
-                  }}
-                >
-                  <Heart size={18} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} />
+              <span>内容详情</span>
+              <div className="detail-more-wrap">
+                <button className="detail-more-button" aria-label="更多操作" aria-expanded={detailMoreOpen} onClick={() => setDetailMoreOpen((open) => !open)}>
+                  <MoreHorizontal size={22} />
                 </button>
-                <button
-                  className="icon-action"
-                  aria-label="不感兴趣"
-                  title="不感兴趣"
-                  onClick={() => {
-                    update((s) => ({
-                      ...s,
-                      dismissed: [
-                        ...new Set([...(s.dismissed || []), post.id]),
-                      ],
-                    }));
-                    void cloudRequest("/api/v1/library-state", {
-                      action: "dismiss",
-                      id: post.id,
-                    }).catch(() => toast("反馈同步失败"));
-                    toast("已减少类似内容推荐");
-                  }}
-                >
-                  <ThumbsDown size={18} />
-                </button>
-              </div>
-              <button
-                className="detail-comment-jump"
-                aria-label="跳转到讨论"
-                title="讨论"
-                onClick={() =>
-                  document
-                    .getElementById("detail-comments")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
-              >
-                <MessageCircle size={19} />
-              </button>
-              <div className="actions">
-                <button
-                  onClick={() => toggleSave(post.id)}
-                  className={state.saved.includes(post.id) ? "chosen" : ""}
-                  aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"}
-                  title={state.saved.includes(post.id) ? "取消收藏" : "收藏"}
-                >
-                  <Bookmark
-                    size={18}
-                    fill={
-                      state.saved.includes(post.id) ? "currentColor" : "none"
-                    }
-                  />
-                </button>
-                <span className="sr-only">你的评分</span>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    aria-label={`${n} 星`}
-                    className="star"
-                    onClick={() =>
-                      update((s) => ({
-                        ...s,
-                        ratings: { ...s.ratings, [post.id]: n },
-                      }))
-                    }
-                  >
-                    <Star
-                      size={19}
-                      fill={
-                        (state.ratings[post.id] || 0) >= n
-                          ? "currentColor"
-                          : "none"
-                      }
-                    />
-                  </button>
-                ))}
-              </div>
-              <div id="detail-comments" className="section-head">
-                <h2 className="discussion-heading">
-                  <MessageCircle size={20} aria-hidden="true" />
-                  <span className="sr-only">讨论</span>
-                  {state.comments.filter((c) => c.post === post.id).length}
-                </h2>
-              </div>
-              <div className="comment-compose">
-                {reply && (
-                  <small>
-                    回复评论{" "}
-                    <button onClick={() => setReply(undefined)}>取消</button>
-                  </small>
+                {detailMoreOpen && (
+                  <div className="detail-more-menu">
+                    <button onClick={() => {
+                      update((s) => ({ ...s, dismissed: [...new Set([...(s.dismissed || []), post.id])] }));
+                      void cloudRequest("/api/v1/library-state", { action: "dismiss", id: post.id }).catch(() => toast("反馈同步失败"));
+                      setDetailMoreOpen(false);
+                      toast("已减少类似内容推荐");
+                    }}><ThumbsDown size={16} /> 不感兴趣</button>
+                    <button onClick={() => {
+                      const url = `${location.origin}/?post=${post.id}`;
+                      void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
+                      setDetailMoreOpen(false);
+                    }}><Share2 size={16} /> 复制链接</button>
+                  </div>
                 )}
-                <textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder="说说你的看法…"
-                  maxLength={1000}
-                />
-                <button className="primary-button icon-action" aria-label="发表讨论" title="发表讨论" onClick={addComment}>
-                  <Send size={17} />
-                </button>
               </div>
-              {state.comments
-                .filter((c) => c.post === post.id)
-                .sort((a, b) =>
-                  sort === "最新"
-                    ? b.time - a.time
-                    : b.likes - a.likes || b.time - a.time,
-                )
-                .map((c) => (
-                  <div className="comment" key={c.id}>
-                    <small>
-                      {c.name || "探索者"} ·{" "}
-                      {new Date(c.time).toLocaleDateString("zh-CN")}
-                      {c.parent ? " · 回复" : ""}
-                    </small>
-                    <p>{c.body}</p>
-                    <div>
-                      <button
-                        aria-label="回复评论"
-                        title="回复评论"
-                        onClick={() => {
-                          if (!accountId) return toast("登录后可点赞");
-                          void cloudRequest("/api/library-comments", {
-                            action: "like",
-                            post: c.post,
-                            id: c.id,
-                            value: !c.liked,
-                          })
-                            .then(() =>
-                              update((s) => ({
-                                ...s,
-                                comments: s.comments.map((x) =>
-                                  x.id === c.id
-                                    ? {
-                                        ...x,
-                                        liked: !x.liked,
-                                        likes: x.likes + (x.liked ? -1 : 1),
-                                      }
-                                    : x,
-                                ),
-                              })),
-                            )
-                            .catch(() => toast("点赞失败"));
-                        }}
-                      >
-                        <Heart
-                          size={15}
-                          fill={c.liked ? "currentColor" : "none"}
-                        />{" "}
-                        {c.likes}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setReply(c.id);
-                          document
-                            .querySelector<HTMLTextAreaElement>(
-                              ".comment-compose textarea",
-                            )
-                            ?.focus();
-                        }}
-                      >
-                        <MessageCircle size={15} />
-                      </button>
-                      {(!c.cloudId || c.authorId === accountId) && (
-                        <button aria-label="删除评论" title="删除评论" onClick={() => void deleteComment(c)}>
-                          <Trash2 size={15} />
-                        </button>
-                      )}
+            </header>
+            <div className="detail-scroll" key={post.id}>
+              <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
+                {detailImages.length > 0 && (
+                  <div className="detail-gallery" onTouchStart={(event) => { imageTouchStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => {
+                    const start = imageTouchStart.current;
+                    const end = event.changedTouches[0]?.clientX;
+                    imageTouchStart.current = null;
+                    if (start === null || end === undefined || detailImages.length < 2 || Math.abs(end - start) < 40) return;
+                    setActiveImageIndex((index) => (index + (end < start ? 1 : -1) + detailImages.length) % detailImages.length);
+                  }}>
+                  <button className="detail-image-button" onClick={() => setPreviewImage(true)} aria-label="查看大图">
+                    <img src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" />
+                    <span>查看大图</span>
+                  </button>
+                  {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
+                    <button aria-label="上一张图片" onClick={() => setActiveImageIndex((index) => (index - 1 + detailImages.length) % detailImages.length)}><ArrowLeft size={15} /></button>
+                    <span>{activeImageIndex + 1} / {detailImages.length}</span>
+                    <button aria-label="下一张图片" onClick={() => setActiveImageIndex((index) => (index + 1) % detailImages.length)}><ArrowRight size={15} /></button>
+                  </div>}
+                  </div>
+                )}
+                <small className="detail-category">{post.tag}{post.isDemo ? " · 示例内容" : ""}</small>
+                <h1>{post.title}</h1>
+                <p className="byline">
+                  {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}>{post.author} ↗</button> : post.author}
+                  <span> · {post.date}</span>
+                </p>
+                <button className="detail-reading-setting" onClick={() => setModal("reading")}>
+                  阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
+                </button>
+                <EditorialArticle post={post} />
+                <section className="detail-rating" aria-label="内容评分">
+                  <span>给这篇内容评分</span>
+                  <div>{[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => update((s) => ({ ...s, ratings: { ...s.ratings, [post.id]: n } }))}>
+                      <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
+                    </button>
+                  ))}</div>
+                  {state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
+                </section>
+                <section id="detail-comments" className="detail-comments">
+                  <div className="comments-heading">
+                    <h2>评论 <span>· {state.comments.filter((c) => c.post === post.id).length}</span></h2>
+                    <div role="group" aria-label="评论排序" className="comment-sort">
+                      <button className={detailSort === "热度" ? "selected" : ""} onClick={() => setDetailSort("热度")}>最热</button>
+                      <button className={detailSort === "最新" ? "selected" : ""} onClick={() => setDetailSort("最新")}>最新</button>
                     </div>
                   </div>
-                ))}
-              {!state.comments.some((c) => c.post === post.id) && (
-                <div className="empty">还没有讨论，留下第一条想法。</div>
-              )}
+                  {(() => {
+                    const comments = state.comments.filter((c) => c.post === post.id);
+                    const roots = comments.filter((c) => !c.parent).sort((a, b) => detailSort === "最新" ? b.time - a.time : b.likes - a.likes || b.time - a.time);
+                    return roots.length ? roots.map((c) => {
+                      const children = comments.filter((item) => item.parent === c.id).sort((a, b) => a.time - b.time);
+                      const visibleChildren = expandedReplies[c.id] ? children : children.slice(0, 2);
+                      return <article className="comment" key={c.id}>
+                        <div className="comment-avatar" aria-hidden="true">{c.avatar ? <img src={c.avatar} alt="" loading="lazy" /> : (c.name || "探").slice(0, 1)}</div>
+                        <div className="comment-content">
+                          <strong className="comment-author">{c.name || "探索者"}</strong>
+                          <p>{c.body}</p>
+                          <div className="comment-meta"><time>{new Date(c.time).toLocaleDateString("zh-CN")}</time>
+                            <button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button>
+                            {(!c.cloudId || c.authorId === accountId) && <button aria-label="删除评论" onClick={() => void deleteComment(c)}><Trash2 size={14} /></button>}
+                          </div>
+                          <button className={`comment-like${c.liked ? " selected" : ""}`} aria-label="点赞评论" onClick={() => {
+                            if (!accountId) return toast("登录后可点赞");
+                            const next = !c.liked;
+                            void cloudRequest("/api/library-comments", { action: "like", post: c.post, id: c.id, value: next }).then(() => update((s) => ({ ...s, comments: s.comments.map((x) => x.id === c.id ? { ...x, liked: next, likes: x.likes + (next ? 1 : -1) } : x) }))).catch(() => toast("点赞失败"));
+                          }}><Heart size={14} fill={c.liked ? "currentColor" : "none"} />{c.likes}</button>
+                          {visibleChildren.length > 0 && <div className="comment-replies">{visibleChildren.map((child) => <div className="comment-reply" key={child.id}>
+                            <div className="comment-avatar small" aria-hidden="true">{child.avatar ? <img src={child.avatar} alt="" loading="lazy" /> : (child.name || "探").slice(0, 1)}</div><div><strong>{child.name || "探索者"}</strong>{child.parent ? <span> 回复 </span> : null}<p>{child.body}</p><div className="comment-meta"><time>{new Date(child.time).toLocaleDateString("zh-CN")}</time><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button></div></div>
+                          </div>)}</div>}
+                          {children.length > 2 && <button className="expand-replies" onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: !s[c.id] }))}>{expandedReplies[c.id] ? "收起回复" : `展开更多回复（${children.length - 2}）`}</button>}
+                        </div>
+                      </article>;
+                    }) : <p className="comments-empty">还没有评论，来聊聊你的想法。</p>;
+                  })()}
+                </section>
+              </div>
             </div>
+            <form className="detail-action-bar" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
+              <div className={`detail-comment-input${reply ? " replying" : ""}`}>
+                {reply && <span className="reply-label">回复 {state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => setReply(undefined)}><X size={13} /></button></span>}
+                <textarea ref={commentInputRef} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={1} maxLength={1000} aria-label="评论内容" />
+                {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
+                {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><Send size={17} /></button>}
+              </div>
+              <button type="button" className={`bar-icon${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={state.liked?.includes(post.id) ? "取消点赞" : "点赞"} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
+                if (likeBusy) return;
+                const next = !state.liked?.includes(post.id);
+                setLikeBusy(true);
+                void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }))).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
+              }}><Heart size={21} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /></button>
+              <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
+              <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => {
+                const shareData = { title: post.title, text: post.body, url: `${location.origin}/?post=${post.id}` };
+                if (navigator.share) void navigator.share(shareData).catch(() => {});
+                else void navigator.clipboard?.writeText(shareData.url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
+              }}><Share2 size={20} /></button>
+            </form>
           </div>
+          {previewImage && detailImages[activeImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[activeImageIndex]} alt={post.title} /></div>}
         </div>
       )}
       {transitionPhase && transitionRect && post && (
