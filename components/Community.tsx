@@ -39,6 +39,13 @@ import { browserDb } from "@/lib/browser-db";
 import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
+
+const FLIP_RAIN_PARTICLES = 72;
+const FLIP_RAIN_DURATION_MS = 1850;
+const FLIP_RAIN_LEAD_MS = 520;
+const FLIP_RAIN_STAGGER_MS = 8;
+const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_DURATION_MS + 5 * FLIP_RAIN_STAGGER_MS + 120;
+
 type Comment = {
   id: number;
   cloudId?: string;
@@ -617,6 +624,7 @@ export default function Community() {
         : null,
     );
     if (viewerId === id) {
+      cancelFlipRain(id);
       setViewerId(null);
       setViewerFlipped(false);
       setViewerPhase(null);
@@ -633,6 +641,12 @@ export default function Community() {
       ...s,
       viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
     }));
+  };
+  const cancelFlipRain = (id?: number) => {
+    if (id !== undefined && flipRainId !== id) return;
+    if (flipRainTimer.current !== null) window.clearTimeout(flipRainTimer.current);
+    flipRainTimer.current = null;
+    setFlipRainId(null);
   };
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
@@ -965,16 +979,21 @@ export default function Community() {
         () => toast("阅读记录云端同步失败，本地已保留"),
       );
       setJustFlippedId(id);
-      if (flipRainTimer.current !== null) window.clearTimeout(flipRainTimer.current);
-      setFlipRainId(id);
-      flipRainTimer.current = window.setTimeout(() => setFlipRainId(null), 2150);
+      cancelFlipRain();
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setFlipRainId(id);
+        flipRainTimer.current = window.setTimeout(() => {
+          flipRainTimer.current = null;
+          setFlipRainId(null);
+        }, FLIP_RAIN_CLEANUP_MS);
+      }
       if (document.activeElement instanceof HTMLElement)
         document.activeElement.blur();
       requestAnimationFrame(() =>
         window.scrollTo({ top: scrollBefore, behavior: "instant" }),
       );
       window.setTimeout(() => setJustFlippedId(null), 950);
-      toast(lucky ? `幸运加成 +${lucky} 次 · 今日额度已增加` : "已翻开 · 今日探索进度已更新");
+      if (!lucky) toast("已翻开 · 今日探索进度已更新");
     } catch {
       toast("内容加载失败，请重试");
     } finally {
@@ -990,6 +1009,7 @@ export default function Community() {
       justFlippedId === viewerId
     )
       return;
+    cancelFlipRain(viewerId);
     const source = document.querySelector<HTMLElement>(
       `[data-card-id="${viewerId}"]`,
     );
@@ -1849,7 +1869,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.17</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.18</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1860,7 +1880,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.17</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.18</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.18</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>重整翻卡彩带起点与全屏扇形轨迹，按动画时长准确清理粒子。</li>
+              <li>避免关闭或跳转后彩带重新出现，并减少重复的幸运加成提示。</li>
+              <li>将幸运加成提示上移，降低与卡片内容重叠的情况。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.17</strong><small>2026.10.31</small></div>
             <ul>
@@ -2320,17 +2348,18 @@ export default function Community() {
             ×
           </button>
           {flipRainId === viewerId && (
-            <div className="flip-confetti" aria-hidden="true">
-              {Array.from({ length: 84 }, (_, index) => {
-                const drift = ((index * 53) % 141) - 70;
-                const earlyFan = Math.round(drift * 0.95);
-                const fanHeight = 14 + ((index * 37) % 74);
+            <div key={flipRainId} className="flip-confetti" aria-hidden="true">
+              {Array.from({ length: FLIP_RAIN_PARTICLES }, (_, index) => {
+                const spread = index / (FLIP_RAIN_PARTICLES - 1);
+                const drift = Math.round((spread * 2 - 1) * 68);
+                const fanHeight = 12 + ((index * 29) % 78);
                 return <i key={index} style={{
-                  animationDelay: `${(index % 8) * 54}ms`,
-                  "--fan-x": `${earlyFan}vw`,
+                  animationDelay: `${FLIP_RAIN_LEAD_MS + (index % 6) * FLIP_RAIN_STAGGER_MS}ms`,
+                  "--rain-duration": `${FLIP_RAIN_DURATION_MS}ms`,
+                  "--fan-x": `${drift}vw`,
                   "--fan-y": `${fanHeight}vh`,
-                  "--fall-x": `${Math.round(drift * 1.2)}vw`,
-                  "--fall-y": `${108 + (index % 5) * 8}vh`,
+                  "--fall-x": `${Math.round(drift * 1.12)}vw`,
+                  "--fall-y": `${105 + ((index * 17) % 35)}vh`,
                   "--twist": `${(index % 2 ? 1 : -1) * (80 + (index % 5) * 65)}deg`,
                 } as CSSProperties} />;
               })}
