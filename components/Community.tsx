@@ -1634,7 +1634,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.5</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.6</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1645,7 +1645,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.5</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.6</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.6</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>放大并重新对齐顶部「黑卡 HEIKA」标识。</li>
+              <li>移除黑卡菱面卡片的上下内描边与条带纹理。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.5</strong><small>2026.10.31</small></div>
             <ul>
