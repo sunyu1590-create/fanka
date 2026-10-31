@@ -24,3 +24,10 @@ test('selected interests remain a stronger recommendation signal than sparse rat
   const ranked = rankRecommendations(items, ['生活'], [], { 2: 5 }, {});
   assert.deepEqual(ranked.map((item) => item.id), [1, 2]);
 });
+
+test('opening a post does not reshuffle the feed beneath the detail page', () => {
+  const items = [post(4, '生活'), post(2, '生活'), post(8, '摄影')];
+  const before = rankRecommendations(items, [], [], {}, {});
+  const afterOpening = rankRecommendations(items, [], [4], {}, {});
+  assert.deepEqual(afterOpening.map((item) => item.id), before.map((item) => item.id));
+});

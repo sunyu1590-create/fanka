@@ -5,10 +5,12 @@ export type CommunityRating = { average: number; count: number };
 export function rankRecommendations(
   posts: Post[],
   interests: string[],
-  viewed: number[],
+  _viewed: number[],
   personalRatings: Record<number, number>,
   communityRatings: Record<number, CommunityRating>,
 ) {
+  // View history is tracked for the reader profile, but opening a post must not
+  // reshuffle the current feed under the detail transition.
   const personalByTag = new Map<string, { sum: number; count: number }>();
   for (const post of posts) {
     const rating = personalRatings[post.id];
@@ -32,8 +34,7 @@ export function rankRecommendations(
     return (
       (interests.includes(post.tag) ? 1 : 0) +
       (personalAverage - 3) * 0.55 +
-      (communityAverage - 3) * 0.35 -
-      (viewed.includes(post.id) ? 0.18 : 0)
+      (communityAverage - 3) * 0.35
     );
   };
 

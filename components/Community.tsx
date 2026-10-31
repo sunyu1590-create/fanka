@@ -240,7 +240,11 @@ export default function Community() {
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
-  const [detailImageTransition, setDetailImageTransition] = useState<{ rect: DOMRect; src: string } | null>(null);
+  const [detailImageTransition, setDetailImageTransition] = useState<{
+    rect: DOMRect;
+    src: string;
+    sourceImage: HTMLImageElement;
+  } | null>(null);
   const [luckyReward, setLuckyReward] = useState<{ postId: number; amount: number } | null>(null);
   const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
@@ -567,7 +571,7 @@ export default function Community() {
       ? rect
       : null;
   };
-  const openPost = (id: number, source?: "today" | "discover") => {
+  const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null) => {
     if (source) detailSource.current = source;
     if (
       transitionBusy.current ||
@@ -575,20 +579,41 @@ export default function Community() {
       !all.some((p) => p.id === id)
     )
       return;
-    const selectedPost = all.find((item) => item.id === id);
-    const sourceCard = document.querySelector<HTMLElement>(
-      `[data-card-id="${id}"], [data-discover-id="${id}"], [data-window-card-id="${id}"]`,
-    );
-    const sourceImage = sourceCard?.matches("img")
-      ? sourceCard
-      : sourceCard?.querySelector<HTMLElement>(
-          ".candidate-cover img, .card-flip-back img, .flip-window-revealed img, .editorial-cover img, img",
-        );
+    const explicitSource = sourceElement?.closest<HTMLElement>(
+      `[data-window-card-id="${id}"], [data-card-id="${id}"], [data-discover-id="${id}"]`,
+    ) || sourceElement;
+    const explicitImage = explicitSource instanceof HTMLImageElement
+      ? explicitSource
+      : explicitSource?.querySelector<HTMLImageElement>("img");
+    const selectors = source === "today" && viewerId === id
+      ? [`[data-window-card-id="${id}"] img`]
+      : source === "discover"
+        ? [`[data-discover-id="${id}"] img`]
+        : source === "today"
+          ? [`[data-card-id="${id}"] img`]
+          : [
+              `[data-window-card-id="${id}"] img`,
+              `[data-card-id="${id}"] img`,
+              `[data-discover-id="${id}"] img`,
+            ];
+    const sourceImage = (explicitImage && (() => {
+      const rect = explicitImage.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 ? explicitImage : undefined;
+    })()) || selectors
+      .flatMap((selector) => [...document.querySelectorAll<HTMLImageElement>(selector)])
+      .find((image) => {
+        const rect = image.getBoundingClientRect();
+        const style = getComputedStyle(image);
+        return style.display !== "none" && style.visibility !== "hidden" &&
+          rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight &&
+          rect.right > 0 && rect.left < innerWidth;
+      });
     const sourceRect = sourceImage?.getBoundingClientRect();
-    const sourceImageUrl = selectedPost?.images?.[0] || selectedPost?.image;
+    const sourceImageUrl = sourceImage?.currentSrc || sourceImage?.src;
+    scrollBeforeDetail.current = window.scrollY;
     setDetailImageTransition(
       sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
-        ? { rect: sourceRect, src: sourceImageUrl }
+        ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
         : null,
     );
     if (viewerId === id) {
@@ -631,24 +656,21 @@ export default function Community() {
     setDetailReady(false);
     setTransitionPhase("closing");
   };
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (detail === null) return;
-    scrollBeforeDetail.current = window.scrollY;
     const body = document.body,
       previousOverflow = body.style.overflow,
       previousPadding = body.style.paddingRight,
+      previousScrollRestoration = history.scrollRestoration,
       gutter = Math.max(0, innerWidth - document.documentElement.clientWidth);
+    history.scrollRestoration = "manual";
     body.style.overflow = "hidden";
     if (gutter) body.style.paddingRight = `${gutter}px`;
     return () => {
       body.style.overflow = previousOverflow;
       body.style.paddingRight = previousPadding;
-      requestAnimationFrame(() =>
-        window.scrollTo({
-          top: scrollBeforeDetail.current,
-          behavior: "instant",
-        }),
-      );
+      window.scrollTo({ top: scrollBeforeDetail.current, behavior: "instant" });
+      history.scrollRestoration = previousScrollRestoration;
     };
   }, [detail]);
   useEffect(() => {
@@ -780,13 +802,17 @@ export default function Community() {
           const targetRect = imageTarget.getBoundingClientRect();
           const originRect = transitionImage.rect;
           const from = opening ? originRect : targetRect;
-          const to = opening ? targetRect : originRect;
+          const returnRect = transitionImage.sourceImage.isConnected
+            ? transitionImage.sourceImage.getBoundingClientRect()
+            : originRect;
+          const to = opening ? targetRect :
+            returnRect.width && returnRect.height ? returnRect : originRect;
           if (!from.width || !from.height || !to.width || !to.height || from.bottom < 0 || from.top > innerHeight || to.bottom < 0 || to.top > innerHeight) {
             imageTarget.style.removeProperty("visibility");
             return;
           }
           imageClone = new Image();
-          imageClone.src = opening ? transitionImage.src : imageTarget.currentSrc || imageTarget.src;
+          imageClone.src = transitionImage.src;
           try { await imageClone.decode(); } catch {}
           if (cancelled || !imageClone) return;
           imageClone.alt = "";
@@ -1245,7 +1271,7 @@ export default function Community() {
       className="post-card editorial-post"
       key={p.id}
       data-discover-id={p.id}
-      onClick={() => openPost(p.id, source)}
+      onClick={(event) => openPost(p.id, source, event.currentTarget)}
     >
       <div
         className="post-cover editorial-cover"
@@ -1823,7 +1849,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.16</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.17</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1834,7 +1860,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.16</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.17</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.17</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>修正黑卡弹层与发现页到详情页的图片来源定位。</li>
+              <li>详情返回时固定恢复原页面滚动位置与图片锚点。</li>
+              <li>翻卡彩带从顶部单点扇形绽放至全屏，并微调会员页面圆角。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.16</strong><small>2026.10.31</small></div>
             <ul>
@@ -2287,14 +2321,16 @@ export default function Community() {
           </button>
           {flipRainId === viewerId && (
             <div className="flip-confetti" aria-hidden="true">
-              {Array.from({ length: 48 }, (_, index) => {
-                const drift = ((index * 37) % 121) - 60;
-                const earlyFan = Math.round(drift * 0.38);
+              {Array.from({ length: 84 }, (_, index) => {
+                const drift = ((index * 53) % 141) - 70;
+                const earlyFan = Math.round(drift * 0.95);
+                const fanHeight = 14 + ((index * 37) % 74);
                 return <i key={index} style={{
                   animationDelay: `${(index % 8) * 54}ms`,
                   "--fan-x": `${earlyFan}vw`,
-                  "--fall-x": `${drift}vw`,
-                  "--fall-y": `${106 + (index % 5) * 8}vh`,
+                  "--fan-y": `${fanHeight}vh`,
+                  "--fall-x": `${Math.round(drift * 1.2)}vw`,
+                  "--fall-y": `${108 + (index % 5) * 8}vh`,
                   "--twist": `${(index % 2 ? 1 : -1) * (80 + (index % 5) * 65)}deg`,
                 } as CSSProperties} />;
               })}
@@ -2355,8 +2391,8 @@ export default function Community() {
                       </small>
                       <button
                         className="window-more"
-                        disabled={!viewerFlipped}
-                        onClick={() => openPost(viewerId, "today")}
+                        disabled={!viewerFlipped || viewerPhase !== null}
+                        onClick={(event) => openPost(viewerId, "today", event.currentTarget)}
                       >
                         查看更多 <ArrowRight size={17} />
                       </button>
