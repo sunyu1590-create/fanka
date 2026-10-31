@@ -1,0 +1,10 @@
+create schema if not exists heika_private;
+grant usage on schema heika_private to anon,authenticated;
+create function heika_private.admin_check() returns boolean language sql stable security definer set search_path='' as $$ select exists(select 1 from public.profiles where id=auth.uid() and role='admin') $$;
+revoke execute on function heika_private.admin_check() from public;
+grant execute on function heika_private.admin_check() to anon,authenticated;
+create or replace function public.is_admin() returns boolean language sql stable security invoker set search_path='' as $$ select heika_private.admin_check() $$;
+alter function public.prevent_role_change() set search_path='';
+revoke execute on function public.create_profile(),public.guard_content_write() from public,anon,authenticated;
+revoke execute on function public.check_rate_limit(text,int,int),public.get_daily_deck(),public.open_daily_card(int),public.swap_daily_card() from public,anon;
+revoke all on public.request_limits from anon,authenticated;
