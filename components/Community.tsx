@@ -154,6 +154,20 @@ const topicOptions = [
   },
 ];
 export default function Community() {
+  const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
+  useEffect(() => {
+    const saved = localStorage.getItem("heika-theme");
+    if (saved === "dark" || saved === "light" || saved === "system") setTheme(saved);
+  }, []);
+  useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia("(prefers-color-scheme: light)");
+    const apply = () => { root.dataset.theme = theme === "system" ? (media.matches ? "light" : "dark") : theme; };
+    apply();
+    media.addEventListener("change", apply);
+    localStorage.setItem("heika-theme", theme);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     transitionLayerRef = useRef<HTMLDivElement | null>(null),
@@ -174,7 +188,8 @@ export default function Community() {
       null,
     ),
     [viewerFlipped, setViewerFlipped] = useState(false),
-    [flippingId, setFlippingId] = useState<number | null>(null);
+    [flippingId, setFlippingId] = useState<number | null>(null),
+    [shardsAnimating, setShardsAnimating] = useState(false);
   const [publicFeed, setPublicFeed] = useState<Post[]>([]),
     publicFeedLoading = useRef(false),
     detailSource = useRef<"today" | "discover">("today");
@@ -679,7 +694,11 @@ export default function Community() {
       };
       localStorage.setItem(storageKey, JSON.stringify(next));
       setState(next);
-      setViewerFlipped(true);
+      setShardsAnimating(true);
+      window.setTimeout(() => {
+        setShardsAnimating(false);
+        setViewerFlipped(true);
+      }, 900);
       void cloudRequest("/api/v1/library-state", { action: "open", id }).catch(
         () => toast("阅读记录云端同步失败，本地已保留"),
       );
@@ -1350,6 +1369,9 @@ export default function Community() {
         <span className="brand">
           晶选 · 黑卡 <i>HEIKA</i>
         </span>
+        <button className="theme-toggle" onClick={() => setTheme((value) => value === "dark" ? "light" : value === "light" ? "system" : "dark")}>
+          外观 · {{ dark: "深色", light: "浅色", system: "跟随系统" }[theme]}
+        </button>
         <span className="demo-pill">
           {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
         </span>
@@ -1859,9 +1881,12 @@ export default function Community() {
                 className={`flip-stage ${viewerFlipped ? "is-flipped" : ""}`}
               >
                 <div className="flip-inner">
-                  <div className="flip-face flip-front flip-window-face">
+                  <div className={`flip-face flip-front flip-window-face${shardsAnimating ? " shards-running" : ""}`}>
                     <span className="window-brand-cn">黑卡</span>
                     <span className="window-brand-en">HEIKA</span>
+                    <svg className="shard-svg" viewBox="0 0 100 125" preserveAspectRatio="none" aria-hidden="true">
+                      <polygon points="0,0 48,0 25,38 0,51"/><polygon points="48,0 100,0 78,35 25,38"/><polygon points="0,51 25,38 48,66 0,90"/><polygon points="25,38 78,35 100,65 48,66"/><polygon points="0,90 48,66 58,125 0,125"/><polygon points="48,66 100,65 100,125 58,125"/>
+                    </svg>
                     {!viewerFlipped && (
                       <button
                         className="flip-button"
@@ -1973,6 +1998,12 @@ export default function Community() {
                 <ChevronRight size={14} />
               </button>
               <EditorialArticle post={post} />
+              {post.image && (
+                <figure className="article-figure">
+                  <img src={post.image} alt={post.title} loading="lazy" />
+                  <figcaption>{post.cover}</figcaption>
+                </figure>
+              )}
               <button
                 className="soft-button"
                 onClick={() => {
