@@ -1545,10 +1545,10 @@ export default function Community() {
                 <svg className="black-facet-matrix" viewBox="0 0 100 125" preserveAspectRatio="none" role="group" aria-label="选择要翻开的黑卡">
                   <defs>
                     <clipPath id="black-facet-inset"><rect x="0" y="0" width="100" height="125" /></clipPath>
-                    <linearGradient id="facet-metal-a" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#d2dcdf"/><stop offset=".48" stopColor="#74868e"/><stop offset="1" stopColor="#c2cdd0"/></linearGradient>
-                    <linearGradient id="facet-metal-b" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#82949c"/><stop offset=".52" stopColor="#33424a"/><stop offset="1" stopColor="#aab9be"/></linearGradient>
-                    <linearGradient id="facet-metal-c" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#e0e5e5"/><stop offset=".55" stopColor="#89999f"/><stop offset="1" stopColor="#43535a"/></linearGradient>
-                    <linearGradient id="facet-metal-d" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#52646c"/><stop offset=".46" stopColor="#b7c4c8"/><stop offset="1" stopColor="#6a7a82"/></linearGradient>
+                    <linearGradient id="facet-metal-a" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#9aa9ae"/><stop offset=".48" stopColor="#53636a"/><stop offset="1" stopColor="#7d8d93"/></linearGradient>
+                    <linearGradient id="facet-metal-b" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#718188"/><stop offset=".52" stopColor="#29363c"/><stop offset="1" stopColor="#7b8b91"/></linearGradient>
+                    <linearGradient id="facet-metal-c" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#9aa8ad"/><stop offset=".55" stopColor="#6c7c82"/><stop offset="1" stopColor="#35444a"/></linearGradient>
+                    <linearGradient id="facet-metal-d" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#34434a"/><stop offset=".46" stopColor="#8c999e"/><stop offset="1" stopColor="#4c5c63"/></linearGradient>
                   </defs>
                   {blackCardFacets.map((points, index) => {
                     const hasUnlocked = candidates.some((candidate) => Boolean(state.revealed[candidate.id]));
@@ -1666,7 +1666,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.11</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.12</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1677,7 +1677,13 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.11</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.12</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.12</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>调整深色模式下已解锁菱面亮度，恢复金属切面的层次与卡面文字对比度。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.11</strong><small>2026.10.31</small></div>
             <ul>
