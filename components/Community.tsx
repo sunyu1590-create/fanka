@@ -809,16 +809,6 @@ export default function Community() {
       flipBusy.current = false;
     }
   };
-  useEffect(() => {
-    if (
-      viewerId !== null &&
-      viewerPhase === null &&
-      !viewerFlipped &&
-      !state.revealed[viewerId]
-    ) {
-      void completeFlip();
-    }
-  }, [viewerId, viewerPhase, viewerFlipped, state.revealed]);
   const closeViewer = () => {
     if (
       viewerId === null ||
@@ -1537,12 +1527,18 @@ export default function Community() {
                 <svg className="black-facet-matrix" viewBox="0 0 100 125" role="group" aria-label="选择要翻开的黑卡">
                   <defs><clipPath id="black-facet-inset"><rect x="1" y="1" width="98" height="123" /></clipPath></defs>
                   {[
-                    "0,0 48,0 25,38 0,51",
-                    "48,0 100,0 78,35 25,38",
-                    "0,51 25,38 48,66 0,90",
-                    "25,38 78,35 100,65 48,66",
-                    "0,90 48,66 58,125 0,125",
-                    "48,66 100,65 100,125 58,125",
+                    "0,0 36,0 30,31 0,31",
+                    "36,0 70,0 72,31 30,31",
+                    "70,0 100,0 100,31 72,31",
+                    "0,31 30,31 34,62 0,62",
+                    "30,31 72,31 67,62 34,62",
+                    "72,31 100,31 100,62 67,62",
+                    "0,62 34,62 31,94 0,94",
+                    "34,62 67,62 70,94 31,94",
+                    "67,62 100,62 100,94 70,94",
+                    "0,94 31,94 36,125 0,125",
+                    "31,94 70,94 69,125 36,125",
+                    "70,94 100,94 100,125 69,125",
                   ].map((points, index) => {
                     const hasUnlocked = candidates.some((candidate) => Boolean(state.revealed[candidate.id]));
                     const unavailable = !candidates.length || (!hasUnlocked && opened.length >= 5);
@@ -1575,9 +1571,6 @@ export default function Community() {
       )}
       {tab === "discover" && (
         <section className="page editorial-home">
-          <div className="eyebrow">EXPLORE / STORIES</div>
-          <h1>继续探索。</h1>
-          <p className="lead">在今日精选之外，直接发现更多内容。</p>
           <div className="search">
             <Search size={18} />
             <input
@@ -1662,7 +1655,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.7</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.8</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1673,7 +1666,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.7</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.8</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.8</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>增加黑卡主界面的可选菱面数量，展示更多内容入口。</li>
+              <li>统一顶部「黑卡 HEIKA」中英文间距与对齐。</li>
+              <li>精简发现页头部，并恢复用户手动确认翻卡。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.7</strong><small>2026.10.31</small></div>
             <ul>

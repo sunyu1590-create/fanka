@@ -413,3 +413,7 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 :root[data-font="oppo"] *{font-family:"OPPO Sans 4.0","OPPO Sans","OPPOSans",-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif!important}
 :root[data-font="system"] *{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif!important}
 @media(max-width:430px){.topline{padding-left:20px;padding-right:14px}.topline .brand{width:114px;font-size:22px}.font-options{grid-template-columns:1fr}}
+.topline .brand{width:114px;justify-content:flex-start;align-items:baseline;gap:10px;letter-spacing:.06em}
+.topline .brand i{flex:none;margin:0;font-size:8px;line-height:1;letter-spacing:.16em}
+.page.editorial-home:has(.search){padding-top:18px}
+.page.editorial-home:has(.search)>.search{margin-top:0}
