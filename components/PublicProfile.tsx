@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { browserDb } from "@/lib/browser-db";
+import AnimatedNotice from "./AnimatedNotice";
 type PublicInfo = { nickname: string; bio: string; avatar_url: string | null };
 export default function PublicProfile({
   id,
@@ -80,8 +81,10 @@ export default function PublicProfile({
             ))}
             {!posts.length && <p>还没有公开内容。</p>}
           </>
+        ) : error ? (
+          <AnimatedNotice message={error} />
         ) : (
-          <p>{error || "正在加载主页…"}</p>
+          <p>正在加载主页…</p>
         )}
       </div>
     </div>

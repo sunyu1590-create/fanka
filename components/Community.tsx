@@ -262,6 +262,8 @@ export default function Community() {
   const [subscriptionRulesOpen, setSubscriptionRulesOpen] = useState(false);
   const luckyRewardTimer = useRef<number | null>(null);
   const flipRainTimer = useRef<number | null>(null);
+  const noticeTimer = useRef<number | null>(null);
+  const noticeExitTimer = useRef<number | null>(null);
   const [flipRainId, setFlipRainId] = useState<number | null>(null);
   const [dayTick, setDayTick] = useState(0),
     [viewerId, setViewerId] = useState<number | null>(null),
@@ -315,7 +317,9 @@ export default function Community() {
     [body, setBody] = useState(""),
     [writeTag, setWriteTag] = useState<string>(tags[0]),
     [editing, setEditing] = useState<number | null>(null),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [noticeId, setNoticeId] = useState(0),
+    [noticeLeaving, setNoticeLeaving] = useState(false);
   const [detailSort, setDetailSort] = useState<"热度" | "最新">("最新");
   const [commentSending, setCommentSending] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -468,6 +472,8 @@ export default function Community() {
     if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
     if (luckyRewardTimer.current !== null) window.clearTimeout(luckyRewardTimer.current);
     if (flipRainTimer.current !== null) window.clearTimeout(flipRainTimer.current);
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
   }, []);
   useEffect(() => {
     if (!("Notification" in window)) {
@@ -514,7 +520,7 @@ export default function Community() {
     update((s) => ({ ...s, ratings: { ...s.ratings, [postId]: score } }));
     setRatingPulse({ postId, score });
     if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
-    ratingPulseTimer.current = window.setTimeout(() => setRatingPulse(null), 1100);
+    ratingPulseTimer.current = window.setTimeout(() => setRatingPulse(null), 1200);
     try {
       if (!accountId) {
         toast("评分已保存在本机；登录后可计入社区均分与推荐");
@@ -529,8 +535,22 @@ export default function Community() {
     }
   };
   const toast = (msg: string) => {
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
+    noticeTimer.current = null;
+    noticeExitTimer.current = null;
+    setNoticeLeaving(false);
+    setNoticeId((id) => id + 1);
     setNotice(msg);
-    setTimeout(() => setNotice(""), 3000);
+    noticeTimer.current = window.setTimeout(() => {
+      setNoticeLeaving(true);
+      noticeExitTimer.current = window.setTimeout(() => {
+        setNotice("");
+        setNoticeLeaving(false);
+        noticeExitTimer.current = null;
+        noticeTimer.current = null;
+      }, 330);
+    }, 2700);
   };
   const resetToFreshStart = async () => {
     if (resetBusy) return;
@@ -975,7 +995,7 @@ export default function Community() {
       if (lucky) {
         if (luckyRewardTimer.current !== null) window.clearTimeout(luckyRewardTimer.current);
         setLuckyReward({ postId: id, amount: lucky });
-        luckyRewardTimer.current = window.setTimeout(() => setLuckyReward(null), 2800);
+        luckyRewardTimer.current = window.setTimeout(() => setLuckyReward(null), 3000);
       }
       void cloudRequest("/api/v1/library-state", { action: "open", id }).catch(
         () => toast("阅读记录云端同步失败，本地已保留"),
@@ -1871,7 +1891,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.19</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.20</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1882,7 +1902,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.19</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.20</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.20</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>彩带加入长短形态，并改为单段线性落下，减少中途速度变化造成的顿挫。</li>
+              <li>提示、错误、评分和幸运奖励统一采用模糊渐入渐出反馈。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.19</strong><small>2026.10.31</small></div>
             <ul>
@@ -2362,7 +2389,6 @@ export default function Community() {
                 const spread = index / (FLIP_RAIN_PARTICLES - 1);
                 const startX = -2 + spread * 104;
                 const drift = ((index * 37) % 25) - 12;
-                const sway = ((index * 19) % 17) - 8;
                 const duration = FLIP_RAIN_DURATION_MIN_MS + ((index * 97) % (FLIP_RAIN_DURATION_SPREAD_MS + 1));
                 const stagger = ((index * 37) % FLIP_RAIN_PARTICLES) / (FLIP_RAIN_PARTICLES - 1);
                 const delay = FLIP_RAIN_LEAD_MS + Math.round(stagger * FLIP_RAIN_STAGGER_WINDOW_MS) + ((index * 13) % FLIP_RAIN_JITTER_MS);
@@ -2370,7 +2396,6 @@ export default function Community() {
                   left: `${startX}%`,
                   animationDelay: `${delay}ms`,
                   "--rain-duration": `${duration}ms`,
-                  "--sway-x": `${sway}vw`,
                   "--fall-x": `${drift}vw`,
                   "--fall-y": `${108 + ((index * 17) % 24)}vh`,
                   "--twist": `${(index % 2 ? 1 : -1) * (80 + (index % 5) * 65)}deg`,
@@ -2925,7 +2950,7 @@ export default function Community() {
         </div>
       )}
       {notice && (
-        <div role="status" className="toast">
+        <div key={noticeId} role="status" className={`toast${noticeLeaving ? " is-leaving" : ""}`}>
           {notice}
         </div>
       )}

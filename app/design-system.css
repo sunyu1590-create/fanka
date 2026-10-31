@@ -128,7 +128,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .primary-button, .onboarding-start, .flip-window-face .flip-button, .window-more, .flip-button { background: var(--action); color: var(--bg); border: 1px solid var(--action); border-radius: 3px; font-weight: 650; transition: transform var(--motion-fast) var(--ease), background-color var(--motion-fast); }
 .primary-button:active, .onboarding-start:active, .flip-button:active, .window-more:active { transform: scale(.98); background: #dbe2e5; }
 .soft-button, .load-button { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; }
-.toast { background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 3px; }
+.toast { background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 3px; animation: toast-blur-in 280ms cubic-bezier(.2,.75,.25,1) both; }
+.toast.is-leaving { animation: toast-blur-out 300ms ease both; }
+.animated-notice { animation: notice-blur-in 260ms cubic-bezier(.2,.75,.25,1) both; }
+.animated-notice.is-leaving { animation: notice-blur-out 280ms ease both; }
+@keyframes notice-blur-in { from { opacity: 0; filter: blur(7px); transform: translateY(7px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
+@keyframes notice-blur-out { from { opacity: 1; filter: blur(0); transform: translateY(0); } to { opacity: 0; filter: blur(7px); transform: translateY(-4px); } }
+@keyframes toast-blur-in { from { opacity: 0; filter: blur(8px); transform: translate(-50%,9px) scale(.96); } to { opacity: 1; filter: blur(0); transform: translate(-50%,0) scale(1); } }
+@keyframes toast-blur-out { from { opacity: 1; filter: blur(0); transform: translate(-50%,0) scale(1); } to { opacity: 0; filter: blur(8px); transform: translate(-50%,-5px) scale(.98); } }
 
 /* Flip window and continuous reading surface */
 .flip-overlay { background: rgba(4,6,7,.88); backdrop-filter: blur(5px); }
@@ -356,10 +363,10 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 .detail-rating.rating-pulse{animation:rating-calibrate .52s var(--ease)}
 .detail-rating .rating-star.is-pulsing{animation:rating-star-signal .48s calc(var(--star-delay,0ms)) cubic-bezier(.2,.8,.2,1) both}
 .detail-rating .rating-star.is-pulsing svg{filter:drop-shadow(0 0 8px color-mix(in srgb,var(--action) 65%,transparent))}
-.rating-feedback{animation:rating-feedback-in .32s .12s ease both;color:var(--action);font-weight:650;letter-spacing:.04em}
+.rating-feedback{animation:rating-notice-cycle 1.1s ease both;color:var(--action);font-weight:650;letter-spacing:.04em}
 @keyframes rating-calibrate{0%{background:transparent}38%{background:color-mix(in srgb,var(--action) 11%,transparent)}100%{background:transparent}}
 @keyframes rating-star-signal{0%{transform:translateY(8px) scale(.45) rotate(-30deg)}60%{transform:translateY(-4px) scale(1.42) rotate(8deg)}100%{transform:translateY(0) scale(1) rotate(0)}}
-@keyframes rating-feedback-in{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+@keyframes rating-notice-cycle{0%{opacity:0;filter:blur(7px);transform:translateY(5px)}18%{opacity:1;filter:blur(0);transform:translateY(0)}78%{opacity:1;filter:blur(0);transform:translateY(0)}100%{opacity:0;filter:blur(7px);transform:translateY(-3px)}}
 .detail-rating small{font-size:10px}
 .detail-comments{padding:2px 0 18px;scroll-margin-top:12px}
 .comments-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0 18px}
@@ -526,15 +533,9 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
   box-shadow: 0 8px 24px #0003;
   -webkit-backdrop-filter: blur(12px) saturate(125%);
   backdrop-filter: blur(12px) saturate(125%);
-  animation: lucky-reward-signal .52s cubic-bezier(.16,1,.3,1) both;
 }
 .lucky-reward-burst svg { color: #e5cc83; }
 .lucky-reward-burst strong { color: #f3dfa0; text-shadow: none; }
-@keyframes lucky-reward-signal {
-  0% { opacity: 0; transform: translate(-50%,-16px) scale(.94); }
-  65% { opacity: 1; transform: translate(-50%,2px) scale(1.015); }
-  100% { opacity: 1; transform: translate(-50%,0) scale(1); }
-}
 
 /* A completed facet gets a clear steel tint instead of inheriting a global open state. */
 .black-facet.unlocked { fill: #607982 !important; filter: brightness(1.06) saturate(.92); }
@@ -572,11 +573,11 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 :root[data-theme="light"] .flip-overlay{background:rgba(16,18,19,.4)}
 .flip-overlay{isolation:isolate;overflow:hidden}
 .flip-stage{z-index:1}
-.lucky-reward-burst{position:absolute;z-index:4;top:calc(env(safe-area-inset-top) + max(56px, 8vh));left:50%;display:flex;align-items:center;gap:9px;padding:12px 16px;border:1px solid #d3c38d88;background:#101619e8;color:#eff4f1;box-shadow:0 12px 36px #0005;transform:translateX(-50%);white-space:nowrap;animation:lucky-reward-in .44s cubic-bezier(.2,.8,.2,1) both}
+.lucky-reward-burst{position:absolute;z-index:4;top:calc(env(safe-area-inset-top) + max(56px, 8vh));left:50%;display:flex;align-items:center;gap:9px;padding:12px 16px;border:1px solid #d3c38d88;background:#101619e8;color:#eff4f1;box-shadow:0 12px 36px #0005;transform:translateX(-50%);white-space:nowrap;animation:lucky-reward-cycle 2.8s ease both}
 .lucky-reward-burst svg{color:#e0c979;animation:lucky-star-turn .72s ease-out both}
 .lucky-reward-burst span,.lucky-reward-burst small{font-size:11px;color:#c7d0ce}
 .lucky-reward-burst strong{font:650 22px ui-monospace,monospace;color:#f1d77d;text-shadow:0 0 16px #e6cc6c66}
-@keyframes lucky-reward-in{0%{opacity:0;filter:blur(6px);transform:translate(-50%,14px) scale(.86)}65%{opacity:1;filter:blur(0);transform:translate(-50%,-3px) scale(1.04)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
+@keyframes lucky-reward-cycle{0%{opacity:0;filter:blur(8px);transform:translate(-50%,12px) scale(.96)}12%{opacity:1;filter:blur(0);transform:translate(-50%,0) scale(1)}86%{opacity:1;filter:blur(0);transform:translate(-50%,0) scale(1)}100%{opacity:0;filter:blur(8px);transform:translate(-50%,-5px) scale(.98)}}
 @keyframes lucky-star-turn{from{transform:rotate(-70deg) scale(.4)}to{transform:rotate(0) scale(1)}}
 @media(prefers-reduced-motion:reduce){.lucky-reward-burst svg{display:none}.detail-rating.rating-pulse,.detail-rating .rating-star.is-pulsing,.rating-feedback{animation:none}}
 
@@ -725,13 +726,13 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
   position:absolute;
   top:calc(env(safe-area-inset-top) - 12px);
   width:5px;
-  height:16px;
+  height:12px;
   border-radius:1px;
   opacity:0;
   transform-origin:center;
   animation-name:flip-confetti-fall;
   animation-duration:var(--rain-duration,3400ms);
-  animation-timing-function:cubic-bezier(.34,.04,.64,1);
+  animation-timing-function:linear;
   animation-fill-mode:both;
 }
 .flip-confetti i:nth-child(8n + 1){background:#f2c45e}
@@ -742,15 +743,21 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 .flip-confetti i:nth-child(8n + 6){background:#6f91f5}
 .flip-confetti i:nth-child(8n + 7){background:#b581e8}
 .flip-confetti i:nth-child(8n){background:#f276c0}
-.flip-confetti i:nth-child(4n){width:3px;height:23px}
-.flip-confetti i:nth-child(5n){width:7px;height:12px}
+.flip-confetti i:nth-child(3n){width:3px;height:30px}
+.flip-confetti i:nth-child(3n + 1){width:5px;height:17px}
+.flip-confetti i:nth-child(3n + 2){width:7px;height:9px}
 .flip-confetti i:nth-child(7n){width:8px;height:8px;border-radius:1px}
 .flip-confetti i:nth-child(11n){width:7px;height:7px;border-radius:50%}
 @keyframes flip-confetti-fall{
   0%{opacity:0;transform:translate3d(0,-5vh,0) rotate(0) scale(.7)}
-  10%{opacity:.96}
-  38%{opacity:1;transform:translate3d(var(--sway-x),38vh,0) rotate(155deg) scale(1)}
-  72%{opacity:.9;transform:translate3d(var(--fall-x),76vh,0) rotate(285deg) scale(.96)}
-  100%{opacity:0;transform:translate3d(var(--fall-x),var(--fall-y),0) rotate(var(--twist)) scale(.82)}
+  6%{opacity:.96}
+  88%{opacity:.92}
+  100%{opacity:0;transform:translate3d(var(--fall-x),var(--fall-y),0) rotate(var(--twist)) scale(.86)}
 }
 @media(prefers-reduced-motion:reduce){.flip-confetti{display:none!important}}
+
+/* Every transient notice enters and exits with the same soft defocus. */
+.app [role="status"]:not(.daily-quota-summary):not(.lucky-reward-burst):not(.toast):not(.animated-notice){animation:notice-blur-in 260ms cubic-bezier(.2,.75,.25,1) both}
+@media(prefers-reduced-motion:reduce){
+  .toast,.animated-notice,.lucky-reward-burst,.app [role="status"]:not(.daily-quota-summary):not(.lucky-reward-burst):not(.toast):not(.animated-notice){animation:none!important;filter:none!important}
+}

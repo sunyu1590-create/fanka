@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { browserDb } from "@/lib/browser-db";
+import AnimatedNotice from "./AnimatedNotice";
 export default function AccountProfile({
   name,
   bio,
@@ -107,7 +108,7 @@ export default function AccountProfile({
           onChange={(e) => setDescription(e.target.value)}
         />
       </label>
-      {error && <p role="status">{error}</p>}
+      <AnimatedNotice message={error} />
       <div className="deck-actions">
         <button
           className="primary-button"

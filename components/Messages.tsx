@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { browserDb } from "@/lib/browser-db";
+import AnimatedNotice from "./AnimatedNotice";
 type Profile = { id: string; nickname: string; bio: string };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
 type Message = {
@@ -379,7 +380,7 @@ export default function Messages({
             注册账号
           </button>
         </form>
-        {error && <p role="status">{error}</p>}
+        <AnimatedNotice message={error} />
       </section>
     );
   const peer = active
@@ -391,11 +392,7 @@ export default function Messages({
     <section className="page">
       <div className="eyebrow">MESSAGES / PRIVATE</div>
       <h1>消息。</h1>
-      {error && (
-        <p role="status" className="settings-note" onClick={() => setError("")}>
-          {error}
-        </p>
-      )}
+      <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />
       <form
         className="search"
         onSubmit={(e) => {
@@ -746,7 +743,7 @@ export default function Messages({
               {busy ? "发送中…" : "发送"}
             </button>
           </form>
-          {error && <p role="status">{error}</p>}
+          <AnimatedNotice message={error} />
         </div>
       )}
     </section>
