@@ -657,11 +657,11 @@ export default function Community() {
       toast(e instanceof Error ? e.message : "收藏失败");
     }
   };
-  const flip = (id: number) => {
+  const flip = (id: number, origin?: Element) => {
     if (flipBusy.current || justFlippedId === id || transitionBusy.current)
       return;
     if (state.revealed[id]) {
-      setViewerRect(findVisibleCard(id));
+      setViewerRect(origin?.getBoundingClientRect() || findVisibleCard(id));
       setViewerId(id);
       setViewerFlipped(true);
       setViewerPhase("opening");
@@ -672,11 +672,11 @@ export default function Community() {
       return;
     }
     setViewerFlipped(false);
-    setViewerRect(findVisibleCard(id));
+    setViewerRect(origin?.getBoundingClientRect() || findVisibleCard(id));
     setViewerId(id);
     setViewerPhase("opening");
   };
-  const chooseBlackFacet = (facet: number) => {
+  const chooseBlackFacet = (facet: number, origin?: Element) => {
     if (!candidates.length) {
       toast("内容池暂时为空，请稍后刷新。");
       return;
@@ -693,7 +693,7 @@ export default function Community() {
     const candidate = pool[(facetIndex + facet) % pool.length];
     const candidateIndex = candidates.findIndex((item) => item.id === candidate.id);
     setFacetIndex(candidateIndex + 1);
-    flip(candidate.id);
+    flip(candidate.id, origin);
   };
   const completeFlip = async () => {
     if (viewerId === null || flipBusy.current) return;
@@ -751,14 +751,14 @@ export default function Community() {
   };
   useEffect(() => {
     if (
-      state.homeMode === "waterfall" &&
       viewerId !== null &&
       viewerPhase === null &&
+      !viewerFlipped &&
       !state.revealed[viewerId]
     ) {
       void completeFlip();
     }
-  }, [state.homeMode, viewerId, viewerPhase, state.revealed]);
+  }, [viewerId, viewerPhase, viewerFlipped, state.revealed]);
   const closeViewer = () => {
     if (
       viewerId === null ||
@@ -770,7 +770,7 @@ export default function Community() {
     const source = document.querySelector<HTMLElement>(
       `[data-card-id="${viewerId}"]`,
     );
-    const rect = source?.getBoundingClientRect();
+    const rect = source?.getBoundingClientRect() || (state.homeMode === "blackcard" ? viewerRect : null);
     setViewerRect(
       rect && rect.top < innerHeight && rect.bottom > 0 ? rect : null,
     );
@@ -1485,11 +1485,11 @@ export default function Community() {
                       role="button"
                       tabIndex={unavailable ? -1 : 0}
                       aria-label={hasUnlocked ? `点击第 ${index + 1} 个菱面，打开黑卡` : `点击第 ${index + 1} 个菱面，选择新黑卡`}
-                      onClick={() => !unavailable && chooseBlackFacet(index)}
+                      onClick={(event) => !unavailable && chooseBlackFacet(index, event.currentTarget)}
                       onKeyDown={(event) => {
                         if ((event.key === "Enter" || event.key === " ") && !unavailable) {
                           event.preventDefault();
-                          chooseBlackFacet(index);
+                          chooseBlackFacet(index, event.currentTarget);
                         }
                       }}
                     />;
@@ -1599,7 +1599,7 @@ export default function Community() {
             <div className="settings-module-heading"><strong>版本 1.1</strong><small>2026.10.31</small></div>
             <ul>
               <li>首页标题更新为「保存黑卡」。</li>
-              <li>黑卡模式改为由可交互菱形切面组成的固定卡面，点选切面即可选择并翻开内容。</li>
+              <li>黑卡模式改为由可交互菱形切面组成的固定卡面，点选切面即可自动翻开新内容。</li>
               <li>保留每日最多翻开 5 张的额度与已解锁记录。</li>
             </ul>
           </div>
