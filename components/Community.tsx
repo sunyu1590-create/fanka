@@ -192,8 +192,7 @@ export default function Community() {
     ),
     [viewerFlipped, setViewerFlipped] = useState(false),
     [flippingId, setFlippingId] = useState<number | null>(null),
-    [shardsAnimating, setShardsAnimating] = useState(false);
-  const [publicFeed, setPublicFeed] = useState<Post[]>([]),
+    [publicFeed, setPublicFeed] = useState<Post[]>([]),
     publicFeedLoading = useRef(false),
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
@@ -726,11 +725,7 @@ export default function Community() {
       };
       localStorage.setItem(storageKey, JSON.stringify(next));
       setState(next);
-      setShardsAnimating(true);
-      window.setTimeout(() => {
-        setShardsAnimating(false);
-        setViewerFlipped(true);
-      }, 900);
+      setViewerFlipped(true);
       void cloudRequest("/api/v1/library-state", { action: "open", id }).catch(
         () => toast("阅读记录云端同步失败，本地已保留"),
       );
@@ -1430,9 +1425,16 @@ export default function Community() {
         <span className="brand">
           晶选 · 黑卡 <i>HEIKA</i>
         </span>
+        <div className="topline-actions">
+          <div className="home-mode-switch" role="group" aria-label="首页样式">
+            {([['waterfall', '瀑布流'], ['blackcard', '黑卡流']] as const).map(([mode, label]) => (
+              <button key={mode} type="button" aria-pressed={state.homeMode === mode} className={state.homeMode === mode ? "selected" : ""} onClick={() => update((current) => ({ ...current, homeMode: mode }))}>{label}</button>
+            ))}
+          </div>
         <span className="demo-pill">
           {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
         </span>
+        </div>
       </div>
       {tab === "today" && (
         <section
@@ -1456,7 +1458,7 @@ export default function Community() {
             <div>
               <div className="eyebrow">LUCENT // BLACK CARD</div>
               <h1>
-                保存黑卡
+                {state.homeMode === "blackcard" ? "精选" : "保存黑卡"}
               </h1>
               <p className="lead">
                 {state.homeMode === "blackcard"
@@ -1486,6 +1488,7 @@ export default function Community() {
                 <span className="black-facet-brand">HEIKA · BLACK CARD</span>
                 <span className="black-facet-hint">选择一个菱面，翻开一张黑卡</span>
                 <svg className="black-facet-matrix" viewBox="0 0 100 125" role="group" aria-label="选择要翻开的黑卡">
+                  <defs><clipPath id="black-facet-inset"><rect x="1" y="1" width="98" height="123" /></clipPath></defs>
                   {[
                     "0,0 48,0 25,38 0,51",
                     "48,0 100,0 78,35 25,38",
@@ -1500,6 +1503,7 @@ export default function Community() {
                       key={index}
                       points={points}
                       className={`black-facet${hasUnlocked ? " unlocked" : ""}${unavailable ? " unavailable" : ""}`}
+                      clipPath="url(#black-facet-inset)"
                       role="button"
                       tabIndex={unavailable ? -1 : 0}
                       aria-label={hasUnlocked ? `点击第 ${index + 1} 个菱面，打开黑卡` : `点击第 ${index + 1} 个菱面，选择新黑卡`}
@@ -1575,7 +1579,7 @@ export default function Community() {
           }}><ArrowLeft size={18} /> 我的</button>
           <h1>设置<span className="red-dot">.</span></h1>
           <p className="lead">按模块管理你的黑卡体验。</p>
-          <div className="settings-module">
+                  <div className="settings-module">
             <div className="settings-module-heading"><strong>外观</strong><small>主题</small></div>
             <div className="theme-options" role="radiogroup" aria-label="外观主题">
               {([['dark','深色'],['light','浅色'],['system','跟随系统']] as const).map(([value,label])=><button key={value} role="radio" aria-checked={theme===value} className={`theme-option${theme===value?' selected':''}`} onClick={()=>setTheme(value)}><span className={`theme-swatch ${value}`} /><span>{label}</span><i>{theme===value?'✓':''}</i></button>)}
@@ -1600,7 +1604,17 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.2</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.3</small><ChevronRight size={16}/></button>
+            </div>
+          </div>
+          <div className="settings-module">
+            <div className="settings-module-heading"><strong>调试</strong></div>
+            <div className="settings-list">
+              <button onClick={() => {
+                update((current) => ({ ...current, onboardingDone: false, interests: [], homeMode: "waterfall" }));
+                setTab("today");
+                requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+              }}><span>调试模式</span><small>重置为新人开始界面</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
@@ -1611,7 +1625,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.2</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.3</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.3</strong><small>2026.10.31</small></div>
+            <ul>
+              <li>首页顶部可直接切换瀑布流与黑卡流。</li>
+              <li>菱面选择仅保留在首页卡面，翻开后的黑卡移除菱形结构。</li>
+              <li>设置中新增调试模式，可重置新人开始界面。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.2</strong><small>2026.10.31</small></div>
             <ul>
@@ -1935,12 +1957,9 @@ export default function Community() {
                 className={`flip-stage ${viewerFlipped ? "is-flipped" : ""}`}
               >
                 <div className="flip-inner">
-                  <div className={`flip-face flip-front flip-window-face${shardsAnimating ? " shards-running" : ""}`}>
+                  <div className="flip-face flip-front flip-window-face">
                     <span className="window-brand-cn">黑卡</span>
                     <span className="window-brand-en">HEIKA</span>
-                    <svg className="shard-svg" viewBox="0 0 100 125" preserveAspectRatio="none" aria-hidden="true">
-                      <polygon points="0,0 48,0 25,38 0,51"/><polygon points="48,0 100,0 78,35 25,38"/><polygon points="0,51 25,38 48,66 0,90"/><polygon points="25,38 78,35 100,65 48,66"/><polygon points="0,90 48,66 58,125 0,125"/><polygon points="48,66 100,65 100,125 58,125"/>
-                    </svg>
                     {!viewerFlipped && (
                       <button
                         className="flip-button"
