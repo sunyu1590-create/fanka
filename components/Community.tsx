@@ -335,7 +335,7 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression" | null>(null),
+    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
@@ -351,7 +351,7 @@ export default function Community() {
   const ratingBusy = useRef(false);
   const [state, setState] = useState<State>(initial),
     [ready, setReady] = useState(false),
-    [tab, setTab] = useState("today"),
+    [tab, setTabState] = useState("today"),
     [detail, setDetail] = useState<number | null>(null),
     [detailReady, setDetailReady] = useState(false),
     [transitionPhase, setTransitionPhase] = useState<
@@ -364,7 +364,7 @@ export default function Community() {
     [sort, setSort] = useState("精选"),
     [draft, setDraft] = useState(""),
     [reply, setReply] = useState<number | undefined>(),
-    [modal, setModal] = useState<
+    [modal, setModalState] = useState<
       | "write"
       | "profile"
       | "interests"
@@ -399,6 +399,43 @@ export default function Community() {
     [notice, setNotice] = useState(""),
     [noticeId, setNoticeId] = useState(0),
     [noticeLeaving, setNoticeLeaving] = useState(false);
+  const [modalClosing, setModalClosing] = useState(false);
+  const modalCloseTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
+  }, []);
+  const startPageTransition = (updatePage: () => void) => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      updatePage();
+      return;
+    }
+    const transitionDocument = document as Document & {
+      startViewTransition?: (callback: () => void) => unknown;
+    };
+    if (transitionDocument.startViewTransition) transitionDocument.startViewTransition(updatePage);
+    else updatePage();
+  };
+  const setTab = (next: string) => {
+    if (next === tab) return;
+    startPageTransition(() => setTabState(next));
+  };
+  const setModal = (next: typeof modal) => {
+    if (modalCloseTimer.current !== null) {
+      window.clearTimeout(modalCloseTimer.current);
+      modalCloseTimer.current = null;
+    }
+    if (next === null && modal !== null) {
+      setModalClosing(true);
+      modalCloseTimer.current = window.setTimeout(() => {
+        setModalState(null);
+        setModalClosing(false);
+        modalCloseTimer.current = null;
+      }, 210);
+      return;
+    }
+    setModalClosing(false);
+    setModalState(next);
+  };
   const [detailSort, setDetailSort] = useState<"热度" | "最新">("最新");
   const [commentSending, setCommentSending] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -614,14 +651,18 @@ export default function Community() {
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
   const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
-    setSettingsReturnTab(returnTab);
-    if (returnTab === "mine") setTab("settings");
-    setSettingsDetail(detail);
+    startPageTransition(() => {
+      setSettingsReturnTab(returnTab);
+      if (returnTab === "mine") setTabState("settings");
+      setSettingsDetailState(detail);
+    });
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   };
   const closeSettingsDetail = () => {
-    setSettingsDetail(null);
-    setTab(settingsReturnTab);
+    startPageTransition(() => {
+      setSettingsDetailState(null);
+      setTabState(settingsReturnTab);
+    });
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[settingsReturnTab] || 0, behavior: "instant" }));
   };
   const chooseHomeMode = (mode: "waterfall" | "blackcard") => {
@@ -2417,7 +2458,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.33</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.34</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2425,7 +2466,7 @@ export default function Community() {
         </section>
       )}
       {tab === "settings" && settingsDetail !== null && (
-        <section className="page settings-page settings-detail-page">
+        <section key={settingsDetail} className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
           <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",privacy:"私聊权限与黑名单",progression:"等级与奖励"})[settingsDetail]}</h1>
@@ -2435,7 +2476,7 @@ export default function Community() {
             return <div className="experience-page-content">
               <div className="experience-total-card"><span>当前等级</span><strong>LV.{progress.current.level}</strong><b>{experienceSummary.total} EXP</b><div className="experience-track"><i style={{ width: `${progress.percent}%` }} /></div><small>{progress.next ? `距离 LV.${progress.next.level} 还差 ${progress.next.threshold - experienceSummary.total} EXP` : "已达到当前最高等级"}</small></div>
               <div className="experience-rule-note"><strong>经验获取</strong><span>当天首次翻卡 +10 EXP · 每日最多 10 次翻卡计分</span><span>首次给每篇内容评分 +2 EXP · 每日最多 5 次</span><small>评分修改不会重复获得经验；给自己发布的内容评分不计入。</small></div>
-              <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}`} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
+              <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
               <div className="experience-rule-note"><strong>Plus / Pro 加成 · 当前 {experienceSummary.membershipTier.toUpperCase()}</strong><span>Plus 每日首次翻卡额外 +3 EXP · Pro 额外 +6 EXP。</span><small>会员等级由管理员根据已核验权益设置；订阅预览页不会自动开通会员。</small></div>
               {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
@@ -2494,8 +2535,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.33</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.33</strong><small>2026.11.01</small></div><ul><li>新增翻卡经验值、探索等级和等级奖励进度。</li><li>卡片稀有度根据社区均分及有效评分人数动态形成。</li><li>个人设置一级列表统一为无图标文字行，图标保留在二级页面。</li></ul></div>
+          <p className="lead">黑卡 HEIKA · 版本 1.34</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.34</strong><small>2026.11.01</small></div><ul><li>修复账号设置一级列表文字逐字换行与行高错乱。</li><li>增强等级经验、奖励和选择卡片的色彩层级。</li><li>统一页面、弹层、选项和开关的动效与 iOS 风格控件。</li><li>个人资料和管理后台选择器改为统一的质感菜单。</li></ul></div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.31</strong><small>2026.11.01</small></div>
             <ul>
@@ -3197,7 +3238,7 @@ export default function Community() {
         />
       )}
       {modal && (
-        <div className={`modal-backdrop${modal === "write" ? " composer-backdrop" : ""}`}>
+        <div className={`modal-backdrop${modal === "write" ? " composer-backdrop" : ""}${modalClosing ? " is-closing" : ""}`} aria-hidden={modalClosing || undefined}>
           <div
             className={`modal ${modal === "subscription" ? "subscription-dialog" : ""} ${modal === "write" ? "composer-modal" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
           >
@@ -3479,13 +3520,8 @@ export default function Community() {
                 </label>
                 <label>
                   分类
-                  <select
-                    value={writeTag}
-                    onChange={(e) => setWriteTag(e.target.value)}
-                  >
-                    {tags.map((t) => (
-                      <option key={t}>{t}</option>
-                    ))}
+                  <select value={writeTag} onChange={(event) => setWriteTag(event.target.value)}>
+                    {tags.map((tag) => <option key={tag}>{tag}</option>)}
                   </select>
                 </label>
                 <section className="composer-topic-section" aria-label="选择话题">
