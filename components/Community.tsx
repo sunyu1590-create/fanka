@@ -306,7 +306,7 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | null>(null),
+    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | null>(null),
     [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
     [readingTransition, setReadingTransition] = useState<"out" | "in" | null>(
@@ -580,7 +580,7 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout") => {
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications") => {
     scrollPositions.current.settings = window.scrollY;
     setSettingsDetail(detail);
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
@@ -589,6 +589,26 @@ export default function Community() {
     setSettingsDetail(null);
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" }));
   };
+  const chooseHomeMode = (mode: "waterfall" | "blackcard") => {
+    update((current) => ({ ...current, homeMode: mode }));
+    void browserDb().then(async (db) => {
+      const { data } = await db.auth.getUser();
+      if (data.user) {
+        const { error } = await db.from("browsing_preferences").upsert({ user_id: data.user.id, home_mode: mode });
+        if (error) toast("本地已保存，云端同步失败");
+      }
+    }).catch(() => {});
+  };
+  const renderPreferencePreview = (kind: string, value: string) => (
+    <span className={`preference-preview preview-${kind} preview-${value}`} aria-hidden="true">
+      {kind === "font" ? <><b>黑卡 HEIKA</b><span>发现值得收藏的灵感</span><small>Aa 0123</small></> :
+        kind === "theme" ? <><i /><i /><i /><b /></> :
+        kind === "bottomNav" ? <><i /><i /><b>＋</b><i /><i /></> :
+        kind === "reading" ? <><b>一段值得慢慢读下去的文字</b><i /><i /><i /><small>黑卡 · 阅读体验</small></> :
+        kind === "notifications" ? <><b>黑卡提醒</b><i /><i /><i /></> :
+        <><i /><i /><i /><i /><i /></>}
+    </span>
+  );
   const openMyContent = (returnTab: "mine" | "settings") => {
     setMyContentReturnTab(returnTab);
     scrollPositions.current[returnTab] = window.scrollY;
@@ -2269,8 +2289,8 @@ export default function Community() {
           <div className="settings-module">
             <div className="settings-module-heading"><strong>浏览与阅读</strong></div>
             <div className="settings-list">
-              <button onClick={() => setModal("browsing")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setModal("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("homeMode")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
             </div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
@@ -2279,7 +2299,7 @@ export default function Community() {
           <div className="settings-module">
             <div className="settings-module-heading"><strong>消息与隐私</strong></div>
             <div className="settings-list">
-              <button onClick={() => setModal("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
               <button onClick={() => setTab("messages")}><span>私聊权限与黑名单</span><small>在消息页管理</small><ChevronRight size={16}/></button>
             </div>
           </div>
@@ -2289,7 +2309,7 @@ export default function Community() {
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.27</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.28</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2299,27 +2319,45 @@ export default function Community() {
       {tab === "settings" && settingsDetail !== null && (
         <section className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> 设置</button>
-          <div className="eyebrow">SETTINGS / PREFERENCES</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局"})[settingsDetail]}</h1>
-          <p className="lead">选择会立即应用，并保存在此设备。</p>
+          <div className="eyebrow">HEIKA / SETTINGS</div>
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置"})[settingsDetail]}</h1>
+          <p className="lead">预览效果并选择偏好，设置会自动保存。</p>
           {settingsDetail === "theme" && (
-            <div className="theme-options settings-detail-options" role="radiogroup" aria-label="外观主题">
-              {([['dark','深色'],['light','浅色'],['system','跟随系统']] as const).map(([value,label])=><button key={value} role="radio" aria-checked={theme===value} className={`theme-option${theme===value?' selected':''}`} onClick={()=>{setTheme(value);closeSettingsDetail();}}><span className={`theme-swatch ${value}`} /><span>{label}</span><i>{theme===value?'✓':''}</i></button>)}
+            <div className="preference-options" role="radiogroup" aria-label="外观主题">
+              {([['light','浅色','清爽白底，适合明亮环境'],['dark','深色','降低亮度，适合暗光浏览'],['system','跟随系统','随设备外观自动切换']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={theme===value} className={`preference-option${theme===value?' selected':''}`} onClick={()=>setTheme(value)}>{renderPreferencePreview('theme',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{theme===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "font" && (
-            <div className="font-options settings-detail-options" role="radiogroup" aria-label="字体选择">
-              {([['oppo', 'OPPO Sans 4.0', '优先使用 OPPO 字体'], ['system', '系统字体', '跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`font-option${fontChoice===value?' selected':''}`} onClick={()=>{setFontChoice(value);closeSettingsDetail();}}><span><strong>{label}</strong><small>{description}</small></span><i>{fontChoice===value?'✓':''}</i></button>)}
+            <div className="preference-options" role="radiogroup" aria-label="字体选择">
+              {([['oppo','OPPO Sans 4.0','利落清晰，中文阅读更舒展'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "bottomNav" && (
-            <div className="font-options settings-detail-options" role="radiogroup" aria-label="底部导航样式">
-              {([['glass','悬浮玻璃','半透明玻璃效果，悬浮于页面底部'],['fixed','固定底栏','贴合屏幕底部，清晰稳定']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`font-option${bottomNavStyle===value?' selected':''}`} onClick={()=>{setBottomNavStyle(value);closeSettingsDetail();}}><span><strong>{label}</strong><small>{description}</small></span><i>{bottomNavStyle===value?'✓':''}</i></button>)}
+            <div className="preference-options" role="radiogroup" aria-label="底部导航样式">
+              {([['glass','悬浮玻璃','轻透悬浮，保留页面呼吸感'],['fixed','固定底栏','贴合屏幕底部，稳定易触达']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`preference-option${bottomNavStyle===value?' selected':''}`} onClick={()=>setBottomNavStyle(value)}>{renderPreferencePreview('bottomNav',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{bottomNavStyle===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "discoverLayout" && (
-            <div className="font-options settings-detail-options" role="radiogroup" aria-label="发现页布局">
-              {([['waterfall','瀑布流','双列卡片，快速浏览更多内容'],['single','单列阅读','单列排版，适合连续阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.discoverLayout===value} className={`font-option${state.discoverLayout===value?' selected':''}`} onClick={()=>{update(current=>({...current,discoverLayout:value}));closeSettingsDetail();}}><span><strong>{label}</strong><small>{description}</small></span><i>{state.discoverLayout===value?'✓':''}</i></button>)}
+            <div className="preference-options" role="radiogroup" aria-label="发现页布局">
+              {([['waterfall','瀑布流','双列卡片，快速浏览更多内容'],['single','单列阅读','单列排版，适合连续阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.discoverLayout===value} className={`preference-option${state.discoverLayout===value?' selected':''}`} onClick={()=>update(current=>({...current,discoverLayout:value}))}>{renderPreferencePreview('discover',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.discoverLayout===value?'✓':''}</i></button>)}
+            </div>
+          )}
+          {settingsDetail === "homeMode" && (
+            <div className="preference-options" role="radiogroup" aria-label="首页浏览模式">
+              {([['waterfall','瀑布流','未翻开前隐藏内容，每日选 5 张'],['blackcard','黑卡','逐张探索，每日最多翻开 5 张']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.homeMode===value} className={`preference-option${state.homeMode===value?' selected':''}`} onClick={()=>chooseHomeMode(value)}>{renderPreferencePreview('home',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.homeMode===value?'✓':''}</i></button>)}
+            </div>
+          )}
+          {settingsDetail === "reading" && (
+            <div className="preference-options" role="radiogroup" aria-label="阅读模式">
+              {([['standard','标准模式','舒展排版与清晰层级'],['focus','专注模式','减少干扰，突出正文'],['night','夜间模式','深色背景，适合暗光阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.readingMode===value} className={`preference-option${state.readingMode===value?' selected':''}`} onClick={()=>chooseReadingMode(value)}>{renderPreferencePreview('reading',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.readingMode===value?'✓':''}</i></button>)}
+            </div>
+          )}
+          {settingsDetail === "notifications" && (
+            <div className="preference-notifications">
+              <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
+              <p>开启你关心的提醒。浏览器通知仍需系统许可。</p>
+              {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
+              {notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
             </div>
           )}
         </section>
@@ -2330,10 +2368,11 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.27</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.28</p>
           <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.27</strong><small>2026.11.01</small></div>
+            <div className="settings-module-heading"><strong>版本 1.28</strong><small>2026.11.01</small></div>
             <ul>
+              <li>统一偏好设置二级页面，并新增主题、字体、导航与浏览模式的界面预览。</li>
               <li>“我的”页改为收藏、点赞、探索日历和最近发现四个切换面板。</li>
               <li>设置选项改为统一的二级选择页，个人发布与草稿单独收纳。</li>
               <li>标签栏固定在顶部，切换加入柔和的滑动与内容过渡。</li>
@@ -2715,11 +2754,11 @@ export default function Community() {
           </span>
         </div>
       )}
-      <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
+      {!(tab === "settings" && settingsDetail !== null) && <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
         {nav.slice(0, 2).map(renderNavButton)}
         <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><Plus size={22} /></button>
         {nav.slice(2).map(renderNavButton)}
-      </nav>
+      </nav>}
       {viewerId !== null && (
         <div
           className="flip-overlay"
