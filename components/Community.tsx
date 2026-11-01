@@ -408,6 +408,7 @@ export default function Community() {
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
   }, []);
+  const [messagesTabVisited, setMessagesTabVisited] = useState(false);
   const startPageTransition = (updatePage: () => void) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       updatePage();
@@ -421,6 +422,7 @@ export default function Community() {
   };
   const setTab = (next: string) => {
     if (next === tab) return;
+    if (next === "messages") setMessagesTabVisited(true);
     startPageTransition(() => setTabState(next));
   };
   const setModal = (next: typeof modal) => {
@@ -2456,11 +2458,14 @@ export default function Community() {
           {topicPosts.length < topicTotal && <button className="feed-refresh" disabled={topicLoading} onClick={() => void loadMoreTopicPosts()}>{topicLoading ? "正在加载…" : "加载更多"}</button>}
         </section>
       )}
-      {tab === "messages" && (
-        <Messages
-          initialPeer={messagePeer}
-          onPeerOpened={() => setMessagePeer(null)}
-        />
+      {(tab === "messages" || messagesTabVisited) && (
+        <div className="messages-tab-cache" hidden={tab !== "messages"}>
+          <Messages
+            initialPeer={messagePeer}
+            isActive={tab === "messages"}
+            onPeerOpened={() => setMessagePeer(null)}
+          />
+        </div>
       )}
       {tab === "settings" && settingsDetail === null && (
         <section className="page settings-page">
@@ -2576,7 +2581,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.36</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.37</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.37</strong><small>2026.11.01</small></div><ul><li>经验进度条改为纯深蓝纯色，修正个人页分隔线圆角。</li><li>翻卡图片区域加大，个人设置、调试等二级页面补齐统一入场动画。</li><li>消息页先恢复本地会话再显示登录入口，并保留已加载页面状态。</li><li>统一主按钮为低反光纯色，适配明暗主题。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.36</strong><small>2026.11.01</small></div><ul><li>切页使用统一模糊缩放过渡，移除旧页面上浮效果。</li><li>翻卡揭晓 S、SS、SSS 稀有等级，并在探索记录保留等级。</li><li>统一等级与订阅界面的圆角，经验进度条改为纯色。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.35</strong><small>2026.11.01</small></div><ul><li>为等级经验、选择菜单和个人资料控件补齐暗色主题样式。</li><li>移除经验等级卡片上多余的圆环装饰。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.34</strong><small>2026.11.01</small></div><ul><li>修复账号设置一级列表文字逐字换行与行高错乱。</li><li>增强等级经验、奖励和选择卡片的色彩层级。</li><li>统一页面、弹层、选项和开关的动效与 iOS 风格控件。</li><li>个人资料和管理后台选择器改为统一的质感菜单。</li></ul></div>

@@ -17,12 +17,15 @@ type AuthView = "login" | "signup" | "forgot" | "confirm" | "reset";
 export default function Messages({
   initialPeer,
   onPeerOpened,
+  isActive = true,
 }: {
   initialPeer?: string | null;
   onPeerOpened?: () => void;
+  isActive?: boolean;
 }) {
   const [db, setDb] = useState<SupabaseClient>(),
     [user, setUser] = useState<User | null>(null),
+    [authReady, setAuthReady] = useState(false),
     [authView, setAuthView] = useState<AuthView>("login"),
     [email, setEmail] = useState(""),
     [nickname, setNickname] = useState(""),
@@ -84,8 +87,6 @@ export default function Messages({
           setAuthView("reset");
           sessionStorage.removeItem("heika-auth-action");
         }
-        const { data } = await client.auth.getUser();
-        setUser(data.user);
         const { data: sub } = client.auth.onAuthStateChange(
           (event, session) => {
             if (event === "PASSWORD_RECOVERY") setAuthView("reset");
@@ -97,11 +98,17 @@ export default function Messages({
               setPeople([]);
             }
             setUser(session?.user ?? null);
+            setAuthReady(true);
           },
         );
         cleanup = () => sub.subscription.unsubscribe();
+        const { data, error } = await client.auth.getSession();
+        if (!alive) return;
+        if (error) setError(error.message);
+        setUser(data.session?.user ?? null);
+        setAuthReady(true);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => { setError(e.message); setAuthReady(true); });
     return () => {
       alive = false;
       cleanup();
@@ -201,7 +208,7 @@ export default function Messages({
     }
   };
   useEffect(() => {
-    if (!db || !user) return;
+    if (!db || !user || !isActive) return;
     void refresh();
     const channel = db
       .channel(`heika-inbox-${user.id}`)
@@ -247,7 +254,7 @@ export default function Messages({
       clearInterval(timer);
       window.removeEventListener("online", recover);
     };
-  }, [db, user?.id]);
+  }, [db, user?.id, isActive]);
   const auth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!db || busy) return;
@@ -380,6 +387,14 @@ export default function Messages({
       });
     setError(error?.message || "举报已提交，等待管理员处理。");
   };
+  if (!authReady)
+    return (
+      <section className="page messages-loading" aria-busy="true" aria-label="正在恢复消息状态">
+        <div className="eyebrow">MESSAGES / PRIVATE</div>
+        <h1>消息。</h1>
+        <div className="message-loading-placeholder"><i /><i /></div>
+      </section>
+    );
   if (!user || authView === "reset")
     return (
       <section className="page account-page">

@@ -975,7 +975,7 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .composer-topic-search, .composer-topic-options button, .detail-comment-input {
   border-radius: var(--radius-control);
 }
-.search, .discussion, .profile-card, .empty, .history, .recent-flip-section,
+.search, .discussion, .empty, .history, .recent-flip-section,
 .daily-quota-summary, .calendar-day-detail, .calendar-posts button,
 .recent-discoveries button, .settings-entry-card, .moderation-item,
 .subscription-plan, .extra-pack-preview, .moderation-feedback,
@@ -985,6 +985,12 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .flip-face, .flip-stage, .black-facet-card {
   border-radius: var(--radius-card);
 }
+.profile-card { position: relative; border: 0; border-radius: 0; }
+.profile-card::before, .profile-card::after {
+  position: absolute; left: 0; right: 0; height: 1px; background: var(--line); content: "";
+}
+.profile-card::before { top: 0; }
+.profile-card::after { bottom: 0; }
 .modal, .composer-modal, .report-dialog, .modal-backdrop .modal {
   border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
 }
@@ -1660,3 +1666,30 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .selection-control,.preference-option,.account-interest-option,.reading-mode-option,.subscription-plan,.composer-topic-options button,.report-reasons label,.extra-flip-options button,.theme-option,.font-option,.discover-layout-options button { transition: transform 220ms cubic-bezier(.2,.8,.2,1),filter 220ms ease,border-color 220ms ease,background-color 220ms ease,box-shadow 220ms ease; }
 .reading-mode-option.selected,.subscription-plan.selected,.composer-topic-options button.selected,.report-reasons label.selected,.extra-flip-options button.selected,.theme-option.selected { animation: heika-choice-select 320ms cubic-bezier(.2,.8,.2,1); }
 .reading-mode-option:active,.subscription-plan:active,.composer-topic-options button:active,.report-reasons label:active,.extra-flip-options button:active,.theme-option:active,.font-option:active { filter: blur(1.5px); transform: scale(.97); }
+
+/* Progress, separators, buttons and secondary pages share stable geometry. */
+:root { --xp-progress: #2f609b; --primary-button-bg: #526d77; --primary-button-border: #607b84; }
+:root[data-theme="dark"] { --xp-progress: #2e5d98; --primary-button-bg: #58737d; --primary-button-border: #66818a; }
+:root[data-theme="light"] { --xp-progress: #315f98; --primary-button-bg: #526d77; --primary-button-border: #526d77; }
+.experience-summary-copy i b,
+.experience-total-card .experience-track i { background: var(--xp-progress); box-shadow: none; }
+.primary-button, .onboarding-start {
+  background: var(--primary-button-bg); border: 1px solid var(--primary-button-border); color: #f7f9fa;
+  box-shadow: 0 2px 7px #0002; transition: transform 220ms cubic-bezier(.2,.8,.2,1), filter 220ms ease, background-color 220ms ease;
+}
+.primary-button:not(:disabled):active, .onboarding-start:not(:disabled):active {
+  transform: scale(.98); filter: brightness(1.06); box-shadow: 0 1px 4px #0002;
+}
+.flip-window-revealed>img { height: 44%; }
+.window-reveal-copy { inset: 44% 0 0; }
+.settings-page, .debug-page, .about-page, .topic-detail-page, .my-content-page, .moderation-page {
+  animation: heika-focus-in 360ms cubic-bezier(.2,.8,.2,1) both;
+}
+.message-loading-placeholder { display: grid; gap: 12px; margin-top: 28px; }
+.message-loading-placeholder i { display: block; height: 66px; border: 1px solid var(--line); border-radius: var(--radius-card); background: linear-gradient(90deg,var(--surface),color-mix(in srgb,var(--surface) 72%,var(--line)),var(--surface)); background-size: 200% 100%; animation: message-skeleton 1.4s ease-in-out infinite; }
+.messages-tab-cache[hidden] { display: none !important; }
+@keyframes message-skeleton { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .settings-page, .debug-page, .about-page, .topic-detail-page, .my-content-page, .moderation-page { animation: none !important; }
+  .message-loading-placeholder i { animation: none; }
+}
