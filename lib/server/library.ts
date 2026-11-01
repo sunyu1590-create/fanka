@@ -15,7 +15,7 @@ export type LibraryRow = {
   post_topics?: { interest_tags: { name: string } | null }[];
 };
 export const libraryFields =
-  "id,client_id,title,body,cover_text,image_url,author_id,created_at,is_demo,status,interest_tags(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order),post_topics(interest_tags(name))";
+  "id,client_id,title,body,cover_text,image_url,author_id,created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name))";
 export function present(row: LibraryRow) {
   const images = [
     ...(row.image_url ? [row.image_url] : []),
