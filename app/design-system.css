@@ -879,14 +879,14 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #F8F7F4;
+  --bg: #FFFFFF;
   --surface: #FFFFFF;
-  --card: #F0EFEB;
+  --card: #F5F6F7;
   --metal: #AAB9BD;
-  --ink: #242424;
-  --muted: #85837E;
+  --ink: #24272A;
+  --muted: #777D82;
   --action: #647A83;
-  --line: #E6E4DF;
+  --line: #E5E8EA;
   --accent: #607680;
   --radius: 8px;
 }
@@ -946,26 +946,28 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   --radius-dialog: 16px;
 }
 .compose {
-  position: fixed;
-  z-index: 12;
-  left: 50%;
-  right: auto;
-  bottom: calc(78px + env(safe-area-inset-bottom));
-  width: 50px;
-  height: 50px;
+  position: relative;
+  z-index: 1;
+  inset: auto;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   padding: 0;
-  transform: translateX(-50%);
-  border: 1px solid color-mix(in srgb, var(--action) 82%, white);
+  margin: auto;
+  transform: none;
+  border: 1px solid #d4b450;
   border-radius: 50%;
-  background: var(--action);
-  color: var(--bg);
-  box-shadow: 0 8px 24px #0004, 0 0 0 5px color-mix(in srgb, var(--bg) 70%, transparent);
+  background: #c6a647;
+  color: #17191b;
+  box-shadow: 0 2px 9px #0002;
   transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
-.compose:hover { transform: translateX(-50%) translateY(-2px); box-shadow: 0 12px 28px #0005, 0 0 0 5px color-mix(in srgb, var(--bg) 70%, transparent); }
-.compose:active { transform: translateX(-50%) scale(.96); }
+.compose:hover { transform: scale(1.04); box-shadow: 0 4px 12px #0003; }
+.compose:active { transform: scale(.96); }
+.bottom-nav .compose { align-self: center; justify-self: center; }
+.bottom-nav .compose, .bottom-nav.floating-glass .compose { background: #c6a647; color: #17191b; border-color: #d4b450; }
+.bottom-nav button:nth-child(3), .bottom-nav button:nth-child(4) { grid-column: auto; }
 .bottom-nav.fixed-bar { border-radius: 12px 12px 0 0; }
 .primary-button, .soft-button, .load-button, .subscription-continue,
 .settings-page .settings-list button, .settings-entry-card, .font-option, .theme-option,
@@ -995,6 +997,24 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 }
 .candidate-feed-card.flip-in-place { overflow: hidden; }
 .detail-action-bar { border-radius: var(--radius-panel) var(--radius-panel) 0 0; }
+.theme-option, .font-option, .discover-layout-options button {
+  min-height: 64px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: none;
+}
+.theme-option, .font-option, .nav-style-options .font-option { min-height: 64px; }
+.theme-option.selected, .font-option.selected,
+.discover-layout-options button[aria-pressed="true"] {
+  border-color: var(--action);
+  background: color-mix(in srgb, var(--action) 10%, var(--surface));
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--action);
+}
 @media (prefers-reduced-motion: reduce) {
   .compose { transition: none; }
+}
+@media (max-width: 430px) {
+  .settings-page .font-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

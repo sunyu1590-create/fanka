@@ -1704,6 +1704,24 @@ export default function Community() {
     </>
   );
 
+  const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => (
+    <button
+      key={id}
+      className={tab === id || (tab === "settings" && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
+      onClick={() => {
+        scrollPositions.current[tab] = window.scrollY;
+        setTab(id);
+        setDetail(null);
+        setDetailReady(false);
+        requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
+      }}
+    >
+      {id === "messages" && <><span className="sr-only">私聊</span><InboxBadge enabled={state.notifications.messages} /></>}
+      <Icon size={21} strokeWidth={1.8} />
+      <span>{label}</span>
+    </button>
+  );
+
   const renderCandidate = (p: Post) => {
     const revealed = state.revealed[p.id],
       unlocked = Boolean(revealed);
@@ -2267,7 +2285,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.23</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.26</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2280,7 +2298,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.25</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.26</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.26</strong><small>2026.11.01</small></div>
+            <ul>
+              <li>亮色主题切换为纯白底色与冷灰分层。</li>
+              <li>底栏发布入口融入中央导航位，并统一设置选项样式。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.25</strong><small>2026.11.01</small></div>
             <ul>
@@ -2730,42 +2755,10 @@ export default function Community() {
           </span>
         </div>
       )}
-      <button
-        className="compose"
-        aria-label="发布内容"
-        onClick={() => void openComposer()}
-      >
-        <Plus size={22} />
-      </button>
       <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
-        {nav.map(([id, label, Icon]) => (
-          <button
-            key={id}
-            className={tab === id || (tab === "settings" && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
-            onClick={() => {
-              scrollPositions.current[tab] = window.scrollY;
-              const next = id;
-              setTab(next);
-              setDetail(null);
-              setDetailReady(false);
-              requestAnimationFrame(() =>
-                window.scrollTo({
-                  top: scrollPositions.current[next] || 0,
-                  behavior: "instant",
-                }),
-              );
-            }}
-          >
-            {id === "messages" && (
-              <>
-                <span className="sr-only">私聊</span>
-                <InboxBadge enabled={state.notifications.messages} />
-              </>
-            )}
-            <Icon size={21} strokeWidth={1.8} />
-            <span>{label}</span>
-          </button>
-        ))}
+        {nav.slice(0, 2).map(renderNavButton)}
+        <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><Plus size={22} /></button>
+        {nav.slice(2).map(renderNavButton)}
       </nav>
       {viewerId !== null && (
         <div
