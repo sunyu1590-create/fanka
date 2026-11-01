@@ -424,7 +424,8 @@ export default function Messages({
       : active.user_a
     : "";
   return (
-    <section className="page">
+    <section className={`page messages-page${active ? " is-chat-open" : ""}`}>
+      <div className="messages-inbox-pane">
       <div className="eyebrow">MESSAGES / PRIVATE</div>
       <h1>消息。</h1>
       <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />
@@ -488,6 +489,7 @@ export default function Messages({
       {!rooms.length && (
         <div className="empty">还没有会话。搜索其他用户，开始第一段交流。</div>
       )}
+      </div>
       {profile && (
         <div className="modal-backdrop">
           <div className="modal">

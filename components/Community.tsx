@@ -2749,7 +2749,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.39</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.40</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.39</strong><small>2026.11.01</small></div><ul><li>发现页搜索改为独立二级页面，支持搜索内容和公开用户资料。</li><li>内容支持标题、正文搜索；用户支持昵称、简介搜索和分页。</li><li>增加本机最近搜索与精选话题入口，并优化移动端搜索结果布局。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.37</strong><small>2026.11.01</small></div><ul><li>经验进度条改为纯深蓝纯色，修正个人页分隔线圆角。</li><li>翻卡图片区域加大，个人设置、调试等二级页面补齐统一入场动画。</li><li>消息页先恢复本地会话再显示登录入口，并保留已加载页面状态。</li><li>统一主按钮为低反光纯色，适配明暗主题。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.36</strong><small>2026.11.01</small></div><ul><li>切页使用统一模糊缩放过渡，移除旧页面上浮效果。</li><li>翻卡揭晓 S、SS、SSS 稀有等级，并在探索记录保留等级。</li><li>统一等级与订阅界面的圆角，经验进度条改为纯色。</li></ul></div>

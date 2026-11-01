@@ -1811,3 +1811,176 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .search-skeleton-list i { height: 76px; border-radius: var(--radius-control); background: linear-gradient(90deg,var(--surface),color-mix(in srgb,var(--surface) 72%,var(--line)),var(--surface)); background-size: 200% 100%; animation: message-skeleton 1.35s ease-in-out infinite; }
 @media(max-width:380px) { .search-post-result { grid-template-columns: 70px minmax(0,1fr) 16px; gap: 9px; } .search-post-thumbnail { width: 70px; height: 68px; } .search-person-result { grid-template-columns: 40px minmax(0,1fr) 16px; gap: 10px; } .search-person-avatar { width: 40px; height: 40px; } }
 @media(prefers-reduced-motion:reduce) { .search-page,.search-skeleton-list i { animation: none !important; } }
+
+/* Responsive workspace: keep the compact phone shell, widen tablets, and give desktop a persistent rail. */
+@media (min-width: 700px) and (max-width: 1023px) {
+  .app { width: min(100%, 900px); max-width: 900px; }
+  .page,.page.editorial-home { padding: 34px 30px 90px; }
+  .editorial-feed,.candidate-feed { column-gap: 18px; }
+  .editorial-feed { columns: 3; }
+  .candidate-feed { columns: 3; }
+  .search-page { min-height: calc(100dvh - 152px); }
+  .settings-page:not(.settings-detail-page) { max-width: 880px; margin-inline: auto; }
+  .settings-detail-page { max-width: 880px; margin-inline: auto; }
+  .preference-options { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .moderation-page { max-width: 900px; margin-inline: auto; }
+  .moderation-list { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+  .moderation-item { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+  .admin-user-row { gap: 16px; }
+  .admin-user-copy { flex-basis: 36%; }
+  .account-profile-form { max-width: 760px; margin-inline: auto; }
+  .account-profile-form:not(.modal) { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .account-profile-form:not(.modal)>h2,.account-profile-form:not(.modal)>p,.account-profile-form:not(.modal)>.account-profile-actions { grid-column: 1/-1; }
+  .account-profile-field:has(textarea) { grid-column: 1/-1; }
+}
+@media (min-width: 1024px) {
+  body { background: color-mix(in srgb,var(--bg) 94%,var(--surface)); }
+  .app {
+    width: min(1440px,calc(100vw - 280px)); max-width: 1440px; min-height: 100dvh;
+    margin: 0 0 0 calc(240px + max(0px,(100vw - 240px - 1440px)/2)); padding-bottom: 40px;
+    background: var(--bg); box-shadow: none;
+  }
+  .topline { position: sticky; top: 0; z-index: 24; height: 66px; padding-inline: 34px; }
+  .topline:not(.secondary-topline) .brand { display: none; }
+  .topline.secondary-topline { justify-content: flex-start; }
+  .topline .demo-pill { margin-left: auto; font-size: 10px; }
+  .page,.page.editorial-home { padding: 38px 38px 64px; }
+  .page h1,.editorial-home h1,.today-heading h1 { font-size: clamp(34px,3.3vw,48px); }
+  .lead,.today-heading .lead { max-width: 66ch; font-size: 14px; }
+  .editorial-home { max-width: none; }
+  .today-heading { margin: 8px 0 30px; }
+  .today-heading .lead { margin-bottom: 0; }
+  .editorial-feed { columns: 3; column-gap: 22px; }
+  .editorial-feed .editorial-post { margin-bottom: 22px; }
+  .candidate-feed { columns: 3; column-gap: 22px; }
+  .candidate-feed-card { margin-bottom: 22px; }
+  .editorial-filters { margin-block: 18px 28px; }
+  .discover-topic-list { gap: 10px; }
+  .bottom-nav {
+    position: fixed; z-index: 50; inset: 0 auto 0 0; width: 220px; max-width: 220px; height: 100dvh;
+    padding: 88px 16px 24px; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 7px;
+    transform: none; border: 0; border-right: 1px solid var(--line); border-radius: 0;
+    background: color-mix(in srgb,var(--surface) 96%,transparent); box-shadow: none; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  }
+  .bottom-nav::before { position: absolute; top: 26px; left: 24px; content: "◈ 黑卡  HEIKA"; color: var(--ink); font: 650 17px Georgia,"Songti SC",serif; letter-spacing: .06em; }
+  .bottom-nav button {
+    position: relative; width: 100%; min-height: 48px; height: 48px; flex: none; flex-direction: row; justify-content: flex-start; gap: 13px;
+    padding: 0 13px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); font-size: 13px; letter-spacing: 0; text-align: left;
+  }
+  .bottom-nav button.active { background: color-mix(in srgb,var(--action) 10%,var(--surface)); color: var(--ink); }
+  .bottom-nav button.active svg { stroke: var(--action); }
+  .bottom-nav .compose {
+    position: static; inset: auto; transform: none; width: 100%; height: 48px; min-height: 48px; margin: 10px 0;
+    order: 2; display: flex; justify-content: flex-start; border: 1px solid color-mix(in srgb,var(--action) 32%,var(--line)); border-radius: var(--radius-control);
+    background: var(--primary-button-bg); color: #fff; box-shadow: none;
+  }
+  .bottom-nav .compose::after { content: "发布内容"; font-size: 13px; font-weight: 650; }
+  .bottom-nav button:nth-child(1) { order: 0; }
+  .bottom-nav button:nth-child(2) { order: 1; }
+  .bottom-nav button:nth-child(4) { order: 3; }
+  .bottom-nav button:nth-child(5) { order: 4; }
+  .unread-badge { top: 7px; left: 31px; }
+  .floating-count { left: calc(220px + (100vw - 220px)/2); bottom: 24px; }
+  .settings-page:not(.settings-detail-page),.settings-detail-page,.about-page,.debug-page,.topic-detail-page,.my-content-page,.moderation-page {
+    width: min(1120px,100%); max-width: 1120px; margin-inline: auto; padding-inline: 48px;
+  }
+  .settings-page:not(.settings-detail-page) { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; column-gap: 28px; }
+  .settings-page:not(.settings-detail-page)>h1,.settings-page:not(.settings-detail-page)>.lead,.settings-page:not(.settings-detail-page)>.settings-back,.settings-page:not(.settings-detail-page)>.fineprint { grid-column: 1/-1; }
+  .settings-page:not(.settings-detail-page)>.settings-module { min-width: 0; margin-top: 20px; }
+  .settings-detail-page { min-height: calc(100dvh - 66px); }
+  .settings-detail-page>.lead { max-width: 65ch; }
+  .preference-options { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .preference-option { min-height: 190px; }
+  .experience-page-content { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: 20px; }
+  .experience-total-card,.experience-rule-note,.experience-level-list { margin: 0; }
+  .experience-level-list { grid-column: 1/-1; }
+  .experience-level-row { grid-template-columns: 72px minmax(0,1fr) 100px auto; padding: 16px 12px; }
+  .account-profile-form:not(.modal) { max-width: 850px; margin-inline: auto; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px 28px; }
+  .account-profile-form:not(.modal)>h2,.account-profile-form:not(.modal)>p,.account-profile-form:not(.modal)>.account-profile-actions { grid-column: 1/-1; }
+  .account-profile-field:has(textarea) { grid-column: 1/-1; }
+  .account-profile-actions { position: sticky; bottom: 18px; }
+  .mine-page { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 28px; align-content: start; }
+  .mine-title,.mine-tabs-shell,.mine-category-panel,.profile-settings-entry,.settings-entry-card { grid-column: 1/-1; }
+  .mine-page>.profile-card { grid-column: 1; align-self: center; margin: 10px 0 20px; }
+  .mine-page>.experience-summary-card { grid-column: 2; align-self: center; margin: 10px 0 20px; }
+  .mine-page>.exploration-stats { grid-column: 1; align-self: center; margin: 0 0 26px; }
+  .mine-membership-section { grid-column: 2; align-self: center; margin: 0 0 26px; }
+  .mine-tabs-shell { margin-inline: 0; }
+  .mine-page .mine-tabs { justify-content: center; }
+  .mine-page .mine-tabs button { max-width: 230px; }
+  .mine-page .masonry { columns: 3; column-gap: 22px; }
+  .mine-page .masonry.single-column { columns: 1; max-width: 820px; margin-inline: auto; }
+  .exploration-calendar { max-width: 760px; margin-inline: auto; }
+  .calendar-day-detail { max-width: 760px; margin-inline: auto; }
+  .overlay.detail-ready { inset: 24px 32px 24px 252px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-panel); box-shadow: 0 24px 90px #0005; }
+  .detail { width: 100%; height: 100%; max-height: 100%; grid-template-rows: 58px minmax(0,1fr) auto; }
+  .detail-header { height: 58px; }
+  .detail-body { max-width: 820px; padding: 24px 34px 36px; }
+  .detail-image-button,.detail-gallery { width: 100%; margin: 0 0 24px; }
+  .detail-image-button img { max-height: 60vh; }
+  .detail-action-bar { max-width: 100%; padding: 12px 24px; }
+  .detail-comments { padding-bottom: 24px; }
+  .flip-overlay { padding: 50px; }
+  .flip-stage { width: min(560px,75vw); max-height: calc(100dvh - 100px); }
+  .flip-inner { min-height: min(760px,calc(100dvh - 120px)); }
+  .flip-window-revealed>img { height: 48%; }
+  .window-reveal-copy { padding: 28px 30px; }
+  .editorial-home.home-blackcard .black-facet-card { width: min(760px,100%); margin: 24px auto; }
+  .editorial-home.home-blackcard>.black-card-quota-meta { width: min(760px,100%); margin-inline: auto; }
+  .topic-detail-page>.masonry { columns: 3; column-gap: 22px; }
+  .topic-detail-page>.masonry.single-column { columns: 1; max-width: 820px; margin-inline: auto; }
+  .moderation-page { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: start; gap: 0 24px; }
+  .moderation-page>.settings-back,.moderation-page>.eyebrow,.moderation-page>h1,.moderation-page>.lead,.moderation-tabs,.moderation-filters,.moderation-feedback,.moderation-list,.moderation-empty { grid-column: 1/-1; }
+  .moderation-list { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+  .moderation-item { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+  .moderation-tabs { display: flex; align-items: center; }
+  .moderation-tabs button { min-height: 48px; padding-inline: 18px; }
+  .moderation-page>.admin-overview { grid-column: 1/-1; gap: 16px; }
+  .admin-overview>div { min-height: 94px; padding: 18px; }
+  .admin-user-row { gap: 18px; padding: 18px 6px; }
+  .admin-user-copy { flex-basis: 42%; }
+  .admin-user-membership { min-width: 120px; }
+  .admin-user-membership .choice-select-trigger { min-width: 110px; }
+  .messages-page { display: grid; grid-template-columns: minmax(280px,340px) minmax(0,1fr); gap: 24px; align-content: start; min-height: calc(100dvh - 66px); padding: 30px 28px 32px; }
+  .messages-inbox-pane { min-width: 0; max-height: calc(100dvh - 128px); overflow: auto; padding: 8px 18px 18px 6px; border-right: 1px solid var(--line); }
+  .messages-inbox-pane h1 { font-size: 32px; }
+  .messages-inbox-pane .search { margin-block: 14px; }
+  .messages-page:not(.is-chat-open) .messages-inbox-pane { grid-column: 1/-1; width: min(780px,100%); margin-inline: auto; border: 0; }
+  .conversation-row { padding: 16px 10px; border-radius: var(--radius-control); }
+  .conversation-row:hover { background: var(--surface); }
+  .chat-screen { position: relative; inset: auto; grid-column: 2; grid-row: 1; width: 100%; height: calc(100dvh - 128px); min-height: 560px; max-height: 900px; padding-bottom: 0; border: 1px solid var(--line); border-radius: var(--radius-panel); overflow: hidden; }
+  .chat-screen header { min-height: 62px; align-items: center; padding: 10px 20px; }
+  .chat-log { padding: 22px clamp(22px,4vw,52px); }
+  .chat-compose { padding: 16px 20px; }
+  .chat-compose input { min-height: 46px; }
+  .page:has(.chat-screen) { animation: none; }
+  .account-page { max-width: 760px; }
+  .account-form { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .account-form>label:nth-of-type(1),.account-form>button { grid-column: 1/-1; }
+  .public-profile>.modal { width: min(760px,calc(100vw - 48px)); max-width: 760px; }
+  .public-profile>.modal .profile-photo { width: 88px; height: 88px; }
+  .modal-backdrop:not(.composer-backdrop) { padding: 28px; }
+  .modal-backdrop:not(.composer-backdrop)>.modal,.subscription-dialog { width: min(720px,calc(100vw - 56px)); max-width: 720px; max-height: min(90dvh,1000px); overflow-y: auto; }
+  .composer-backdrop { padding: 28px; }
+  .composer-backdrop>.composer-modal { width: min(1120px,calc(100vw - 300px)); max-width: 1120px; height: min(92dvh,1100px); max-height: 92dvh; margin: auto; border: 1px solid var(--line); border-radius: var(--radius-panel); overflow-y: auto; }
+  .modal-backdrop>.report-dialog { width: min(740px,calc(100vw - 56px)); max-width: 740px; max-height: min(90dvh,960px); overflow-y: auto; }
+}
+@media (min-width: 1280px) {
+  .editorial-feed,.candidate-feed { columns: 4; }
+  .mine-page .masonry,.topic-detail-page>.masonry { columns: 4; }
+  .overlay.detail-ready { inset-inline: max(32px,calc((100vw - 1520px)/2 + 252px)) 32px; }
+  .detail-scroll { display: block; }
+  .detail-body { display: grid; grid-template-columns: minmax(0,1fr) minmax(320px,390px); column-gap: clamp(28px,4vw,64px); align-content: start; max-width: 1320px; padding: 28px clamp(28px,4vw,64px) 40px; }
+  .detail-body>*:not(.detail-comments) { grid-column: 1; }
+  .detail-body>.detail-comments { position: sticky; top: 0; grid-column: 2; grid-row: 1 / span 12; align-self: start; max-height: calc(100dvh - 185px); overflow-y: auto; padding: 4px 2px 20px; scrollbar-width: thin; }
+  .detail-body>.detail-gallery,.detail-body>.detail-image-button { width: 100%; margin: 0 0 26px; }
+  .detail-image-button img { max-height: 52vh; }
+  .detail-body>h1 { max-width: 28ch; }
+  .detail-action-bar { width: min(100%,1320px); margin-inline: auto; padding-inline: clamp(28px,4vw,64px); }
+  .moderation-list { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .mine-page .masonry { columns: 4; }
+}
+@media (min-width: 1640px) {
+  .editorial-feed,.candidate-feed { columns: 5; }
+  .mine-page .masonry,.topic-detail-page>.masonry { columns: 5; }
+}
