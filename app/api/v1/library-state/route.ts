@@ -26,13 +26,14 @@ async function replaceTopics(db: SupabaseClient, postId: string, value: unknown)
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
-    const [profile, prefs, bookmarks, interactions, interests, own] =
+    const [profile, details, prefs, bookmarks, interactions, interests, own] =
       await Promise.all([
         db
           .from("profiles")
           .select("nickname,bio,avatar_url,role")
           .eq("id", user!.id)
           .single(),
+        db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),
         db
           .from("browsing_preferences")
           .select("*")
@@ -49,10 +50,11 @@ export async function GET(req: NextRequest) {
           .eq("user_id", user!.id),
         db.from("posts").select(libraryFields).eq("author_id", user!.id),
       ]);
-    for (const r of [profile, prefs, bookmarks, interactions, interests, own])
+    for (const r of [profile, details, prefs, bookmarks, interactions, interests, own])
       dbError(r.error);
     return {
       profile: profile.data,
+      profileDetails: details.data,
       prefs: prefs.data,
       bookmarks: bookmarks.data,
       interactions: interactions.data,
@@ -75,6 +77,7 @@ export async function POST(req: NextRequest) {
         db.from("user_blocks").delete().eq("owner_id", user!.id),
         db.from("dm_reads").delete().eq("user_id", user!.id),
         db.from("browsing_preferences").delete().eq("user_id", user!.id),
+        db.from("profile_attributes").delete().eq("user_id", user!.id),
       ]);
       for (const result of results) dbError(result.error);
       const { error } = await db

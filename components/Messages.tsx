@@ -44,8 +44,7 @@ export default function Messages({
     [unread, setUnread] = useState<Record<string, number>>({}),
     [hasMore, setHasMore] = useState(false),
     [newBelow, setNewBelow] = useState(false),
-    [profile, setProfile] = useState<Profile | null>(null),
-    [blocks, setBlocks] = useState<string[]>([]);
+    [profile, setProfile] = useState<Profile | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [media, setMedia] = useState<Record<string, string>>({});
@@ -128,11 +127,7 @@ export default function Messages({
         .in("id", peers);
       setNames(Object.fromEntries((profiles || []).map((p) => [p.id, p])));
     }
-    const [{ data: reads }, { data: blocked }] = await Promise.all([
-      db.from("dm_reads").select("*").eq("user_id", user.id),
-      db.from("user_blocks").select("blocked_id").eq("owner_id", user.id),
-    ]);
-    setBlocks((blocked || []).map((b) => b.blocked_id));
+    const { data: reads } = await db.from("dm_reads").select("*").eq("user_id", user.id);
     const latest = await Promise.all(
       rows.map(async (r) => {
         const { data } = await db
@@ -478,44 +473,6 @@ export default function Messages({
       {!rooms.length && (
         <div className="empty">还没有会话。搜索其他用户，开始第一段交流。</div>
       )}
-      <div className="settings-list">
-        <button
-          onClick={async () => {
-            const { error } = await db!
-              .from("browsing_preferences")
-              .upsert({ user_id: user.id, dm_permission: "nobody" });
-            setError(error?.message || "已关闭陌生人私聊");
-          }}
-        >
-          关闭接收私聊
-        </button>
-        <button
-          onClick={async () => {
-            const { error } = await db!
-              .from("browsing_preferences")
-              .upsert({ user_id: user.id, dm_permission: "everyone" });
-            setError(error?.message || "已允许接收私聊");
-          }}
-        >
-          允许接收私聊
-        </button>
-        {blocks.map((id) => (
-          <button
-            key={id}
-            onClick={async () => {
-              await db!
-                .from("user_blocks")
-                .delete()
-                .eq("owner_id", user.id)
-                .eq("blocked_id", id);
-              void refresh();
-            }}
-          >
-            解除拉黑 · {names[id]?.nickname || id.slice(0, 8)}
-          </button>
-        ))}
-        <button onClick={() => void db?.auth.signOut()}>退出账号</button>
-      </div>
       {profile && (
         <div className="modal-backdrop">
           <div className="modal">

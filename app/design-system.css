@@ -1285,3 +1285,85 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .account-interest-option > span { width: 32px; height: 32px; }
 }
 @media (prefers-reduced-motion: reduce) { .account-interest-option { transition: none; } }
+
+/* A single title and back action anchor every second-level page. */
+.secondary-topline { position:sticky;top:0;z-index:18;justify-content:space-between;gap:10px }
+.topline-back { display:flex;align-items:center;gap:10px;min-width:0;padding:8px 0;border:0;background:transparent;color:var(--ink);text-align:left }
+.topline-back svg { flex:none;color:var(--action) }
+.topline-back strong { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:600 }
+.has-secondary-header .settings-back { display:none }
+.has-secondary-header .settings-detail-page,.has-secondary-header .topic-detail-page,.has-secondary-header .about-page,.has-secondary-header .my-content-page { padding-top:24px }
+.has-secondary-header .settings-detail-page .eyebrow { margin-top:0 }
+
+/* Full-screen writing keeps its own top bar and a safe-area-aware publish dock. */
+.composer-backdrop { display:block;align-items:stretch;background:var(--bg);z-index:35 }
+.composer-modal { position:fixed;inset:0;width:100%;height:100dvh;max-height:100dvh;margin:0;padding:0;border:0;border-radius:0;overflow:hidden;display:flex;flex-direction:column;background:var(--bg) }
+.composer-topbar { flex:none;min-height:62px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:0 max(18px,calc((100% - 520px)/2));border-bottom:1px solid var(--line);background:var(--bg) }
+.composer-topbar>strong { font-size:15px;font-weight:600;white-space:nowrap }
+.composer-back { justify-self:start;display:flex;align-items:center;gap:7px;padding:8px 0;border:0;background:transparent;color:var(--ink);font-size:13px }
+.composer-back svg { color:var(--action) }
+.composer-topbar-status { justify-self:end;color:var(--muted);font-size:11px }
+.composer-scroll { width:min(100%,560px);flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;margin:0 auto;padding:24px 22px calc(22px + env(safe-area-inset-bottom)) }
+.composer-scroll>.eyebrow { margin:0 0 20px }
+.composer-scroll>label { display:block;margin:18px 0;font-size:13px;font-weight:600 }
+.composer-scroll>label input,.composer-scroll>label select,.composer-scroll>label textarea { display:block;width:100%;margin-top:9px;border:1px solid var(--line);border-radius:var(--radius-control);padding:12px;background:var(--surface);color:var(--ink);outline:0 }
+.composer-scroll>label input,.composer-scroll>label select { min-height:46px }
+.composer-scroll>label textarea { min-height:176px;resize:vertical;line-height:1.8 }
+.composer-footer { flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px max(18px,calc((100% - 520px)/2)) calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface) 96%,transparent) }
+.composer-footer>span { min-width:0;display:grid;gap:4px }
+.composer-footer>span strong { font-size:12px;font-weight:600 }
+.composer-footer>span small { color:var(--muted);font-size:10px }
+.composer-footer>.primary-button { min-width:142px;min-height:44px }
+.composer-topic-create { padding:8px 10px;border:1px dashed var(--action);border-radius:8px;background:color-mix(in srgb,var(--action) 8%,var(--surface));color:var(--action);font-size:12px }
+.discover-topic-chip { display:flex;align-items:center;gap:6px;white-space:nowrap }
+.discover-topic-chip small { color:var(--action);font-size:9px }
+
+/* Expanded profile facts remain optional and independently public. */
+.profile-detail-fields { margin-top:28px;padding-top:20px;border-top:1px solid var(--line) }
+.profile-detail-heading h3 { margin:0;font-size:16px;font-weight:620 }
+.profile-detail-heading p { margin:6px 0 18px;color:var(--muted);font-size:12px;line-height:1.6 }
+.account-profile-field select,.account-profile-field input[type="date"] { width:100%;min-height:45px;margin-top:8px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface);color:var(--ink) }
+.profile-hobby-field { min-width:0;margin:20px 0 16px;padding:0;border:0 }
+.profile-hobby-field legend { padding:0;font-size:12px;font-weight:600 }
+.profile-hobby-field legend small { margin-left:7px;color:var(--muted);font-weight:400 }
+.profile-hobby-options { display:flex;flex-wrap:wrap;gap:7px;margin-top:10px }
+.profile-hobby-options button { padding:8px 11px;border:1px solid var(--line);border-radius:20px;background:transparent;color:var(--muted);font-size:11px }
+.profile-hobby-options button.selected { border-color:var(--action);background:color-mix(in srgb,var(--action) 12%,var(--surface));color:var(--ink) }
+.profile-hobby-entry { display:flex;gap:8px;margin-top:10px }
+.profile-hobby-entry input { flex:1;min-width:0;padding:10px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface);color:var(--ink);font-size:12px }
+.profile-hobby-entry button { min-width:58px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface);color:var(--action);font-size:12px }
+.profile-hobby-suggestions { display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px }
+.profile-hobby-suggestions small { margin-right:3px;color:var(--muted);font-size:10px }
+.profile-hobby-suggestions button { padding:5px 8px;border:1px solid var(--line);border-radius:20px;background:transparent;color:var(--muted);font-size:10px }
+.profile-hobby-suggestions button:disabled { opacity:.45 }
+.profile-visibility-list { border-top:1px solid var(--line) }
+.profile-visibility-row { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line) }
+.profile-visibility-row>span { display:grid;gap:4px }
+.profile-visibility-row strong { font-size:12px;font-weight:560 }
+.profile-visibility-row small { color:var(--muted);font-size:10px }
+.profile-visibility-row input { width:18px;height:18px;accent-color:var(--action) }
+.public-profile-facts { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:18px 0 }
+.public-profile-facts span { display:grid;gap:5px;padding:10px;border:1px solid var(--line);background:var(--surface) }
+.public-profile-facts small { color:var(--muted);font-size:10px }
+.public-profile-facts strong { overflow-wrap:anywhere;font-size:12px;font-weight:550 }
+
+/* Private-message controls live with the rest of account preferences. */
+.messaging-preferences .settings-module { margin-top:22px;padding-top:16px;border-top:1px solid var(--line) }
+.messaging-preferences .preference-options { margin-top:12px }
+.preference-option-icon { width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line);color:var(--action) }
+.messaging-block-row { display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid var(--line) }
+.messaging-block-row>span:nth-child(2) { display:grid;gap:4px;min-width:0 }
+.messaging-block-row strong { font-size:12px;font-weight:560 }
+.messaging-block-row small,.messaging-preferences-note { color:var(--muted);font-size:11px }
+.messaging-block-row .soft-button { padding:8px 12px }
+.messaging-signout { display:flex;align-items:center;gap:9px;margin-top:32px;padding:12px 0;border:0;background:transparent;color:var(--muted);font-size:12px }
+.messaging-preferences-empty { display:grid;justify-items:center;gap:10px;padding:45px 20px;text-align:center }
+.messaging-preferences-empty svg { color:var(--action) }
+.messaging-preferences-empty p,.messaging-preferences-error { color:var(--muted);font-size:12px;line-height:1.7 }
+.messaging-preferences-error { color:#c67777 }
+
+@media(max-width:430px) {
+  .composer-scroll { padding-inline:18px }
+  .composer-topbar { padding-inline:16px }
+  .composer-footer { padding-inline:16px }
+}

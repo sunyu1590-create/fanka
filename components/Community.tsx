@@ -39,7 +39,9 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
 });
 import EditorialArticle from "./EditorialArticle";
 import AccountProfile from "./AccountProfile";
+import type { ProfileDetails } from "./AccountProfile";
 import PublicProfile from "./PublicProfile";
+import MessagingPreferences from "./MessagingPreferences";
 import InboxBadge from "./InboxBadge";
 import { cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
@@ -99,6 +101,7 @@ type State = {
   own: Post[];
   name: string;
   bio: string;
+  profileDetails: ProfileDetails;
   viewed: number[];
 };
 const initial: State = {
@@ -123,6 +126,10 @@ const initial: State = {
   own: [],
   name: "探索者",
   bio: "收藏那些值得再读的瞬间",
+  profileDetails: {
+    gender: "", mbti: "", birthday: "", hobbies: [],
+    visibility: { gender: false, mbti: false, birthday: false, hobbies: false },
+  },
   viewed: [],
 };
 const membershipPlans = [
@@ -130,6 +137,23 @@ const membershipPlans = [
   { id: "pro", name: "Pro", price: 16, dailyFlips: 13 },
 ] as const;
 const extraFlipPacks = [3, 5, 10] as const;
+function hydrateProfileDetails(rows: Array<{ attribute: string; value: string; is_public: boolean }> = []): ProfileDetails {
+  const details: ProfileDetails = {
+    gender: "", mbti: "", birthday: "", hobbies: [],
+    visibility: { gender: false, mbti: false, birthday: false, hobbies: false },
+  };
+  for (const row of rows) {
+    if (!(row.attribute in details.visibility)) continue;
+    const attribute = row.attribute as keyof ProfileDetails["visibility"];
+    details.visibility[attribute] = row.is_public;
+    if (attribute === "hobbies") {
+      try { details.hobbies = row.value ? JSON.parse(row.value) as string[] : []; }
+      catch { details.hobbies = row.value ? row.value.split(", ").filter(Boolean) : []; }
+    }
+    else details[attribute] = row.value;
+  }
+  return details;
+}
 
 function drawLuckyBonus() {
   const roll = Math.random();
@@ -310,7 +334,7 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | null>(null),
+    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
@@ -355,6 +379,8 @@ export default function Community() {
     [writeTag, setWriteTag] = useState<string>(tags[0]),
     [writeTopics, setWriteTopics] = useState<string[]>([]),
     [topicSearch, setTopicSearch] = useState(""),
+    [topicChoices, setTopicChoices] = useState<TopicSummary[]>([]),
+    [creatingTopic, setCreatingTopic] = useState(false),
     [composerImages, setComposerImages] = useState<ComposerImage[]>([]),
     [uploadingImages, setUploadingImages] = useState(false),
     [coverIndex, setCoverIndex] = useState(0),
@@ -585,7 +611,7 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests", returnTab: "settings" | "mine" = "settings") => {
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
     setSettingsReturnTab(returnTab);
     if (returnTab === "mine") setTab("settings");
@@ -1571,6 +1597,53 @@ export default function Community() {
     }
   };
   useEffect(() => {
+    const isDiscover = tab === "discover" && modal !== "write";
+    if (!isDiscover && modal !== "write") return;
+    let alive = true;
+    const suffix = isDiscover ? "?featured=1" : topicSearch.trim() ? `?q=${encodeURIComponent(topicSearch.trim())}` : "";
+    void fetch(`/api/v1/topics${suffix}`).then(async (response) => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "话题读取失败");
+      if (alive && Array.isArray(result.data)) setTopicChoices(result.data as TopicSummary[]);
+    }).catch(() => {
+      if (alive) setTopicChoices(tags.map((name, index) => ({ id: index + 1, name, description: "", postCount: 0, participantCount: 0 })));
+    });
+    return () => { alive = false; };
+  }, [tab, modal, topicSearch]);
+  const createTopic = async () => {
+    const name = topicSearch.trim().replace(/^#+/, "");
+    if (!name) return;
+    if (!accountId) return toast("登录后可以创建自定义话题");
+    if (writeTopics.length >= 5) return toast("最多选择 5 个话题");
+    setCreatingTopic(true);
+    try {
+      const created = await cloudRequest("/api/v1/topics", { name }) as TopicSummary;
+      if (!created?.name) throw new Error("话题创建失败");
+      setTopicChoices((items) => [created, ...items.filter((item) => item.name.toLocaleLowerCase("zh-CN") !== created.name.toLocaleLowerCase("zh-CN"))]);
+      setWriteTopics((items) => items.includes(created.name) ? items : [...items, created.name]);
+      setTopicSearch("");
+      toast(`已添加 #${created.name}`);
+    } catch (error) { toast(error instanceof Error ? error.message : "话题创建失败"); }
+    finally { setCreatingTopic(false); }
+  };
+  const secondaryTitle = modal === "write"
+    ? "取消"
+    : tab === "settings"
+      ? settingsDetail ? settingsReturnTab === "mine" ? "我的" : "设置" : "我的"
+      : tab === "topic" ? "发现"
+        : tab === "about" || tab === "moderation" ? "设置"
+          : tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
+            : tab === "debug" ? "我的" : null;
+  const handleSecondaryBack = () => {
+    if (modal === "write") { setModal(null); return; }
+    if (tab === "settings" && settingsDetail) { closeSettingsDetail(); return; }
+    if (tab === "settings") { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
+    if (tab === "topic") { closeTopicPage(); return; }
+    if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
+    if (tab === "my-content") { setTab(myContentReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" })); return; }
+    if (tab === "debug") { setTab("mine"); return; }
+  };
+  useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
     setPreviewImage(false);
@@ -1903,6 +1976,7 @@ export default function Community() {
                 name: data.profile.nickname,
                 bio: data.profile.bio,
                 avatar: data.profile.avatar_url,
+                profileDetails: hydrateProfileDetails(data.profileDetails),
                 saved,
                 opened,
                 own: [
@@ -2124,15 +2198,13 @@ export default function Community() {
       </main>
     );
   return (
-    <main className="app">
-      <div className="topline">
-        <span className="brand">
-          黑卡 <i>HEIKA</i>
-        </span>
+    <main className={`app${secondaryTitle ? " has-secondary-header" : ""}`}>
+      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}`}>
+        {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand">黑卡 <i>HEIKA</i></span>}
         <span className="demo-pill">
           {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
         </span>
-      </div>
+      </header>
       {tab === "today" && (
         <section
           key={state.homeMode}
@@ -2240,7 +2312,7 @@ export default function Community() {
             />
           </div>
           <div className="discover-topic-list" aria-label="精选话题">
-            {tags.map((topic) => <button key={topic} className="discover-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}
+            {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
           <div className="filters editorial-filters">
             {["全部", ...tags].map((t) => (
@@ -2320,7 +2392,7 @@ export default function Community() {
             <div className="settings-module-heading"><strong>消息与隐私</strong></div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("messages")}><span>私聊权限与黑名单</span><small>在消息页管理</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("privacy")}><span className="settings-row-icon"><ShieldCheck size={17}/></span><span>私聊权限与黑名单</span><small>接收范围与黑名单</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
@@ -2340,9 +2412,10 @@ export default function Community() {
         <section className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好"})[settingsDetail]}</h1>
-          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : "预览效果并选择偏好，设置会自动保存。"}</p>
-          {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} onSave={(name,bio,avatar)=>update(current=>({...current,name,bio,avatar}))} onClose={closeSettingsDetail}/>}
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",privacy:"私聊权限与黑名单"})[settingsDetail]}</h1>
+          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "privacy" ? "管理私聊接收范围，并随时调整黑名单。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>update(current=>({...current,name,bio,avatar,profileDetails}))} onClose={closeSettingsDetail}/>}
+          {settingsDetail === "privacy" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }}/ >}
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>偏好会自动保存在你的账号中。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
@@ -2395,10 +2468,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.31</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.32</p>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.31</strong><small>2026.11.01</small></div>
             <ul>
+              <li>统一二级页顶栏返回操作，并将发布表单改为全屏编辑界面。</li>
+              <li>个人资料新增性别、MBTI、生日与爱好，可分别设置公开状态。</li>
+              <li>话题支持发布时自定义，发现页只展示热度靠前的话题。</li>
+              <li>私聊接收范围、黑名单和退出账号统一收纳到设置页。</li>
               <li>个人资料与兴趣偏好改为独立二级页面，账号设置行项增加统一图标与排版。</li>
               <li>调试模式新增管理员后台登录入口，并统一账号设置分组与列表样式。</li>
               <li>补齐邮箱注册确认、密码找回与重置流程，注册时可设置昵称。</li>
@@ -3088,17 +3165,21 @@ export default function Community() {
         />
       )}
       {modal && (
-        <div className="modal-backdrop">
+        <div className={`modal-backdrop${modal === "write" ? " composer-backdrop" : ""}`}>
           <div
-            className={`modal ${modal === "subscription" ? "subscription-dialog" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
+            className={`modal ${modal === "subscription" ? "subscription-dialog" : ""} ${modal === "write" ? "composer-modal" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
           >
-            <button
+            {modal === "write" ? <header className="composer-topbar">
+              <button type="button" className="composer-back" onClick={() => setModal(null)} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
+              <strong>{editing ? "编辑内容" : "分享一篇内容"}</strong>
+              <span className="composer-topbar-status">{draftSaving ? "保存中" : draftSaved ? "已保存" : "草稿"}</span>
+            </header> : <button
               className="close"
               aria-label="关闭"
               onClick={() => setModal(null)}
             >
               <X size={20} />
-            </button>
+            </button>}
             {modal === "report" ? (
               <div className="report-dialog">
                 <div className="eyebrow">COMMUNITY / REPORT</div>
@@ -3245,8 +3326,9 @@ export default function Community() {
                 name={state.name}
                 bio={state.bio}
                 avatar={state.avatar}
-                onSave={(name, bio, avatar) =>
-                  update((s) => ({ ...s, name, bio, avatar }))
+                details={state.profileDetails}
+                onSave={(name, bio, avatar, profileDetails) =>
+                  update((s) => ({ ...s, name, bio, avatar, profileDetails }))
                 }
                 onClose={() => setModal(null)}
               />
@@ -3352,9 +3434,8 @@ export default function Community() {
                 </button>
               </>
             ) : (
-              <>
+              <div className="composer-scroll">
                 <div className="eyebrow">CREATE / STORY</div>
-                <h2>{editing ? "编辑内容" : "分享一篇内容"}</h2>
                 <label>
                   标题
                   <input
@@ -3376,10 +3457,10 @@ export default function Community() {
                   </select>
                 </label>
                 <section className="composer-topic-section" aria-label="选择话题">
-                  <div className="composer-section-heading"><span><strong>话题</strong><small>使用黑卡精选话题，最多选择 5 个</small></span><span>{writeTopics.length}/5</span></div>
+                  <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
                   <label className="composer-topic-search"><Search size={16} /><input value={topicSearch} onChange={(event) => setTopicSearch(event.target.value)} placeholder="搜索话题" aria-label="搜索话题" /></label>
                   <div className="composer-topic-options">
-                    {tags.filter((topic) => topic.includes(topicSearch.trim())).map((topic) => {
+                    {topicChoices.filter((topic) => !topicSearch.trim() || topic.name.toLocaleLowerCase("zh-CN").includes(topicSearch.trim().toLocaleLowerCase("zh-CN"))).map(({ name: topic }) => {
                       const selected = writeTopics.includes(topic);
                       return <button type="button" key={topic} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => {
                         if (selected) setWriteTopics((current) => current.filter((item) => item !== topic));
@@ -3387,7 +3468,8 @@ export default function Community() {
                         else setWriteTopics((current) => [...current, topic]);
                       }}>#{topic}</button>;
                     })}
-                    {!tags.some((topic) => topic.includes(topicSearch.trim())) && <small className="composer-topic-empty">没有匹配的官方话题</small>}
+                    {topicSearch.trim() && !topicChoices.some((topic) => topic.name.toLocaleLowerCase("zh-CN") === topicSearch.trim().toLocaleLowerCase("zh-CN")) && <button type="button" className="composer-topic-create" onClick={() => void createTopic()} disabled={creatingTopic}>{creatingTopic ? "正在创建…" : `创建 #${topicSearch.trim().replace(/^#+/, "")}`}</button>}
+                    {!topicChoices.length && !topicSearch.trim() && <small className="composer-topic-empty">正在加载话题…</small>}
                   </div>
                 </section>
                 <label>
@@ -3428,15 +3510,13 @@ export default function Community() {
                   <strong>预览 · {title || "未命名内容"}</strong>
                   <p>{body || "正文预览将显示在这里"}</p>
                 </div>
-                <button className="primary-button full" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={publish}>
-                  {uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}
-                </button>
                 {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
                 <p className="fineprint">
                   {accountId ? "草稿会自动同步到当前账号，发布后图片与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
                 </p>
-              </>
+              </div>
             )}
+            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={publish}>{uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}

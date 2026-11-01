@@ -3,6 +3,13 @@ import { useEffect, useState } from "react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 type PublicInfo = { nickname: string; bio: string; avatar_url: string | null };
+type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
+function displayAttributeValue(item: PublicAttribute) {
+  if (item.attribute === "gender") return ({ female: "女", male: "男", nonbinary: "非二元", undisclosed: "不愿透露" }[item.value] || item.value);
+  if (item.attribute !== "hobbies") return item.value;
+  try { return (JSON.parse(item.value) as string[]).join("、"); }
+  catch { return item.value; }
+}
 export default function PublicProfile({
   id,
   onClose,
@@ -13,6 +20,7 @@ export default function PublicProfile({
   onMessage: (id: string) => void;
 }) {
   const [profile, setProfile] = useState<PublicInfo>(),
+    [attributes, setAttributes] = useState<PublicAttribute[]>([]),
     [posts, setPosts] = useState<
       { client_id: number; title: string; body: string }[]
     >([]),
@@ -21,12 +29,13 @@ export default function PublicProfile({
     let alive = true;
     void browserDb()
       .then(async (db) => {
-        const [p, c] = await Promise.all([
+        const [p, a, c] = await Promise.all([
           db
             .from("profiles")
             .select("nickname,bio,avatar_url")
             .eq("id", id)
             .single(),
+          db.from("profile_attributes").select("attribute,value").eq("user_id", id).eq("is_public", true),
           db
             .from("posts")
             .select("client_id,title,body")
@@ -39,6 +48,7 @@ export default function PublicProfile({
         if (p.error) setError(p.error.message);
         else {
           setProfile(p.data);
+          setAttributes((a.data || []) as PublicAttribute[]);
           setPosts(c.data || []);
         }
       })
@@ -65,6 +75,9 @@ export default function PublicProfile({
             )}
             <h2>{profile.nickname}</h2>
             <p>{profile.bio || "还没有填写简介。"}</p>
+            {!!attributes.length && <div className="public-profile-facts" aria-label="公开资料">
+              {attributes.filter((item) => item.value).map((item) => <span key={item.attribute}><small>{{ gender: "性别", mbti: "MBTI", birthday: "生日", hobbies: "兴趣" }[item.attribute]}</small><strong>{displayAttributeValue(item)}</strong></span>)}
+            </div>}
             <button className="primary-button" onClick={() => onMessage(id)}>
               发起私聊
             </button>
