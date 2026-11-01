@@ -305,6 +305,9 @@ export default function Community() {
     publicFeedLoading = useRef(false),
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
+    [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
+    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | null>(null),
+    [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
     [readingTransition, setReadingTransition] = useState<"out" | "in" | null>(
       null,
@@ -455,6 +458,13 @@ export default function Community() {
     )
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 8);
+  const favoritePosts = all.filter((post) =>
+    state.saved.includes(post.id) &&
+    (favoriteSource === "全部" ||
+      (state.savedFrom?.[post.id] || (state.revealed[post.id] ? "today" : "discover")) ===
+        (favoriteSource === "今日翻卡" ? "today" : "discover")),
+  );
+  const likedPosts = all.filter((post) => state.liked?.includes(post.id));
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -570,6 +580,21 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout") => {
+    scrollPositions.current.settings = window.scrollY;
+    setSettingsDetail(detail);
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
+  const closeSettingsDetail = () => {
+    setSettingsDetail(null);
+    requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" }));
+  };
+  const openMyContent = (returnTab: "mine" | "settings") => {
+    setMyContentReturnTab(returnTab);
+    scrollPositions.current[returnTab] = window.scrollY;
+    setTab("my-content");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
   const submitRating = async (postId: number, score: number) => {
     if (ratingBusy.current) return;
     ratingBusy.current = true;
@@ -1707,7 +1732,7 @@ export default function Community() {
   const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => (
     <button
       key={id}
-      className={tab === id || (tab === "settings" && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
+      className={tab === id || ((tab === "settings" || tab === "my-content") && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
@@ -2225,7 +2250,7 @@ export default function Community() {
           onPeerOpened={() => setMessagePeer(null)}
         />
       )}
-      {tab === "settings" && (
+      {tab === "settings" && settingsDetail === null && (
         <section className="page settings-page">
           <button className="back settings-back" onClick={() => {
             setTab("mine");
@@ -2233,32 +2258,12 @@ export default function Community() {
           }}><ArrowLeft size={18} /> 我的</button>
           <h1>设置<span className="red-dot">.</span></h1>
           <p className="lead">按模块管理你的黑卡体验。</p>
-                  <div className="settings-module">
-            <div className="settings-module-heading"><strong>外观</strong><small>主题</small></div>
-            <div className="theme-options" role="radiogroup" aria-label="外观主题">
-              {([['dark','深色'],['light','浅色'],['system','跟随系统']] as const).map(([value,label])=><button key={value} role="radio" aria-checked={theme===value} className={`theme-option${theme===value?' selected':''}`} onClick={()=>setTheme(value)}><span className={`theme-swatch ${value}`} /><span>{label}</span><i>{theme===value?'✓':''}</i></button>)}
-            </div>
-          </div>
           <div className="settings-module">
-            <div className="settings-module-heading"><strong>字体</strong><small>全局字体</small></div>
-            <div className="font-options" role="radiogroup" aria-label="字体选择">
-              {([['oppo', 'OPPO Sans 4.0', '优先使用 OPPO 字体'], ['system', '系统字体', '跟随设备默认字体']] as const).map(([value, label, description]) => (
-                <button key={value} role="radio" aria-checked={fontChoice === value} className={`font-option${fontChoice === value ? " selected" : ""}`} onClick={() => setFontChoice(value)}>
-                  <span><strong>{label}</strong><small>{description}</small></span>
-                  <i>{fontChoice === value ? "✓" : ""}</i>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="settings-module">
-            <div className="settings-module-heading"><strong>底部导航</strong><small>显示样式</small></div>
-            <div className="font-options nav-style-options" role="radiogroup" aria-label="底部导航样式">
-              {([['glass', '悬浮玻璃', '轻盈悬浮，带半透明模糊效果'], ['fixed', '固定底栏', '贴合屏幕底部，保持清晰稳定']] as const).map(([value, label, description]) => (
-                <button key={value} role="radio" aria-checked={bottomNavStyle === value} className={`font-option${bottomNavStyle === value ? " selected" : ""}`} onClick={() => setBottomNavStyle(value)}>
-                  <span><strong>{label}</strong><small>{description}</small></span>
-                  <i>{bottomNavStyle === value ? "✓" : ""}</i>
-                </button>
-              ))}
+            <div className="settings-module-heading"><strong>外观</strong></div>
+            <div className="settings-list">
+              <button onClick={() => openSettingsDetail("theme")}><span>外观主题</span><small>{{dark:"深色",light:"浅色",system:"跟随系统"}[theme]}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("font")}><span>字体</span><small>{fontChoice === "oppo" ? "OPPO Sans 4.0" : "系统字体"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("bottomNav")}><span>底部导航</span><small>{bottomNavStyle === "glass" ? "悬浮玻璃" : "固定底栏"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
@@ -2267,10 +2272,8 @@ export default function Community() {
               <button onClick={() => setModal("browsing")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
               <button onClick={() => setModal("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
             </div>
-            <div className="settings-module-heading discover-layout-heading"><strong>发现页布局</strong><small>内容排列方式</small></div>
-            <div className="discover-layout-options" role="group" aria-label="发现页布局">
-              <button type="button" aria-pressed={state.discoverLayout === "waterfall"} className={state.discoverLayout === "waterfall" ? "selected" : ""} onClick={() => update((current) => ({ ...current, discoverLayout: "waterfall" }))}>瀑布流</button>
-              <button type="button" aria-pressed={state.discoverLayout === "single"} className={state.discoverLayout === "single" ? "selected" : ""} onClick={() => update((current) => ({ ...current, discoverLayout: "single" }))}>单列阅读</button>
+            <div className="settings-list">
+              <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
@@ -2285,11 +2288,40 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.26</small><ChevronRight size={16}/></button>
+              <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.27</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
           {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
+        </section>
+      )}
+      {tab === "settings" && settingsDetail !== null && (
+        <section className="page settings-page settings-detail-page">
+          <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> 设置</button>
+          <div className="eyebrow">SETTINGS / PREFERENCES</div>
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局"})[settingsDetail]}</h1>
+          <p className="lead">选择会立即应用，并保存在此设备。</p>
+          {settingsDetail === "theme" && (
+            <div className="theme-options settings-detail-options" role="radiogroup" aria-label="外观主题">
+              {([['dark','深色'],['light','浅色'],['system','跟随系统']] as const).map(([value,label])=><button key={value} role="radio" aria-checked={theme===value} className={`theme-option${theme===value?' selected':''}`} onClick={()=>{setTheme(value);closeSettingsDetail();}}><span className={`theme-swatch ${value}`} /><span>{label}</span><i>{theme===value?'✓':''}</i></button>)}
+            </div>
+          )}
+          {settingsDetail === "font" && (
+            <div className="font-options settings-detail-options" role="radiogroup" aria-label="字体选择">
+              {([['oppo', 'OPPO Sans 4.0', '优先使用 OPPO 字体'], ['system', '系统字体', '跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`font-option${fontChoice===value?' selected':''}`} onClick={()=>{setFontChoice(value);closeSettingsDetail();}}><span><strong>{label}</strong><small>{description}</small></span><i>{fontChoice===value?'✓':''}</i></button>)}
+            </div>
+          )}
+          {settingsDetail === "bottomNav" && (
+            <div className="font-options settings-detail-options" role="radiogroup" aria-label="底部导航样式">
+              {([['glass','悬浮玻璃','半透明玻璃效果，悬浮于页面底部'],['fixed','固定底栏','贴合屏幕底部，清晰稳定']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`font-option${bottomNavStyle===value?' selected':''}`} onClick={()=>{setBottomNavStyle(value);closeSettingsDetail();}}><span><strong>{label}</strong><small>{description}</small></span><i>{bottomNavStyle===value?'✓':''}</i></button>)}
+            </div>
+          )}
+          {settingsDetail === "discoverLayout" && (
+            <div className="font-options settings-detail-options" role="radiogroup" aria-label="发现页布局">
+              {([['waterfall','瀑布流','双列卡片，快速浏览更多内容'],['single','单列阅读','单列排版，适合连续阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.discoverLayout===value} className={`font-option${state.discoverLayout===value?' selected':''}`} onClick={()=>{update(current=>({...current,discoverLayout:value}));closeSettingsDetail();}}><span><strong>{label}</strong><small>{description}</small></span><i>{state.discoverLayout===value?'✓':''}</i></button>)}
+            </div>
+          )}
         </section>
       )}
       {tab === "moderation" && isAdmin && <AdminModeration onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
@@ -2298,7 +2330,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.26</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.27</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.27</strong><small>2026.11.01</small></div>
+            <ul>
+              <li>“我的”页改为收藏、点赞、探索日历和最近发现四个切换面板。</li>
+              <li>设置选项改为统一的二级选择页，个人发布与草稿单独收纳。</li>
+              <li>标签栏固定在顶部，切换加入柔和的滑动与内容过渡。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.26</strong><small>2026.11.01</small></div>
             <ul>
@@ -2556,173 +2596,74 @@ export default function Community() {
               <ChevronRight size={17}/>
             </button>
           </div>
-          <div className="section-head exploration-calendar-heading">
-            <h2>我的探索日历</h2>
-            <span>最近 28 天</span>
-          </div>
-          <div
-            className="exploration-calendar"
-            role="group"
-            aria-label="最近 28 天的翻卡记录"
-          >
-            {calendarDays.map(({ key, count }) => (
-              <button
-                key={key}
-                type="button"
-                className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`}
-                aria-label={`${key}，翻开 ${count} 张`}
-                aria-pressed={selectedDay === key}
-                onClick={() => setSelectedCalendarDate(key)}
-                title={`${key} · ${count} 张`}
-              />
-            ))}
-          </div>
-          <div className="calendar-day-detail">
-            <div>
-              <strong>
-                {(() => {
-                  const [year, month, day] = selectedDay.split("-");
-                  return `${year}年${Number(month)}月${Number(day)}日`;
-                })()}
-              </strong>
-              <span>今日探索：{selectedDayIds.length} 张</span>
-            </div>
-            {selectedDayIds.length ? (
-              <div className="calendar-posts">
-                {selectedDayIds.map((id) => {
-                  const item =
-                    state.revealed[id] || all.find((p) => p.id === id);
-                  return item ? (
-                    <button key={id} onClick={() => openPost(id, "today")}>
-                      <span>{item.tag}</span>
-                      <strong>{item.title}</strong>
-                      <ChevronRight size={15} />
-                    </button>
-                  ) : (
-                    <div key={id} className="calendar-missing">
-                      已翻开的内容当前不可用
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="fineprint">这一天还没有翻开新卡片。</p>
-            )}
-          </div>
-          <div className="section-head">
-            <h2>最近的发现</h2>
-            <button
-              className="text-button"
-              onClick={() =>
-                document
-                  .getElementById("flip-history")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            >
-              全部记录 <ChevronRight size={15} />
-            </button>
-          </div>
-          {recentDiscoveries.length ? (
-            <div className="recent-discoveries">
-              {recentDiscoveries.map(({ date, post }) => (
+          <div className="mine-tabs-shell">
+            <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
+              {([
+                ["favorites", "我的收藏"],
+                ["liked", "我的点赞"],
+                ["calendar", "我的探索日历"],
+                ["recent", "最近发现"],
+              ] as const).map(([id, label]) => (
                 <button
-                  key={`${date}-${post.id}`}
-                  onClick={() =>
-                    openPost(
-                      post.id,
-                      state.revealed[post.id] ? "today" : "discover",
-                    )
-                  }
+                  key={id}
+                  id={`mine-tab-${id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={mineSection === id}
+                  aria-controls="mine-category-panel"
+                  tabIndex={mineSection === id ? 0 : -1}
+                  className={mineSection === id ? "active" : ""}
+                  onClick={() => setMineSection(id)}
                 >
-                  <span>
-                    {post.tag} · {date.slice(5).replace("-", ".")}
-                  </span>
-                  <strong>{post.title}</strong>
+                  {label}
                 </button>
               ))}
+              <span className="mine-tab-indicator" style={{ transform: `translateX(${["favorites", "liked", "calendar", "recent"].indexOf(mineSection) * 100}%)` }} />
             </div>
-          ) : (
-            <div className="empty">
-              翻开第一张卡片后，这里会留下你的近期发现。
-            </div>
-          )}
-          <div className="section-head">
-            <h2>我的收藏</h2>
           </div>
-          <div className="filters favorite-filters">
-            {["全部", "今日翻卡", "发现"].map((source) => (
-              <button
-                key={source}
-                className={favoriteSource === source ? "selected" : ""}
-                onClick={() => setFavoriteSource(source)}
-              >
-                {source}
-              </button>
-            ))}
-          </div>
-          {state.saved.length ? (
-            <div className="masonry">
-              {all
-                .filter(
-                  (p) =>
-                    state.saved.includes(p.id) &&
-                    (favoriteSource === "全部" ||
-                      (state.savedFrom?.[p.id] ||
-                        (state.revealed[p.id] ? "today" : "discover")) ===
-                        (favoriteSource === "今日翻卡" ? "today" : "discover")),
-                )
-                .map((p) =>
-                  postCard(p, state.revealed[p.id] ? "today" : "discover"),
-                )}
-            </div>
-          ) : (
-            <div className="empty">遇到喜欢的内容，点一下收藏。</div>
-          )}
-          <div className="section-head">
-            <h2>我的内容</h2>
-            <button
-              className="text-button"
-              onClick={() => void openComposer()}
-            >
-              发布 <Plus size={15} />
-            </button>
-          </div>
-          {state.own.length ? (
-            state.own.map((p) => (
-              <div className="own-row" key={p.id}>
-                <button onClick={() => p.status === "draft" ? void openComposer(p) : openPost(p.id)}>{p.status === "draft" ? `草稿 · ${p.title || "未命名内容"}` : p.status === "pending_review" ? `审核中 · ${p.title}` : p.status === "hidden" ? `审核未通过 · ${p.title}` : p.title}</button>
-                <button
-                  aria-label="编辑"
-                  onClick={() => void openComposer(p)}
-                >
-                  <PenLine size={16} />
-                </button>
-                <button aria-label="删除" onClick={() => void deleteOwn(p)}>
-                  <Trash2 size={16} />
-                </button>
+          <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
+            {mineSection === "favorites" && (
+              <div className="mine-tab-content">
+                <div className="section-head mine-panel-heading"><h2>我的收藏</h2><span>{favoritePosts.length} 篇</span></div>
+                <div className="filters favorite-filters" role="group" aria-label="收藏来源">
+                  {["全部", "今日翻卡", "发现"].map((source) => (
+                    <button key={source} className={favoriteSource === source ? "selected" : ""} aria-pressed={favoriteSource === source} onClick={() => setFavoriteSource(source)}>{source}</button>
+                  ))}
+                </div>
+                {favoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{favoritePosts.map((post) => postCard(post, state.revealed[post.id] ? "today" : "discover"))}</div> : <div className="empty">收藏的内容会集中保存在这里。</div>}
               </div>
-            ))
-          ) : (
-            <div className="empty">分享你认真观察过的事物。</div>
-          )}
-          <div id="flip-history" className="section-head">
-            <h2>探索记录</h2>
-          </div>
-          {Object.entries(state.opened)
-            .sort(([a], [b]) => b.localeCompare(a))
-            .map(([day, values]) => (
-              <div className="history" key={day}>
-                <strong>{day}</strong>
-                {values.map((id) => (
-                  <button key={id} onClick={() => openPost(id)}>
-                    {all.find((p) => p.id === id)?.title || "已移除内容"}
-                  </button>
-                ))}
+            )}
+            {mineSection === "liked" && (
+              <div className="mine-tab-content">
+                <div className="section-head mine-panel-heading"><h2>我的点赞</h2><span>{likedPosts.length} 篇</span></div>
+                {likedPosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{likedPosts.map((post) => postCard(post, state.revealed[post.id] ? "today" : "discover"))}</div> : <div className="empty">点过赞的内容会显示在这里。</div>}
               </div>
-            ))}
-          {!Object.keys(state.opened).length && (
-            <div className="empty">翻开第一张卡，开始记录。</div>
-          )}
+            )}
+            {mineSection === "calendar" && (
+              <div className="mine-tab-content">
+                <div className="section-head exploration-calendar-heading mine-panel-heading"><h2>我的探索日历</h2><span>最近 28 天</span></div>
+                <div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
+                  {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
+                </div>
+                <div className="calendar-day-detail">
+                  <div><strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong><span>探索：{selectedDayIds.length} 张</span></div>
+                  {selectedDayIds.length ? <div className="calendar-posts">{selectedDayIds.map((id) => {
+                    const item = state.revealed[id] || all.find((post) => post.id === id);
+                    return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span><strong>{item.title}</strong><ChevronRight size={15} /></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
+                  })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
+                </div>
+              </div>
+            )}
+            {mineSection === "recent" && (
+              <div className="mine-tab-content">
+                <div className="section-head mine-panel-heading"><h2>最近的发现</h2><span>最近 8 条</span></div>
+                {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => <button key={`${date}-${post.id}`} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span><strong>{post.title}</strong></button>)}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
+                <div id="flip-history" className="section-head mine-panel-heading"><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天</span></div>
+                {Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => <button key={id} onClick={() => openPost(id)}>{all.find((post) => post.id === id)?.title || "已移除内容"}</button>)}</div>)}
+                {!Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
+              </div>
+            )}
+          </div>
           <div className="section-head profile-settings-entry">
             <h2>设置</h2>
           </div>
@@ -2741,6 +2682,25 @@ export default function Community() {
             <span><strong>调试模式</strong><small>重置为新人开始界面</small></span>
             <ChevronRight size={18} />
           </button>
+        </section>
+      )}
+      {tab === "my-content" && (
+        <section className="page my-content-page">
+          <button className="back settings-back" onClick={() => {
+            setTab(myContentReturnTab);
+            requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
+          }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
+          <div className="eyebrow">ACCOUNT / MY CONTENT</div>
+          <h1>我的内容<span className="red-dot">.</span></h1>
+          <p className="lead">管理已发布内容、审核状态与本机草稿。</p>
+          <button className="primary-button mine-create-button" onClick={() => void openComposer()}><Plus size={16} /> 发布内容</button>
+          {state.own.length ? state.own.map((post) => (
+            <div className="own-row" key={post.id}>
+              <button onClick={() => post.status === "draft" ? void openComposer(post) : openPost(post.id)}>{post.status === "draft" ? `草稿 · ${post.title || "未命名内容"}` : post.status === "pending_review" ? `审核中 · ${post.title}` : post.status === "hidden" ? `审核未通过 · ${post.title}` : post.title}</button>
+              <button aria-label="编辑" onClick={() => void openComposer(post)}><PenLine size={16} /></button>
+              <button aria-label="删除" onClick={() => void deleteOwn(post)}><Trash2 size={16} /></button>
+            </div>
+          )) : <div className="empty">发布的内容和草稿会保存在这里。</div>}
         </section>
       )}
       {tab === "today" && viewerId === null && (

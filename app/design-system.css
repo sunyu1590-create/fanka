@@ -1018,3 +1018,70 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 @media (max-width: 430px) {
   .settings-page .font-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Personal library: one pinned category bar and one animated content panel. */
+.mine-tabs-shell {
+  position: sticky;
+  top: 62px;
+  z-index: 12;
+  margin: 18px -20px 0;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+.mine-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: 48px;
+}
+.mine-tabs button {
+  min-width: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  transition: color 220ms ease, opacity 220ms ease;
+}
+.mine-tabs button.active { color: var(--ink); font-weight: 650; }
+.mine-tab-indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 25%;
+  height: 2px;
+  background: var(--action);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--action) 35%, transparent);
+  transition: transform 380ms cubic-bezier(.22,.72,.18,1);
+  pointer-events: none;
+}
+.mine-category-panel { min-height: 240px; scroll-margin-top: 124px; }
+.mine-tab-content { padding: 3px 0 8px; animation: mine-panel-in 340ms cubic-bezier(.22,.72,.18,1) both; }
+.mine-panel-heading { margin: 20px 0 13px; padding: 0; border: 0; }
+.mine-panel-heading h2 { font-size: 17px; }
+.mine-panel-heading span { color: var(--muted); font-size: 11px; }
+.mine-tab-content .favorite-filters { margin: 0 0 18px; }
+.mine-tab-content .exploration-calendar-heading { margin-top: 18px; }
+.mine-tab-content .calendar-day-detail { margin-top: 14px; }
+.mine-tab-content .recent-discoveries { margin: 0 -2px 22px; }
+.mine-tab-content #flip-history { margin-top: 26px; }
+.settings-detail-page { animation: mine-panel-in 300ms ease both; }
+.settings-detail-options { margin-top: 8px; }
+.my-content-page { min-height: calc(100svh - 160px); }
+.mine-create-button { margin: 0 0 18px; }
+@keyframes mine-panel-in {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@media (max-width: 360px) {
+  .mine-tabs-shell { margin-inline: -16px; padding-inline: 16px; }
+  .mine-tabs button { font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mine-tab-indicator, .mine-tabs button { transition: none; }
+  .mine-tab-content, .settings-detail-page { animation: none; }
+}
