@@ -10,6 +10,7 @@ import {
 import { libraryFields, present, type LibraryRow } from "@/lib/server/library";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateTopicNames } from "@/lib/topic-validation";
+import { cardRarityTier } from "@/lib/progression";
 async function replaceTopics(db: SupabaseClient, postId: string, value: unknown) {
   const { data: official, error: catalogError } = await db.from("interest_tags").select("name").eq("active", true);
   dbError(catalogError);
@@ -244,7 +245,17 @@ export async function POST(req: NextRequest) {
       post_id: post!.id,
     };
     if (action === "view") fields.viewed_at = new Date().toISOString();
-    else if (action === "open") fields.opened_at = new Date().toISOString();
+    else if (action === "open") {
+      fields.opened_at = new Date().toISOString();
+      const { data: stats, error: statsError } = await db
+        .from("post_rating_stats")
+        .select("rating_count,rating_sum")
+        .eq("post_id", post!.id)
+        .maybeSingle();
+      dbError(statsError);
+      const count = stats?.rating_count || 0;
+      fields.rarity_tier = cardRarityTier(count ? (stats!.rating_sum / count) : 0, count);
+    }
     else if (action === "complete")
       fields.completed_at = new Date().toISOString();
     else if (action === "like") fields.liked = !!b.value;

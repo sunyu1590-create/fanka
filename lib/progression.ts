@@ -27,13 +27,23 @@ export function experienceProgress(total: number) {
   };
 }
 
-export type CardRarity = "评分形成中" | "普通黑卡" | "黑金" | "黄金" | "铂金" | "隐藏卡";
+export type CardRarityTier = "ordinary" | "S" | "SS" | "SSS" | "pending";
+export type CardRarity = "评分形成中" | "普通黑卡" | "S" | "SS" | "SSS";
+
+export function cardRarityTier(average: number, count: number): CardRarityTier {
+  if (count < 5) return "pending";
+  if (average >= 4.8 && count >= 20) return "SSS";
+  if (average >= 4.5 && count >= 10) return "SS";
+  if (average >= 4 && count >= 5) return "S";
+  return "ordinary";
+}
+
+export function cardRarityLabel(tier: CardRarityTier): CardRarity {
+  if (tier === "pending") return "评分形成中";
+  if (tier === "ordinary") return "普通黑卡";
+  return tier;
+}
 
 export function cardRarity(average: number, count: number): CardRarity {
-  if (count < 3) return "评分形成中";
-  if (average >= 4.8 && count >= 10) return "隐藏卡";
-  if (average >= 4.5) return "铂金";
-  if (average >= 4) return "黄金";
-  if (average >= 3) return "黑金";
-  return "普通黑卡";
+  return cardRarityLabel(cardRarityTier(average, count));
 }

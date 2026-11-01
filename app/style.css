@@ -34,8 +34,6 @@
 .flip-front-note{margin:0;color:#77756e;font-size:12px;line-height:1.7}
 .bottom-nav{grid-template-columns:repeat(3,minmax(0,1fr))}
 .bottom-nav button{gap:5px;letter-spacing:.01em}
-.page{animation:page-in .28s cubic-bezier(.22,.72,.18,1) both}
-@keyframes page-in{from{opacity:0;filter:blur(4px);transform:translateY(8px)}to{opacity:1;filter:blur(0);transform:translateY(0)}}
 .flip-overlay{backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
 .overlay{animation:detail-in .34s cubic-bezier(.22,.72,.18,1) both;transform-origin:top center}
 .detail{animation:detail-content-in .38s .05s ease both}

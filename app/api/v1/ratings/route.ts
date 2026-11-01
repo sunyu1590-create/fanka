@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
         return [
           post.client_id,
           {
-            average: stat ? Number((stat.rating_sum / stat.rating_count).toFixed(1)) : 0,
+            average: stat && stat.rating_count ? stat.rating_sum / stat.rating_count : 0,
             count: stat?.rating_count || 0,
           },
         ];

@@ -274,7 +274,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .editorial-skeleton { background: var(--bg); }
 .editorial-skeleton div, .editorial-skeleton i { background: var(--surface); }
 
-@keyframes page-in { from { opacity: 0; filter: blur(2px); transform: translateY(6px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
 
 @media (max-width: 390px) {
   .page, .page.editorial-home { padding-inline: 20px; }
@@ -1074,8 +1073,8 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .my-content-page { min-height: calc(100svh - 160px); }
 .mine-create-button { margin: 0 0 18px; }
 @keyframes mine-panel-in {
-  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
-  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+  from { opacity: 0; filter: blur(2px); }
+  to { opacity: 1; filter: blur(0); }
 }
 @media (max-width: 360px) {
   .mine-tabs-shell { margin-inline: -16px; padding-inline: 16px; }
@@ -1425,6 +1424,59 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .soft-button:not(:disabled):active,.load-button:not(:disabled):active { transform: scale(.97); filter: brightness(.97); }
 .account-profile-actions { border-radius: 999px; box-shadow: 0 10px 30px #26394d18; }
 .account-profile-actions .primary-button { min-height: 48px; }
+
+/* Avoid double-applying the legacy vertical page entrance with View Transitions. */
+.page { animation: none; }
+.mine-tab-content { animation: heika-focus-in 300ms cubic-bezier(.2,.8,.2,1) both; }
+
+/* Shared geometry for progression and membership surfaces. */
+.experience-summary-card,
+.experience-total-card,
+.experience-rule-note,
+.experience-level-list,
+.subscription-dialog { border-radius: var(--radius-panel); }
+.subscription-dialog { border-radius: var(--radius-panel) var(--radius-panel) 0 0; }
+.subscription-plan { border-radius: var(--radius-card); }
+.experience-total-card .experience-track i { background: var(--xp-progress, #718b93); box-shadow: none; }
+:root[data-theme="dark"] { --xp-progress: #6e929a; }
+:root[data-theme="light"] { --xp-progress: #718a92; }
+
+/* Reveal the grade first, then collapse it to a compact persistent chip. */
+.flip-window-revealed.is-rarity-reveal>img { filter: blur(8px) brightness(.42); opacity: .62; transform: scale(1.04); }
+.flip-window-revealed.is-rarity-reveal .flip-window-visual-fallback { opacity: .12; }
+.flip-rarity-reveal {
+  position: absolute; inset: 0; z-index: 3; display: grid; align-content: center; justify-items: center; gap: 9px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent); color: var(--ink); text-align: center;
+  animation: heika-focus-in 520ms cubic-bezier(.2,.8,.2,1) both;
+}
+.flip-rarity-reveal small { color: var(--muted); font: 10px ui-monospace,monospace; letter-spacing: .16em; text-transform: uppercase; }
+.flip-rarity-reveal strong { color: var(--ink); font-size: clamp(38px,12vw,58px); font-weight: 740; line-height: 1; letter-spacing: -.04em; }
+.flip-rarity-reveal span { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 11px; }
+.window-reveal-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.window-reveal-copy { transition: opacity 260ms ease, filter 260ms ease, transform 260ms ease; }
+.window-reveal-copy.is-rarity-hidden { visibility: hidden; opacity: 0; filter: blur(5px); transform: scale(.98); }
+.candidate-rarity-chip,.rarity-history-chip,.rarity-inline-chip {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 22px; padding: 4px 6px;
+  border: 1px solid currentColor; border-radius: 999px; font: 700 10px/1 ui-monospace,monospace; font-style: normal; letter-spacing: .02em;
+}
+.candidate-rarity-chip { position: absolute; top: 9px; right: 9px; z-index: 2; backdrop-filter: blur(8px); }
+.rarity-history-chip,.rarity-inline-chip { min-height: 18px; font-size: 9px; }
+.rarity-tier-S { border-color: #65899a; background: #263943; color: #b9dbe5; }
+.rarity-tier-SS { border-color: #9a8050; background: #3a3020; color: #e5ce92; }
+.rarity-tier-SSS { border-color: #89719f; background: #352a42; color: #d9c3ed; }
+.rarity-普通黑卡 { background: #edf0f1; color: #687276; }
+.rarity-S { background: #e2edf1; color: #456b79; }
+.rarity-SS { background: #f3ead4; color: #806832; }
+.rarity-SSS { background: #eee6f4; color: #72538a; }
+.recent-discoveries button,.calendar-posts button,.history button { gap: 8px; }
+:root[data-theme="light"] .rarity-tier-S { border-color: #b7ced5; background: #e8f1f3; color: #416876; }
+:root[data-theme="light"] .rarity-tier-SS { border-color: #e2cf9e; background: #faf3df; color: #846a2a; }
+:root[data-theme="light"] .rarity-tier-SSS { border-color: #d2c1e1; background: #f2ebf7; color: #71538a; }
+:root[data-theme="light"] .rarity-普通黑卡 { background: #f1f3f4; color: #687276; }
+:root[data-theme="light"] .rarity-S { background: #e2edf1; color: #456b79; }
+:root[data-theme="light"] .rarity-SS { background: #f3ead4; color: #806832; }
+:root[data-theme="light"] .rarity-SSS { background: #eee6f4; color: #72538a; }
+:root[data-theme="light"] .flip-rarity-reveal { background: color-mix(in srgb, #fff 88%, transparent); }
 .toggle-switch { width: 51px; height: 31px; flex: none; padding: 2px; border: 0; border-radius: 999px; background: #c9cdd2; transition: background-color 220ms ease,box-shadow 220ms ease,transform 220ms ease; }
 .toggle-switch i { width: 27px; height: 27px; transform: translateX(0); border-radius: 50%; background: #fff; box-shadow: 0 1px 4px #0003; transition: transform 260ms cubic-bezier(.2,.8,.2,1),background-color 180ms ease; }
 .toggle-switch.on { background: #34c759; box-shadow: inset 0 0 0 1px #2eae4e; }

@@ -7,6 +7,7 @@ import {
   ApiError,
 } from "@/lib/server/api";
 import { libraryFields, present, type LibraryRow } from "@/lib/server/library";
+import { cardRarityTier } from "@/lib/progression";
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db } = await context(req, false);
@@ -42,6 +43,15 @@ export async function POST(req: NextRequest) {
       .eq("client_id", id)
       .single();
     dbError(error);
-    return present(data as unknown as LibraryRow);
+    const post = data as unknown as LibraryRow;
+    const { data: stats, error: statsError } = await db
+      .from("post_rating_stats")
+      .select("rating_count,rating_sum")
+      .eq("post_id", post.id)
+      .maybeSingle();
+    dbError(statsError);
+    const count = stats?.rating_count || 0;
+    const average = count ? stats!.rating_sum / count : 0;
+    return { ...present(post), rarityTier: cardRarityTier(average, count) };
   });
 }

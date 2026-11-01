@@ -49,7 +49,7 @@ import type { TopicSummary } from "@/lib/topics";
 import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
-import { cardRarity, EXPERIENCE_LEVELS, experienceProgress } from "@/lib/progression";
+import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
 
 const FLIP_RAIN_PARTICLES = 112;
@@ -88,6 +88,7 @@ type State = {
   onboardingDone?: boolean;
   cardIds: number[];
   revealed: Record<number, Post>;
+  rarityTiers: Record<number, CardRarityTier>;
   notifications: { messages: boolean; comments: boolean; daily: boolean };
   readingMode: "standard" | "focus" | "night";
   savedFrom: Record<number, "today" | "discover">;
@@ -113,6 +114,7 @@ const initial: State = {
   onboardingDone: false,
   cardIds: [],
   revealed: {},
+  rarityTiers: {},
   notifications: { messages: false, comments: false, daily: false },
   readingMode: "standard",
   savedFrom: {},
@@ -318,6 +320,7 @@ export default function Community() {
   const [extraPacksOpen, setExtraPacksOpen] = useState(false);
   const [subscriptionRulesOpen, setSubscriptionRulesOpen] = useState(false);
   const luckyRewardTimer = useRef<number | null>(null);
+  const rarityRevealTimer = useRef<number | null>(null);
   const flipRainTimer = useRef<number | null>(null);
   const noticeTimer = useRef<number | null>(null);
   const noticeExitTimer = useRef<number | null>(null);
@@ -329,6 +332,7 @@ export default function Community() {
       null,
     ),
     [viewerFlipped, setViewerFlipped] = useState(false),
+    [viewerRevealPhase, setViewerRevealPhase] = useState<"rarity" | "content" | null>(null),
     [flippingId, setFlippingId] = useState<number | null>(null),
     [publicFeed, setPublicFeed] = useState<Post[]>([]),
     publicFeedLoading = useRef(false),
@@ -547,6 +551,7 @@ export default function Community() {
             ...saved,
             dailyCount: 5,
             revealed: saved.revealed || {},
+            rarityTiers: saved.rarityTiers || {},
             notifications: saved.notifications || initial.notifications,
             readingMode:
               saved.readingMode ||
@@ -569,6 +574,14 @@ export default function Community() {
             );
             loaded = {
               ...loaded,
+              rarityTiers: {
+                ...loaded.rarityTiers,
+                ...Object.fromEntries(
+                  results
+                    .filter((post): post is Post => Boolean(post?.rarityTier))
+                    .map((post) => [post.id, post.rarityTier!]),
+                ),
+              },
               revealed: {
                 ...loaded.revealed,
                 ...Object.fromEntries(
@@ -607,6 +620,7 @@ export default function Community() {
     if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
     if (luckyRewardTimer.current !== null) window.clearTimeout(luckyRewardTimer.current);
     if (flipRainTimer.current !== null) window.clearTimeout(flipRainTimer.current);
+    if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
   }, []);
@@ -847,6 +861,8 @@ export default function Community() {
     );
     if (viewerId === id) {
       cancelFlipRain(id);
+      if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
+      setViewerRevealPhase(null);
       setViewerId(null);
       setViewerFlipped(false);
       setViewerPhase(null);
@@ -928,6 +944,7 @@ export default function Community() {
       else {
         setViewerId(null);
         setViewerFlipped(false);
+        setViewerRevealPhase(null);
         setViewerPhase(null);
       }
     };
@@ -1113,6 +1130,7 @@ export default function Community() {
       setViewerRect(origin?.getBoundingClientRect() || findVisibleCard(id));
       setViewerId(id);
       setViewerFlipped(true);
+      setViewerRevealPhase("content");
       setViewerPhase("opening");
       return;
     }
@@ -1121,6 +1139,7 @@ export default function Community() {
       return;
     }
     setViewerFlipped(false);
+    setViewerRevealPhase(null);
     setViewerRect(origin?.getBoundingClientRect() || findVisibleCard(id));
     setViewerId(id);
     setViewerPhase("opening");
@@ -1179,10 +1198,16 @@ export default function Community() {
       const nextLuckyBonus = lucky
         ? { ...state.luckyBonus, [today]: luckyBonusToday + lucky }
         : state.luckyBonus;
+      const rarityTier = (result.data.rarityTier || cardRarityTier(
+        communityRatings[id]?.average || 0,
+        communityRatings[id]?.count || 0,
+      )) as CardRarityTier;
+      const revealedPost: Post = { ...result.data, rarityTier };
       const next = {
         ...state,
         luckyBonus: nextLuckyBonus,
-        revealed: { ...state.revealed, [id]: result.data },
+        revealed: { ...state.revealed, [id]: revealedPost },
+        rarityTiers: { ...state.rarityTiers, [id]: rarityTier },
         opened: {
           ...state.opened,
           [today]: openDailyCard(used, id, dailyAllowance),
@@ -1191,6 +1216,12 @@ export default function Community() {
       localStorage.setItem(storageKey, JSON.stringify(next));
       setState(next);
       setViewerFlipped(true);
+      setViewerRevealPhase("rarity");
+      if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
+      rarityRevealTimer.current = window.setTimeout(() => {
+        rarityRevealTimer.current = null;
+        setViewerRevealPhase("content");
+      }, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 900);
       if (lucky) {
         if (luckyRewardTimer.current !== null) window.clearTimeout(luckyRewardTimer.current);
         setLuckyReward({ postId: id, amount: lucky });
@@ -1242,6 +1273,8 @@ export default function Community() {
       rect && rect.top < innerHeight && rect.bottom > 0 ? rect : null,
     );
     setFlippingId(null);
+    if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
+    setViewerRevealPhase(null);
     setViewerPhase("closing");
   };
   const chooseReadingMode = (mode: "standard" | "focus" | "night") => {
@@ -1903,14 +1936,16 @@ export default function Community() {
 
   const renderCandidate = (p: Post) => {
     const revealed = state.revealed[p.id],
-      unlocked = Boolean(revealed);
+      unlocked = Boolean(revealed),
+      rarityTier = state.rarityTiers[p.id] || revealed?.rarityTier,
+      rareTier = rarityTier === "S" || rarityTier === "SS" || rarityTier === "SSS" ? rarityTier : null;
     return (
       <button
         key={p.id}
         data-card-id={p.id}
         className={`candidate-feed-card flip-in-place${unlocked ? " is-unlocked" : ""}${justFlippedId === p.id ? " just-flipped" : ""}${detail === p.id ? " is-detail-source" : ""}`}
         onClick={() => flip(p.id)}
-        aria-label={unlocked ? `阅读 ${revealed.title}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
+        aria-label={unlocked ? `阅读 ${revealed.title}${rareTier ? `，${rareTier}级稀有卡` : ""}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
       >
         <span className="card-flip-inner">
           <span className="card-flip-face card-flip-front">
@@ -1924,6 +1959,7 @@ export default function Community() {
               background: revealed ? coverColor(revealed.tag) : "#e7e4dd",
             }}
           >
+            {rareTier && <i className={`candidate-rarity-chip rarity-tier-${rareTier}`} aria-label={`${rareTier}级稀有卡`}>{rareTier}</i>}
             {revealed?.image && (
               <img
                 src={revealed.image}
@@ -2015,15 +2051,19 @@ export default function Community() {
                 ]),
               ];
               const opened = { ...s.opened };
+              const rarityTiers = { ...s.rarityTiers };
               for (const row of data.interactions) {
                 if (row.opened_at && row.posts) {
                   const day = row.opened_at.slice(0, 10);
+                  const postId = Number(row.posts.client_id);
                   opened[day] = [
                     ...new Set([
                       ...(opened[day] || []),
-                      Number(row.posts.client_id),
+                      postId,
                     ]),
                   ];
+                  if (["ordinary", "S", "SS", "SSS", "pending"].includes(row.rarity_tier))
+                    rarityTiers[postId] = row.rarity_tier as CardRarityTier;
                 }
               }
               return {
@@ -2036,6 +2076,7 @@ export default function Community() {
                 profileDetails: hydrateProfileDetails(data.profileDetails),
                 saved,
                 opened,
+                rarityTiers,
                 own: [
                   ...new Map(
                     [...s.own.filter((p) => !p.cloudId), ...data.own].map(
@@ -2458,7 +2499,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.35</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.36</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2535,7 +2576,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.35</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.36</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.36</strong><small>2026.11.01</small></div><ul><li>切页使用统一模糊缩放过渡，移除旧页面上浮效果。</li><li>翻卡揭晓 S、SS、SSS 稀有等级，并在探索记录保留等级。</li><li>统一等级与订阅界面的圆角，经验进度条改为纯色。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.35</strong><small>2026.11.01</small></div><ul><li>为等级经验、选择菜单和个人资料控件补齐暗色主题样式。</li><li>移除经验等级卡片上多余的圆环装饰。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.34</strong><small>2026.11.01</small></div><ul><li>修复账号设置一级列表文字逐字换行与行高错乱。</li><li>增强等级经验、奖励和选择卡片的色彩层级。</li><li>统一页面、弹层、选项和开关的动效与 iOS 风格控件。</li><li>个人资料和管理后台选择器改为统一的质感菜单。</li></ul></div>
           <div className="settings-module release-note">
@@ -2884,7 +2926,9 @@ export default function Community() {
                   <div><strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong><span>探索：{selectedDayIds.length} 张</span></div>
                   {selectedDayIds.length ? <div className="calendar-posts">{selectedDayIds.map((id) => {
                     const item = state.revealed[id] || all.find((post) => post.id === id);
-                    return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span><strong>{item.title}</strong><ChevronRight size={15} /></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
+                    const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                    const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                    return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
                   })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
                 </div>
               </div>
@@ -2892,9 +2936,17 @@ export default function Community() {
             {mineSection === "recent" && (
               <div className="mine-tab-content">
                 <div className="section-head mine-panel-heading"><h2>最近的发现</h2><span>最近 8 条</span></div>
-                {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => <button key={`${date}-${post.id}`} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span><strong>{post.title}</strong></button>)}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
+                {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => {
+                  const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
+                  const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                  return <button key={`${date}-${post.id}`} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong></button>;
+                })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
                 <div id="flip-history" className="section-head mine-panel-heading"><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天</span></div>
-                {Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => <button key={id} onClick={() => openPost(id)}>{all.find((post) => post.id === id)?.title || "已移除内容"}</button>)}</div>)}
+                {Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
+                  const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                  const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                  return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
+                })}</div>)}
                 {!Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
               </div>
             )}
@@ -2998,6 +3050,9 @@ export default function Community() {
           )}
           {(() => {
             const revealed = state.revealed[viewerId];
+            const rarityTier = state.rarityTiers[viewerId] || revealed?.rarityTier || "pending";
+            const rarityLabel = cardRarityLabel(rarityTier);
+            const rarityGrade = rarityTier === "ordinary" ? "N" : rarityTier === "pending" ? "待评" : rarityTier;
             return (
               <div
                 ref={viewerStageRef}
@@ -3018,7 +3073,7 @@ export default function Community() {
                     )}
                   </div>
                   <div
-                    className="flip-face flip-back flip-window-revealed"
+                    className={`flip-face flip-back flip-window-revealed${viewerRevealPhase === "rarity" ? " is-rarity-reveal" : ""}`}
                     data-window-card-id={viewerId}
                     style={{ background: coverColor(revealed?.tag || "") }}
                   >
@@ -3034,8 +3089,15 @@ export default function Community() {
                         }}
                       />
                     )}
-                    <div className="window-reveal-copy">
-                      <small>{revealed?.tag || "HEIKA"}</small>
+                    {viewerRevealPhase === "rarity" && (
+                      <div className={`flip-rarity-reveal rarity-tier-${rarityTier}`} aria-live="polite">
+                        <small>卡片稀有度</small>
+                        <strong>{rarityGrade}</strong>
+                        <span>{rarityLabel}</span>
+                      </div>
+                    )}
+                    <div className={`window-reveal-copy${viewerRevealPhase === "rarity" ? " is-rarity-hidden" : ""}`} aria-hidden={viewerRevealPhase === "rarity" || undefined}>
+                      <div className="window-reveal-meta"><small>{revealed?.tag || "HEIKA"}</small><i className={`rarity-inline-chip rarity-tier-${rarityTier}`}>{rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier}</i></div>
                       <h2>{revealed?.title || ""}</h2>
                       <p>
                         {revealed?.body?.slice(0, 220)}
@@ -3046,7 +3108,7 @@ export default function Community() {
                       </small>
                       <button
                         className="window-more"
-                        disabled={!viewerFlipped || viewerPhase !== null}
+                        disabled={!viewerFlipped || viewerPhase !== null || viewerRevealPhase === "rarity"}
                         onClick={(event) => openPost(viewerId, "today", event.currentTarget)}
                       >
                         查看更多 <ArrowRight size={17} />
