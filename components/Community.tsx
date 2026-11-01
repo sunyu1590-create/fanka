@@ -2458,7 +2458,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.34</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.35</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2535,7 +2535,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.34</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.35</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.35</strong><small>2026.11.01</small></div><ul><li>为等级经验、选择菜单和个人资料控件补齐暗色主题样式。</li><li>移除经验等级卡片上多余的圆环装饰。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.34</strong><small>2026.11.01</small></div><ul><li>修复账号设置一级列表文字逐字换行与行高错乱。</li><li>增强等级经验、奖励和选择卡片的色彩层级。</li><li>统一页面、弹层、选项和开关的动效与 iOS 风格控件。</li><li>个人资料和管理后台选择器改为统一的质感菜单。</li></ul></div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.31</strong><small>2026.11.01</small></div>
