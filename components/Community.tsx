@@ -27,6 +27,8 @@ import {
   Sparkles,
   Crown,
   ShieldCheck,
+  FileText,
+  Info,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -308,7 +310,8 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | null>(null),
+    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | null>(null),
+    [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
     [readingTransition, setReadingTransition] = useState<"out" | "in" | null>(
@@ -582,14 +585,17 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications") => {
-    scrollPositions.current.settings = window.scrollY;
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests", returnTab: "settings" | "mine" = "settings") => {
+    scrollPositions.current[returnTab] = window.scrollY;
+    setSettingsReturnTab(returnTab);
+    if (returnTab === "mine") setTab("settings");
     setSettingsDetail(detail);
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   };
   const closeSettingsDetail = () => {
     setSettingsDetail(null);
-    requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" }));
+    setTab(settingsReturnTab);
+    requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[settingsReturnTab] || 0, behavior: "instant" }));
   };
   const chooseHomeMode = (mode: "waterfall" | "blackcard") => {
     update((current) => ({ ...current, homeMode: mode }));
@@ -2319,11 +2325,11 @@ export default function Community() {
           </div>
           <div className="settings-module">
             <div className="settings-module-heading"><strong>账号</strong></div>
-            <div className="settings-list">
-              <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
-              <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.30</small><ChevronRight size={16}/></button>
+            <div className="settings-list account-settings-list">
+              <button onClick={() => openSettingsDetail("profile")}><span className="settings-row-icon"><UserRound size={17}/></span><span>个人资料</span><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("interests")}><span className="settings-row-icon"><Sparkles size={17}/></span><span>兴趣偏好</span><ChevronRight size={16}/></button>
+              <button onClick={() => openMyContent("settings")}><span className="settings-row-icon"><FileText size={17}/></span><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span className="settings-row-icon"><Info size={17}/></span><span>关于黑卡</span><small>版本 1.31</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2334,8 +2340,15 @@ export default function Community() {
         <section className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置"})[settingsDetail]}</h1>
-          <p className="lead">预览效果并选择偏好，设置会自动保存。</p>
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好"})[settingsDetail]}</h1>
+          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} onSave={(name,bio,avatar)=>update(current=>({...current,name,bio,avatar}))} onClose={closeSettingsDetail}/>}
+          {settingsDetail === "interests" && <div className="account-interests-page">
+            <div className="interest-page-note"><Sparkles size={16}/><span>偏好会自动保存在你的账号中。</span></div>
+            <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
+              {tags.map((tag,index)=>{const InterestIcon=[Compass,Heart,Star,Sparkles][index%4];const selected=state.interests.includes(tag);return <button key={tag} className={`account-interest-option${selected?" selected":""}`} aria-pressed={selected} onClick={()=>update(current=>({...current,interests:current.interests.includes(tag)?current.interests.filter(item=>item!==tag):[...current.interests,tag]}))}><span><InterestIcon size={17}/></span><strong>{tag}</strong><i>{selected?<Check size={14}/>:null}</i></button>})}
+            </div>
+          </div>}
           {settingsDetail === "theme" && (
             <div className="preference-options" role="radiogroup" aria-label="外观主题">
               {([['light','浅色','清爽白底，适合明亮环境'],['dark','深色','降低亮度，适合暗光浏览'],['system','跟随系统','随设备外观自动切换']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={theme===value} className={`preference-option${theme===value?' selected':''}`} onClick={()=>setTheme(value)}>{renderPreferencePreview('theme',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{theme===value?'✓':''}</i></button>)}
@@ -2382,10 +2395,11 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.30</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.31</p>
           <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.30</strong><small>2026.11.01</small></div>
+            <div className="settings-module-heading"><strong>版本 1.31</strong><small>2026.11.01</small></div>
             <ul>
+              <li>个人资料与兴趣偏好改为独立二级页面，账号设置行项增加统一图标与排版。</li>
               <li>调试模式新增管理员后台登录入口，并统一账号设置分组与列表样式。</li>
               <li>补齐邮箱注册确认、密码找回与重置流程，注册时可设置昵称。</li>
               <li>新增账号角色管理、用户检索和私信举报队列。</li>
@@ -2639,7 +2653,7 @@ export default function Community() {
               <h2>{state.name}</h2>
               <p>{state.bio}</p>
             </div>
-            <button aria-label="编辑资料" onClick={() => setModal("profile")}>
+            <button aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}>
               <PenLine size={18} />
             </button>
           </div>
