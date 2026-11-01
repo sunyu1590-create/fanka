@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
@@ -13,6 +13,7 @@ type Message = {
   created_at: string;
   media_path?: string;
 };
+type AuthView = "login" | "signup" | "forgot" | "confirm" | "reset";
 export default function Messages({
   initialPeer,
   onPeerOpened,
@@ -22,9 +23,14 @@ export default function Messages({
 }) {
   const [db, setDb] = useState<SupabaseClient>(),
     [user, setUser] = useState<User | null>(null),
+    [authView, setAuthView] = useState<AuthView>("login"),
     [email, setEmail] = useState(""),
+    [nickname, setNickname] = useState(""),
     [password, setPassword] = useState(""),
+    [confirmPassword, setConfirmPassword] = useState(""),
     [error, setError] = useState(""),
+    [authMessage, setAuthMessage] = useState(""),
+    [authPurpose, setAuthPurpose] = useState<"signup" | "recovery">("signup"),
     [busy, setBusy] = useState(false),
     [query, setQuery] = useState(""),
     [people, setPeople] = useState<Profile[]>([]),
@@ -75,10 +81,15 @@ export default function Messages({
       .then(async (client) => {
         if (!alive) return;
         setDb(client);
+        if (new URLSearchParams(window.location.search).get("auth") === "reset" || window.location.hash.includes("type=recovery") || sessionStorage.getItem("heika-auth-action") === "reset") {
+          setAuthView("reset");
+          sessionStorage.removeItem("heika-auth-action");
+        }
         const { data } = await client.auth.getUser();
         setUser(data.user);
         const { data: sub } = client.auth.onAuthStateChange(
           (event, session) => {
+            if (event === "PASSWORD_RECOVERY") setAuthView("reset");
             if (event === "SIGNED_OUT" ||
                 (userIdRef.current && userIdRef.current !== session?.user?.id)) {
               setActive(null);
@@ -242,17 +253,55 @@ export default function Messages({
       window.removeEventListener("online", recover);
     };
   }, [db, user?.id]);
-  const auth = async (signup = false) => {
-    if (!db) return;
-    setBusy(true);
-    setError("");
-    const result = signup
-      ? await db.auth.signUp({ email, password })
-      : await db.auth.signInWithPassword({ email, password });
-    if (result.error) setError(result.error.message);
-    else if (signup && !result.data.session)
-      setError("请查收邮箱确认邮件后登录。");
-    setBusy(false);
+  const auth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!db || busy) return;
+    setBusy(true); setError(""); setAuthMessage("");
+    try {
+      if (authView === "signup") {
+        setAuthPurpose("signup");
+        if (password !== confirmPassword) throw new Error("两次输入的密码不一致。");
+        if (nickname.trim().length < 2 || nickname.trim().length > 24) throw new Error("昵称请填写 2–24 个字。");
+        const { data, error } = await db.auth.signUp({
+          email: email.trim(), password,
+          options: { data: { nickname: nickname.trim() }, emailRedirectTo: window.location.origin },
+        });
+        if (error) throw error;
+        if (!data.session) { setAuthView("confirm"); setAuthMessage("确认邮件已发送。请前往邮箱完成验证，再回来登录。"); }
+        else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
+      } else if (authView === "forgot") {
+        const { error } = await db.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+        if (error) throw error;
+        setAuthPurpose("recovery");
+        setAuthView("confirm"); setAuthMessage("如果这个邮箱已注册，密码重置邮件已经发送，请查收邮箱。");
+      } else if (authView === "reset") {
+        if (password.length < 8) throw new Error("新密码至少需要 8 位。");
+        if (password !== confirmPassword) throw new Error("两次输入的密码不一致。");
+        const { error } = await db.auth.updateUser({ password });
+        if (error) throw error;
+        window.history.replaceState({}, "", window.location.pathname);
+        setAuthView("login"); setPassword(""); setConfirmPassword("");
+        setAuthMessage("密码已更新，请使用新密码登录。");
+      } else {
+        const { error } = await db.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw error;
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "操作失败，请稍后重试。";
+      setError(message.includes("Invalid login credentials") ? "邮箱或密码不正确。" : message.includes("User already registered") ? "这个邮箱已注册，请直接登录或找回密码。" : message.includes("Password should be") ? "密码至少需要 8 位。" : message);
+    } finally { setBusy(false); }
+  };
+  const resendConfirmation = async () => {
+    if (!db || !email.trim()) return;
+    setBusy(true); setError(""); setAuthMessage("");
+    try {
+      const { error } = authPurpose === "signup"
+        ? await db.auth.resend({ type: "signup", email: email.trim(), options: { emailRedirectTo: window.location.origin } })
+        : await db.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+      if (error) throw error;
+      setAuthMessage(authPurpose === "signup" ? "确认邮件已重新发送，请查收邮箱。" : "如果该邮箱已注册，重置邮件已重新发送。");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "邮件发送失败，请稍后重试。"); }
+    finally { setBusy(false); }
   };
   const open = async (peer: Profile) => {
     if (!db) return;
@@ -336,51 +385,27 @@ export default function Messages({
       });
     setError(error?.message || "举报已提交，等待管理员处理。");
   };
-  if (!user)
+  if (!user || authView === "reset")
     return (
-      <section className="page">
-        <div className="eyebrow">MESSAGES / ACCOUNT</div>
-        <h1>让交流发生。</h1>
-        <p className="lead">使用真实账号登录，消息将安全保存在云端。</p>
+      <section className="page account-page">
+        <div className="eyebrow">HEIKA / ACCOUNT</div>
+        <h1>{authView === "signup" ? "加入黑卡。" : authView === "forgot" ? "找回密码。" : authView === "reset" ? "设置新密码。" : authView === "confirm" ? "查看邮箱。" : "让交流发生。"}</h1>
+        <p className="lead">{authView === "signup" ? "建立你的账号，保存发现并开启交流。" : authView === "reset" ? "为账号设置一个新的登录密码。" : authView === "confirm" ? "完成邮箱验证后，即可继续使用黑卡。" : "登录后，收藏、消息与个人资料会安全保存在账号中。"}</p>
         <form
           className="account-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void auth();
-          }}
+          onSubmit={(e) => void auth(e)}
         >
-          <label>
-            邮箱
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <label>
-            密码
-            <input
-              type="password"
-              minLength={8}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-          <button className="primary-button" disabled={!db || busy}>
-            登录
-          </button>
-          <button
-            type="button"
-            className="soft-button"
-            disabled={!db || busy || password.length < 8 || !email}
-            onClick={() => void auth(true)}
-          >
-            注册账号
-          </button>
+          {authView === "signup" && <label>昵称<input autoComplete="nickname" required minLength={2} maxLength={24} value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="2–24 个字，之后也可以修改" /></label>}
+          {authView !== "reset" && authView !== "confirm" && <label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></label>}
+          {(authView === "login" || authView === "signup" || authView === "reset") && <label>{authView === "reset" ? "新密码" : "密码"}<input type="password" autoComplete={authView === "login" ? "current-password" : "new-password"} minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位" /></label>}
+          {(authView === "signup" || authView === "reset") && <label>确认密码<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="再输入一次密码" /></label>}
+          {authView !== "confirm" && <button className="primary-button" disabled={!db || busy}>{busy ? "请稍候…" : authView === "signup" ? "创建账号" : authView === "forgot" ? "发送重置邮件" : authView === "reset" ? "更新密码" : "登录"}</button>}
+          {authView === "login" && <><button type="button" className="text-button" onClick={() => { setAuthPurpose("recovery"); setAuthView("forgot"); setError(""); setAuthMessage(""); }}>忘记密码？</button><button type="button" className="soft-button" disabled={!db || busy} onClick={() => { setAuthPurpose("signup"); setAuthView("signup"); setError(""); setAuthMessage(""); }}>创建新账号</button></>}
+          {authView === "signup" && <button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); setAuthMessage(""); }}>已有账号，返回登录</button>}
+          {authView === "forgot" && <button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); setAuthMessage(""); }}>返回登录</button>}
+          {authView === "confirm" && <>{email && <button type="button" className="primary-button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "正在发送…" : authPurpose === "signup" ? "重新发送确认邮件" : "重新发送重置邮件"}</button>}<button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); }}>返回登录</button></>}
         </form>
-        <AnimatedNotice message={error} />
+        <AnimatedNotice message={error || authMessage} className={authMessage && !error ? "account-success" : undefined} />
       </section>
     );
   const peer = active

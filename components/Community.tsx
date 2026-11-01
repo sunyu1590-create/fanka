@@ -1812,6 +1812,14 @@ export default function Community() {
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth") === "reset" || window.location.hash.includes("type=recovery")) {
+      sessionStorage.setItem("heika-auth-action", "reset");
+      setTab("messages");
+    }
+  }, []);
+
+  useEffect(() => {
     if (!ready) return;
     let alive = true;
     let cleanup = () => {};
@@ -2309,7 +2317,7 @@ export default function Community() {
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.28</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.29</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2368,10 +2376,12 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.28</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.29</p>
           <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.28</strong><small>2026.11.01</small></div>
+            <div className="settings-module-heading"><strong>版本 1.29</strong><small>2026.11.01</small></div>
             <ul>
+              <li>补齐邮箱注册确认、密码找回与重置流程，注册时可设置昵称。</li>
+              <li>新增账号角色管理、用户检索和私信举报队列。</li>
               <li>统一偏好设置二级页面，并新增主题、字体、导航与浏览模式的界面预览。</li>
               <li>“我的”页改为收藏、点赞、探索日历和最近发现四个切换面板。</li>
               <li>设置选项改为统一的二级选择页，个人发布与草稿单独收纳。</li>
