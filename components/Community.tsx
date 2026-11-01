@@ -76,6 +76,7 @@ type State = {
   liked?: number[];
   dismissed?: number[];
   homeMode: "waterfall" | "blackcard";
+  discoverLayout: "waterfall" | "single";
   dailyCount: number;
   luckyBonus: Record<string, number>;
   interests: string[];
@@ -99,6 +100,7 @@ type State = {
 };
 const initial: State = {
   homeMode: "waterfall",
+  discoverLayout: "waterfall",
   dailyCount: 5,
   luckyBonus: {},
   interests: [],
@@ -835,7 +837,6 @@ export default function Community() {
     if (!transitionPhase) return;
     const opening = transitionPhase === "opening";
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let animation: Animation | undefined;
     let imageAnimation: Animation | undefined;
     let imageClone: HTMLImageElement | null = null;
     let imageTarget: HTMLImageElement | null = null;
@@ -861,7 +862,7 @@ export default function Community() {
       finish();
       return;
     }
-    animation = detailNode.animate(
+    const animation = detailNode.animate(
       opening
         ? [
             { opacity: 1, transform: "translate3d(0,24px,0)" },
@@ -1665,7 +1666,7 @@ export default function Community() {
         </button>
       )}
       {items.length ? (
-        <div className="masonry editorial-feed">
+        <div className={`masonry editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`}>
           {items.map((item) => postCard(item))}
         </div>
       ) : (
@@ -2164,7 +2165,7 @@ export default function Community() {
             <span><strong>{topicSummary.postCount}</strong> 篇公开内容</span>
             <span><strong>{topicSummary.participantCount}</strong> 位创作者</span>
           </div>
-          {topicPosts.length ? <div className="masonry">{topicPosts.map((item) => postCard(item, "discover"))}</div> : <p className="topic-empty-state">这个话题还没有公开内容，来分享你的第一篇发现。</p>}
+          {topicPosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{topicPosts.map((item) => postCard(item, "discover"))}</div> : <p className="topic-empty-state">这个话题还没有公开内容，来分享你的第一篇发现。</p>}
           {topicPosts.length < topicTotal && <button className="feed-refresh" disabled={topicLoading} onClick={() => void loadMoreTopicPosts()}>{topicLoading ? "正在加载…" : "加载更多"}</button>}
         </section>
       )}
@@ -2204,6 +2205,11 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => setModal("browsing")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
               <button onClick={() => setModal("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
+            </div>
+            <div className="settings-module-heading discover-layout-heading"><strong>发现页布局</strong><small>内容排列方式</small></div>
+            <div className="discover-layout-options" role="group" aria-label="发现页布局">
+              <button type="button" aria-pressed={state.discoverLayout === "waterfall"} className={state.discoverLayout === "waterfall" ? "selected" : ""} onClick={() => update((current) => ({ ...current, discoverLayout: "waterfall" }))}>瀑布流</button>
+              <button type="button" aria-pressed={state.discoverLayout === "single"} className={state.discoverLayout === "single" ? "selected" : ""} onClick={() => update((current) => ({ ...current, discoverLayout: "single" }))}>单列阅读</button>
             </div>
           </div>
           <div className="settings-module">

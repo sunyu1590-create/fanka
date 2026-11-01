@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
         status: existingPost?.data?.status === "draft" ? "draft" : "pending_review",
         image_url: typeof b.coverUrl === "string" ? (() => { try { const url = new URL(b.coverUrl); return ["https:", "http:"].includes(url.protocol) ? url.toString() : null; } catch { return null; } })() : null,
       };
-      let q = db.from("posts");
+      const q = db.from("posts");
       const { data, error } = b.id
         ? await q
             .update(values)

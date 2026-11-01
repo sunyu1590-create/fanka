@@ -839,3 +839,79 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 .moderation-feedback.error{color:#a84444}
 .moderation-empty{padding:30px 0;color:var(--muted);font-size:13px}
 @media(prefers-reduced-motion:reduce){.report-reasons label{transition:none}}
+
+/* P0 acceptance pass: canonical HEIKA theme tokens across community surfaces. */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0D0F12;
+  --surface: #191C20;
+  --card: #22272D;
+  --metal: #526771;
+  --ink: #F2F2F0;
+  --muted: #9A9FA5;
+  --action: #C9D5DA;
+  --line: #30343A;
+  --accent: #A9BBC3;
+  --radius: 8px;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F8F7F4;
+  --surface: #FFFFFF;
+  --card: #F0EFEB;
+  --metal: #AAB9BD;
+  --ink: #242424;
+  --muted: #85837E;
+  --action: #647A83;
+  --line: #E6E4DF;
+  --accent: #607680;
+  --radius: 8px;
+}
+html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
+.report-dialog, .composer-modal, .onboarding-footer {
+  background-color: var(--bg);
+  color: var(--ink);
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+.topline { background: color-mix(in srgb, var(--bg) 94%, transparent); }
+.bottom-nav, .bottom-nav button, .onboarding-footer { background-color: color-mix(in srgb, var(--surface) 94%, transparent); }
+.modal-backdrop { background: color-mix(in srgb, #080A0C 58%, transparent); }
+.modal { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.modal input, .modal textarea, .modal select,
+.composer-topic-search, .composer-image, .composer-image-add,
+.report-note-label textarea, .moderation-note textarea {
+  background-color: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.composer-image, .composer-image-add { background-color: var(--card); }
+.composer-cover-badge, .composer-image-state, .composer-image-retry,
+.composer-image-tools { background-color: color-mix(in srgb, var(--surface) 94%, transparent); color: var(--ink); }
+.detail-topic-chip, .discover-topic-chip, .composer-topic-options button,
+.report-reasons label, .moderation-filters button, .moderation-actions button {
+  border-radius: 8px;
+}
+.topic-detail-stats { border-color: var(--line); }
+.topic-card { border-radius: 8px; }
+.onboarding-footer { border-color: var(--line); }
+.onboarding-start { background: var(--action); color: var(--bg); }
+.onboarding-start:not(:disabled):hover { background: color-mix(in srgb, var(--action) 88%, var(--ink)); }
+.detail-image-button, .detail-gallery .detail-image-button { background: var(--surface); }
+.detail-image-button img { background: var(--surface); }
+.moderation-item { border-color: var(--line); }
+.masonry.single-column { columns: 1; }
+.discover-layout-heading { margin: 18px 0 8px; padding: 0; border: 0; }
+.discover-layout-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.discover-layout-options button { min-height: 42px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 12px; transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease; }
+.discover-layout-options button[aria-pressed="true"] { border-color: var(--action); background: color-mix(in srgb, var(--action) 12%, var(--surface)); color: var(--ink); }
+@media (max-width: 360px) {
+  .page, .page.editorial-home { padding-inline: 16px; }
+  .modal { padding-inline: 16px; }
+  .report-reasons label { padding-inline: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within { scroll-behavior: auto; }
+  html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
+  .report-dialog, .composer-modal, .onboarding-footer { transition-duration: 0.01ms; }
+}
