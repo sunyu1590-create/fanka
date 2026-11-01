@@ -76,6 +76,14 @@ type Comment = {
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[] };
+function relativeTime(timestamp: number) {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 45) return "刚刚";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时前`;
+  if (seconds < 2592000) return `${Math.floor(seconds / 86400)} 天前`;
+  return new Date(timestamp).toLocaleDateString("zh-CN", { year: "numeric", month: "numeric", day: "numeric" });
+}
 type State = {
   avatar?: string;
   liked?: number[];
@@ -445,6 +453,13 @@ export default function Community() {
   };
   const [detailSort, setDetailSort] = useState<"热度" | "最新">("最新");
   const [commentSending, setCommentSending] = useState(false);
+  const [commentTotal, setCommentTotal] = useState(0);
+  const [commentOffset, setCommentOffset] = useState(0);
+  const [commentHasMore, setCommentHasMore] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState(false);
+  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
+  const commentLikeBusy = useRef(new Set<number>());
   const [likeBusy, setLikeBusy] = useState(false);
   const [previewImage, setPreviewImage] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -1351,9 +1366,12 @@ export default function Community() {
       });
       if (!comment) return;
       update((s) => ({ ...s, comments: [...s.comments, comment] }));
+      setCommentTotal((count) => count + 1);
+      if (reply) setExpandedReplies((current) => ({ ...current, [reply]: true }));
       setDraft("");
       setReply(undefined);
       toast("评论已发布");
+      if (reply) requestAnimationFrame(() => document.getElementById(`comment-${reply}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     } catch (e) {
       toast(e instanceof Error ? e.message : "评论保存失败");
     } finally {
@@ -1385,11 +1403,27 @@ export default function Community() {
         });
       update((s) => ({
         ...s,
-        comments: s.comments.filter((x) => x.id !== c.id && x.parent !== c.id),
+        // The database keeps replies and clears their parent_id when a parent is deleted.
+        // Mirror that behavior locally so those replies remain visible as top-level comments.
+        comments: s.comments.filter((x) => x.id !== c.id).map((x) => x.parent === c.id ? { ...x, parent: undefined } : x),
       }));
+      setCommentTotal((count) => Math.max(0, count - 1));
     } catch (e) {
       toast(e instanceof Error ? e.message : "删除失败");
     }
+  };
+  const toggleCommentLike = async (comment: Comment) => {
+    if (!accountId) { toast("登录后可点赞"); return; }
+    if (!comment.cloudId || commentLikeBusy.current.has(comment.id)) return;
+    commentLikeBusy.current.add(comment.id);
+    const nextLiked = !comment.liked;
+    update((current) => ({ ...current, comments: current.comments.map((item) => item.id === comment.id ? { ...item, liked: nextLiked, likes: Math.max(0, item.likes + (nextLiked ? 1 : -1)) } : item) }));
+    try {
+      await cloudRequest("/api/library-comments", { action: "like", post: comment.post, id: comment.id, value: nextLiked });
+    } catch {
+      update((current) => ({ ...current, comments: current.comments.map((item) => item.id === comment.id ? { ...item, liked: comment.liked, likes: comment.likes } : item) }));
+      toast("点赞未保存，请重试");
+    } finally { commentLikeBusy.current.delete(comment.id); }
   };
   const uploadImageToPost = async (image: ComposerImage, postId: string, sortOrder: number): Promise<ComposerImage> => {
     if (image.external) return image;
@@ -1735,24 +1769,52 @@ export default function Community() {
     if (detail === null) return;
     setActiveImageIndex(0);
     setPreviewImage(false);
+    setCommentsLoading(true);
+    setCommentsError(false);
+    setCommentOffset(0);
+    setCommentTotal(0);
+    setCommentHasMore(false);
     let alive = true;
-    void fetch(`/api/library-comments?id=${detail}`)
+    void fetch(`/api/library-comments?id=${detail}&offset=0&limit=40&sort=${detailSort === "最新" ? "new" : "hot"}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((result) => {
-        if (alive && Array.isArray(result.data))
+        if (!alive) return;
+        if (result.data?.items && Array.isArray(result.data.items)) {
+          const items = result.data.items as Comment[];
           setState((s) => ({
             ...s,
             comments: [
               ...s.comments.filter((c) => c.post !== detail || !c.cloudId),
-              ...result.data,
+              ...items,
             ],
           }));
+          setCommentTotal(result.data.total || 0);
+          setCommentOffset(items.length);
+          setCommentHasMore(items.length < (result.data.total || 0));
+        } else throw new Error("评论加载失败");
       })
-      .catch(() => {});
+      .catch(() => { if (alive) setCommentsError(true); })
+      .finally(() => { if (alive) setCommentsLoading(false); });
     return () => {
       alive = false;
     };
-  }, [detail]);
+  }, [detail, detailSort]);
+  const loadMoreComments = async () => {
+    if (detail === null || commentsLoading || !commentHasMore) return;
+    setCommentsLoading(true);
+    setCommentsError(false);
+    try {
+      const response = await fetch(`/api/library-comments?id=${detail}&offset=${commentOffset}&limit=40&sort=${detailSort === "最新" ? "new" : "hot"}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok || !Array.isArray(result.data?.items)) throw new Error("评论加载失败");
+      const items = result.data.items as Comment[];
+      setState((s) => ({ ...s, comments: [...s.comments.filter((c) => !items.some((item) => item.cloudId && item.cloudId === c.cloudId)), ...items] }));
+      setCommentOffset((offset) => offset + items.length);
+      setCommentTotal(result.data.total || 0);
+      setCommentHasMore(commentOffset + items.length < (result.data.total || 0));
+    } catch { setCommentsError(true); }
+    finally { setCommentsLoading(false); }
+  };
   const [feedError, setFeedError] = useState("");
   const refreshFeed = async () => {
     setFeedError("");
@@ -2166,6 +2228,15 @@ export default function Community() {
     };
   }, [ready]);
   useEffect(() => {
+    const syncProfile = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; nickname?: string; bio?: string; avatar?: string }>).detail;
+      if (!detail || detail.id !== accountId) return;
+      setState((current) => ({ ...current, name: detail.nickname || current.name, bio: detail.bio ?? current.bio, avatar: detail.avatar || undefined, comments: current.comments.map((comment) => comment.authorId === accountId ? { ...comment, name: detail.nickname || comment.name, avatar: detail.avatar || undefined } : comment) }));
+    };
+    window.addEventListener("heika-profile-updated", syncProfile);
+    return () => window.removeEventListener("heika-profile-updated", syncProfile);
+  }, [accountId]);
+  useEffect(() => {
     if (!accountId || !cloudHydrated.current) return;
     const timer = setTimeout(
       () =>
@@ -2528,7 +2599,7 @@ export default function Community() {
               {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
           })()}
-          {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>update(current=>({...current,name,bio,avatar,profileDetails}))} onClose={closeSettingsDetail}/>}
+          {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
           {settingsDetail === "privacy" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }}/ >}
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>偏好会自动保存在你的账号中。</span></div>
@@ -3234,42 +3305,43 @@ export default function Community() {
                 </section>
                 <section id="detail-comments" className="detail-comments">
                   <div className="comments-heading">
-                    <h2>评论 <span>· {state.comments.filter((c) => c.post === post.id).length}</span></h2>
+                    <h2>评论 <span>· {commentTotal}</span></h2>
                     <div role="group" aria-label="评论排序" className="comment-sort">
                       <button className={detailSort === "热度" ? "selected" : ""} onClick={() => setDetailSort("热度")}>最热</button>
                       <button className={detailSort === "最新" ? "selected" : ""} onClick={() => setDetailSort("最新")}>最新</button>
                     </div>
                   </div>
+                  {commentsError && <div className="comments-state"><span>评论加载失败</span><button onClick={() => { setCommentsError(false); setCommentsLoading(true); void fetch(`/api/library-comments?id=${post.id}&offset=${commentOffset}&limit=40&sort=${detailSort === "最新" ? "new" : "hot"}`, { cache: "no-store" }).then((r) => r.json()).then((result) => { if (!Array.isArray(result.data?.items)) throw new Error(); const items = result.data.items as Comment[]; setState((s) => ({ ...s, comments: [...s.comments.filter((c) => c.post !== post.id || !c.cloudId), ...items] })); setCommentTotal(result.data.total || 0); setCommentOffset(items.length); setCommentHasMore(items.length < (result.data.total || 0)); }).catch(() => setCommentsError(true)).finally(() => setCommentsLoading(false)); }}>重试</button></div>}
+                  {commentsLoading && commentOffset === 0 && <div className="comments-loading" aria-label="正在加载评论"><i/><i/></div>}
                   {(() => {
                     const comments = state.comments.filter((c) => c.post === post.id);
                     const roots = comments.filter((c) => !c.parent).sort((a, b) => detailSort === "最新" ? b.time - a.time : b.likes - a.likes || b.time - a.time);
                     return roots.length ? roots.map((c) => {
                       const children = comments.filter((item) => item.parent === c.id).sort((a, b) => a.time - b.time);
                       const visibleChildren = expandedReplies[c.id] ? children : children.slice(0, 2);
-                      return <article className="comment" key={c.id}>
-                        <div className="comment-avatar" aria-hidden="true">{c.avatar ? <img src={c.avatar} alt="" loading="lazy" /> : (c.name || "探").slice(0, 1)}</div>
+                      const displayBody = expandedComments[c.id] || c.body.length <= 280 ? c.body : `${c.body.slice(0, 280)}…`;
+                      return <article className="comment" id={`comment-${c.id}`} data-comment-id={c.id} key={c.id}>
+                        <div className="comment-avatar" aria-hidden="true"><span>{(c.name || "探").slice(0, 1)}</span>{c.avatar && <img src={c.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
                         <div className="comment-content">
-                          <strong className="comment-author">{c.name || "探索者"}</strong>
-                          <p>{c.body}</p>
-                          <div className="comment-meta"><time>{new Date(c.time).toLocaleDateString("zh-CN")}</time><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={16}/></summary><div className="comment-actions-panel"><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
-                          <button className={`comment-like${c.liked ? " selected" : ""}`} aria-label="点赞评论" onClick={() => {
-                            if (!accountId) return toast("登录后可点赞");
-                            const next = !c.liked;
-                            void cloudRequest("/api/library-comments", { action: "like", post: c.post, id: c.id, value: next }).then(() => update((s) => ({ ...s, comments: s.comments.map((x) => x.id === c.id ? { ...x, liked: next, likes: x.likes + (next ? 1 : -1) } : x) }))).catch(() => toast("点赞失败"));
-                          }}><Heart size={14} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button>
+                          <div className="comment-heading"><strong className="comment-author" title={c.name || "探索者"}>{c.name || "探索者"}</strong>{post.authorId && c.authorId === post.authorId && <span className="comment-author-badge">作者</span>}<button className={`comment-like${c.liked ? " selected" : ""}`} aria-label={`${c.liked ? "取消点赞" : "点赞评论"}，${c.likes}`} aria-pressed={!!c.liked} onClick={() => void toggleCommentLike(c)}><Heart size={17} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button></div>
+                          <p className={expandedComments[c.id] ? "comment-body expanded" : "comment-body"}>{displayBody}</p>
+                          {c.body.length > 280 && <button className="comment-expand" onClick={() => setExpandedComments((current) => ({ ...current, [c.id]: !current[c.id] }))}>{expandedComments[c.id] ? "收起" : "展开全文"}</button>}
+                          <div className="comment-meta"><time dateTime={new Date(c.time).toISOString()}>{relativeTime(c.time)}</time><button className="comment-reply-action" onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={18}/></summary><div className="comment-actions-panel"><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
                           {visibleChildren.length > 0 && <div className="comment-replies">{visibleChildren.map((child) => <div className="comment-reply" key={child.id}>
-                            <div className="comment-avatar small" aria-hidden="true">{child.avatar ? <img src={child.avatar} alt="" loading="lazy" /> : (child.name || "探").slice(0, 1)}</div><div><strong>{child.name || "探索者"}</strong>{child.parent ? <span> 回复 </span> : null}<p>{child.body}</p><div className="comment-meta"><time>{new Date(child.time).toLocaleDateString("zh-CN")}</time><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button></div></div>
+                            <div className="comment-avatar small" aria-hidden="true"><span>{(child.name || "探").slice(0, 1)}</span>{child.avatar && <img src={child.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div><div><strong>{child.name || "探索者"}</strong>{child.parent ? <span> 回复 </span> : null}<p>{child.body}</p><div className="comment-meta"><time>{relativeTime(child.time)}</time><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button></div></div>
                           </div>)}</div>}
-                          {children.length > 2 && <button className="expand-replies" onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: !s[c.id] }))}>{expandedReplies[c.id] ? "收起回复" : `展开更多回复（${children.length - 2}）`}</button>}
+                          {children.length > visibleChildren.length && <button className="expand-replies" onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: true }))}>展开更多回复（{children.length - visibleChildren.length}）</button>}
                         </div>
                       </article>;
-                    }) : <p className="comments-empty">还没有评论，来聊聊你的想法。</p>;
+                    }) : !commentsLoading && !commentsError && <p className="comments-empty">还没有评论，来聊聊你的想法。</p>;
                   })()}
+                  {commentHasMore && <button className="comments-load-more" disabled={commentsLoading} onClick={() => void loadMoreComments()}>{commentsLoading ? "正在加载…" : "更多评论"}</button>}
                 </section>
               </div>
             </div>
             <form className="detail-action-bar" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
               <div className={`detail-comment-input${reply ? " replying" : ""}`}>
+                <span className="comment-compose-avatar" aria-hidden="true"><span>{(state.name || "探").slice(0, 1)}</span>{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
                 {reply && <span className="reply-label">回复 {state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => setReply(undefined)}><X size={13} /></button></span>}
                 <textarea ref={commentInputRef} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={1} maxLength={1000} aria-label="评论内容" />
                 {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
