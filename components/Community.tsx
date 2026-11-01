@@ -300,6 +300,7 @@ export default function Community() {
   const [isAdmin, setIsAdmin] = useState(false);
   const adminEntryPending = useRef(false);
   const [reportPostId, setReportPostId] = useState<string | null>(null);
+  const [reportCommentId, setReportCommentId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [reportNote, setReportNote] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
@@ -755,12 +756,12 @@ export default function Community() {
   const submitContentReport = async () => {
     if (reportSubmitting) return;
     if (!accountId) return toast("登录后可以举报内容");
-    if (!reportPostId || !reportReason) return toast("请选择举报原因");
+    if ((!reportPostId && !reportCommentId) || !reportReason) return toast("请选择举报原因");
     setReportSubmitting(true);
     try {
-      const result = await cloudRequest("/api/v1/reports", { post_id: reportPostId, reason: reportReason, note: reportNote });
+      const result = await cloudRequest("/api/v1/reports", { ...(reportCommentId ? { comment_id: reportCommentId } : { post_id: reportPostId }), reason: reportReason, note: reportNote });
       if (!result?.submitted) throw new Error("登录状态已失效，请重新登录后重试");
-      setModal(null); setReportPostId(null); setReportReason(""); setReportNote("");
+      setModal(null); setReportPostId(null); setReportCommentId(null); setReportReason(""); setReportNote("");
       toast(result?.duplicate ? "你已举报过这篇内容，平台会继续处理" : "举报已提交，平台会进行人工复核");
     } catch (error) {
       toast(error instanceof Error ? error.message : "举报提交失败，请稍后重试");
@@ -2581,7 +2582,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.37</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.38</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.38</strong><small>2026.11.01</small></div><ul><li>评论回复、删除和举报收纳进二级操作菜单，点赞改为轻量图标计数。</li><li>统一举报弹层明暗主题、选项层级和模糊缩放动画。</li><li>新增黑卡编辑部精选图片与内容。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.37</strong><small>2026.11.01</small></div><ul><li>经验进度条改为纯深蓝纯色，修正个人页分隔线圆角。</li><li>翻卡图片区域加大，个人设置、调试等二级页面补齐统一入场动画。</li><li>消息页先恢复本地会话再显示登录入口，并保留已加载页面状态。</li><li>统一主按钮为低反光纯色，适配明暗主题。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.36</strong><small>2026.11.01</small></div><ul><li>切页使用统一模糊缩放过渡，移除旧页面上浮效果。</li><li>翻卡揭晓 S、SS、SSS 稀有等级，并在探索记录保留等级。</li><li>统一等级与订阅界面的圆角，经验进度条改为纯色。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.35</strong><small>2026.11.01</small></div><ul><li>为等级经验、选择菜单和个人资料控件补齐暗色主题样式。</li><li>移除经验等级卡片上多余的圆环装饰。</li></ul></div>
@@ -3158,7 +3160,7 @@ export default function Community() {
                     }}><Share2 size={16} /> 复制链接</button>
                     {post.cloudId && post.status === "published" && <button onClick={() => {
                       if (!accountId) { setDetailMoreOpen(false); toast("登录后可以举报内容"); return; }
-                      setReportPostId(post.cloudId!); setReportReason(""); setReportNote(""); setDetailMoreOpen(false); setModal("report");
+                      setReportPostId(post.cloudId!); setReportCommentId(null); setReportReason(""); setReportNote(""); setDetailMoreOpen(false); setModal("report");
                     }}><Flag size={16} /> 举报内容</button>}
                   </div>
                 )}
@@ -3249,15 +3251,12 @@ export default function Community() {
                         <div className="comment-content">
                           <strong className="comment-author">{c.name || "探索者"}</strong>
                           <p>{c.body}</p>
-                          <div className="comment-meta"><time>{new Date(c.time).toLocaleDateString("zh-CN")}</time>
-                            <button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button>
-                            {(!c.cloudId || c.authorId === accountId) && <button aria-label="删除评论" onClick={() => void deleteComment(c)}><Trash2 size={14} /></button>}
-                          </div>
+                          <div className="comment-meta"><time>{new Date(c.time).toLocaleDateString("zh-CN")}</time><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={16}/></summary><div className="comment-actions-panel"><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
                           <button className={`comment-like${c.liked ? " selected" : ""}`} aria-label="点赞评论" onClick={() => {
                             if (!accountId) return toast("登录后可点赞");
                             const next = !c.liked;
                             void cloudRequest("/api/library-comments", { action: "like", post: c.post, id: c.id, value: next }).then(() => update((s) => ({ ...s, comments: s.comments.map((x) => x.id === c.id ? { ...x, liked: next, likes: x.likes + (next ? 1 : -1) } : x) }))).catch(() => toast("点赞失败"));
-                          }}><Heart size={14} fill={c.liked ? "currentColor" : "none"} />{c.likes}</button>
+                          }}><Heart size={14} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button>
                           {visibleChildren.length > 0 && <div className="comment-replies">{visibleChildren.map((child) => <div className="comment-reply" key={child.id}>
                             <div className="comment-avatar small" aria-hidden="true">{child.avatar ? <img src={child.avatar} alt="" loading="lazy" /> : (child.name || "探").slice(0, 1)}</div><div><strong>{child.name || "探索者"}</strong>{child.parent ? <span> 回复 </span> : null}<p>{child.body}</p><div className="comment-meta"><time>{new Date(child.time).toLocaleDateString("zh-CN")}</time><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button></div></div>
                           </div>)}</div>}
