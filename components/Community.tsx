@@ -221,6 +221,8 @@ const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
+  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("fixed");
+  const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
   const [fontReady, setFontReady] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
@@ -231,6 +233,10 @@ export default function Community() {
     const savedFont = localStorage.getItem("heika-font");
     if (savedFont === "oppo" || savedFont === "system") setFontChoice(savedFont);
     setFontReady(true);
+    const savedBottomNavStyle = localStorage.getItem("heika-bottom-nav-style");
+    if (savedBottomNavStyle === "glass" || savedBottomNavStyle === "fixed")
+      setBottomNavStyle(savedBottomNavStyle);
+    setBottomNavStyleReady(true);
   }, []);
   useEffect(() => {
     if (!themeReady) return;
@@ -247,6 +253,11 @@ export default function Community() {
     document.documentElement.dataset.font = fontChoice;
     localStorage.setItem("heika-font", fontChoice);
   }, [fontChoice, fontReady]);
+  useEffect(() => {
+    if (!bottomNavStyleReady) return;
+    document.documentElement.dataset.bottomNav = bottomNavStyle;
+    localStorage.setItem("heika-bottom-nav-style", bottomNavStyle);
+  }, [bottomNavStyle, bottomNavStyleReady]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
@@ -382,6 +393,16 @@ export default function Community() {
     ).values(),
   ];
   const opened = state.opened[today] || [];
+  const latestOpenedDay = Object.keys(state.opened)
+    .filter((day) => state.opened[day]?.length)
+    .sort()
+    .at(-1);
+  const latestOpenedId = latestOpenedDay
+    ? state.opened[latestOpenedDay]?.at(-1)
+    : undefined;
+  const latestOpenedPost = latestOpenedId === undefined
+    ? null
+    : state.revealed[latestOpenedId] || null;
   const luckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
   const dailyAllowance = 5 + luckyBonusToday;
   const candidatePosts = state.cardIds.map(
@@ -611,9 +632,11 @@ export default function Community() {
       if (accountId) localStorage.removeItem(`heika-user-${accountId}`);
       localStorage.removeItem("heika-theme");
       localStorage.removeItem("heika-font");
+      localStorage.removeItem("heika-bottom-nav-style");
       setState({ ...initial, cardIds: state.cardIds });
       setTheme("dark");
       setFontChoice("oppo");
+      setBottomNavStyle("fixed");
       setSelectedCalendarDate("");
       setTab("today");
       setDetail(null);
@@ -2148,6 +2171,15 @@ export default function Community() {
               </button>
             ))}
           </div>
+          {latestOpenedPost && (
+            <section className="recent-flip-section" aria-labelledby="recent-flip-title">
+              <div className="recent-flip-heading">
+                <div><small>RECENTLY REVEALED</small><h2 id="recent-flip-title">最近翻开的卡</h2></div>
+                <span>随时回来继续阅读</span>
+              </div>
+              {renderCandidate(latestOpenedPost)}
+            </section>
+          )}
           <div className="section-head editorial-section-head">
             <h2>{category === "全部" ? "为你推荐" : category}</h2>
             <span>{filtered.length} 篇内容</span>
@@ -2201,6 +2233,17 @@ export default function Community() {
             </div>
           </div>
           <div className="settings-module">
+            <div className="settings-module-heading"><strong>底部导航</strong><small>显示样式</small></div>
+            <div className="font-options nav-style-options" role="radiogroup" aria-label="底部导航样式">
+              {([['glass', '悬浮玻璃', '轻盈悬浮，带半透明模糊效果'], ['fixed', '固定底栏', '贴合屏幕底部，保持清晰稳定']] as const).map(([value, label, description]) => (
+                <button key={value} role="radio" aria-checked={bottomNavStyle === value} className={`font-option${bottomNavStyle === value ? " selected" : ""}`} onClick={() => setBottomNavStyle(value)}>
+                  <span><strong>{label}</strong><small>{description}</small></span>
+                  <i>{bottomNavStyle === value ? "✓" : ""}</i>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-module">
             <div className="settings-module-heading"><strong>浏览与阅读</strong></div>
             <div className="settings-list">
               <button onClick={() => setModal("browsing")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
@@ -2237,7 +2280,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.23</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.24</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.24</strong><small>2026.11.01</small></div>
+            <ul>
+              <li>发现页顶部保留最近翻开的卡，方便随时回看。</li>
+              <li>设置中可选择悬浮玻璃或固定底栏，选择会保存在本机。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.23</strong><small>2026.11.01</small></div>
             <ul>
@@ -2680,7 +2730,7 @@ export default function Community() {
       >
         <Plus size={22} />
       </button>
-      <nav className="bottom-nav" aria-label="主导航">
+      <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
         {nav.map(([id, label, Icon]) => (
           <button
             key={id}
