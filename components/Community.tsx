@@ -26,6 +26,7 @@ import {
   Flag,
   Sparkles,
   Crown,
+  ShieldCheck,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -269,6 +270,7 @@ export default function Community() {
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const adminEntryPending = useRef(false);
   const [reportPostId, setReportPostId] = useState<string | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [reportNote, setReportNote] = useState("");
@@ -1847,7 +1849,13 @@ export default function Community() {
           try {
             const data = await cloudRequest("/api/v1/library-state");
             if (!alive || !data) return;
-            setIsAdmin(data.profile?.role === "admin");
+            const hasAdminAccess = data.profile?.role === "admin";
+            setIsAdmin(hasAdminAccess);
+            if (adminEntryPending.current) {
+              adminEntryPending.current = false;
+              if (hasAdminAccess) setTab("moderation");
+              else toast("当前账号没有管理员权限。");
+            }
             setStorageKey(`heika-user-${user.id}`);
             setState((previous) => {
               let local;
@@ -2299,8 +2307,6 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("homeMode")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
-            </div>
-            <div className="settings-list">
               <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
@@ -2317,7 +2323,7 @@ export default function Community() {
               <button onClick={() => setModal("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => setModal("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.29</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.30</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2376,10 +2382,11 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.29</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.30</p>
           <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.29</strong><small>2026.11.01</small></div>
+            <div className="settings-module-heading"><strong>版本 1.30</strong><small>2026.11.01</small></div>
             <ul>
+              <li>调试模式新增管理员后台登录入口，并统一账号设置分组与列表样式。</li>
               <li>补齐邮箱注册确认、密码找回与重置流程，注册时可设置昵称。</li>
               <li>新增账号角色管理、用户检索和私信举报队列。</li>
               <li>统一偏好设置二级页面，并新增主题、字体、导航与浏览模式的界面预览。</li>
@@ -2598,6 +2605,20 @@ export default function Community() {
           <div className="eyebrow">DEVELOPER TOOLS</div>
           <h1>调试模式<span className="red-dot">.</span></h1>
           <p className="lead">一键清空个人偏好、翻卡与收藏状态，重新开始新人引导。</p>
+          <button className="debug-admin-entry" onClick={() => {
+            if (accountId) {
+              if (isAdmin) { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }
+              else toast("当前账号没有管理员权限。");
+              return;
+            }
+            adminEntryPending.current = true;
+            setTab("messages");
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          }}>
+            <span><ShieldCheck size={19}/></span>
+            <span><strong>{isAdmin ? "进入管理后台" : "管理员后台登录"}</strong><small>{isAdmin ? "账号、内容与社区举报管理" : "使用管理员账号登录后进入后台"}</small></span>
+            <ChevronRight size={17}/>
+          </button>
           <button className="primary-button full debug-reset-button" disabled={resetBusy} onClick={() => void resetToFreshStart()}>
             <RefreshCw size={17} /> {resetBusy ? "正在重置…" : "一键重置，重新开始"}
           </button>

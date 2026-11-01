@@ -1206,3 +1206,30 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .admin-user-avatar { width: 34px; height: 34px; }
   .admin-role-action { padding-inline: 7px; font-size: 9px; }
 }
+
+/* Keep every settings category on the same inset list surface. */
+.settings-page .settings-module { margin-top: 25px; border-top: 1px solid var(--line); }
+.settings-page .settings-module-heading { padding: 17px 0 10px; }
+.settings-page .settings-list {
+  overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.settings-page .settings-list button {
+  min-height: 54px; padding-inline: 14px; border: 0; border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+.settings-page .settings-list button:last-child { border-bottom: 0; }
+.settings-page .settings-list button:active { background: color-mix(in srgb, var(--action) 6%, var(--surface)); }
+.debug-admin-entry {
+  display: grid; width: 100%; grid-template-columns: 38px minmax(0,1fr) 18px; align-items: center; gap: 12px;
+  margin: 0 0 16px; padding: 13px 14px; border: 1px solid var(--line); border-radius: var(--radius-control);
+  background: var(--surface); color: var(--ink); text-align: left;
+  transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
+}
+.debug-admin-entry:active { transform: scale(.99); background: color-mix(in srgb, var(--action) 6%, var(--surface)); }
+.debug-admin-entry > span:first-child { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--action) 12%, var(--surface)); color: var(--action); }
+.debug-admin-entry > span:nth-child(2) { display: grid; gap: 4px; }
+.debug-admin-entry strong { font-size: 13px; font-weight: 620; }
+.debug-admin-entry small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.debug-admin-entry > svg { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .debug-admin-entry { transition: none; } }
