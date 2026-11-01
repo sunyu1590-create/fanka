@@ -23,6 +23,13 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
       : Array.from({ length: 24 }, (_, index) => ({ id: index + 1 }));
     await route.fulfill({ json: { data } });
   });
+  await page.route("**/api/v1/topics**", (route) => route.fulfill({ json: { data: [
+    { id: 1, name: "生活", description: "关注日常里的细节。", postCount: 1, participantCount: 1 },
+  ] } }));
+  await page.route("**/api/v1/topics/1**", (route) => route.fulfill({ json: { data: {
+    topic: { id: 1, name: "生活", description: "关注日常里的细节。", postCount: 1, participantCount: 1 },
+    items: [fixturePost(1)], total: 1, page: 1, limit: 12,
+  } } }));
   if (options.role) {
     const role = options.role;
     await page.addInitScript(() => {
@@ -170,6 +177,11 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   await expect(page.locator(".detail-more-button")).toBeVisible();
   await page.locator(".detail-more-button").click();
   await expect(page.getByRole("button", { name: "不感兴趣" })).toBeVisible();
+  await page.locator(".detail-topic-list").getByRole("button", { name: "#生活" }).click();
+  await expect(page.locator(".topic-detail-page h1")).toHaveText("#生活");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#0D0F12");
+  await page.locator(".topic-detail-page .settings-back").click();
+  await expect(page.locator(".detail")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
