@@ -76,6 +76,7 @@ type Comment = {
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[] };
+type SearchPerson = { id: string; nickname: string; bio: string | null; avatar_url: string | null };
 function relativeTime(timestamp: number) {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (seconds < 45) return "刚刚";
@@ -372,7 +373,18 @@ export default function Community() {
     >(null),
     [justFlippedId, setJustFlippedId] = useState<number | null>(null),
     [category, setCategory] = useState("全部"),
-    [query, setQuery] = useState(""),
+    [searchDraft, setSearchDraft] = useState(""),
+    [searchTerm, setSearchTerm] = useState(""),
+    [searchKind, setSearchKind] = useState<"content" | "people">("content"),
+    [searchPeople, setSearchPeople] = useState<SearchPerson[]>([]),
+    [searchPosts, setSearchPosts] = useState<Post[]>([]),
+    [searchTotal, setSearchTotal] = useState(0),
+    [searchPage, setSearchPage] = useState(1),
+    [searchLoading, setSearchLoading] = useState(false),
+    [searchError, setSearchError] = useState(""),
+    [searchRetry, setSearchRetry] = useState(0),
+    [searchRecent, setSearchRecent] = useState<string[]>([]),
+    [searchReturnTab, setSearchReturnTab] = useState("discover"),
     [page, setPage] = useState(12),
     [sort, setSort] = useState("精选"),
     [draft, setDraft] = useState(""),
@@ -434,6 +446,27 @@ export default function Community() {
     if (next === "messages") setMessagesTabVisited(true);
     startPageTransition(() => setTabState(next));
   };
+  const openSearch = () => {
+    setSearchReturnTab(tab);
+    setSearchDraft(searchTerm);
+    setTab("search");
+  };
+  const closeSearch = () => setTab(searchReturnTab || "discover");
+  const submitSearch = (value = searchDraft) => {
+    const normalized = value.trim().slice(0, 60);
+    setSearchDraft(normalized);
+    setSearchTerm(normalized);
+    setSearchPage(1);
+    setSearchPosts([]);
+    setSearchPeople([]);
+    setSearchTotal(0);
+    setSearchError("");
+    setSearchRetry((n) => n + 1);
+    if (normalized) {
+      setSearchRecent((current) => [normalized, ...current.filter((item) => item !== normalized)].slice(0, 8));
+      try { localStorage.setItem("heika-search-recent", JSON.stringify([normalized, ...searchRecent.filter((item) => item !== normalized)].slice(0, 8))); } catch {}
+    }
+  };
   const setModal = (next: typeof modal) => {
     if (modalCloseTimer.current !== null) {
       window.clearTimeout(modalCloseTimer.current);
@@ -481,7 +514,7 @@ export default function Community() {
   const selectedDayIds = state.opened[selectedDay] || [];
   const all = [
     ...new Map(
-      [...publicFeed, ...topicPosts, ...Object.values(state.revealed), ...state.own].map(
+      [...publicFeed, ...topicPosts, ...searchPosts, ...Object.values(state.revealed), ...state.own].map(
         (post) => [post.id, post],
       ),
     ).values(),
@@ -680,6 +713,36 @@ export default function Community() {
     );
     return () => window.clearTimeout(timer);
   }, [dayTick]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("heika-search-recent") || "[]");
+      if (Array.isArray(saved)) setSearchRecent(saved.filter((item): item is string => typeof item === "string").slice(0, 8));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (tab !== "search" || !searchTerm) return;
+    const controller = new AbortController();
+    setSearchLoading(true);
+    setSearchError("");
+    const url = `/api/v1/search?q=${encodeURIComponent(searchTerm)}&kind=${searchKind}&page=${searchPage}&limit=12`;
+    void fetch(url, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.data?.items)) throw new Error(result.error || "搜索失败，请重试");
+        const items = result.data.items as (Post | SearchPerson)[];
+        setSearchTotal(result.data.total || 0);
+        if (searchKind === "content") {
+          setSearchPosts((current) => searchPage === 1 ? items as Post[] : [...current, ...(items as Post[])]);
+        } else {
+          setSearchPeople((current) => searchPage === 1 ? items as SearchPerson[] : [...current, ...(items as SearchPerson[])]);
+        }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setSearchError(error instanceof Error ? error.message : "搜索失败，请重试");
+      })
+      .finally(() => { if (!controller.signal.aborted) setSearchLoading(false); });
+    return () => controller.abort();
+  }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
   const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
@@ -1753,6 +1816,7 @@ export default function Community() {
     : tab === "settings"
       ? settingsDetail ? settingsReturnTab === "mine" ? "我的" : "设置" : "我的"
       : tab === "topic" ? "发现"
+        : tab === "search" ? "搜索"
         : tab === "about" || tab === "moderation" ? "设置"
           : tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
             : tab === "debug" ? "我的" : null;
@@ -1761,6 +1825,7 @@ export default function Community() {
     if (tab === "settings" && settingsDetail) { closeSettingsDetail(); return; }
     if (tab === "settings") { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
     if (tab === "topic") { closeTopicPage(); return; }
+    if (tab === "search") { closeSearch(); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
     if (tab === "my-content") { setTab(myContentReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" })); return; }
     if (tab === "debug") { setTab("mine"); return; }
@@ -1848,8 +1913,7 @@ export default function Community() {
       publicFeed.filter(
         (p) =>
           !state.dismissed?.includes(p.id) &&
-          (category === "全部" || p.tag === category) &&
-          (!query || `${p.title}${p.body}`.includes(query)),
+          (category === "全部" || p.tag === category),
       ),
       state.interests,
       state.viewed,
@@ -1859,7 +1923,6 @@ export default function Community() {
     [
       publicFeed,
       category,
-      query,
       state.dismissed,
       state.interests,
       state.viewed,
@@ -2469,20 +2532,53 @@ export default function Community() {
           )}
         </section>
       )}
+      {tab === "search" && (
+        <section className="page search-page" aria-label="搜索结果">
+          <form className="search-page-form" role="search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
+            <label className="search-page-field">
+              <Search size={18} aria-hidden="true" />
+              <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜内容、昵称或兴趣" aria-label="搜索内容或用户" maxLength={60} autoComplete="off" />
+              {searchDraft && <button type="button" aria-label="清除搜索词" onClick={() => { setSearchDraft(""); setSearchTerm(""); setSearchPosts([]); setSearchPeople([]); setSearchTotal(0); }}><X size={16}/></button>}
+            </label>
+            <button className="search-page-submit" type="submit" disabled={!searchDraft.trim()}>搜索</button>
+          </form>
+          {searchTerm ? <>
+            <div className="search-result-toolbar">
+              <div className="search-result-tabs" role="tablist" aria-label="搜索范围">
+                {([ ["content", "内容"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); setSearchTotal(0); setSearchPosts([]); setSearchPeople([]); setSearchError(""); }}>{label}</button>)}
+              </div>
+              <small>{searchLoading && searchPage === 1 ? "正在搜索" : `${searchTotal} 条结果`}</small>
+            </div>
+            {searchError && <div className="search-state search-error"><span>{searchError}</span><button onClick={() => setSearchRetry((n) => n + 1)}>重试</button></div>}
+            {searchKind === "content" ? <div className="search-post-results" role="tabpanel">
+              {searchPosts.map((item) => <button className="search-post-result" key={item.id} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
+                <span className="search-post-thumbnail">{item.image && <img src={item.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}<small>{item.tag}</small></span>
+                <span className="search-post-copy"><strong>{item.title}</strong><span>{item.body.slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
+                <ChevronRight size={17}/>
+              </button>)}
+              {!searchLoading && !searchError && !searchPosts.length && <div className="search-state">没有找到相关内容，试试更短的关键词。</div>}
+              {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
+              {searchPosts.length < searchTotal && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多内容"}</button>}
+            </div> : <div className="search-people-results" role="tabpanel">
+              {searchPeople.map((person) => <button className="search-person-result" key={person.id} onClick={() => setAuthorProfile(person.id)}>
+                <span className="search-person-avatar"><span>{(person.nickname || "探").slice(0, 1)}</span>{person.avatar_url && <img src={person.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}</span>
+                <span className="search-person-copy"><strong>{person.nickname || "探索者"}</strong><small>{person.bio || "还没有填写简介"}</small></span>
+                <ChevronRight size={17}/>
+              </button>)}
+              {!searchLoading && !searchError && !searchPeople.length && <div className="search-state">没有找到相关用户，试试昵称或兴趣关键词。</div>}
+              {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
+              {searchPeople.length < searchTotal && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多用户"}</button>}
+            </div>}
+          </> : <div className="search-suggestions">
+            {!!searchRecent.length && <section><div className="search-suggestion-heading"><strong>最近搜索</strong><button onClick={() => { setSearchRecent([]); localStorage.removeItem("heika-search-recent"); }}>清除</button></div><div className="search-suggestion-chips">{searchRecent.map((term) => <button key={term} onClick={() => { setSearchDraft(term); submitSearch(term); }}>{term}</button>)}</div></section>}
+            <section><div className="search-suggestion-heading"><strong>热门话题</strong><span>精选</span></div><div className="search-suggestion-chips topic-suggestions">{topicChoices.slice(0, 8).map((topic) => <button key={topic.id} onClick={() => { setSearchDraft(topic.name); submitSearch(topic.name); }}>#{topic.name}</button>)}</div></section>
+            <p>搜索内容标题、正文，也可以查找用户昵称和兴趣。</p>
+          </div>}
+        </section>
+      )}
       {tab === "discover" && (
         <section className="page editorial-home">
-          <div className="search">
-            <Search size={18} />
-            <input
-              aria-label="搜索内容"
-              placeholder="搜索标题或内容"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(12);
-              }}
-            />
-          </div>
+          <button className="search search-launch" onClick={openSearch}><Search size={18}/><span>搜索内容或用户</span><kbd>⌕</kbd></button>
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
@@ -2653,8 +2749,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.38</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.38</strong><small>2026.11.01</small></div><ul><li>评论回复、删除和举报收纳进二级操作菜单，点赞改为轻量图标计数。</li><li>统一举报弹层明暗主题、选项层级和模糊缩放动画。</li><li>新增黑卡编辑部精选图片与内容。</li></ul></div>
+          <p className="lead">黑卡 HEIKA · 版本 1.39</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.39</strong><small>2026.11.01</small></div><ul><li>发现页搜索改为独立二级页面，支持搜索内容和公开用户资料。</li><li>内容支持标题、正文搜索；用户支持昵称、简介搜索和分页。</li><li>增加本机最近搜索与精选话题入口，并优化移动端搜索结果布局。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.37</strong><small>2026.11.01</small></div><ul><li>经验进度条改为纯深蓝纯色，修正个人页分隔线圆角。</li><li>翻卡图片区域加大，个人设置、调试等二级页面补齐统一入场动画。</li><li>消息页先恢复本地会话再显示登录入口，并保留已加载页面状态。</li><li>统一主按钮为低反光纯色，适配明暗主题。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.36</strong><small>2026.11.01</small></div><ul><li>切页使用统一模糊缩放过渡，移除旧页面上浮效果。</li><li>翻卡揭晓 S、SS、SSS 稀有等级，并在探索记录保留等级。</li><li>统一等级与订阅界面的圆角，经验进度条改为纯色。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.35</strong><small>2026.11.01</small></div><ul><li>为等级经验、选择菜单和个人资料控件补齐暗色主题样式。</li><li>移除经验等级卡片上多余的圆环装饰。</li></ul></div>
@@ -3081,7 +3177,7 @@ export default function Community() {
           </span>
         </div>
       )}
-      {!(tab === "settings" && settingsDetail !== null) && <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
+      {tab !== "search" && !(tab === "settings" && settingsDetail !== null) && <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
         {nav.slice(0, 2).map(renderNavButton)}
         <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><Plus size={22} /></button>
         {nav.slice(2).map(renderNavButton)}
