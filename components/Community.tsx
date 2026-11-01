@@ -2280,7 +2280,14 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.24</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.25</p>
+          <div className="settings-module release-note">
+            <div className="settings-module-heading"><strong>版本 1.25</strong><small>2026.11.01</small></div>
+            <ul>
+              <li>发布入口改为独立悬浮圆钮，与底部导航分层显示。</li>
+              <li>统一卡片、控件与弹层的克制圆角层级。</li>
+            </ul>
+          </div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.24</strong><small>2026.11.01</small></div>
             <ul>

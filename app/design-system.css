@@ -937,3 +937,64 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .report-dialog, .composer-modal, .onboarding-footer { transition-duration: 0.01ms; }
 }
+
+/* Quiet rounded surfaces: consistent edges without making the interface pill-shaped. */
+:root {
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
+}
+.compose {
+  position: fixed;
+  z-index: 12;
+  left: 50%;
+  right: auto;
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--action) 82%, white);
+  border-radius: 50%;
+  background: var(--action);
+  color: var(--bg);
+  box-shadow: 0 8px 24px #0004, 0 0 0 5px color-mix(in srgb, var(--bg) 70%, transparent);
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+.compose:hover { transform: translateX(-50%) translateY(-2px); box-shadow: 0 12px 28px #0005, 0 0 0 5px color-mix(in srgb, var(--bg) 70%, transparent); }
+.compose:active { transform: translateX(-50%) scale(.96); }
+.bottom-nav.fixed-bar { border-radius: 12px 12px 0 0; }
+.primary-button, .soft-button, .load-button, .subscription-continue,
+.settings-page .settings-list button, .settings-entry-card, .font-option, .theme-option,
+.discover-layout-options button, .moderation-filters button, .moderation-actions button,
+.report-reasons label, .report-note-label textarea, .moderation-note textarea,
+.composer-topic-search, .composer-topic-options button, .detail-comment-input {
+  border-radius: var(--radius-control);
+}
+.search, .discussion, .profile-card, .empty, .history, .recent-flip-section,
+.daily-quota-summary, .calendar-day-detail, .calendar-posts button,
+.recent-discoveries button, .settings-entry-card, .moderation-item,
+.subscription-plan, .extra-pack-preview, .moderation-feedback,
+.composer-image, .composer-image-add, .topic-card, .detail-image-button,
+.detail-gallery .detail-image-button, .editorial-cover, .editorial-post:nth-child(3n) .editorial-cover,
+.post-card, .post-cover, .candidate-feed-card .card-flip-face, .card-flip-face,
+.flip-face, .flip-stage, .black-facet-card {
+  border-radius: var(--radius-card);
+}
+.modal, .composer-modal, .report-dialog, .modal-backdrop .modal {
+  border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
+}
+.onboarding-footer { border-radius: var(--radius-dialog) var(--radius-dialog) 0 0; }
+.editorial-post { border-radius: var(--radius-card); }
+.settings-module, .settings-list button, .own-row, .calendar-day-detail,
+.calendar-posts button, .settings-entry-card, .recent-discoveries button {
+  box-shadow: none;
+}
+.candidate-feed-card.flip-in-place { overflow: hidden; }
+.detail-action-bar { border-radius: var(--radius-panel) var(--radius-panel) 0 0; }
+@media (prefers-reduced-motion: reduce) {
+  .compose { transition: none; }
+}
