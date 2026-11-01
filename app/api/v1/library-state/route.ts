@@ -203,12 +203,13 @@ export async function POST(req: NextRequest) {
       dbError(refreshed.error);
       return present(refreshed.data as unknown as LibraryRow);
     }
-    const { data: post, error } = await db
+    let postQuery = db
       .from("posts")
-      .select("id")
-      .eq("client_id", Number(b.id))
-      .eq("author_id", user!.id)
-      .single();
+      .select("id,author_id")
+      .eq("client_id", Number(b.id));
+    if (action === "delete") postQuery = postQuery.eq("author_id", user!.id);
+    else postQuery = postQuery.eq("status", "published");
+    const { data: post, error } = await postQuery.single();
     dbError(error);
     if (action === "delete") {
       const media = await db.from("post_media").select("storage_path").eq("post_id", post!.id);
@@ -251,6 +252,14 @@ export async function POST(req: NextRequest) {
     else throw new ApiError(400, "操作无效");
     const { error: write } = await db.from("user_interactions").upsert(fields);
     dbError(write);
+    if (action === "open" && post!.author_id !== user!.id) {
+      const { data: experience, error: experienceError } = await db.rpc(
+        "record_experience_event",
+        { p_event_type: "flip", p_post_id: post!.id },
+      );
+      dbError(experienceError);
+      return { saved: true, experience };
+    }
     return { saved: true };
   });
 }

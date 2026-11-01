@@ -14,7 +14,7 @@ type Report = {
   target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[] };
 };
 type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[] };
-type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; created_at: string; role_updated_at: string | null };
+type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null };
 type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string };
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
@@ -88,6 +88,16 @@ export default function AdminModeration({ onBack }: Props) {
     finally { setSaving(null); }
   };
 
+  const changeMembershipTier = async (account: AdminUser, membership_tier: AdminUser["membership_tier"]) => {
+    setSaving(account.id); setError(""); setNotice("");
+    try {
+      await cloudRequest(`/api/v1/admin/users/${account.id}`, { membership_tier }, "PATCH");
+      setUsers((current) => current.map((item) => item.id === account.id ? { ...item, membership_tier } : item));
+      setNotice(`${account.nickname || "探索者"} 的会员等级已更新。`);
+    } catch (e) { setError(e instanceof Error ? e.message : "会员等级更新失败"); }
+    finally { setSaving(null); }
+  };
+
   const processMessageReport = async (report: DmReport, next: "resolved" | "dismissed") => {
     setSaving(report.id); setError(""); setNotice("");
     try {
@@ -156,6 +166,7 @@ export default function AdminModeration({ onBack }: Props) {
       {usersLoading ? <p className="moderation-empty">正在加载账号…</p> : users.length ? <div className="admin-user-list">{users.map((account) => <article className="admin-user-row" key={account.id}>
         <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
         <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{account.role === "admin" && <span className="admin-role-badge">管理员</span>}</strong><small>{account.bio || "还没有填写个人简介"}</small><time>加入于 {new Date(account.created_at).toLocaleDateString("zh-CN")}</time></div>
+        <label className="admin-user-membership">会员<select aria-label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} onChange={(event) => void changeMembershipTier(account, event.target.value as AdminUser["membership_tier"])}><option value="free">普通</option><option value="plus">Plus</option><option value="pro">Pro</option></select></label>
         <button className="admin-role-action" disabled={saving === account.id} onClick={() => void changeUserRole(account)}>{account.role === "admin" ? "设为成员" : "设为管理员"}</button>
       </article>)}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}
       {userTotal > users.length && !appliedUserQuery && <p className="admin-user-limit">当前显示最近 {users.length} 个账号，共 {userTotal} 个。</p>}

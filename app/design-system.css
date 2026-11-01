@@ -1367,3 +1367,5 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .composer-topbar { padding-inline:16px }
   .composer-footer { padding-inline:16px }
 }
+.admin-user-membership{display:grid;gap:4px;flex:none;color:var(--muted);font-size:9px}.admin-user-membership select{max-width:72px;min-height:32px;padding:0 5px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface);color:var(--ink);font-size:10px}
+@media(max-width:360px){.admin-user-membership select{max-width:60px;font-size:9px}}

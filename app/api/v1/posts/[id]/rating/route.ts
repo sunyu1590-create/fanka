@@ -15,7 +15,7 @@ async function findPost(db: Awaited<ReturnType<typeof context>>["db"], rawId: st
     throw new ApiError(400, "内容编号无效");
   const { data, error } = await db
     .from("posts")
-    .select("id")
+    .select("id,author_id")
     .eq("client_id", clientId)
     .eq("status", "published")
     .single();
@@ -61,6 +61,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!Number.isInteger(rating) || rating < 1 || rating > 5)
       throw new ApiError(400, "评分需要为 1 至 5 星");
     const post = await findPost(db, (await params).id);
+    const { data: current, error: currentError } = await db
+      .from("user_interactions")
+      .select("rating")
+      .eq("post_id", post.id)
+      .eq("user_id", user!.id)
+      .maybeSingle();
+    dbError(currentError);
+    if (post.author_id === user!.id)
+      throw new ApiError(400, "不能给自己发布的内容评分");
     const { error } = await db
       .from("user_interactions")
       .upsert(
@@ -68,6 +77,15 @@ export async function POST(req: NextRequest, { params }: Params) {
         { onConflict: "user_id,post_id" },
       );
     dbError(error);
+    let experience: { awarded: number; total: number } | null = null;
+    if (current?.rating == null) {
+      const result = await db.rpc("record_experience_event", {
+        p_event_type: "rating",
+        p_post_id: post.id,
+      });
+      dbError(result.error);
+      experience = result.data as { awarded: number; total: number } | null;
+    }
     const { data, error: statsError } = await db
       .from("post_rating_stats")
       .select("rating_count,rating_sum")
@@ -79,6 +97,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       average: Number((data.rating_sum / data.rating_count).toFixed(1)),
       count: data.rating_count,
       myRating: rating,
+      experience,
+      firstRating: current?.rating == null,
     };
   });
 }

@@ -27,8 +27,6 @@ import {
   Sparkles,
   Crown,
   ShieldCheck,
-  FileText,
-  Info,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -51,6 +49,7 @@ import type { TopicSummary } from "@/lib/topics";
 import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
+import { cardRarity, EXPERIENCE_LEVELS, experienceProgress } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
 
 const FLIP_RAIN_PARTICLES = 112;
@@ -76,6 +75,7 @@ type Comment = {
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
+type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[] };
 type State = {
   avatar?: string;
   liked?: number[];
@@ -305,6 +305,7 @@ export default function Community() {
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
+  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
   const [detailImageTransition, setDetailImageTransition] = useState<{
     rect: DOMRect;
     src: string;
@@ -334,7 +335,7 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | null>(null),
+    [settingsDetail, setSettingsDetail] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
@@ -611,7 +612,7 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy", returnTab: "settings" | "mine" = "settings") => {
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
     setSettingsReturnTab(returnTab);
     if (returnTab === "mine") setTab("settings");
@@ -663,6 +664,13 @@ export default function Community() {
       }
       const result = await cloudRequest(`/api/v1/posts/${postId}/rating`, { rating: score });
       setCommunityRatings((current) => ({ ...current, [postId]: { average: result.average, count: result.count } }));
+      if (result.experience?.total !== undefined) {
+        void cloudRequest("/api/v1/progression").then((summary) => {
+          if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+          else setExperienceSummary((current) => ({ ...current, total: result.experience.total }));
+        }).catch(() => setExperienceSummary((current) => ({ ...current, total: result.experience.total })));
+      }
+      if (result.experience?.awarded) toast(`已评分 · +${result.experience.awarded} EXP`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "评分暂未同步，请稍后重试");
     } finally {
@@ -1147,9 +1155,12 @@ export default function Community() {
         setLuckyReward({ postId: id, amount: lucky });
         luckyRewardTimer.current = window.setTimeout(() => setLuckyReward(null), 3000);
       }
-      void cloudRequest("/api/v1/library-state", { action: "open", id }).catch(
-        () => toast("阅读记录云端同步失败，本地已保留"),
-      );
+      void cloudRequest("/api/v1/library-state", { action: "open", id }).then(async (saved) => {
+        if (accountId && saved?.experience) {
+          const summary = await cloudRequest("/api/v1/progression");
+          if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+        }
+      }).catch(() => toast("阅读记录云端同步失败，本地已保留"));
       setJustFlippedId(id);
       cancelFlipRain();
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1794,6 +1805,7 @@ export default function Community() {
         <small>{p.tag}</small>
         <b>{p.title}</b>
         <p className="post-summary">{p.body.slice(0, 100)}</p>
+        {communityRatings[p.id]?.count ? <span className={`post-card-rarity rarity-${cardRarity(communityRatings[p.id].average, communityRatings[p.id].count).replaceAll(" ", "")}`}><Star size={11} fill="currentColor"/> {cardRarity(communityRatings[p.id].average, communityRatings[p.id].count)} · {communityRatings[p.id].average.toFixed(1)}</span> : null}
         <div>
           <span>{p.author}</span>
           <span>{state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
@@ -1915,6 +1927,7 @@ export default function Community() {
           setAccountId(user?.id || null);
           if (!user) {
             setIsAdmin(false);
+            setExperienceSummary({ total: 0, membershipTier: "free", events: [] });
             setStorageKey("heika-demo-v1");
             try {
               const guest = JSON.parse(
@@ -1925,6 +1938,9 @@ export default function Community() {
             } catch {}
             return;
           }
+          void cloudRequest("/api/v1/progression").then((summary) => {
+            if (alive && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+          }).catch(() => {});
           try {
             const data = await cloudRequest("/api/v1/library-state");
             if (!alive || !data) return;
@@ -2392,16 +2408,16 @@ export default function Community() {
             <div className="settings-module-heading"><strong>消息与隐私</strong></div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("privacy")}><span className="settings-row-icon"><ShieldCheck size={17}/></span><span>私聊权限与黑名单</span><small>接收范围与黑名单</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("privacy")}><span>私聊权限与黑名单</span><small>接收范围与黑名单</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
             <div className="settings-module-heading"><strong>账号</strong></div>
             <div className="settings-list account-settings-list">
-              <button onClick={() => openSettingsDetail("profile")}><span className="settings-row-icon"><UserRound size={17}/></span><span>个人资料</span><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("interests")}><span className="settings-row-icon"><Sparkles size={17}/></span><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => openMyContent("settings")}><span className="settings-row-icon"><FileText size={17}/></span><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span className="settings-row-icon"><Info size={17}/></span><span>关于黑卡</span><small>版本 1.31</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
+              <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.33</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2410,10 +2426,20 @@ export default function Community() {
       )}
       {tab === "settings" && settingsDetail !== null && (
         <section className="page settings-page settings-detail-page">
-          <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> 设置</button>
+          <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",privacy:"私聊权限与黑名单"})[settingsDetail]}</h1>
-          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "privacy" ? "管理私聊接收范围，并随时调整黑名单。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",privacy:"私聊权限与黑名单",progression:"等级与奖励"})[settingsDetail]}</h1>
+          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "privacy" ? "管理私聊接收范围，并随时调整黑名单。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          {settingsDetail === "progression" && (() => {
+            const progress = experienceProgress(experienceSummary.total);
+            return <div className="experience-page-content">
+              <div className="experience-total-card"><span>当前等级</span><strong>LV.{progress.current.level}</strong><b>{experienceSummary.total} EXP</b><div className="experience-track"><i style={{ width: `${progress.percent}%` }} /></div><small>{progress.next ? `距离 LV.${progress.next.level} 还差 ${progress.next.threshold - experienceSummary.total} EXP` : "已达到当前最高等级"}</small></div>
+              <div className="experience-rule-note"><strong>经验获取</strong><span>当天首次翻卡 +10 EXP · 每日最多 10 次翻卡计分</span><span>首次给每篇内容评分 +2 EXP · 每日最多 5 次</span><small>评分修改不会重复获得经验；给自己发布的内容评分不计入。</small></div>
+              <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}`} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
+              <div className="experience-rule-note"><strong>Plus / Pro 加成 · 当前 {experienceSummary.membershipTier.toUpperCase()}</strong><span>Plus 每日首次翻卡额外 +3 EXP · Pro 额外 +6 EXP。</span><small>会员等级由管理员根据已核验权益设置；订阅预览页不会自动开通会员。</small></div>
+              {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
+            </div>;
+          })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>update(current=>({...current,name,bio,avatar,profileDetails}))} onClose={closeSettingsDetail}/>}
           {settingsDetail === "privacy" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }}/ >}
           {settingsDetail === "interests" && <div className="account-interests-page">
@@ -2468,7 +2494,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.32</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.33</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.33</strong><small>2026.11.01</small></div><ul><li>新增翻卡经验值、探索等级和等级奖励进度。</li><li>卡片稀有度根据社区均分及有效评分人数动态形成。</li><li>个人设置一级列表统一为无图标文字行，图标保留在二级页面。</li></ul></div>
           <div className="settings-module release-note">
             <div className="settings-module-heading"><strong>版本 1.31</strong><small>2026.11.01</small></div>
             <ul>
@@ -2734,6 +2761,11 @@ export default function Community() {
               <PenLine size={18} />
             </button>
           </div>
+          <button className="experience-summary-card" onClick={() => openSettingsDetail("progression", "mine")}>
+            <span className="experience-summary-badge">LV.{experienceProgress(experienceSummary.total).current.level}</span>
+            <span className="experience-summary-copy"><strong>探索等级 · {experienceSummary.total} EXP</strong><small>{accountId ? experienceProgress(experienceSummary.total).next ? `距离 LV.${experienceProgress(experienceSummary.total).next!.level} 还差 ${experienceProgress(experienceSummary.total).next!.threshold - experienceSummary.total} EXP` : "已达到当前最高等级" : "登录后同步你的经验与奖励"}</small><i><b style={{ width: `${experienceProgress(experienceSummary.total).percent}%` }} /></i></span>
+            <ChevronRight size={17}/>
+          </button>
           <div className="stats exploration-stats">
             <div>
               <strong>{openedIds.length}</strong>
@@ -2749,7 +2781,7 @@ export default function Community() {
             </div>
           </div>
           <div className="mine-membership-section">
-            <div className="section-head"><h2>会员与翻卡额度</h2><span>PLUS / PRO</span></div>
+              <div className="section-head"><h2>会员与翻卡额度</h2><span>PLUS / PRO</span></div>
             <button className="mine-membership-card" onClick={() => setModal("subscription")}>
               <span className="mine-membership-mark"><Crown size={19}/></span>
               <span className="mine-membership-copy"><strong>订阅方案 · 额外翻卡</strong><small>Plus 每日 +4 次 · Pro 每日 +8 次</small></span>
@@ -3083,7 +3115,7 @@ export default function Community() {
                   ))}</div>
                   {communityRatings[post.id]?.count ? (
                     <small className="community-rating" aria-live="polite">
-                      <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人
+                      <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人 <i className={`rarity-badge rarity-${cardRarity(communityRatings[post.id].average, communityRatings[post.id].count).replaceAll(" ", "")}`}>{cardRarity(communityRatings[post.id].average, communityRatings[post.id].count)}</i>
                     </small>
                   ) : <small className="community-rating">社区评分形成中</small>}
                   {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
