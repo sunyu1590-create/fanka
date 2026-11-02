@@ -306,14 +306,14 @@ export default function Messages({
         else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
       } else if (authView === "forgot") {
         if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
-        const { error } = await db.auth.resetPasswordForEmail(email.trim());
+        const { error } = await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
         if (error) throw error;
         localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));
         setResendSeconds(60);
         setAuthPurpose("recovery");
         setAuthView("verify-otp"); setAuthMessage("如果该邮箱已注册，验证码已发送。请填写邮件中的验证码。");
       } else if (authView === "verify-otp") {
-        const { error } = await db.auth.verifyOtp({ email: email.trim(), token: otp.trim(), type: "recovery" });
+        const { error } = await db.auth.verifyOtp({ email: email.trim(), token: otp.trim(), type: "email" });
         if (error) throw error;
         setAuthView("reset"); setAuthMessage("邮箱验证成功，请设置新密码。");
       } else if (authView === "recover-code") {
@@ -348,7 +348,7 @@ export default function Messages({
     try {
       const { error } = authPurpose === "signup"
         ? await db.auth.resend({ type: "signup", email: email.trim(), options: { emailRedirectTo: window.location.origin } })
-        : await db.auth.resetPasswordForEmail(email.trim());
+        : await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
       if (error) throw error;
       if (authPurpose === "recovery") {
         localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));

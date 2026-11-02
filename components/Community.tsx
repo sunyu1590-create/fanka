@@ -2749,7 +2749,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.42</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.43</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2826,7 +2826,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.42</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.43</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.43</strong><small>2026.11.02</small></div><ul><li>密码找回改用 Supabase 一次性邮箱登录验证，不再调用密码重置邮件接口。</li><li>验证码重发增加 60 秒倒计时，并在刷新后保留剩余时间。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
