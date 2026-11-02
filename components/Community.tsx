@@ -1159,6 +1159,8 @@ export default function Community() {
     let imageTarget: HTMLImageElement | null = null;
     let cancelled = false;
     let finished = false;
+    let detailAnimationFinished = false;
+    let imageAnimationPending = false;
     const finish = () => {
       if (finished || cancelled) return;
       finished = true;
@@ -1174,11 +1176,15 @@ export default function Community() {
       setTransitionPhase(null);
       transitionBusy.current = false;
     };
+    const settle = () => {
+      if (detailAnimationFinished && !imageAnimationPending) finish();
+    };
     const detailNode = document.querySelector<HTMLElement>(".overlay .detail");
     if (!detailNode || reduced) {
       finish();
       return;
     }
+    const duration = opening ? 320 : 240;
     const animation = detailNode.animate(
       opening
         ? [
@@ -1189,15 +1195,18 @@ export default function Community() {
             { opacity: 1, transform: "translate3d(0,0,0)" },
             { opacity: 1, transform: "translate3d(0,18px,0)" },
           ],
-      { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+      { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
     );
-    animation.onfinish = finish;
+    animation.onfinish = () => {
+      detailAnimationFinished = true;
+      settle();
+    };
     const transitionImage = detailImageTransition;
     if (transitionImage) {
       imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
       if (imageTarget) {
+        imageAnimationPending = true;
         const animateImage = async () => {
-          imageTarget?.style.setProperty("visibility", "hidden");
           try { await imageTarget?.decode(); } catch {}
           if (cancelled || !imageTarget) return;
           const targetRect = imageTarget.getBoundingClientRect();
@@ -1210,6 +1219,8 @@ export default function Community() {
             returnRect.width && returnRect.height ? returnRect : originRect;
           if (!from.width || !from.height || !to.width || !to.height || from.bottom < 0 || from.top > innerHeight || to.bottom < 0 || to.top > innerHeight) {
             imageTarget.style.removeProperty("visibility");
+            imageAnimationPending = false;
+            settle();
             return;
           }
           imageClone = new Image();
@@ -1220,31 +1231,45 @@ export default function Community() {
           imageClone.setAttribute("aria-hidden", "true");
           Object.assign(imageClone.style, {
             position: "fixed",
-            left: `${to.left}px`,
-            top: `${to.top}px`,
-            width: `${to.width}px`,
-            height: `${to.height}px`,
+            left: `${from.left}px`,
+            top: `${from.top}px`,
+            width: `${from.width}px`,
+            height: `${from.height}px`,
             objectFit: "cover",
             objectPosition: "center",
             zIndex: "120",
             pointerEvents: "none",
-            willChange: "left,top,width,height,border-radius",
+            transformOrigin: "top left",
+            willChange: "transform,border-radius",
           });
           document.body.appendChild(imageClone);
+          imageTarget.style.setProperty("visibility", "hidden");
+          const translateX = to.left - from.left;
+          const translateY = to.top - from.top;
+          const scaleX = to.width / from.width;
+          const scaleY = to.height / from.height;
           imageAnimation = imageClone.animate(
             [
-              { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: "6px" },
-              { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: "0px" },
+              { transform: "translate3d(0,0,0) scale(1)", borderRadius: "6px" },
+              { transform: `translate3d(${translateX}px,${translateY}px,0) scale(${scaleX},${scaleY})`, borderRadius: "0px" },
             ],
-            { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+            { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
           );
           imageAnimation.onfinish = () => {
             imageTarget?.style.removeProperty("visibility");
             imageClone?.remove();
             imageClone = null;
+            imageAnimationPending = false;
+            settle();
           };
         };
-        void animateImage();
+        void animateImage().catch(() => {
+          imageTarget?.style.removeProperty("visibility");
+          imageClone?.remove();
+          imageClone = null;
+          imageAnimationPending = false;
+          settle();
+        });
       }
     }
     return () => {
@@ -2053,8 +2078,11 @@ export default function Community() {
   const detailImages = post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
     : [];
-  const postCard = (p: Post, source: "today" | "discover" = "discover") => (
-    <button
+  const postCard = (p: Post, source: "today" | "discover" = "discover") => {
+    const rating = communityRatings[p.id];
+    const rarityTier = p.rarityTier || (rating ? cardRarityTier(rating.average, rating.count) : "pending");
+    const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier;
+    return <button
       className="post-card editorial-post"
       key={p.id}
       data-discover-id={p.id}
@@ -2074,6 +2102,7 @@ export default function Community() {
             }}
           />
         )}
+        <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有度`}>{rarityLabel}</i>
         <span>{p.cover}</span>
       </div>
       <div className="post-meta">
@@ -2086,8 +2115,8 @@ export default function Community() {
           <span>{state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
         </div>
       </div>
-    </button>
-  );
+    </button>;
+  };
   const feed = (items: Post[]) => (
     <>
       <button
@@ -2138,7 +2167,8 @@ export default function Community() {
   const renderCandidate = (p: Post) => {
     const revealed = state.revealed[p.id],
       unlocked = Boolean(revealed),
-      rarityTier = state.rarityTiers[p.id] || revealed?.rarityTier,
+      rarityTier = state.rarityTiers[p.id] || revealed?.rarityTier || p.rarityTier,
+      rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" || !rarityTier ? "" : rarityTier,
       rareTier = rarityTier === "S" || rarityTier === "SS" || rarityTier === "SSS" ? rarityTier : null;
     return (
       <button
@@ -2151,6 +2181,7 @@ export default function Community() {
         <span className="card-flip-inner">
           <span className="card-flip-face card-flip-front">
             <span className="card-number">{String(p.id).padStart(2, "0")}</span>
+            {rarityLabel && <i className={`candidate-rarity-chip rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有卡`}>{rarityLabel}</i>}
             <span className="card-brand">黑卡 · HEIKA</span>
             <span className="card-prompt">轻触翻开</span>
           </span>
@@ -2160,7 +2191,7 @@ export default function Community() {
               background: revealed ? coverColor(revealed.tag) : "#e7e4dd",
             }}
           >
-            {rareTier && <i className={`candidate-rarity-chip rarity-tier-${rareTier}`} aria-label={`${rareTier}级稀有卡`}>{rareTier}</i>}
+            {rarityLabel && <i className={`candidate-rarity-chip rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有卡`}>{rarityLabel}</i>}
             {revealed?.image && (
               <img
                 src={revealed.image}

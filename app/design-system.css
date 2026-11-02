@@ -326,6 +326,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media(max-width:430px){.recent-flip-section{margin:24px -2px 28px;padding:13px}.recent-flip-section>.candidate-feed-card{width:min(100%,240px)}}
 @media(prefers-reduced-motion:reduce){.bottom-nav{transition:none!important}}
 
+/* Navigation is the persistent interaction layer whenever it is rendered. */
+.bottom-nav { z-index: 200; isolation: isolate; }
+.bottom-nav .compose { z-index: 1; }
+
 :root[data-theme="light"]{color-scheme:light;--bg:#f5f3ee;--surface:#fffefa;--card:#ece9e1;--metal:#b8b2a6;--ink:#20211f;--muted:#77766f;--action:#756c54;--line:rgba(52,49,40,.16);--accent:#756c54}
 :root[data-theme="dark"]{color-scheme:dark}
 html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.detail-body{transition:background-color .24s ease,color .24s ease,border-color .24s ease}
@@ -1530,12 +1534,14 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .window-reveal-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .window-reveal-copy { transition: opacity 260ms ease, filter 260ms ease, transform 260ms ease; }
 .window-reveal-copy.is-rarity-hidden { visibility: hidden; opacity: 0; filter: blur(5px); transform: scale(.98); }
-.candidate-rarity-chip,.rarity-history-chip,.rarity-inline-chip {
+.candidate-rarity-chip,.rarity-history-chip,.rarity-inline-chip,.post-cover-rarity {
   display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 22px; padding: 4px 6px;
   border: 1px solid currentColor; border-radius: 999px; font: 700 10px/1 ui-monospace,monospace; font-style: normal; letter-spacing: .02em;
 }
-.candidate-rarity-chip { position: absolute; top: 9px; right: 9px; z-index: 2; backdrop-filter: blur(8px); }
+.candidate-rarity-chip,.post-cover-rarity { position: absolute; top: 9px; right: 9px; z-index: 2; backdrop-filter: blur(8px); }
+.post-cover-rarity { min-height: 22px; padding-inline: 7px; background: color-mix(in srgb,var(--surface) 86%,transparent); color: var(--ink); text-shadow: none; }
 .rarity-history-chip,.rarity-inline-chip { min-height: 18px; font-size: 9px; }
+.rarity-tier-ordinary,.rarity-tier-pending { border-color: var(--line); background: color-mix(in srgb,var(--surface) 88%,transparent); color: var(--muted); }
 .rarity-tier-S { border-color: #65899a; background: #263943; color: #b9dbe5; }
 .rarity-tier-SS { border-color: #9a8050; background: #3a3020; color: #e5ce92; }
 .rarity-tier-SSS { border-color: #89719f; background: #352a42; color: #d9c3ed; }
@@ -1710,8 +1716,9 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 :root[data-theme="dark"] .toggle-switch.on,
 :root[data-theme="dark"] .profile-visibility-row input[type="checkbox"]:checked { background: #34c759; box-shadow: inset 0 0 0 1px #2eae4e; }
 
-@keyframes heika-focus-in { from { opacity: 0; filter: blur(12px); transform: scale(.94); } to { opacity: 1; filter: blur(0); transform: scale(1); } }
-@keyframes heika-focus-out { from { opacity: 1; filter: blur(0); transform: scale(1); } to { opacity: 0; filter: blur(12px); transform: scale(.94); } }
+/* Page changes should settle in place. Scale is reserved for direct control feedback. */
+@keyframes heika-focus-in { from { opacity: 0; filter: blur(7px); } to { opacity: 1; filter: blur(0); } }
+@keyframes heika-focus-out { from { opacity: 1; filter: blur(0); } to { opacity: 0; filter: blur(7px); } }
 @keyframes heika-overlay-in { from { opacity: 0; backdrop-filter: blur(0); } to { opacity: 1; backdrop-filter: blur(7px); } }
 @keyframes heika-overlay-out { from { opacity: 1; backdrop-filter: blur(7px); } to { opacity: 0; backdrop-filter: blur(0); } }
 @keyframes heika-choice-select { 0% { filter: blur(7px); transform: scale(.95); } 65% { filter: blur(0); transform: scale(1.015); } 100% { filter: blur(0); transform: scale(1); } }

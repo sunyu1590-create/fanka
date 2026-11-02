@@ -46,7 +46,26 @@ export async function GET(req: NextRequest) {
     if (tagId !== undefined) query = query.eq("tag_id", tagId);
     const { data, error, count } = await query;
     dbError(error);
-    return { items: (data as unknown as LibraryRow[] || []).map(present), total: count || 0, page, limit };
+    const rows = (data as unknown as LibraryRow[] || []);
+    const { data: stats, error: statsError } = rows.length
+      ? await db
+        .from("post_rating_stats")
+        .select("post_id,rating_count,rating_sum")
+        .in("post_id", rows.map((row) => row.id))
+      : { data: [], error: null };
+    dbError(statsError);
+    const byPost = new Map((stats || []).map((stat) => [stat.post_id, stat]));
+    return {
+      items: rows.map((row) => {
+        const stat = byPost.get(row.id);
+        const ratingCount = stat?.rating_count || 0;
+        const average = ratingCount ? stat!.rating_sum / ratingCount : 0;
+        return { ...present(row), rarityTier: cardRarityTier(average, ratingCount) };
+      }),
+      total: count || 0,
+      page,
+      limit,
+    };
   });
 }
 export async function POST(req: NextRequest) {
