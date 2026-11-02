@@ -2156,10 +2156,9 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .chat-screen { padding-bottom: 0; }
 .chat-compose { flex: none; }
 @media (min-width: 700px) {
-  :root { --nav-overlay-reserve: 0px; }
   .chat-compose { padding-bottom: 14px; }
-  .detail-action-bar { padding-bottom: 12px; }
-  .composer-footer { padding-bottom: 12px; }
+  .detail-action-bar { padding-bottom: calc(9px + var(--nav-overlay-reserve)); }
+  .composer-footer { padding-bottom: calc(12px + var(--nav-overlay-reserve)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .detail-image-button img,.editorial-cover img,.search-post-thumbnail img,.editorial-post img { animation: none; }
