@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       await Promise.all([
         db
           .from("profiles")
-          .select("nickname,bio,avatar_url,role,membership_tier")
+          .select("nickname,bio,avatar_url,role,membership_tier,show_bookmarks")
           .eq("id", user!.id)
           .single(),
         db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),
@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
           nickname: "探索者",
           bio: "收藏那些值得再读的瞬间",
           avatar_url: null,
+          show_bookmarks: false,
         })
         .eq("id", user!.id);
       dbError(error);

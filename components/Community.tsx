@@ -304,6 +304,8 @@ export default function Community() {
     scrollPositions = useRef<Record<string, number>>({});
   const sharedPostHandled = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
+  const [publicBookmarks, setPublicBookmarks] = useState(false);
+  const [bookmarkVisibilityBusy, setBookmarkVisibilityBusy] = useState(false);
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -814,6 +816,22 @@ export default function Community() {
     });
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[settingsReturnTab] || 0, behavior: "instant" }));
   };
+  const updateBookmarkVisibility = (value: boolean) => {
+    if (!accountId) {
+      toast("登录后可管理收藏公开状态");
+      setTab("messages");
+      return;
+    }
+    const previous = publicBookmarks;
+    setPublicBookmarks(value);
+    setBookmarkVisibilityBusy(true);
+    void cloudRequest("/api/v1/me", { show_bookmarks: value }, "PATCH")
+      .catch(() => {
+        setPublicBookmarks(previous);
+        toast("收藏公开状态保存失败，请重试");
+      })
+      .finally(() => setBookmarkVisibilityBusy(false));
+  };
   const chooseHomeMode = (mode: "waterfall" | "blackcard") => {
     update((current) => ({ ...current, homeMode: mode }));
     void browserDb().then(async (db) => {
@@ -911,6 +929,7 @@ export default function Community() {
       localStorage.removeItem("heika-font");
       localStorage.removeItem("heika-bottom-nav-style");
       setState({ ...initial, cardIds: state.cardIds });
+      setPublicBookmarks(false);
       setTheme("dark");
       setFontChoice("oppo");
       setBottomNavStyle("fixed");
@@ -2238,6 +2257,7 @@ export default function Community() {
           setAccountId(user?.id || null);
           if (!user) {
             setIsAdmin(false);
+            setPublicBookmarks(false);
             setExperienceSummary({ total: 0, membershipTier: "free", events: [] });
             setStorageKey("heika-demo-v1");
             try {
@@ -2258,6 +2278,7 @@ export default function Community() {
             if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
               setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
             }
+            setPublicBookmarks(Boolean(data.profile?.show_bookmarks));
             const hasAdminAccess = data.profile?.role === "admin";
             setIsAdmin(hasAdminAccess);
             if (adminEntryPending.current) {
@@ -2803,7 +2824,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.45</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.01.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2880,8 +2901,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.45</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.45</strong><small>2026.11.02</small></div><ul><li>管理员授予 Plus / Pro 后，会员额度、每日翻卡次数和经验加成都按账号等级生效。</li><li>个人页与订阅预览显示当前会员等级和每日额度。</li></ul></div>
+          <p className="lead">黑卡 HEIKA · 版本 2.01.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.01.0</strong><small>2026.11.02</small></div><ul><li>他人主页改为全屏浏览，增加笔记与公开收藏分类。</li><li>等级经验页改用统一分割线和克制配色。</li><li>个人页的信息结构与公开主页统一，并可自行设置收藏公开状态。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
@@ -3212,6 +3233,10 @@ export default function Community() {
             {mineSection === "favorites" && (
               <div className="mine-tab-content">
                 <div className="section-head mine-panel-heading"><h2>我的收藏</h2><span>{favoritePosts.length} 篇</span></div>
+                <button className="public-bookmarks-setting" type="button" role="switch" aria-checked={publicBookmarks} disabled={bookmarkVisibilityBusy} onClick={() => updateBookmarkVisibility(!publicBookmarks)}>
+                  <span><strong>公开我的收藏</strong><small>{accountId ? publicBookmarks ? "其他人可以在你的主页浏览收藏" : "目前仅自己可见" : "登录后管理公开状态"}</small></span>
+                  <i className={publicBookmarks ? "is-on" : ""}><b/></i>
+                </button>
                 <div className="filters favorite-filters" role="group" aria-label="收藏来源">
                   {["全部", "今日翻卡", "发现"].map((source) => (
                     <button key={source} className={favoriteSource === source ? "selected" : ""} aria-pressed={favoriteSource === source} onClick={() => setFavoriteSource(source)}>{source}</button>
@@ -3599,6 +3624,22 @@ export default function Community() {
         <PublicProfile
           id={authorProfile}
           onClose={() => setAuthorProfile(null)}
+          onSelectPost={(id) => {
+            setAuthorProfile(null);
+            if (all.some((post) => post.id === id)) {
+              requestAnimationFrame(() => openPostRef.current(id, "discover"));
+              return;
+            }
+            void fetch("/api/v1/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [id] }) })
+              .then((response) => response.json())
+              .then(({ data }) => {
+                const post = data?.items?.[0] as Post | undefined;
+                if (!post) { toast("这篇内容暂时无法查看"); return; }
+                setPublicFeed((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+                requestAnimationFrame(() => openPostRef.current(id, "discover"));
+              })
+              .catch(() => toast("内容加载失败，请稍后重试"));
+          }}
           onMessage={(id) => {
             setAuthorProfile(null);
             setMessagePeer(id);

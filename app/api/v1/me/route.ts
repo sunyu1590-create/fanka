@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
     const [profile, interests, bookmarks, details] = await Promise.all([
-      db.from("profiles").select("id,nickname,bio,timezone,avatar_url").eq("id", user!.id).single(),
+      db.from("profiles").select("id,nickname,bio,timezone,avatar_url,show_bookmarks").eq("id", user!.id).single(),
       db.from("user_interests").select("tag_id").eq("user_id", user!.id),
       db.from("bookmarks").select("post_id,created_at").eq("user_id", user!.id),
       db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),
@@ -24,10 +24,14 @@ export async function PATCH(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
     const body = await jsonBody(req);
-    const values: Record<string, string | null> = {};
+    const values: Record<string, string | boolean | null> = {};
     if (body.nickname !== undefined) values.nickname = textField(body.nickname, "昵称", 1, 24);
     if (body.bio !== undefined) values.bio = textField(body.bio, "简介", 0, 80);
     if (body.avatar_url !== undefined) values.avatar_url = body.avatar_url === null ? null : textField(body.avatar_url, "头像地址", 1, 2048);
+    if (body.show_bookmarks !== undefined) {
+      if (typeof body.show_bookmarks !== "boolean") throw new ApiError(400, "收藏公开设置无效");
+      values.show_bookmarks = body.show_bookmarks;
+    }
     if (body.timezone !== undefined) {
       const zone = textField(body.timezone, "时区", 1, 64);
       try { new Intl.DateTimeFormat("en", { timeZone: zone }); }
@@ -37,7 +41,7 @@ export async function PATCH(req: NextRequest) {
 
     let profile: unknown = null;
     if (Object.keys(values).length) {
-      const result = await db.from("profiles").update(values).eq("id", user!.id).select("id,nickname,bio,timezone,avatar_url").single();
+      const result = await db.from("profiles").update(values).eq("id", user!.id).select("id,nickname,bio,timezone,avatar_url,show_bookmarks").single();
       dbError(result.error);
       profile = result.data;
     }
