@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { context, dbError, respond, ApiError } from "@/lib/server/api";
-import { libraryFields, present, type LibraryRow } from "@/lib/server/library";
+import { libraryFields, present, presentMany, type LibraryRow } from "@/lib/server/library";
 import { topicDescriptions } from "@/lib/topics";
 
 type TopicStats = { topic_id: number; post_count: number | string; participant_count: number | string };
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (ids.length) {
       const posts = await db.from("posts").select(libraryFields).in("id", ids).eq("status", "published");
       dbError(posts.error);
-      const byId = new Map((posts.data as unknown as LibraryRow[]).map((row) => [row.id, present(row)]));
+      const byId = new Map((await presentMany(db, posts.data as unknown as LibraryRow[])).map((post) => [post.cloudId, post]));
       items = ids.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
     }
     return {

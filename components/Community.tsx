@@ -14,6 +14,7 @@ import {
   Send,
   Trash2,
   PenLine,
+  ChevronDown,
   ChevronRight,
   X,
   Check,
@@ -41,7 +42,7 @@ import type { ProfileDetails } from "./AccountProfile";
 import PublicProfile from "./PublicProfile";
 import MessagingPreferences from "./MessagingPreferences";
 import InboxBadge from "./InboxBadge";
-import { cloudRequest } from "@/lib/cloud";
+import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
 import { validateComposerFiles } from "@/lib/composer-validation";
@@ -361,7 +362,7 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression" | null>(null),
+    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "security" | "progression" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
@@ -371,6 +372,9 @@ export default function Community() {
     [notificationPermission, setNotificationPermission] = useState<
       "default" | "granted" | "denied" | "unsupported"
     >("default");
+  const [recentExperienceOpen, setRecentExperienceOpen] = useState(false);
+  const [explorationCalendarOpen, setExplorationCalendarOpen] = useState(false);
+  const [explorationHistoryOpen, setExplorationHistoryOpen] = useState(false);
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
     ratingPulseTimer = useRef<number | null>(null);
@@ -626,10 +630,14 @@ export default function Community() {
           const legacyOpened = [
             ...new Set<number>(Object.values(loaded.opened).flat()),
           ].filter((id) => !loaded.revealed[id]);
-          if (legacyOpened.length) {
-            const batches = Array.from({ length: Math.ceil(legacyOpened.length / 100) }, (_, index) => legacyOpened.slice(index * 100, (index + 1) * 100));
+          const refreshIds = [...new Set([
+            ...legacyOpened,
+            ...Object.keys(loaded.revealed).map(Number).filter(Number.isSafeInteger),
+          ])];
+          if (refreshIds.length) {
+            const batches = Array.from({ length: Math.ceil(refreshIds.length / 100) }, (_, index) => refreshIds.slice(index * 100, (index + 1) * 100));
             const results = (await Promise.all(batches.map(async (ids) => {
-              const response = await fetch("/api/demo/cards", {
+              const response = await cloudFetch("/api/demo/cards", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ids }),
@@ -662,7 +670,7 @@ export default function Community() {
       if (cancelled) return;
       setState(loaded);
       try {
-        const response = await fetch("/api/demo/cards", { cache: "no-store" });
+        const response = await cloudFetch("/api/demo/cards", { cache: "no-store" });
         const { data } = await response.json();
         if (!cancelled && Array.isArray(data))
           setState((current) => ({
@@ -682,6 +690,12 @@ export default function Community() {
     const timer = window.setTimeout(() => {
       const cachedState: Partial<State> = { ...state };
       delete cachedState.comments;
+      const isSignedImage = (src?: string) => Boolean(src && (src.startsWith("/api/v1/media?") || src.includes("/storage/v1/object/sign/")));
+      cachedState.revealed = Object.fromEntries(Object.entries(state.revealed).map(([id, post]) => [id, {
+        ...post,
+        image: isSignedImage(post.image) ? undefined : post.image,
+        images: post.images?.filter((image) => !isSignedImage(image)),
+      }]));
       localStorage.setItem(storageKey, JSON.stringify(cachedState));
     }, 220);
     return () => window.clearTimeout(timer);
@@ -713,7 +727,7 @@ export default function Community() {
     const params = new URLSearchParams({ mode: "discover", page: String(requestedPage), limit: "24" });
     if (requestedTag !== "全部") params.set("tag", requestedTag);
     try {
-      const response = await fetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
+      const response = await cloudFetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
       const result = await response.json();
       if (!response.ok) throw new Error("内容加载失败");
       const payload = result.data;
@@ -750,7 +764,7 @@ export default function Community() {
     const ids = missingMineIdsKey.split(",").map(Number);
     const batches = Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) => ids.slice(index * 100, (index + 1) * 100));
     void Promise.all(batches.map(async (batch) => {
-      const response = await fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch }), signal: controller.signal });
+      const response = await cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch }), signal: controller.signal });
       if (!response.ok) throw new Error("内容加载失败");
       const result = await response.json();
       return Array.isArray(result.data?.items) ? result.data.items as Post[] : [];
@@ -801,7 +815,7 @@ export default function Community() {
     return () => controller.abort();
   }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression", returnTab: "settings" | "mine" = "settings") => {
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "security" | "progression", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
     startPageTransition(() => {
       setSettingsReturnTab(returnTab);
@@ -1057,7 +1071,7 @@ export default function Community() {
     const id = Number(sharedId);
     if (!ready || !sharedId || !Number.isSafeInteger(id) || all.some((item) => item.id === id) || sharedPostLoading.current === sharedId) return;
     sharedPostLoading.current = sharedId;
-    void fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+    void cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
       .then((response) => response.json().then((result) => ({ response, result })))
       .then(({ response, result }) => {
         if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [result.data as Post, ...current]);
@@ -1380,7 +1394,7 @@ export default function Community() {
     flipBusy.current = true;
     setFlippingId(id);
     try {
-      const response = await fetch("/api/demo/cards", {
+      const response = await cloudFetch("/api/demo/cards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -1872,12 +1886,12 @@ export default function Community() {
   const openTopic = async (name: string) => {
     setTopicLoading(true);
     try {
-      const listResponse = await fetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
+      const listResponse = await cloudFetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
       const listResult = await listResponse.json();
       if (!listResponse.ok) throw new Error(listResult.error || "话题读取失败");
       const topic = (listResult.data as TopicSummary[]).find((item) => item.name === name);
       if (!topic) throw new Error("话题不存在");
-      const response = await fetch(`/api/v1/topics/${topic.id}?page=1&limit=12`);
+      const response = await cloudFetch(`/api/v1/topics/${topic.id}?page=1&limit=12`);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题内容读取失败");
       const page = result.data as TopicPageResponse;
@@ -1893,7 +1907,7 @@ export default function Community() {
     if (!topicSummary || topicLoading || topicPosts.length >= topicTotal) return;
     const nextPage = topicPage + 1; setTopicLoading(true);
     try {
-      const response = await fetch(`/api/v1/topics/${topicSummary.id}?page=${nextPage}&limit=12`);
+      const response = await cloudFetch(`/api/v1/topics/${topicSummary.id}?page=${nextPage}&limit=12`);
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "内容读取失败");
       const page = result.data as TopicPageResponse;
       setTopicPosts((items) => [...items, ...page.items]); setTopicTotal(page.total); setTopicPage(nextPage);
@@ -1914,7 +1928,7 @@ export default function Community() {
     if (!isDiscover && modal !== "write") return;
     let alive = true;
     const suffix = isDiscover ? "?featured=1" : topicSearch.trim() ? `?q=${encodeURIComponent(topicSearch.trim())}` : "";
-    void fetch(`/api/v1/topics${suffix}`).then(async (response) => {
+    void cloudFetch(`/api/v1/topics${suffix}`).then(async (response) => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题读取失败");
       if (alive && Array.isArray(result.data)) setTopicChoices(result.data as TopicSummary[]);
@@ -2011,7 +2025,7 @@ export default function Community() {
   const refreshFeed = async () => {
     if (tab === "today") {
       try {
-        const response = await fetch("/api/demo/cards", { cache: "no-store" });
+        const response = await cloudFetch("/api/demo/cards", { cache: "no-store" });
         const result = await response.json();
         if (!response.ok || !Array.isArray(result.data)) throw new Error();
         setState((current) => ({ ...current, cardIds: result.data.map((item: { id: number }) => item.id) }));
@@ -2827,10 +2841,9 @@ export default function Community() {
             </div>
           </div>
           <div className="settings-module">
-            <div className="settings-module-heading"><strong>消息与隐私</strong></div>
+            <div className="settings-module-heading"><strong>消息</strong></div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("privacy")}><span>私聊权限与黑名单</span><small>接收范围与黑名单</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
@@ -2838,8 +2851,9 @@ export default function Community() {
             <div className="settings-list account-settings-list">
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("security")}><span>安全中心</span><small>笔记隐私、私聊与账号安全</small><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.02.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.03.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2850,8 +2864,8 @@ export default function Community() {
         <section key={settingsDetail} className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",privacy:"私聊权限与黑名单",progression:"等级与奖励"})[settingsDetail]}</h1>
-          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "privacy" ? "管理私聊接收范围，并随时调整黑名单。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",security:"安全中心",progression:"等级与奖励"})[settingsDetail]}</h1>
+          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
@@ -2859,11 +2873,11 @@ export default function Community() {
               <div className="experience-rule-note"><strong>经验获取</strong><span>当天首次翻卡 +10 EXP · 每日最多 10 次翻卡计分</span><span>首次给每篇内容评分 +2 EXP · 每日最多 5 次</span><small>评分修改不会重复获得经验；给自己发布的内容评分不计入。</small></div>
               <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
               <div className="experience-rule-note"><strong>Plus / Pro 加成 · 当前 {experienceSummary.membershipTier.toUpperCase()}</strong><span>Plus 每日首次翻卡额外 +3 EXP · Pro 额外 +6 EXP。</span><small>会员等级由管理员根据已核验权益设置；订阅预览页不会自动开通会员。</small></div>
-              {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
+              {!!experienceSummary.events.length && <div className="experience-level-list"><button type="button" className="collapsible-panel-toggle" aria-expanded={recentExperienceOpen} onClick={() => setRecentExperienceOpen((open) => !open)}><h2>最近经验</h2><span>{experienceSummary.events.length} 条 <ChevronDown size={16}/></span></button>{recentExperienceOpen && experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
-          {settingsDetail === "privacy" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }}/ >}
+          {settingsDetail === "security" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }}/ >}
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>偏好会自动保存在你的账号中。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
@@ -2916,7 +2930,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 2.02.0</p>
+          <p className="lead">黑卡 HEIKA · 版本 2.03.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.02</small></div><ul><li>投稿图片在上传后立即显示，并在刷新和重新打开时获取新的图片链接。</li><li>新增安全中心，可设置笔记仅自己可见，并管理私聊范围、黑名单与账号安全。</li><li>消息时间移到气泡外，复制操作收进长按菜单。</li><li>经验记录、探索日历和探索记录支持折叠，收起时不渲染长列表。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.02.0</strong><small>2026.11.02</small></div><ul><li>他人主页改为全屏浏览，增加笔记与公开收藏分类。</li><li>等级经验页改用统一分割线和克制配色。</li><li>个人页的信息结构与公开主页统一，并可自行设置收藏公开状态。</li><li>上传图片自动压缩，单张上限调整为 4 MB。</li><li>修复图片加载失败显示乱码，并移除详情图片圆角。</li><li>调整消息列表排版与悬浮底栏留白，加入发现图片渐入效果。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
@@ -3268,8 +3283,8 @@ export default function Community() {
             )}
             {mineSection === "calendar" && (
               <div className="mine-tab-content">
-                <div className="section-head exploration-calendar-heading mine-panel-heading"><h2>我的探索日历</h2><span>最近 28 天</span></div>
-                <div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
+                <div className="section-head exploration-calendar-heading mine-panel-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationCalendarOpen} aria-controls="exploration-calendar-content" onClick={() => setExplorationCalendarOpen((open) => !open)}><h2>我的探索日历</h2><span>最近 28 天 <ChevronDown size={16}/></span></button></div>
+                {explorationCalendarOpen && <div id="exploration-calendar-content"><div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
                   {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
                 </div>
                 <div className="calendar-day-detail">
@@ -3280,7 +3295,7 @@ export default function Community() {
                     const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                     return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
                   })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
-                </div>
+                </div></div>}
               </div>
             )}
             {mineSection === "recent" && (
@@ -3291,13 +3306,13 @@ export default function Community() {
                   const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                   return <button key={`${date}-${post.id}`} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong></button>;
                 })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
-                <div id="flip-history" className="section-head mine-panel-heading"><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天</span></div>
-                {Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
+                <div id="flip-history" className="section-head mine-panel-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天 <ChevronDown size={16}/></span></button></div>
+                {explorationHistoryOpen && Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
                   const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
                   const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                   return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
                 })}</div>)}
-                {!Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
+                {explorationHistoryOpen && !Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
               </div>
             )}
           </div>

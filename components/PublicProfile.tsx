@@ -7,7 +7,19 @@ import AnimatedNotice from "./AnimatedNotice";
 
 type PublicInfo = { nickname: string; bio: string; avatar_url: string | null; show_bookmarks: boolean };
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
-type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; created_at?: string };
+type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; created_at?: string; post_media?: { storage_path: string; sort_order: number }[] };
+
+async function withSignedPostImages(db: Awaited<ReturnType<typeof browserDb>>, posts: ProfilePost[]) {
+  const paths = [...new Set(posts.flatMap((post) => (post.post_media || []).map((media) => media.storage_path)))];
+  if (!paths.length) return posts;
+  const batches = Array.from({ length: Math.ceil(paths.length / 100) }, (_, index) => paths.slice(index * 100, (index + 1) * 100));
+  const results = await Promise.all(batches.map((batch) => db.storage.from("post-covers").createSignedUrls(batch, 3600)));
+  const signed = new Map(results.flatMap(({ data }) => (data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
+  return posts.map((post) => ({
+    ...post,
+    image_url: post.image_url || (post.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order).map((item) => signed.get(item.storage_path)).find(Boolean) || null,
+  }));
+}
 
 function displayAttributeValue(item: PublicAttribute) {
   if (item.attribute === "gender") return ({ female: "女", male: "男", nonbinary: "非二元", undisclosed: "不愿透露" }[item.value] || item.value);
@@ -41,22 +53,23 @@ export default function PublicProfile({
         const [p, a, c] = await Promise.all([
           db.from("profiles").select("nickname,bio,avatar_url,show_bookmarks").eq("id", id).single(),
           db.from("profile_attributes").select("attribute,value").eq("user_id", id).eq("is_public", true),
-          db.from("posts").select("client_id,title,body,image_url,created_at").eq("author_id", id).eq("status", "published").order("created_at", { ascending: false }).limit(30),
+          db.from("posts").select("client_id,title,body,image_url,created_at,post_media(storage_path,sort_order)").eq("author_id", id).eq("status", "published").order("created_at", { ascending: false }).limit(30),
         ]);
         if (!alive) return;
         if (p.error) { setError(p.error.message); return; }
         const info = p.data as PublicInfo;
         setProfile(info);
         setAttributes((a.data || []) as PublicAttribute[]);
-        setPosts((c.data || []) as ProfilePost[]);
+        setPosts(await withSignedPostImages(db, (c.data || []) as ProfilePost[]));
         if (info.show_bookmarks) {
-          const saved = await db.from("bookmarks").select("created_at,posts(client_id,title,body,image_url)").eq("user_id", id).order("created_at", { ascending: false }).limit(30);
+          const saved = await db.from("bookmarks").select("created_at,posts(client_id,title,body,image_url,post_media(storage_path,sort_order))").eq("user_id", id).order("created_at", { ascending: false }).limit(30);
           if (!alive) return;
           if (saved.error) { setError("暂时无法加载公开收藏。"); return; }
-          setBookmarks((saved.data || []).flatMap((row) => {
+          const bookmarkPosts = (saved.data || []).flatMap((row) => {
             const post = Array.isArray(row.posts) ? row.posts[0] : row.posts;
             return post ? [{ ...post, created_at: row.created_at } as ProfilePost] : [];
-          }));
+          });
+          setBookmarks(await withSignedPostImages(db, bookmarkPosts));
         }
       })
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "主页加载失败"); });

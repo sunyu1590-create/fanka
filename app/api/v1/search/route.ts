@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { context, dbError, respond } from "@/lib/server/api";
-import { libraryFields, present, type LibraryRow } from "@/lib/server/library";
+import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
 
 export async function GET(req: NextRequest) {
   return respond(async () => {
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     dbError(error);
     return {
       kind,
-      items: ((data || []) as unknown as LibraryRow[]).map(present),
+      items: await presentMany(db, (data || []) as unknown as LibraryRow[]),
       total: count || 0,
       page,
       limit,

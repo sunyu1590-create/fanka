@@ -53,7 +53,6 @@ export default function Messages({
     [newBelow, setNewBelow] = useState(false),
     [profile, setProfile] = useState<Profile | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
-  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaRequests = useRef(new Set<string>());
   const [media, setMedia] = useState<Record<string, string>>({});
@@ -177,18 +176,6 @@ export default function Messages({
         ),
       ),
     );
-  };
-  const createRecoveryCodes = async () => {
-    if (!db || !user || busy) return;
-    setBusy(true); setError(""); setRecoveryCodes([]);
-    try {
-      const { data } = await db.auth.getSession();
-      const response = await fetch("/api/v1/auth/recovery-codes", { method: "POST", headers: { Authorization: `Bearer ${data.session?.access_token || ""}` } });
-      const result = await response.json();
-      if (!response.ok || !Array.isArray(result.data?.codes)) throw new Error(result.error || "恢复码生成失败");
-      setRecoveryCodes(result.data.codes);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "恢复码生成失败"); }
-    finally { setBusy(false); }
   };
   const read = async (room: string) => {
     if (db && user)
@@ -489,7 +476,6 @@ export default function Messages({
       <div className="messages-inbox-pane">
       <div className="eyebrow">MESSAGES / PRIVATE</div>
       <h1>消息。</h1>
-      <details className="settings-module"><summary>账号安全 / 备用恢复码</summary><p className="fineprint">恢复码只展示一次。生成新码会让此前的所有恢复码失效，请离线保存在安全位置。</p><button type="button" className="soft-button" disabled={busy} onClick={() => void createRecoveryCodes()}>{busy ? "正在生成…" : recoveryCodes.length ? "重新生成恢复码" : "生成备用恢复码"}</button>{recoveryCodes.length > 0 && <pre className="recovery-code-list">{recoveryCodes.join("\n")}</pre>}</details>
       <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />
       <form
         className="search"
@@ -671,9 +657,10 @@ export default function Messages({
               </button>
             )}
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`message-bubble ${m.sender_id === user.id ? "own" : ""}`}
+              <div key={m.id} className={`message-row ${m.sender_id === user.id ? "own" : ""}`}>
+                <small className="message-time">{new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</small>
+                <div
+                className="message-bubble"
                 onPointerDown={() => {
                   pressTimer.current = setTimeout(
                     () => setSelectedMessage(m),
@@ -708,19 +695,7 @@ export default function Messages({
                     }}
                   />
                 )}
-                <small>
-                  {new Date(m.created_at).toLocaleTimeString("zh-CN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}{" "}
-                  · 已发送
-                </small>
-                <button
-                  className="text-button"
-                  onClick={() => navigator.clipboard.writeText(m.body)}
-                >
-                  复制
-                </button>
+              </div>
               </div>
             ))}
           </div>
