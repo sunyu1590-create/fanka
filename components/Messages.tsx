@@ -13,7 +13,7 @@ type Message = {
   created_at: string;
   media_path?: string;
 };
-type AuthView = "login" | "signup" | "forgot" | "confirm" | "reset";
+type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset";
 export default function Messages({
   initialPeer,
   onPeerOpened,
@@ -31,6 +31,8 @@ export default function Messages({
     [nickname, setNickname] = useState(""),
     [password, setPassword] = useState(""),
     [confirmPassword, setConfirmPassword] = useState(""),
+    [otp, setOtp] = useState(""),
+    [recoveryCode, setRecoveryCode] = useState(""),
     [error, setError] = useState(""),
     [authMessage, setAuthMessage] = useState(""),
     [authPurpose, setAuthPurpose] = useState<"signup" | "recovery">("signup"),
@@ -49,6 +51,7 @@ export default function Messages({
     [newBelow, setNewBelow] = useState(false),
     [profile, setProfile] = useState<Profile | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [media, setMedia] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -158,6 +161,18 @@ export default function Messages({
         ),
       ),
     );
+  };
+  const createRecoveryCodes = async () => {
+    if (!db || !user || busy) return;
+    setBusy(true); setError(""); setRecoveryCodes([]);
+    try {
+      const { data } = await db.auth.getSession();
+      const response = await fetch("/api/v1/auth/recovery-codes", { method: "POST", headers: { Authorization: `Bearer ${data.session?.access_token || ""}` } });
+      const result = await response.json();
+      if (!response.ok || !Array.isArray(result.data?.codes)) throw new Error(result.error || "恢复码生成失败");
+      setRecoveryCodes(result.data.codes);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "恢复码生成失败"); }
+    finally { setBusy(false); }
   };
   const read = async (room: string) => {
     if (db && user)
@@ -278,15 +293,27 @@ export default function Messages({
         if (!data.session) { setAuthView("confirm"); setAuthMessage("确认邮件已发送。请前往邮箱完成验证，再回来登录。"); }
         else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
       } else if (authView === "forgot") {
-        const { error } = await db.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+        const { error } = await db.auth.resetPasswordForEmail(email.trim());
         if (error) throw error;
         setAuthPurpose("recovery");
-        setAuthView("confirm"); setAuthMessage("如果这个邮箱已注册，密码重置邮件已经发送，请查收邮箱。");
+        setAuthView("verify-otp"); setAuthMessage("如果该邮箱已注册，验证码已发送。请填写邮件中的验证码。");
+      } else if (authView === "verify-otp") {
+        const { error } = await db.auth.verifyOtp({ email: email.trim(), token: otp.trim(), type: "recovery" });
+        if (error) throw error;
+        setAuthView("reset"); setAuthMessage("邮箱验证成功，请设置新密码。");
+      } else if (authView === "recover-code") {
+        if (password !== confirmPassword) throw new Error("两次输入的密码不一致。");
+        const response = await fetch("/api/v1/auth/recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), code: recoveryCode.trim(), password }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "恢复码验证失败");
+        setAuthView("login"); setPassword(""); setConfirmPassword(""); setRecoveryCode("");
+        setAuthMessage("密码已更新，请使用新密码登录。");
       } else if (authView === "reset") {
         if (password.length < 8) throw new Error("新密码至少需要 8 位。");
         if (password !== confirmPassword) throw new Error("两次输入的密码不一致。");
         const { error } = await db.auth.updateUser({ password });
         if (error) throw error;
+        await db.auth.signOut();
         window.history.replaceState({}, "", window.location.pathname);
         setAuthView("login"); setPassword(""); setConfirmPassword("");
         setAuthMessage("密码已更新，请使用新密码登录。");
@@ -305,9 +332,9 @@ export default function Messages({
     try {
       const { error } = authPurpose === "signup"
         ? await db.auth.resend({ type: "signup", email: email.trim(), options: { emailRedirectTo: window.location.origin } })
-        : await db.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+        : await db.auth.resetPasswordForEmail(email.trim());
       if (error) throw error;
-      setAuthMessage(authPurpose === "signup" ? "确认邮件已重新发送，请查收邮箱。" : "如果该邮箱已注册，重置邮件已重新发送。");
+      setAuthMessage(authPurpose === "signup" ? "确认邮件已重新发送，请查收邮箱。" : "如果该邮箱已注册，验证码已重新发送。");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "邮件发送失败，请稍后重试。"); }
     finally { setBusy(false); }
   };
@@ -406,19 +433,23 @@ export default function Messages({
       <section className="page account-page">
         <div className="eyebrow">HEIKA / ACCOUNT</div>
         <h1>{authView === "signup" ? "加入黑卡。" : authView === "forgot" ? "找回密码。" : authView === "reset" ? "设置新密码。" : authView === "confirm" ? "查看邮箱。" : "让交流发生。"}</h1>
-        <p className="lead">{authView === "signup" ? "建立你的账号，保存发现并开启交流。" : authView === "reset" ? "为账号设置一个新的登录密码。" : authView === "confirm" ? "完成邮箱验证后，即可继续使用黑卡。" : "登录后，收藏、消息与个人资料会安全保存在账号中。"}</p>
+        <p className="lead">{authView === "signup" ? "建立你的账号，保存发现并开启交流。" : authView === "reset" ? "为账号设置一个新的登录密码。" : authView === "verify-otp" ? "输入邮件中的一次性验证码，验证后即可设置新密码。" : authView === "recover-code" ? "输入邮箱和一枚未使用的备用恢复码。" : authView === "confirm" ? "完成邮箱验证后，即可继续使用黑卡。" : "登录后，收藏、消息与个人资料会安全保存在账号中。"}</p>
         <form
           className="account-form"
           onSubmit={(e) => void auth(e)}
         >
           {authView === "signup" && <label>昵称<input autoComplete="nickname" required minLength={2} maxLength={24} value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="2–24 个字，之后也可以修改" /></label>}
           {authView !== "reset" && authView !== "confirm" && <label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></label>}
-          {(authView === "login" || authView === "signup" || authView === "reset") && <label>{authView === "reset" ? "新密码" : "密码"}<input type="password" autoComplete={authView === "login" ? "current-password" : "new-password"} minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位" /></label>}
-          {(authView === "signup" || authView === "reset") && <label>确认密码<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="再输入一次密码" /></label>}
-          {authView !== "confirm" && <button className="primary-button" disabled={!db || busy}>{busy ? "请稍候…" : authView === "signup" ? "创建账号" : authView === "forgot" ? "发送重置邮件" : authView === "reset" ? "更新密码" : "登录"}</button>}
+          {authView === "verify-otp" && <label>邮箱验证码<input inputMode="numeric" autoComplete="one-time-code" required maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="输入邮件中的验证码" /></label>}
+          {authView === "recover-code" && <label>备用恢复码<input autoComplete="off" required value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder="AAAAA-BBBBB-CCCCC-DDDDD" /></label>}
+          {(authView === "login" || authView === "signup" || authView === "reset" || authView === "recover-code") && <label>{authView === "reset" || authView === "recover-code" ? "新密码" : "密码"}<input type="password" autoComplete={authView === "login" ? "current-password" : "new-password"} minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位" /></label>}
+          {(authView === "signup" || authView === "reset" || authView === "recover-code") && <label>确认密码<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="再输入一次密码" /></label>}
+          {authView !== "confirm" && <button className="primary-button" disabled={!db || busy}>{busy ? "请稍候…" : authView === "signup" ? "创建账号" : authView === "forgot" ? "发送验证码" : authView === "verify-otp" ? "验证并继续" : authView === "recover-code" ? "验证恢复码并重置" : authView === "reset" ? "更新密码" : "登录"}</button>}
           {authView === "login" && <><button type="button" className="text-button" onClick={() => { setAuthPurpose("recovery"); setAuthView("forgot"); setError(""); setAuthMessage(""); }}>忘记密码？</button><button type="button" className="soft-button" disabled={!db || busy} onClick={() => { setAuthPurpose("signup"); setAuthView("signup"); setError(""); setAuthMessage(""); }}>创建新账号</button></>}
           {authView === "signup" && <button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); setAuthMessage(""); }}>已有账号，返回登录</button>}
-          {authView === "forgot" && <button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); setAuthMessage(""); }}>返回登录</button>}
+          {authView === "forgot" && <><button type="button" className="text-button" onClick={() => { setAuthView("recover-code"); setError(""); setAuthMessage(""); }}>使用备用恢复码</button><button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); setAuthMessage(""); }}>返回登录</button></>}
+          {authView === "verify-otp" && <><button type="button" className="text-button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "正在发送…" : "重新发送验证码"}</button><button type="button" className="soft-button" onClick={() => { setAuthView("forgot"); setError(""); setAuthMessage(""); }}>返回</button></>}
+          {authView === "recover-code" && <button type="button" className="soft-button" onClick={() => { setAuthView("forgot"); setError(""); setAuthMessage(""); }}>返回邮箱验证码</button>}
           {authView === "confirm" && <>{email && <button type="button" className="primary-button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "正在发送…" : authPurpose === "signup" ? "重新发送确认邮件" : "重新发送重置邮件"}</button>}<button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); }}>返回登录</button></>}
         </form>
         <AnimatedNotice message={error || authMessage} className={authMessage && !error ? "account-success" : undefined} />
@@ -434,6 +465,7 @@ export default function Messages({
       <div className="messages-inbox-pane">
       <div className="eyebrow">MESSAGES / PRIVATE</div>
       <h1>消息。</h1>
+      <details className="settings-module"><summary>账号安全 / 备用恢复码</summary><p className="fineprint">恢复码只展示一次。生成新码会让此前的所有恢复码失效，请离线保存在安全位置。</p><button type="button" className="soft-button" disabled={busy} onClick={() => void createRecoveryCodes()}>{busy ? "正在生成…" : recoveryCodes.length ? "重新生成恢复码" : "生成备用恢复码"}</button>{recoveryCodes.length > 0 && <pre className="recovery-code-list">{recoveryCodes.join("\n")}</pre>}</details>
       <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />
       <form
         className="search"

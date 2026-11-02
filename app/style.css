@@ -248,3 +248,4 @@
 .rarity-黑金{background:#e8edef;color:#51656b}.rarity-黄金{background:#faf1d9;color:#92732a}.rarity-铂金{background:#edf0f5;color:#697990}.rarity-隐藏卡{background:#212a2d;color:#f2d783}.rarity-评分形成中{background:#f3f4f4;color:#8a9091}
 @media(max-width:380px){.experience-summary-card{gap:10px;padding:12px}.experience-level-row{grid-template-columns:48px 1fr auto}.experience-total-card,.experience-rule-note,.experience-level-list{padding:14px}}
 .post-card-rarity{width:max-content;display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding:4px 6px;border-radius:7px;font-size:10px}
+.recovery-code-list{margin:12px 0 0;padding:14px;border-radius:12px;background:var(--surface-muted);font:600 14px/1.8 ui-monospace,monospace;white-space:pre-wrap;user-select:all}
