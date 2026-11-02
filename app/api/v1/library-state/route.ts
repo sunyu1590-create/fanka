@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       await Promise.all([
         db
           .from("profiles")
-          .select("nickname,bio,avatar_url,role")
+          .select("nickname,bio,avatar_url,role,membership_tier")
           .eq("id", user!.id)
           .single(),
         db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),

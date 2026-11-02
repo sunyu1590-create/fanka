@@ -540,7 +540,9 @@ export default function Community() {
     ? null
     : state.revealed[latestOpenedId] || null;
   const luckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
-  const dailyAllowance = 5 + luckyBonusToday;
+  const membershipTier = experienceSummary.membershipTier || "free";
+  const memberFlipAllowance = membershipTier === "pro" ? 13 : membershipTier === "plus" ? 9 : 5;
+  const dailyAllowance = memberFlipAllowance + luckyBonusToday;
   const candidatePosts = state.cardIds.map(
     (id) =>
       state.revealed[id] ||
@@ -2253,6 +2255,9 @@ export default function Community() {
           try {
             const data = await cloudRequest("/api/v1/library-state");
             if (!alive || !data) return;
+            if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
+              setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
+            }
             const hasAdminAccess = data.profile?.role === "admin";
             setIsAdmin(hasAdminAccess);
             if (adminEntryPending.current) {
@@ -2386,7 +2391,24 @@ export default function Community() {
         const { data } = db.auth.onAuthStateChange(() =>
           queueMicrotask(() => void hydrate()),
         );
-        cleanup = () => data.subscription.unsubscribe();
+        const membershipUserId = (await db.auth.getUser()).data.user?.id;
+        const membershipChannel = membershipUserId ? db.channel(`membership-${membershipUserId}`)
+          .on("postgres_changes", {
+            event: "UPDATE",
+            schema: "public",
+            table: "profiles",
+            filter: `id=eq.${membershipUserId}`,
+          }, (payload) => {
+            const tier = (payload.new as { membership_tier?: string }).membership_tier;
+            if (tier === "free" || tier === "plus" || tier === "pro") {
+              setExperienceSummary((current) => ({ ...current, membershipTier: tier }));
+            }
+          })
+          .subscribe() : null;
+        cleanup = () => {
+          data.subscription.unsubscribe();
+          if (membershipChannel) void db.removeChannel(membershipChannel);
+        };
       })
       .catch(() => {});
     return () => {
@@ -2781,7 +2803,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.44</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.45</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2858,8 +2880,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.44</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.44</strong><small>2026.11.02</small></div><ul><li>密码找回支持通过 Supabase 一次性邮件链接验证身份并返回设置新密码。</li><li>保留验证码输入与 60 秒重发倒计时。</li></ul></div>
+          <p className="lead">黑卡 HEIKA · 版本 1.45</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.45</strong><small>2026.11.02</small></div><ul><li>管理员授予 Plus / Pro 后，会员额度、每日翻卡次数和经验加成都按账号等级生效。</li><li>个人页与订阅预览显示当前会员等级和每日额度。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
@@ -3156,7 +3178,7 @@ export default function Community() {
               <div className="section-head"><h2>会员与翻卡额度</h2><span>PLUS / PRO</span></div>
             <button className="mine-membership-card" onClick={() => setModal("subscription")}>
               <span className="mine-membership-mark"><Crown size={19}/></span>
-              <span className="mine-membership-copy"><strong>订阅方案 · 额外翻卡</strong><small>Plus 每日 +4 次 · Pro 每日 +8 次</small></span>
+              <span className="mine-membership-copy"><strong>当前 {membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"} · 订阅方案</strong><small>免费 5 次 · Plus 9 次 · Pro 13 次 / 日</small></span>
               <span className="mine-membership-count">今日 {dailyAllowance} 次</span>
               <ChevronRight size={17}/>
             </button>
