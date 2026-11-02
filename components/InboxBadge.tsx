@@ -54,13 +54,18 @@ export default function InboxBadge({ enabled = false }: { enabled?: boolean }) {
           // microtask can run before that lock is released and stall getSession.
           setTimeout(() => void refresh(), 0);
         });
-        const timer = setInterval(() => void refresh(), 12000);
+        const refreshWhenVisible = () => {
+          if (document.visibilityState === "visible") void refresh();
+        };
+        const timer = setInterval(refreshWhenVisible, 12000);
         window.addEventListener("heika-read", refresh);
+        document.addEventListener("visibilitychange", refreshWhenVisible);
         dispose = () => {
           void db.removeChannel(channel);
           data.subscription.unsubscribe();
           clearInterval(timer);
           window.removeEventListener("heika-read", refresh);
+          document.removeEventListener("visibilitychange", refreshWhenVisible);
         };
       })
       .catch(() => {});

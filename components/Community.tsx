@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Home,
   Compass,
@@ -345,7 +345,15 @@ export default function Community() {
     [viewerRevealPhase, setViewerRevealPhase] = useState<"rarity" | "content" | null>(null),
     [flippingId, setFlippingId] = useState<number | null>(null),
     [publicFeed, setPublicFeed] = useState<Post[]>([]),
+    [feedError, setFeedError] = useState(""),
+    [feedPage, setFeedPage] = useState(0),
+    [feedTotal, setFeedTotal] = useState(0),
+    [feedHasMore, setFeedHasMore] = useState(false),
+    [feedLoading, setFeedLoading] = useState(false),
+    [feedLoadedTag, setFeedLoadedTag] = useState<string | null>(null),
     publicFeedLoading = useRef(false),
+    feedController = useRef<AbortController | null>(null),
+    loadedRatingIds = useRef(new Set<number>()),
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
@@ -512,13 +520,13 @@ export default function Community() {
     return { key, count: (state.opened[key] || []).length };
   });
   const selectedDayIds = state.opened[selectedDay] || [];
-  const all = [
+  const all = useMemo(() => [
     ...new Map(
       [...publicFeed, ...topicPosts, ...searchPosts, ...Object.values(state.revealed), ...state.own].map(
         (post) => [post.id, post],
       ),
     ).values(),
-  ];
+  ], [publicFeed, topicPosts, searchPosts, state.revealed, state.own]);
   const opened = state.opened[today] || [];
   const latestOpenedDay = Object.keys(state.opened)
     .filter((day) => state.opened[day]?.length)
@@ -600,6 +608,7 @@ export default function Community() {
           loaded = {
             ...initial,
             ...saved,
+            comments: [],
             dailyCount: 5,
             revealed: saved.revealed || {},
             rarityTiers: saved.rarityTiers || {},
@@ -612,24 +621,23 @@ export default function Community() {
             ...new Set<number>(Object.values(loaded.opened).flat()),
           ].filter((id) => !loaded.revealed[id]);
           if (legacyOpened.length) {
-            const results = await Promise.all(
-              legacyOpened.map(async (id) => {
-                const response = await fetch("/api/demo/cards", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id }),
-                });
-                const result = await response.json();
-                return response.ok ? (result.data as Post) : undefined;
-              }),
-            );
+            const batches = Array.from({ length: Math.ceil(legacyOpened.length / 100) }, (_, index) => legacyOpened.slice(index * 100, (index + 1) * 100));
+            const results = (await Promise.all(batches.map(async (ids) => {
+              const response = await fetch("/api/demo/cards", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids }),
+              });
+              const result = await response.json();
+              return response.ok && Array.isArray(result.data?.items) ? result.data.items as Post[] : [];
+            }))).flat();
             loaded = {
               ...loaded,
               rarityTiers: {
                 ...loaded.rarityTiers,
                 ...Object.fromEntries(
                   results
-                    .filter((post): post is Post => Boolean(post?.rarityTier))
+                    .filter((post): post is Post => Boolean(post.rarityTier))
                     .map((post) => [post.id, post.rarityTier!]),
                 ),
               },
@@ -664,7 +672,13 @@ export default function Community() {
     };
   }, []);
   useEffect(() => {
-    if (ready) localStorage.setItem(storageKey, JSON.stringify(state));
+    if (!ready) return;
+    const timer = window.setTimeout(() => {
+      const cachedState: Partial<State> = { ...state };
+      delete cachedState.comments;
+      localStorage.setItem(storageKey, JSON.stringify(cachedState));
+    }, 220);
+    return () => window.clearTimeout(timer);
   }, [state, ready, storageKey]);
   useEffect(() => () => {
     readingTimer.current.forEach(window.clearTimeout);
@@ -682,28 +696,65 @@ export default function Community() {
     }
     setNotificationPermission(Notification.permission);
   }, []);
-  useEffect(() => {
-    if (
-      !["today", "discover", "mine"].includes(tab) ||
-      publicFeed.length ||
-      publicFeedLoading.current
-    )
-      return;
-    let cancelled = false;
+  const loadPublicFeed = useCallback(async (requestedPage = 1, reset = false, requestedTag = category) => {
+    if (publicFeedLoading.current && !reset) return;
+    if (reset) feedController.current?.abort();
+    const controller = new AbortController();
+    feedController.current = controller;
     publicFeedLoading.current = true;
-    fetch("/api/demo/cards?mode=discover", { cache: "no-store" })
-      .then((r) => r.json())
-      .then(({ data }) => {
-        if (!cancelled && Array.isArray(data)) setPublicFeed(data);
-      })
-      .catch(() => {})
-      .finally(() => {
+    setFeedLoading(true);
+    setFeedError("");
+    const params = new URLSearchParams({ mode: "discover", page: String(requestedPage), limit: "24" });
+    if (requestedTag !== "全部") params.set("tag", requestedTag);
+    try {
+      const response = await fetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
+      const result = await response.json();
+      if (!response.ok) throw new Error("内容加载失败");
+      const payload = result.data;
+      const items: Post[] | undefined = Array.isArray(payload) ? payload : payload?.items;
+      if (!Array.isArray(items)) throw new Error("内容格式无效");
+      if (controller.signal.aborted) return;
+      setPublicFeed((current) => reset ? items : [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
+      const total = Array.isArray(payload) ? items.length : Number(payload.total) || 0;
+      setFeedTotal(total);
+      setFeedPage(requestedPage);
+      setFeedHasMore(!Array.isArray(payload) && requestedPage * 24 < total);
+      setFeedLoadedTag(requestedTag);
+      setPage((current) => reset ? 12 : current + items.length);
+    } catch {
+      if (!controller.signal.aborted) setFeedError("内容加载失败，请重试");
+    } finally {
+      if (feedController.current === controller) {
         publicFeedLoading.current = false;
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, publicFeed.length]);
+        setFeedLoading(false);
+      }
+    }
+  }, [category]);
+  useEffect(() => {
+    if (!ready || tab !== "discover") return;
+    const wantedTag = category;
+    if (feedLoadedTag === wantedTag && (publicFeed.length || feedPage > 0)) return;
+    void loadPublicFeed(1, true, wantedTag);
+  }, [ready, tab, category, feedLoadedTag, publicFeed.length, feedPage, loadPublicFeed]);
+  const missingMineIds = [...new Set([...state.saved, ...(state.liked || [])])].filter((id) => !all.some((post) => post.id === id));
+  const missingMineIdsKey = missingMineIds.join(",");
+  useEffect(() => {
+    if (tab !== "mine" || !missingMineIdsKey) return;
+    const controller = new AbortController();
+    const ids = missingMineIdsKey.split(",").map(Number);
+    const batches = Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) => ids.slice(index * 100, (index + 1) * 100));
+    void Promise.all(batches.map(async (batch) => {
+      const response = await fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch }), signal: controller.signal });
+      if (!response.ok) throw new Error("内容加载失败");
+      const result = await response.json();
+      return Array.isArray(result.data?.items) ? result.data.items as Post[] : [];
+    })).then((results) => {
+      if (controller.signal.aborted) return;
+      const items = results.flat();
+      setPublicFeed((current) => [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [tab, missingMineIdsKey]);
   useEffect(() => {
     const now = new Date();
     const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -967,14 +1018,30 @@ export default function Community() {
     flipRainTimer.current = null;
     setFlipRainId(null);
   };
+  const openPostRef = useRef(openPost);
+  openPostRef.current = openPost;
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
     if (!ready || !sharedId || detail !== null || sharedPostHandled.current === sharedId) return;
     const id = Number(sharedId);
     if (!Number.isFinite(id) || !all.some((item) => item.id === id)) return;
     sharedPostHandled.current = sharedId;
-    openPost(id, "discover");
-  }, [ready, detail, publicFeed, state.own, state.revealed]);
+    openPostRef.current(id, "discover");
+  }, [ready, detail, all]);
+  const sharedPostLoading = useRef<string | null>(null);
+  useEffect(() => {
+    const sharedId = new URLSearchParams(location.search).get("post");
+    const id = Number(sharedId);
+    if (!ready || !sharedId || !Number.isSafeInteger(id) || all.some((item) => item.id === id) || sharedPostLoading.current === sharedId) return;
+    sharedPostLoading.current = sharedId;
+    void fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+      .then((response) => response.json().then((result) => ({ response, result })))
+      .then(({ response, result }) => {
+        if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [result.data as Post, ...current]);
+      })
+      .catch(() => {})
+      .finally(() => { sharedPostLoading.current = null; });
+  }, [ready, all]);
   const closeDetail = (fromHistory = false) => {
     if (detail === null || transitionPhase === "closing") return;
     if (!fromHistory && history.state?.heikaDetail === detail) {
@@ -1294,7 +1361,6 @@ export default function Community() {
           [today]: openDailyCard(used, id, dailyAllowance),
         },
       };
-      localStorage.setItem(storageKey, JSON.stringify(next));
       setState(next);
       setViewerFlipped(true);
       setViewerRevealPhase("rarity");
@@ -1880,32 +1946,36 @@ export default function Community() {
     } catch { setCommentsError(true); }
     finally { setCommentsLoading(false); }
   };
-  const [feedError, setFeedError] = useState("");
   const refreshFeed = async () => {
-    setFeedError("");
-    try {
-      const response = await fetch("/api/demo/cards?mode=discover", {
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error();
-      const { data } = await response.json();
-      setPublicFeed(data);
-      setPage(12);
-    } catch {
-      setFeedError("内容加载失败，请重试");
+    if (tab === "today") {
+      try {
+        const response = await fetch("/api/demo/cards", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.data)) throw new Error();
+        setState((current) => ({ ...current, cardIds: result.data.map((item: { id: number }) => item.id) }));
+      } catch {
+        setFeedError("内容加载失败，请重试");
+      }
+      return;
     }
+    await loadPublicFeed(1, true, tab === "discover" ? category : "全部");
   };
-  const ratingIdsKey = [...new Set(all.map((post) => post.id))].sort((a, b) => a - b).join(",");
+  const ratingIdsKey = [...new Set(all.map((post) => post.id))].filter((id) => !loadedRatingIds.current.has(id)).sort((a, b) => a - b).join(",");
   useEffect(() => {
     if (!ready || !ratingIdsKey) return;
     const controller = new AbortController();
-    fetch(`/api/v1/ratings?ids=${ratingIdsKey}`, { signal: controller.signal, cache: "no-store" })
-      .then((response) => response.json())
-      .then((result) => {
-        if (!controller.signal.aborted && result.data && typeof result.data === "object")
-          setCommunityRatings(result.data as Record<number, CommunityRating>);
-      })
-      .catch(() => {});
+    const ids = ratingIdsKey.split(",");
+    const batches = Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) => ids.slice(index * 100, (index + 1) * 100));
+    void Promise.all(batches.map(async (batch) => {
+      const response = await fetch(`/api/v1/ratings?ids=${batch.join(",")}`, { signal: controller.signal, cache: "no-store" });
+      if (!response.ok) throw new Error("评分加载失败");
+      const result = await response.json();
+      return result.data && typeof result.data === "object" ? result.data as Record<number, CommunityRating> : {};
+    })).then((results) => {
+      if (controller.signal.aborted) return;
+      ids.forEach((id) => loadedRatingIds.current.add(Number(id)));
+      setCommunityRatings((current) => Object.assign({}, current, ...results));
+    }).catch(() => {});
     return () => controller.abort();
   }, [ready, ratingIdsKey]);
   const filtered = useMemo(
@@ -1941,16 +2011,18 @@ export default function Community() {
     )
       return;
     const total = tab === "today" ? candidates.length : filtered.length;
-    if (page >= total) return;
+    if (page >= total && !(tab === "discover" && feedHasMore)) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) setPage((n) => n + 12);
+        if (!entries[0]?.isIntersecting) return;
+        if (tab === "discover" && page >= filtered.length) void loadPublicFeed(feedPage + 1, false, category);
+        else setPage((n) => Math.min(n + 12, total));
       },
       { rootMargin: "400px" },
     );
     observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
-  }, [ready, tab, page, filtered.length, candidates.length, detail, viewerId]);
+  }, [ready, tab, page, filtered.length, candidates.length, detail, viewerId, feedHasMore, feedPage, feedLoading, category, loadPublicFeed]);
   useEffect(() => {
     if (!detailReady || detail === null) return;
     let observer: IntersectionObserver | undefined;
@@ -2035,10 +2107,10 @@ export default function Community() {
       ) : (
         <div className="empty">这里暂时没有内容，试试其他话题。</div>
       )}
-      {items.length < filtered.length && (
+      {(items.length < filtered.length || (tab === "discover" && feedHasMore)) && (
         <div ref={loadMoreRef} className="feed-sentinel">
-          <span>正在发现更多内容…</span>
-          <button onClick={() => setPage((n) => n + 12)}>加载更多</button>
+          <span>{feedLoading ? "正在加载发现内容…" : "正在发现更多内容…"}</span>
+          <button disabled={feedLoading} onClick={() => tab === "discover" && page >= filtered.length ? void loadPublicFeed(feedPage + 1, false, category) : setPage((n) => n + 12)}>加载更多</button>
         </div>
       )}
     </>
@@ -2589,6 +2661,11 @@ export default function Community() {
                 className={category === t ? "selected" : ""}
                 onClick={() => {
                   setCategory(t);
+                  setPublicFeed([]);
+                  setFeedPage(0);
+                  setFeedTotal(0);
+                  setFeedHasMore(false);
+                  setFeedLoadedTag(null);
                   setPage(12);
                 }}
               >
@@ -2607,7 +2684,7 @@ export default function Community() {
           )}
           <div className="section-head editorial-section-head">
             <h2>{category === "全部" ? "为你推荐" : category}</h2>
-            <span>{filtered.length} 篇内容</span>
+            <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
           </div>
           {feed(list)}
         </section>
@@ -2672,7 +2749,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.36</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.41</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2749,7 +2826,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.40</p>
+          <p className="lead">黑卡 HEIKA · 版本 1.41</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.39</strong><small>2026.11.01</small></div><ul><li>发现页搜索改为独立二级页面，支持搜索内容和公开用户资料。</li><li>内容支持标题、正文搜索；用户支持昵称、简介搜索和分页。</li><li>增加本机最近搜索与精选话题入口，并优化移动端搜索结果布局。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.37</strong><small>2026.11.01</small></div><ul><li>经验进度条改为纯深蓝纯色，修正个人页分隔线圆角。</li><li>翻卡图片区域加大，个人设置、调试等二级页面补齐统一入场动画。</li><li>消息页先恢复本地会话再显示登录入口，并保留已加载页面状态。</li><li>统一主按钮为低反光纯色，适配明暗主题。</li></ul></div>

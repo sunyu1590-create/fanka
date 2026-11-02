@@ -216,13 +216,14 @@ export default function Messages({
         "postgres_changes",
         { event: "*", schema: "public", table: "dm_messages" },
         (payload) => {
-          void refresh();
           if (payload.eventType === "DELETE") {
             setMessages((old) => old.filter((m) => m.id !== payload.old.id));
+            void refresh();
             return;
           }
           const row = payload.new as Message;
           if (activeRef.current?.id === row.conversation_id) {
+            setPreview((current) => ({ ...current, [row.conversation_id]: row }));
             setMessages((old) =>
               old.some((m) => m.id === row.id) ? old : [...old, row],
             );
@@ -236,7 +237,7 @@ export default function Messages({
                 }),
               );
             else setNewBelow(true);
-          }
+          } else void refresh();
         },
       )
       .subscribe((status) => {
@@ -244,15 +245,20 @@ export default function Messages({
           void load(activeRef.current);
       });
     const recover = () => {
+      if (document.visibilityState !== "visible") return;
       void refresh();
       if (activeRef.current) void load(activeRef.current);
     };
     window.addEventListener("online", recover);
-    const timer = window.setInterval(() => void refresh(), 15000);
+    document.addEventListener("visibilitychange", recover);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 15000);
     return () => {
       void db.removeChannel(channel);
       clearInterval(timer);
       window.removeEventListener("online", recover);
+      document.removeEventListener("visibilitychange", recover);
     };
   }, [db, user?.id, isActive]);
   const auth = async (event: FormEvent<HTMLFormElement>) => {
