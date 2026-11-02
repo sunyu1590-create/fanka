@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Check, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
+import { userMessage } from "@/lib/user-message";
 
 type Report = {
   id: string;
@@ -157,8 +158,8 @@ export default function AdminModeration({ onBack }: Props) {
     {section === "reports" && <div className="moderation-filters" role="group" aria-label="举报状态">
       {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
     </div>}
-    {error && <p className="moderation-feedback error" role="alert">{error}</p>}
-    {notice && <p className="moderation-feedback" role="status">{notice}</p>}
+    {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
+    {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
     {section === "users" ? <>
       <form className="admin-user-search" onSubmit={(event) => { event.preventDefault(); setAppliedUserQuery(userQuery.trim()); }}>
         <input aria-label="搜索账号昵称" placeholder="按昵称搜索账号" value={userQuery} onChange={(event) => setUserQuery(event.target.value)} />

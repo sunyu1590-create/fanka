@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { userMessage } from "@/lib/user-message";
 
 type NoticeState = {
   message: string;
@@ -44,14 +46,17 @@ export default function AnimatedNotice({
   }, [message]);
 
   if (!notice) return null;
+  const success = className?.includes("success") || className?.includes("saved");
   return (
-    <p
+    <div
       key={notice.id}
       role="status"
+      aria-live="polite"
       className={`${className || ""} animated-notice ${notice.phase === "leaving" ? "is-leaving" : ""}`.trim()}
       onClick={onClick}
     >
-      {notice.message}
-    </p>
+      <span className="animated-notice-icon" aria-hidden="true">{success ? <CheckCircle2 size={18}/> : <AlertCircle size={18}/>}</span>
+      <span className="animated-notice-copy">{userMessage(notice.message)}</span>
+    </div>
   );
 }

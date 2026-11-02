@@ -129,9 +129,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .primary-button:active, .onboarding-start:active, .flip-button:active, .window-more:active { transform: scale(.98); background: #dbe2e5; }
 .soft-button, .load-button { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; }
 .toast { background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 3px; animation: toast-blur-in 280ms cubic-bezier(.2,.75,.25,1) both; }
+.toast{width:max-content;max-width:min(440px,calc(100vw - 32px));white-space:normal;overflow-wrap:anywhere;text-align:left;line-height:1.5;padding:13px 16px;box-shadow:0 12px 32px rgba(0,0,0,.16);border-radius:var(--radius,12px)}
 .toast.is-leaving { animation: toast-blur-out 300ms ease both; }
 .animated-notice { animation: notice-blur-in 260ms cubic-bezier(.2,.75,.25,1) both; }
 .animated-notice.is-leaving { animation: notice-blur-out 280ms ease both; }
+.animated-notice{display:flex;align-items:flex-start;gap:10px;width:100%;padding:12px 14px;margin:12px 0;border:1px solid var(--line);border-radius:var(--radius,12px);background:var(--card);color:var(--ink);box-shadow:0 8px 22px rgba(20,28,32,.08);font-size:13px;line-height:1.55}
+.animated-notice-icon{display:inline-flex;flex:none;color:var(--action);margin-top:1px}
+.animated-notice-copy{min-width:0;overflow-wrap:anywhere}
 @keyframes notice-blur-in { from { opacity: 0; filter: blur(7px); transform: translateY(7px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
 @keyframes notice-blur-out { from { opacity: 1; filter: blur(0); transform: translateY(0); } to { opacity: 0; filter: blur(7px); transform: translateY(-4px); } }
 @keyframes toast-blur-in { from { opacity: 0; filter: blur(8px); transform: translate(-50%,9px) scale(.96); } to { opacity: 1; filter: blur(0); transform: translate(-50%,0) scale(1); } }

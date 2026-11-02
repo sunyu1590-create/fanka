@@ -51,6 +51,7 @@ import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
+import { userMessage } from "@/lib/user-message";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -857,7 +858,7 @@ export default function Community() {
           else setExperienceSummary((current) => ({ ...current, total: result.experience.total }));
         }).catch(() => setExperienceSummary((current) => ({ ...current, total: result.experience.total })));
       }
-      if (result.experience?.awarded) toast(`已评分 · +${result.experience.awarded} EXP`);
+      if (result.experience?.awarded) toast(`已评分 · 获得 ${result.experience.awarded} 点经验`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "评分暂未同步，请稍后重试");
     } finally {
@@ -871,7 +872,7 @@ export default function Community() {
     noticeExitTimer.current = null;
     setNoticeLeaving(false);
     setNoticeId((id) => id + 1);
-    setNotice(msg);
+    setNotice(userMessage(msg));
     noticeTimer.current = window.setTimeout(() => {
       setNoticeLeaving(true);
       noticeExitTimer.current = window.setTimeout(() => {

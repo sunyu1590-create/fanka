@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
+import AnimatedNotice from "./AnimatedNotice";
 
 type BlockedProfile = { id: string; nickname: string; bio: string };
 
@@ -82,6 +83,6 @@ export default function MessagingPreferences({
       {blocked.length ? blocked.map((person) => <div className="messaging-block-row" key={person.id}><span className="settings-row-icon"><UserRound size={17}/></span><span><strong>{person.nickname || "探索者"}</strong><small>{person.bio || "已限制私聊"}</small></span><button className="soft-button" disabled={busyId === person.id} onClick={() => void unblock(person.id)}>{busyId === person.id ? "处理中…" : "解除"}</button></div>) : <p className="messaging-preferences-note">黑名单为空。你拉黑的用户会显示在这里。</p>}
     </section>
     <button className="messaging-signout" onClick={() => void browserDb().then((db) => db.auth.signOut())}><LogOut size={17}/>退出账号</button>
-    {error && <p className="messaging-preferences-error" role="status">{error}</p>}
+    <AnimatedNotice message={error} className="messaging-preferences-error" />
   </div>;
 }

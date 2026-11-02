@@ -54,8 +54,10 @@ export default function Messages({
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mediaRequests = useRef(new Set<string>());
   const [media, setMedia] = useState<Record<string, string>>({});
   useEffect(() => {
+    if (authView !== "forgot" && authView !== "verify-otp") return;
     const updateCooldown = () => {
       if (!email.trim()) { setResendSeconds(0); return; }
       const key = `heika-password-reset:${email.trim().toLowerCase()}`;
@@ -65,26 +67,27 @@ export default function Messages({
     updateCooldown();
     const timer = window.setInterval(updateCooldown, 1000);
     return () => window.clearInterval(timer);
-  }, [email]);
+  }, [email, authView]);
   useEffect(() => {
     if (!db) return;
-    let alive = true;
+    const missing = messages.filter((message) => message.media_path && !(message.id in media) && !mediaRequests.current.has(message.id));
+    if (!missing.length) return;
+    missing.forEach((message) => mediaRequests.current.add(message.id));
     void Promise.all(
-      messages
-        .filter((m) => m.media_path)
-        .map(async (m) => {
+      missing.map(async (m) => {
+        try {
           const { data } = await db.storage
             .from("heika-chat")
             .createSignedUrl(m.media_path!, 900);
           return [m.id, data?.signedUrl || ""] as const;
-        }),
+        } catch {
+          return [m.id, ""] as const;
+        } finally { mediaRequests.current.delete(m.id); }
+      }),
     ).then((rows) => {
-      if (alive) setMedia(Object.fromEntries(rows));
+      setMedia((current) => ({ ...current, ...Object.fromEntries(rows) }));
     });
-    return () => {
-      alive = false;
-    };
-  }, [db, messages]);
+  }, [db, messages, media]);
   const list = useRef<HTMLDivElement>(null),
     nearBottom = useRef(true),
     activeRef = useRef<Room | null>(null);
