@@ -35,6 +35,7 @@ export default function Messages({
     [recoveryCode, setRecoveryCode] = useState(""),
     [error, setError] = useState(""),
     [authMessage, setAuthMessage] = useState(""),
+    [resendSeconds, setResendSeconds] = useState(0),
     [authPurpose, setAuthPurpose] = useState<"signup" | "recovery">("signup"),
     [busy, setBusy] = useState(false),
     [query, setQuery] = useState(""),
@@ -54,6 +55,17 @@ export default function Messages({
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [media, setMedia] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const updateCooldown = () => {
+      if (!email.trim()) { setResendSeconds(0); return; }
+      const key = `heika-password-reset:${email.trim().toLowerCase()}`;
+      const until = Number(localStorage.getItem(key)) || 0;
+      setResendSeconds(Math.max(0, Math.ceil((until - Date.now()) / 1000)));
+    };
+    updateCooldown();
+    const timer = window.setInterval(updateCooldown, 1000);
+    return () => window.clearInterval(timer);
+  }, [email]);
   useEffect(() => {
     if (!db) return;
     let alive = true;
@@ -293,8 +305,11 @@ export default function Messages({
         if (!data.session) { setAuthView("confirm"); setAuthMessage("确认邮件已发送。请前往邮箱完成验证，再回来登录。"); }
         else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
       } else if (authView === "forgot") {
+        if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
         const { error } = await db.auth.resetPasswordForEmail(email.trim());
         if (error) throw error;
+        localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));
+        setResendSeconds(60);
         setAuthPurpose("recovery");
         setAuthView("verify-otp"); setAuthMessage("如果该邮箱已注册，验证码已发送。请填写邮件中的验证码。");
       } else if (authView === "verify-otp") {
@@ -328,12 +343,17 @@ export default function Messages({
   };
   const resendConfirmation = async () => {
     if (!db || !email.trim()) return;
+    if (authPurpose === "recovery" && resendSeconds > 0) return;
     setBusy(true); setError(""); setAuthMessage("");
     try {
       const { error } = authPurpose === "signup"
         ? await db.auth.resend({ type: "signup", email: email.trim(), options: { emailRedirectTo: window.location.origin } })
         : await db.auth.resetPasswordForEmail(email.trim());
       if (error) throw error;
+      if (authPurpose === "recovery") {
+        localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));
+        setResendSeconds(60);
+      }
       setAuthMessage(authPurpose === "signup" ? "确认邮件已重新发送，请查收邮箱。" : "如果该邮箱已注册，验证码已重新发送。");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "邮件发送失败，请稍后重试。"); }
     finally { setBusy(false); }
@@ -444,11 +464,11 @@ export default function Messages({
           {authView === "recover-code" && <label>备用恢复码<input autoComplete="off" required value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder="AAAAA-BBBBB-CCCCC-DDDDD" /></label>}
           {(authView === "login" || authView === "signup" || authView === "reset" || authView === "recover-code") && <label>{authView === "reset" || authView === "recover-code" ? "新密码" : "密码"}<input type="password" autoComplete={authView === "login" ? "current-password" : "new-password"} minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="至少 8 位" /></label>}
           {(authView === "signup" || authView === "reset" || authView === "recover-code") && <label>确认密码<input type="password" autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="再输入一次密码" /></label>}
-          {authView !== "confirm" && <button className="primary-button" disabled={!db || busy}>{busy ? "请稍候…" : authView === "signup" ? "创建账号" : authView === "forgot" ? "发送验证码" : authView === "verify-otp" ? "验证并继续" : authView === "recover-code" ? "验证恢复码并重置" : authView === "reset" ? "更新密码" : "登录"}</button>}
+          {authView !== "confirm" && <button className="primary-button" disabled={!db || busy || (authView === "forgot" && resendSeconds > 0)}>{busy ? "请稍候…" : authView === "signup" ? "创建账号" : authView === "forgot" ? resendSeconds > 0 ? `${resendSeconds} 秒后可重发` : "发送验证码" : authView === "verify-otp" ? "验证并继续" : authView === "recover-code" ? "验证恢复码并重置" : authView === "reset" ? "更新密码" : "登录"}</button>}
           {authView === "login" && <><button type="button" className="text-button" onClick={() => { setAuthPurpose("recovery"); setAuthView("forgot"); setError(""); setAuthMessage(""); }}>忘记密码？</button><button type="button" className="soft-button" disabled={!db || busy} onClick={() => { setAuthPurpose("signup"); setAuthView("signup"); setError(""); setAuthMessage(""); }}>创建新账号</button></>}
           {authView === "signup" && <button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); setAuthMessage(""); }}>已有账号，返回登录</button>}
           {authView === "forgot" && <><button type="button" className="text-button" onClick={() => { setAuthView("recover-code"); setError(""); setAuthMessage(""); }}>使用备用恢复码</button><button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); setAuthMessage(""); }}>返回登录</button></>}
-          {authView === "verify-otp" && <><button type="button" className="text-button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "正在发送…" : "重新发送验证码"}</button><button type="button" className="soft-button" onClick={() => { setAuthView("forgot"); setError(""); setAuthMessage(""); }}>返回</button></>}
+          {authView === "verify-otp" && <><button type="button" className="text-button" disabled={busy || resendSeconds > 0} onClick={() => void resendConfirmation()}>{busy ? "正在发送…" : resendSeconds > 0 ? `${resendSeconds} 秒后可重发` : "重新发送验证码"}</button><button type="button" className="soft-button" onClick={() => { setAuthView("forgot"); setError(""); setAuthMessage(""); }}>返回</button></>}
           {authView === "recover-code" && <button type="button" className="soft-button" onClick={() => { setAuthView("forgot"); setError(""); setAuthMessage(""); }}>返回邮箱验证码</button>}
           {authView === "confirm" && <>{email && <button type="button" className="primary-button" disabled={busy} onClick={() => void resendConfirmation()}>{busy ? "正在发送…" : authPurpose === "signup" ? "重新发送确认邮件" : "重新发送重置邮件"}</button>}<button type="button" className="soft-button" onClick={() => { setAuthView("login"); setError(""); }}>返回登录</button></>}
         </form>
