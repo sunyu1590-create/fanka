@@ -306,12 +306,12 @@ export default function Messages({
         else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
       } else if (authView === "forgot") {
         if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
-        const { error } = await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
+        const { error } = await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/?auth=reset` } });
         if (error) throw error;
         localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));
         setResendSeconds(60);
         setAuthPurpose("recovery");
-        setAuthView("verify-otp"); setAuthMessage("如果该邮箱已注册，验证码已发送。请填写邮件中的验证码。");
+        setAuthView("verify-otp"); setAuthMessage("邮件可能包含验证码或一次性登录链接。输入验证码，或点开链接返回黑卡设置新密码。");
       } else if (authView === "verify-otp") {
         const { error } = await db.auth.verifyOtp({ email: email.trim(), token: otp.trim(), type: "email" });
         if (error) throw error;
@@ -348,7 +348,7 @@ export default function Messages({
     try {
       const { error } = authPurpose === "signup"
         ? await db.auth.resend({ type: "signup", email: email.trim(), options: { emailRedirectTo: window.location.origin } })
-        : await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
+        : await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/?auth=reset` } });
       if (error) throw error;
       if (authPurpose === "recovery") {
         localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));
@@ -452,8 +452,8 @@ export default function Messages({
     return (
       <section className="page account-page">
         <div className="eyebrow">HEIKA / ACCOUNT</div>
-        <h1>{authView === "signup" ? "加入黑卡。" : authView === "forgot" ? "找回密码。" : authView === "reset" ? "设置新密码。" : authView === "confirm" ? "查看邮箱。" : "让交流发生。"}</h1>
-        <p className="lead">{authView === "signup" ? "建立你的账号，保存发现并开启交流。" : authView === "reset" ? "为账号设置一个新的登录密码。" : authView === "verify-otp" ? "输入邮件中的一次性验证码，验证后即可设置新密码。" : authView === "recover-code" ? "输入邮箱和一枚未使用的备用恢复码。" : authView === "confirm" ? "完成邮箱验证后，即可继续使用黑卡。" : "登录后，收藏、消息与个人资料会安全保存在账号中。"}</p>
+        <h1>{authView === "signup" ? "加入黑卡。" : authView === "forgot" || authView === "verify-otp" ? "找回密码。" : authView === "reset" ? "设置新密码。" : authView === "confirm" ? "查看邮箱。" : "让交流发生。"}</h1>
+        <p className="lead">{authView === "signup" ? "建立你的账号，保存发现并开启交流。" : authView === "reset" ? "为账号设置一个新的登录密码。" : authView === "verify-otp" ? "输入邮件中的验证码，或打开邮件里的登录链接返回此页设置新密码。" : authView === "recover-code" ? "输入邮箱和一枚未使用的备用恢复码。" : authView === "confirm" ? "完成邮箱验证后，即可继续使用黑卡。" : "登录后，收藏、消息与个人资料会安全保存在账号中。"}</p>
         <form
           className="account-form"
           onSubmit={(e) => void auth(e)}
