@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
-type Profile = { id: string; nickname: string; bio: string };
+import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
+type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
 type Message = {
   id: string;
@@ -148,7 +149,7 @@ export default function Messages({
     if (peers.length) {
       const { data: profiles } = await db
         .from("profiles")
-        .select("id,nickname,bio")
+        .select("id,nickname,bio,avatar_url")
         .in("id", peers);
       setNames(Object.fromEntries((profiles || []).map((p) => [p.id, p])));
     }
@@ -380,7 +381,7 @@ export default function Messages({
     if (!initialPeer || !db || !user) return;
     void db
       .from("profiles")
-      .select("id,nickname,bio")
+      .select("id,nickname,bio,avatar_url")
       .eq("id", initialPeer)
       .single()
       .then(({ data, error }) => {
@@ -422,7 +423,7 @@ export default function Messages({
     if (!db || !user) return;
     const { data, error } = await db
       .from("profiles")
-      .select("id,nickname,bio")
+      .select("id,nickname,bio,avatar_url")
       .neq("id", user.id)
       .ilike("nickname", `%${query.replace(/[%_,]/g, "")}%`)
       .limit(20);
@@ -512,8 +513,12 @@ export default function Messages({
           key={p.id}
           onClick={() => setProfile(p)}
         >
-          <strong>{p.nickname}</strong>
-          <small>{p.bio}</small>
+          <span className="conversation-row-head">
+            <span className="conversation-avatar">{(p.nickname || "探").slice(0, 1)}{p.avatar_url && <img src={p.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
+            <strong>{p.nickname || "探索者"}</strong>
+            <time>用户</time>
+          </span>
+          <small className="conversation-preview">{p.bio || "点击查看主页并开始交流"}</small>
         </button>
       ))}
       {rooms
@@ -534,16 +539,13 @@ export default function Messages({
                 void load(r);
               }}
             >
-              <strong>
-                {names[id]?.nickname || "探索者"}{" "}
-                {unread[r.id] ? `· ${unread[r.id]} 条未读` : ""}
-              </strong>
-              <small>{preview[r.id]?.body || "尚无消息"}</small>
-              <time>
-                {preview[r.id]
-                  ? new Date(preview[r.id].created_at).toLocaleString("zh-CN")
-                  : ""}
-              </time>
+              <span className="conversation-row-head">
+                <span className="conversation-avatar">{(names[id]?.nickname || "探").slice(0, 1)}{names[id]?.avatar_url && <img src={names[id].avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
+                <strong>{names[id]?.nickname || "探索者"}</strong>
+                <time>{preview[r.id] ? new Date(preview[r.id].created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}</time>
+                {unread[r.id] ? <i className="conversation-unread">{unread[r.id] > 99 ? "99+" : unread[r.id]}</i> : null}
+              </span>
+              <small className="conversation-preview">{preview[r.id]?.body || "尚无消息"}</small>
             </button>
           );
         })}
@@ -698,6 +700,7 @@ export default function Messages({
                     src={media[m.id]}
                     alt="聊天图片"
                     loading="lazy"
+                    onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}
                     style={{
                       maxWidth: "100%",
                       maxHeight: 300,
@@ -741,7 +744,7 @@ export default function Messages({
             </button>
           )}
           <label className="chat-upload">
-            发送图片（JPEG / PNG / WebP，最大 5MB）
+            发送图片（JPEG / PNG / WebP，自动压缩，最大 4MB）
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -749,20 +752,15 @@ export default function Messages({
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file || !db || !active) return;
-                if (
-                  file.size > 5 * 1024 * 1024 ||
-                  !["image/jpeg", "image/png", "image/webp"].includes(file.type)
-                ) {
-                  setError("图片须为 JPEG、PNG、WebP，且不超过 5MB");
-                  return;
-                }
                 setBusy(true);
                 try {
+                  const compressedFile = await compressUploadImage(file);
+                  if (compressedFile.size > MAX_UPLOAD_IMAGE_BYTES) throw new Error("图片压缩后仍超过 4 MB");
                   const nonce = crypto.randomUUID(),
                     path = `${active.id}/${user.id}/${nonce}`;
                   const { error: uploadError } = await db.storage
                     .from("heika-chat")
-                    .upload(path, file, { contentType: file.type });
+                    .upload(path, compressedFile, { contentType: compressedFile.type });
                   if (uploadError) throw uploadError;
                   const { data, error } = await db.rpc("send_dm", {
                     room: active.id,

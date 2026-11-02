@@ -45,6 +45,7 @@ import { cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
 import { validateComposerFiles } from "@/lib/composer-validation";
+import { compressUploadImage } from "@/lib/image-compression";
 import type { TopicSummary } from "@/lib/topics";
 import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
@@ -1794,9 +1795,23 @@ export default function Community() {
     if (!files?.length) return;
     const validation = validateComposerFiles(Array.from(files), composerImages.length);
     if (validation.error) toast(validation.error);
-    const next = validation.accepted.map((file) => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file), status: "ready" as const }));
-    setComposerImages((current) => [...current, ...next]);
-    if (!composerImages.length) setCoverIndex(0);
+    if (!validation.accepted.length) return;
+    setUploadingImages(true);
+    const next: ComposerImage[] = [];
+    let failureMessage = "";
+    try {
+      for (const file of validation.accepted) {
+        try {
+          const compressed = await compressUploadImage(file);
+          next.push({ id: crypto.randomUUID(), file: compressed, url: URL.createObjectURL(compressed), status: "ready" });
+        } catch (error) {
+          failureMessage ||= error instanceof Error ? error.message : "有图片压缩失败，请重新选择";
+        }
+      }
+      if (failureMessage) toast(failureMessage);
+      setComposerImages((current) => [...current, ...next]);
+      if (!composerImages.length && next.length) setCoverIndex(0);
+    } finally { setUploadingImages(false); }
   };
   const moveComposerImage = (index: number, delta: -1 | 1) => {
     const target = index + delta;
@@ -2119,7 +2134,7 @@ export default function Community() {
             alt=""
             loading="lazy"
             onError={(e) => {
-              e.currentTarget.dataset.failed = "true";
+              if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
             }}
           />
         )}
@@ -2219,7 +2234,7 @@ export default function Community() {
                 alt=""
                 loading="lazy"
                 onError={(e) => {
-                  e.currentTarget.dataset.failed = "true";
+                  if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
                 }}
               />
             )}
@@ -2699,7 +2714,7 @@ export default function Community() {
             {searchError && <div className="search-state search-error"><span>{searchError}</span><button onClick={() => setSearchRetry((n) => n + 1)}>重试</button></div>}
             {searchKind === "content" ? <div className="search-post-results" role="tabpanel">
               {searchPosts.map((item) => <button className="search-post-result" key={item.id} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
-                <span className="search-post-thumbnail">{item.image && <img src={item.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}<small>{item.tag}</small></span>
+                <span className="search-post-thumbnail">{item.image && <img src={item.image} alt="" loading="lazy" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}/>}<small>{item.tag}</small></span>
                 <span className="search-post-copy"><strong>{item.title}</strong><span>{item.body.slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
                 <ChevronRight size={17}/>
               </button>)}
@@ -2824,7 +2839,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.01.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.02.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2901,8 +2916,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 2.01.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.01.0</strong><small>2026.11.02</small></div><ul><li>他人主页改为全屏浏览，增加笔记与公开收藏分类。</li><li>等级经验页改用统一分割线和克制配色。</li><li>个人页的信息结构与公开主页统一，并可自行设置收藏公开状态。</li></ul></div>
+          <p className="lead">黑卡 HEIKA · 版本 2.02.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.02.0</strong><small>2026.11.02</small></div><ul><li>他人主页改为全屏浏览，增加笔记与公开收藏分类。</li><li>等级经验页改用统一分割线和克制配色。</li><li>个人页的信息结构与公开主页统一，并可自行设置收藏公开状态。</li><li>上传图片自动压缩，单张上限调整为 4 MB。</li><li>修复图片加载失败显示乱码，并移除详情图片圆角。</li><li>调整消息列表排版与悬浮底栏留白，加入发现图片渐入效果。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
@@ -3420,7 +3435,7 @@ export default function Community() {
                         src={revealed.image}
                         alt=""
                         onError={(e) => {
-                          e.currentTarget.dataset.failed = "true";
+                          if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
                         }}
                       />
                     )}
@@ -3504,7 +3519,7 @@ export default function Community() {
                     setActiveImageIndex((index) => (index + (end < start ? 1 : -1) + detailImages.length) % detailImages.length);
                   }}>
                   <button className="detail-image-button" onClick={() => setPreviewImage(true)} aria-label="查看大图">
-                    <img src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" />
+                    <img src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
                     <span>查看大图</span>
                   </button>
                   {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
@@ -3617,7 +3632,7 @@ export default function Community() {
               }}><Share2 size={20} /></button>
             </form>
           </div>
-          {previewImage && detailImages[activeImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[activeImageIndex]} alt={post.title} /></div>}
+          {previewImage && detailImages[activeImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[activeImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
         </div>
       )}
       {authorProfile && (
@@ -3963,11 +3978,11 @@ export default function Community() {
                   />
                 </label>
                 <section className="composer-media-section" aria-label="内容图片">
-                  <div className="composer-section-heading"><span><strong>图片</strong><small>最多 9 张 · JPG、PNG、WebP，每张不超过 5 MB</small></span><span>{composerImages.length}/9</span></div>
+                  <div className="composer-section-heading"><span><strong>图片</strong><small>最多 9 张 · 上传时自动压缩，每张不超过 4 MB</small></span><span>{composerImages.length}/9</span></div>
                   <div className="composer-image-grid">
                     {composerImages.map((image, index) => (
                       <figure className={`composer-image${coverIndex === index ? " is-cover" : ""}`} key={image.id}>
-                        <img src={image.url} alt={`第 ${index + 1} 张图片预览`} />
+                        <img src={image.url} alt={`第 ${index + 1} 张图片预览`} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
                         {coverIndex === index && <span className="composer-cover-badge">封面</span>}
                         {image.status === "uploading" && <span className="composer-image-state">上传中…</span>}
                         {image.status === "failed" && <button type="button" className="composer-image-retry" disabled={uploadingImages} onClick={() => void retryComposerImage(image.id)}>上传失败 · 重试</button>}
