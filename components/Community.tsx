@@ -39,16 +39,18 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
   loading: () => <div className="empty">正在加载审核队列…</div>,
 });
 import EditorialArticle from "./EditorialArticle";
-import AccountProfile from "./AccountProfile";
+const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
-import PublicProfile from "./PublicProfile";
-import MessagingPreferences from "./MessagingPreferences";
+const PublicProfile = dynamic(() => import("./PublicProfile"), { loading: () => <div className="empty">正在加载…</div> });
+const MessagingPreferences = dynamic(() => import("./MessagingPreferences"), { loading: () => <div className="empty">正在加载…</div> });
 import InboxBadge from "./InboxBadge";
-import DailyMissions from "./DailyMissions";
-import NotificationCenter from "./NotificationCenter";
-import CoExplore from "./CoExplore";
-import SharedCollection from "./SharedCollection";
-import { CardChainPanel, ExplorationRecap } from "./ExplorationFeatures";
+const DailyMissions = dynamic(() => import("./DailyMissions"), { loading: () => <div className="empty">正在加载…</div> });
+const NotificationCenter = dynamic(() => import("./NotificationCenter"), { loading: () => <div className="empty">正在加载…</div> });
+const CoExplore = dynamic(() => import("./CoExplore"), { loading: () => <div className="empty">正在加载…</div> });
+const SharedCollection = dynamic(() => import("./SharedCollection"), { loading: () => <div className="empty">正在加载…</div> });
+const CardChainPanel = dynamic(() => import("./ExplorationFeatures").then((module) => module.CardChainPanel));
+const ExplorationRecap = dynamic(() => import("./ExplorationFeatures").then((module) => module.ExplorationRecap));
+import type { User } from "@supabase/supabase-js";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
@@ -712,81 +714,56 @@ export default function Community() {
   const likedPosts = all.filter((post) => state.liked?.includes(post.id));
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      let loaded: State = initial;
-      try {
-        const raw = localStorage.getItem("heika-demo-v1");
-        if (raw) {
-          const saved = JSON.parse(raw);
-          loaded = {
-            ...initial,
-            ...saved,
-            comments: [],
-            dailyCount: 5,
-            revealed: saved.revealed || {},
-            rarityTiers: saved.rarityTiers || {},
-            notifications: saved.notifications || initial.notifications,
-            readingMode:
-              saved.readingMode ||
-              (saved.compactReading ? "focus" : "standard"),
-          };
-          const legacyOpened = [
-            ...new Set<number>(Object.values(loaded.opened).flat()),
-          ].filter((id) => !loaded.revealed[id]);
-          const refreshIds = [...new Set([
-            ...legacyOpened,
-            ...Object.keys(loaded.revealed).map(Number).filter(Number.isSafeInteger),
-          ])];
-          if (refreshIds.length) {
-            const batches = Array.from({ length: Math.ceil(refreshIds.length / 100) }, (_, index) => refreshIds.slice(index * 100, (index + 1) * 100));
-            const results = (await Promise.all(batches.map(async (ids) => {
-              const response = await cloudFetch("/api/demo/cards", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ids }),
-              });
-              const result = await response.json();
-              return response.ok && Array.isArray(result.data?.items) ? result.data.items as Post[] : [];
-            }))).flat();
-            loaded = {
-              ...loaded,
-              rarityTiers: {
-                ...loaded.rarityTiers,
-                ...Object.fromEntries(
-                  results
-                    .filter((post): post is Post => Boolean(post.rarityTier))
-                    .map((post) => [post.id, post.rarityTier!]),
-                ),
-              },
-              revealed: {
-                ...loaded.revealed,
-                ...Object.fromEntries(
-                  results
-                    .filter((post): post is Post => Boolean(post))
-                    .map((post) => [post.id, post]),
-                ),
-              },
+    let loaded: State = initial;
+    try {
+      const raw = localStorage.getItem("heika-demo-v1");
+      if (raw) {
+        const saved = JSON.parse(raw);
+        loaded = {
+          ...initial, ...saved, comments: [], dailyCount: 5,
+          revealed: saved.revealed || {}, rarityTiers: saved.rarityTiers || {},
+          notifications: saved.notifications || initial.notifications,
+          readingMode: saved.readingMode || (saved.compactReading ? "focus" : "standard"),
+        };
+      }
+    } catch {}
+    // Local navigation must be usable even when either background request stalls.
+    setState(loaded);
+    setReady(true);
+    const refreshIds = [...new Set([
+      ...Object.values(loaded.opened).flat(),
+      ...Object.keys(loaded.revealed).map(Number),
+    ])].filter(Number.isSafeInteger);
+    const refreshHistory = async () => {
+      // Bound concurrency so a long history does not flood the startup connection.
+      for (let offset = 0; offset < refreshIds.length && !cancelled; offset += 100) {
+        try {
+          const response = await cloudFetch("/api/demo/cards", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: refreshIds.slice(offset, offset + 100) }),
+          });
+          const result = await response.json();
+          if (!response.ok || cancelled || !Array.isArray(result.data?.items)) continue;
+          setState((current) => {
+            const eligible = new Set([...Object.keys(current.revealed).map(Number), ...Object.values(current.opened).flat()]);
+            const posts = (result.data.items as Post[]).filter((post) => eligible.has(post.id));
+            return { ...current,
+              revealed: { ...current.revealed, ...Object.fromEntries(posts.map((post) => [post.id, post])) },
+              rarityTiers: { ...current.rarityTiers, ...Object.fromEntries(posts.filter((post) => post.rarityTier).map((post) => [post.id, post.rarityTier!])) },
             };
-          }
-        }
-      } catch {}
-      if (cancelled) return;
-      setState(loaded);
-      try {
-        const response = await cloudFetch("/api/demo/cards", { cache: "no-store" });
-        const { data } = await response.json();
-        if (!cancelled && Array.isArray(data))
-          setState((current) => ({
-            ...current,
-            cardIds: data.map((item: { id: number }) => item.id),
-          }));
-      } catch {}
-      if (!cancelled) setReady(true);
+          });
+        } catch {}
+      }
     };
-    void load();
-    return () => {
-      cancelled = true;
-    };
+    void refreshHistory();
+    // Published card IDs are public: fetching them must not wait on auth initialization.
+    void fetch("/api/demo/cards", { cache: "no-store" }).then(async (response) => {
+      const { data } = await response.json();
+      if (response.ok && !cancelled && Array.isArray(data)) {
+        setState((current) => ({ ...current, cardIds: data.map((item: { id: number }) => item.id) }));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => {
     if (!ready) return;
@@ -799,7 +776,7 @@ export default function Community() {
         image: isSignedImage(post.image) ? undefined : post.image,
         images: post.images?.filter((image) => !isSignedImage(image)),
       }]));
-      localStorage.setItem(storageKey, JSON.stringify(cachedState));
+      try { localStorage.setItem(storageKey, JSON.stringify(cachedState)); } catch { /* Storage quota must not interrupt navigation. */ }
     }, 220);
     return () => window.clearTimeout(timer);
   }, [state, ready, storageKey]);
@@ -2712,14 +2689,17 @@ export default function Community() {
     let alive = true;
     let cleanup = () => {};
     void browserDb()
-      .then(async (db) => {
-        const hydrate = async () => {
+      .then((db) => {
+        if (!alive) return;
+        let generation = 0;
+        let currentUserId: string | null | undefined;
+        let restoredUserId: string | null = null;
+        let hydrationTimer: ReturnType<typeof setTimeout> | undefined;
+        const hydrate = async (user: User | null, version: number) => {
+          const isCurrent = () => alive && version === generation;
+          if (!isCurrent()) return;
           cloudHydrated.current = false;
           setPublicBookmarksLoaded(false);
-          const {
-            data: { user },
-          } = await db.auth.getUser();
-          if (!alive) return;
           setAccountId(user?.id || null);
           if (!user) {
             setIsAdmin(false);
@@ -2727,21 +2707,32 @@ export default function Community() {
             setPublicBookmarksLoaded(true);
             setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
             setStorageKey("heika-demo-v1");
+            if (restoredUserId === null) return;
+            restoredUserId = null;
             try {
               const guest = JSON.parse(
                 localStorage.getItem("heika-demo-v1") || "null",
               );
-              if (guest)
-                setState((s) => ({ ...initial, ...guest, cardIds: s.cardIds }));
-            } catch {}
+              setState((s) => ({ ...initial, ...guest, comments: [], cardIds: s.cardIds }));
+            } catch { setState((s) => ({ ...initial, cardIds: s.cardIds })); }
             return;
           }
+          setIsAdmin(false);
+          setPublicBookmarks(false);
+          setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
+          restoredUserId = user.id;
+          setStorageKey(`heika-user-${user.id}`);
+          setState((previous) => {
+            let local;
+            try { local = JSON.parse(localStorage.getItem(`heika-user-${user.id}`) || "null"); } catch {}
+            return { ...initial, ...local, comments: [], cardIds: previous.cardIds };
+          });
           void cloudRequest("/api/v1/progression").then((summary) => {
-            if (alive && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+            if (isCurrent() && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
           }).catch(() => {});
           try {
             const data = await cloudRequest("/api/v1/library-state");
-            if (!alive || !data) return;
+            if (!isCurrent() || !data) return;
             if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
               setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
             }
@@ -2756,17 +2747,8 @@ export default function Community() {
             }
             setStorageKey(`heika-user-${user.id}`);
             setState((previous) => {
-              let local;
-              try {
-                local = JSON.parse(
-                  localStorage.getItem(`heika-user-${user.id}`) || "null",
-                );
-              } catch {}
-              const s: State = {
-                ...initial,
-                ...local,
-                cardIds: previous.cardIds,
-              };
+              // Preserve local interactions made while cloud hydration was in flight.
+              const s: State = previous;
               const saved = [
                 ...new Set<number>([
                   ...data.bookmarks
@@ -2873,31 +2855,27 @@ export default function Community() {
             });
             cloudHydrated.current = true;
           } catch (e) {
+            if (!isCurrent()) return;
             setPublicBookmarksLoaded(true);
             toast(e instanceof Error ? e.message : "云端同步失败");
           }
         };
-        await hydrate();
-        const { data } = db.auth.onAuthStateChange(() =>
-          queueMicrotask(() => void hydrate()),
-        );
-        const membershipUserId = (await db.auth.getUser()).data.user?.id;
-        const membershipChannel = membershipUserId ? db.channel(`membership-${membershipUserId}`)
-          .on("postgres_changes", {
-            event: "UPDATE",
-            schema: "public",
-            table: "profiles",
-            filter: `id=eq.${membershipUserId}`,
-          }, (payload) => {
-            const tier = (payload.new as { membership_tier?: string }).membership_tier;
-            if (tier === "free" || tier === "plus" || tier === "pro") {
-              setExperienceSummary((current) => ({ ...current, membershipTier: tier }));
-            }
-          })
-          .subscribe() : null;
+        const scheduleHydration = (event: string, user: User | null) => {
+          const id = user?.id || null;
+          if (id === currentUserId && event !== "USER_UPDATED") return;
+          currentUserId = id;
+          const version = ++generation;
+          clearTimeout(hydrationTimer);
+          // Defer beyond the auth lock; microtasks can run while it is still held.
+          hydrationTimer = setTimeout(() => { void hydrate(user, version); }, 0);
+        };
+        const { data } = db.auth.onAuthStateChange((event, session) => {
+          scheduleHydration(event, session?.user || null);
+        });
         cleanup = () => {
+          generation += 1;
+          clearTimeout(hydrationTimer);
           data.subscription.unsubscribe();
-          if (membershipChannel) void db.removeChannel(membershipChannel);
         };
       })
       .catch(() => {});
@@ -2906,6 +2884,23 @@ export default function Community() {
       cleanup();
     };
   }, [ready]);
+  useEffect(() => {
+    if (!accountId) return;
+    let alive = true;
+    let remove = () => {};
+    void browserDb().then((db) => {
+      if (!alive) return;
+      const channel = db.channel(`membership-${accountId}`).on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${accountId}`,
+      }, (payload) => {
+        const tier = (payload.new as { membership_tier?: string }).membership_tier;
+        if (alive && (tier === "free" || tier === "plus" || tier === "pro"))
+          setExperienceSummary((current) => ({ ...current, membershipTier: tier }));
+      }).subscribe();
+      remove = () => { void db.removeChannel(channel); };
+    }).catch(() => {});
+    return () => { alive = false; remove(); };
+  }, [accountId]);
   useEffect(() => {
     const syncProfile = (event: Event) => {
       const detail = (event as CustomEvent<{ id?: string; nickname?: string; bio?: string; avatar?: string }>).detail;

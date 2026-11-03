@@ -2031,7 +2031,7 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .candidate-feed-card { margin-bottom: 22px; }
   .editorial-filters { margin-block: 18px 28px; }
   .discover-topic-list { gap: 10px; }
-  .bottom-nav {
+  .bottom-nav,.bottom-nav.fixed-bar {
     position: fixed; z-index: 50; inset: 0 auto 0 0; width: 220px; max-width: 220px; height: 100dvh;
     padding: 88px 16px 24px; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 7px;
     transform: none; border: 0; border-right: 1px solid var(--line); border-radius: 0;
