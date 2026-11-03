@@ -30,8 +30,6 @@ import {
   ShieldCheck,
   Settings,
   GitBranch,
-  History,
-  CalendarDays,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -3750,9 +3748,9 @@ export default function Community() {
             </div>
             <div className="stats exploration-stats mine-profile-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>
             <div className="mine-quick-links" role="group" aria-label="个人快捷入口">
-              <button type="button" onClick={() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="mine-quick-icon"><Sparkles size={16}/></span><strong>今日探索</strong><small>继续翻开黑卡</small></button>
-              <button type="button" onClick={() => setMineSection("recent")}><span className="mine-quick-icon"><History size={16}/></span><strong>最近发现</strong><small>回看浏览内容</small></button>
-              <button type="button" onClick={() => setMineSection("calendar")}><span className="mine-quick-icon"><CalendarDays size={16}/></span><strong>探索日历</strong><small>查看每日记录</small></button>
+              <button type="button" onClick={openCoExplore}><span className="mine-quick-icon"><UsersRound size={15}/></span><strong>和朋友一起探索</strong></button>
+              <button type="button" onClick={() => openMineFeature("monthly-recap")}><span className="mine-quick-icon"><Sparkles size={15}/></span><strong>探索月报</strong></button>
+              <button type="button" onClick={() => openMineFeature("card-chain")}><span className="mine-quick-icon"><GitBranch size={15}/></span><strong>卡片接龙</strong></button>
             </div>
             <button className="experience-summary-card" onClick={() => openSettingsDetail("progression", "mine")}>
               <span className="experience-summary-badge">LV.{experienceProgress(experienceSummary.total).current.level}</span>
@@ -3760,7 +3758,6 @@ export default function Community() {
               <ChevronRight size={17}/>
             </button>
           </section>
-          <div className="mine-exploration-tools"><button className="co-explore-entry" type="button" onClick={openCoExplore}><span><UsersRound size={18}/></span><strong>和朋友一起探索<small>各选一篇内容，互相交换灵感</small></strong><ChevronRight size={18}/></button><button className="mine-feature-link" type="button" onClick={() => openMineFeature("monthly-recap")}><span><Sparkles size={17}/></span><strong>探索月报<small>回看这个月的发现与稀有卡</small></strong><ChevronRight size={17}/></button><button className="mine-feature-link" type="button" onClick={() => openMineFeature("card-chain")}><span><GitBranch size={17}/></span><strong>卡片接龙<small>从一张卡片开始续写故事</small></strong><ChevronRight size={17}/></button></div>
           <DailyMissions accountId={accountId} onNotice={toast}/>
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
