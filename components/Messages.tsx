@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { ArrowLeft, FileImage, MoreHorizontal, Send } from "lucide-react";
+import { ArrowLeft, Bell, FileImage, MoreHorizontal, Send } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
@@ -21,12 +21,14 @@ export default function Messages({
   onPeerOpened,
   onConversationChange,
   onOpenProfile,
+  onOpenNotifications,
   isActive = true,
 }: {
   initialPeer?: string | null;
   onPeerOpened?: () => void;
   onConversationChange?: (isOpen: boolean) => void;
   onOpenProfile?: (id: string) => void;
+  onOpenNotifications?: () => void;
   isActive?: boolean;
 }) {
   const [db, setDb] = useState<SupabaseClient>(),
@@ -488,8 +490,7 @@ export default function Messages({
   return (
     <section className={`page messages-page${active ? " is-chat-open" : ""}`}>
       <div className="messages-inbox-pane">
-      <div className="eyebrow">MESSAGES / PRIVATE</div>
-      <h1>消息。</h1>
+      <div className="messages-title-row"><div><div className="eyebrow">MESSAGES / PRIVATE</div><h1>消息。</h1></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
       {!active && <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />}
       <form
         className="search"
