@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, Bookmark, ChevronRight, LockKeyhole, MessageCircle, UserRound } from "lucide-react";
+import { ArrowLeft, ChevronRight, LockKeyhole, MessageCircle, UserRound } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 
@@ -30,11 +30,13 @@ function displayAttributeValue(item: PublicAttribute) {
 
 export default function PublicProfile({
   id,
+  layout,
   onClose,
   onMessage,
   onSelectPost,
 }: {
   id: string;
+  layout: "masonry" | "list";
   onClose: () => void;
   onMessage: (id: string) => void;
   onSelectPost: (id: number) => void;
@@ -115,12 +117,15 @@ export default function PublicProfile({
             {error ? <AnimatedNotice message={error}/> : section === "bookmarks" && !profile.show_bookmarks ? (
               <div className="public-profile-private"><LockKeyhole size={21}/><strong>收藏暂未公开</strong><span>对方选择了仅自己查看收藏内容。</span></div>
             ) : displayedPosts.length ? (
-              <div className="public-profile-grid">
-                {displayedPosts.map((post) => <button type="button" className="public-profile-post" key={`${section}-${post.client_id}`} onClick={() => onSelectPost(post.client_id)}>
-                  {post.image_url ? <img src={post.image_url} alt="" loading="lazy"/> : <span className="public-profile-post-placeholder"><Bookmark size={18}/></span>}
-                  <span className="public-profile-post-title">{post.title}</span>
-                  {section === "posts" && <small>{post.created_at ? new Date(post.created_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "黑卡内容"}</small>}
-                  <ChevronRight size={15}/>
+              <div className={`public-profile-grid profile-layout-${layout}`}>
+                {displayedPosts.map((post) => <button type="button" className={`public-profile-post${post.image_url ? " has-image" : " is-text-only"}`} key={`${section}-${post.client_id}`} onClick={() => onSelectPost(post.client_id)}>
+                  {post.image_url && <img src={post.image_url} alt="" loading="lazy" decoding="async"/>}
+                  <span className="public-profile-post-copy">
+                    <span className="public-profile-post-title">{post.title || "未命名内容"}</span>
+                    {layout === "masonry" && post.body && <span className="public-profile-post-excerpt">{post.body}</span>}
+                    {section === "posts" && <small>{post.created_at ? new Date(post.created_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "黑卡内容"}</small>}
+                  </span>
+                  {layout === "list" && <ChevronRight size={15}/>}
                 </button>)}
               </div>
             ) : <div className="public-profile-empty">{section === "posts" ? "还没有发布公开内容。" : "还没有公开收藏。"}</div>}

@@ -28,6 +28,7 @@ import {
   Sparkles,
   Crown,
   ShieldCheck,
+  Settings,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -266,6 +267,8 @@ export default function Community() {
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
   const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise">("image-zoom");
   const [detailTransitionLoaded, setDetailTransitionLoaded] = useState(false);
+  const [profileLayout, setProfileLayout] = useState<"masonry" | "list">("masonry");
+  const [profileLayoutLoaded, setProfileLayoutLoaded] = useState(false);
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
   const [fontReady, setFontReady] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
@@ -284,6 +287,10 @@ export default function Community() {
     if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise")
       setDetailTransition(savedDetailTransition);
     setDetailTransitionLoaded(true);
+    const savedProfileLayout = localStorage.getItem("heika-public-profile-layout");
+    if (savedProfileLayout === "masonry" || savedProfileLayout === "list")
+      setProfileLayout(savedProfileLayout);
+    setProfileLayoutLoaded(true);
   }, []);
   useEffect(() => {
     if (!themeReady) return;
@@ -309,6 +316,10 @@ export default function Community() {
     if (!detailTransitionLoaded) return;
     localStorage.setItem("heika-detail-transition", detailTransition);
   }, [detailTransition, detailTransitionLoaded]);
+  useEffect(() => {
+    if (!profileLayoutLoaded) return;
+    localStorage.setItem("heika-public-profile-layout", profileLayout);
+  }, [profileLayout, profileLayoutLoaded]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
@@ -374,8 +385,9 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"works" | "favorites" | "liked" | "calendar" | "recent">("works"),
-    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | null>(null),
+    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
+    [debugReturnTab, setDebugReturnTab] = useState<"settings" | "mine">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
     [readingTransition, setReadingTransition] = useState<"out" | "in" | null>(
       null,
@@ -522,10 +534,13 @@ export default function Community() {
   const [likeBusy, setLikeBusy] = useState(false);
   const [previewImage, setPreviewImage] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [displayedImageIndex, setDisplayedImageIndex] = useState(0);
+  const [imageLoading, setImageLoading] = useState(false);
   const [detailImageDirection, setDetailImageDirection] = useState<"next" | "previous">("next");
-  const preloadedDetailImages = useRef(new Map<string, Promise<HTMLImageElement>>());
+  const preloadedDetailImages = useRef(new Map<string, { image: HTMLImageElement; promise: Promise<HTMLImageElement> }>());
   const imageSwitchSequence = useRef(0);
-  const imageTouchStart = useRef<number | null>(null);
+  const imageTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const imageSwipeTriggered = useRef(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -839,7 +854,7 @@ export default function Community() {
     return () => controller.abort();
   }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression", returnTab: "settings" | "mine" = "settings") => {
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
     startPageTransition(() => {
       setSettingsReturnTab(returnTab);
@@ -1043,6 +1058,11 @@ export default function Community() {
     const sourceRect = sourceImage?.getBoundingClientRect();
     const sourceImageUrl = sourceImage?.currentSrc || sourceImage?.src;
     scrollBeforeDetail.current = window.scrollY;
+    imageSwitchSequence.current += 1;
+    setActiveImageIndex(0);
+    setDisplayedImageIndex(0);
+    setImageLoading(false);
+    setPreviewImage(false);
     setDetailImageTransition(
       detailTransition === "image-zoom" && sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
         ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
@@ -1241,7 +1261,7 @@ export default function Community() {
       finish();
       return;
     }
-    const duration = usesImageZoom ? (opening ? 320 : 240) : (opening ? 280 : 220);
+    const duration = usesImageZoom ? (opening ? 320 : 240) : (opening ? 240 : 190);
     const animation = detailNode.animate(
       usesImageZoom
         ? opening
@@ -1255,12 +1275,12 @@ export default function Community() {
             ]
         : opening
           ? [
-              { opacity: .72, filter: "blur(10px)", transform: "translate3d(0,12px,0)" },
+              { opacity: .84, filter: "blur(3px)", transform: "translate3d(0,8px,0)" },
               { opacity: 1, filter: "blur(0)", transform: "translate3d(0,0,0)" },
             ]
           : [
               { opacity: 1, filter: "blur(0)", transform: "translate3d(0,0,0)" },
-              { opacity: .72, filter: "blur(8px)", transform: "translate3d(0,9px,0)" },
+              { opacity: .84, filter: "blur(2px)", transform: "translate3d(0,6px,0)" },
             ],
       { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
     );
@@ -1991,7 +2011,7 @@ export default function Community() {
       : tab === "topic" ? "发现"
         : tab === "search" ? "搜索"
         : tab === "about" || tab === "moderation" ? "设置"
-          : tab === "debug" ? "我的" : null;
+          : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的" : null;
   const handleSecondaryBack = () => {
     if (modal === "write") { setModal(null); return; }
     if (tab === "settings" && settingsDetail) { closeSettingsDetail(); return; }
@@ -1999,11 +2019,17 @@ export default function Community() {
     if (tab === "topic") { closeTopicPage(); return; }
     if (tab === "search") { closeSearch(); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
-    if (tab === "debug") { setTab("mine"); return; }
+    if (tab === "debug") {
+      setTab(debugReturnTab);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[debugReturnTab] || 0, behavior: "instant" }));
+      return;
+    }
   };
   useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
+    setDisplayedImageIndex(0);
+    setImageLoading(false);
     setDetailImageDirection("next");
     setPreviewImage(false);
     setCommentsLoading(true);
@@ -2162,12 +2188,15 @@ export default function Community() {
   useEffect(() => {
     imageSwitchSequence.current += 1;
   }, [detail]);
-  const preloadDetailImage = useCallback((src: string) => {
+  const preloadDetailImage = useCallback((src: string, priority: "low" | "high" = "low") => {
     const cached = preloadedDetailImages.current.get(src);
-    if (cached) return cached;
+    if (cached) {
+      if (priority === "high") cached.image.fetchPriority = "high";
+      return cached.promise;
+    }
     const image = new Image();
     image.decoding = "async";
-    image.fetchPriority = "low";
+    image.fetchPriority = priority;
     const loaded = new Promise<HTMLImageElement>((resolve, reject) => {
       image.onload = () => resolve(image);
       image.onerror = () => reject(new Error("图片加载失败"));
@@ -2183,7 +2212,7 @@ export default function Community() {
       preloadedDetailImages.current.delete(src);
       throw error;
     });
-    preloadedDetailImages.current.set(src, loaded);
+    preloadedDetailImages.current.set(src, { image, promise: loaded });
     if (preloadedDetailImages.current.size > 36) {
       const oldest = preloadedDetailImages.current.keys().next().value;
       if (oldest && oldest !== src) preloadedDetailImages.current.delete(oldest);
@@ -2209,13 +2238,24 @@ export default function Community() {
     const forward = (normalized - activeImageIndex + detailImages.length) % detailImages.length;
     const direction = forward <= detailImages.length / 2 ? "next" : "previous";
     const sequence = ++imageSwitchSequence.current;
-    void preloadDetailImage(detailImages[normalized]).then(() => {
+    setActiveImageIndex(normalized);
+    setDetailImageDirection(direction);
+    if (normalized === displayedImageIndex) {
+      setImageLoading(false);
+      return;
+    }
+    setImageLoading(true);
+    void preloadDetailImage(detailImages[normalized], "high").then(() => {
       if (sequence === imageSwitchSequence.current && detail !== null) {
-        setDetailImageDirection(direction);
-        setActiveImageIndex(normalized);
+        setDisplayedImageIndex(normalized);
+        setImageLoading(false);
       }
     }).catch(() => {
-      if (sequence === imageSwitchSequence.current) toast("这张图片暂时无法加载，请稍后重试");
+      if (sequence === imageSwitchSequence.current) {
+        setActiveImageIndex(displayedImageIndex);
+        setImageLoading(false);
+        toast("这张图片暂时无法加载，请稍后重试");
+      }
     });
   };
   const postCard = (p: Post, source: "today" | "discover" = "discover", own = false) => {
@@ -2864,7 +2904,7 @@ export default function Community() {
               </button>
             ))}
           </div>
-          {latestOpenedPost && (
+          {category === "全部" && latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">
               <div className="recent-flip-heading">
                 <div><small>RECENTLY REVEALED</small><h2 id="recent-flip-title">最近翻开的卡</h2></div>
@@ -2928,6 +2968,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("detailTransition")}><span>详情过渡动画</span><small>{detailTransition === "image-zoom" ? "图片展开" : "轻微模糊上浮"}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("profileLayout")}><span>他人主页布局</span><small>{profileLayout === "masonry" ? "大图瀑布流" : "列表"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
@@ -2941,7 +2982,10 @@ export default function Community() {
             <div className="settings-list account-settings-list">
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.08.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("security")}><span>安全中心</span><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("membership")}><span>会员中心</span><small>{membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => { scrollPositions.current.settings = window.scrollY; setDebugReturnTab("settings"); setTab("debug"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>调试模式</span><small>开发与重置工具</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.09.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2952,7 +2996,7 @@ export default function Community() {
         <section key={settingsDetail} className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",detailTransition:"详情过渡动画",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",security:"安全中心",membership:"会员中心",progression:"等级与奖励"})[settingsDetail]}</h1>
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览模式",reading:"阅读模式",detailTransition:"详情过渡动画",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",security:"安全中心",membership:"会员中心",progression:"等级与奖励"})[settingsDetail]}</h1>
           <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "membership" ? "查看当前会员等级、每日翻卡额度与可选权益。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
@@ -3043,6 +3087,11 @@ export default function Community() {
               {([['waterfall','瀑布流','双列卡片，快速浏览更多内容'],['single','单列阅读','单列排版，适合连续阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.discoverLayout===value} className={`preference-option${state.discoverLayout===value?' selected':''}`} onClick={()=>update(current=>({...current,discoverLayout:value}))}>{renderPreferencePreview('discover',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.discoverLayout===value?'✓':''}</i></button>)}
             </div>
           )}
+          {settingsDetail === "profileLayout" && (
+            <div className="preference-options" role="radiogroup" aria-label="他人主页布局">
+              {([['masonry','大图瀑布流','用图片卡片快速浏览对方发布的内容'],['list','列表','以紧凑条目展示标题和发布时间']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={profileLayout===value} className={`preference-option${profileLayout===value?' selected':''}`} onClick={()=>setProfileLayout(value)}>{renderPreferencePreview('discover',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{profileLayout===value?'✓':''}</i></button>)}
+            </div>
+          )}
           {settingsDetail === "homeMode" && (
             <div className="preference-options" role="radiogroup" aria-label="首页浏览模式">
               {([['waterfall','瀑布流','未翻开前隐藏内容，每日选 5 张'],['blackcard','黑卡','逐张探索，每日最多翻开 5 张']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.homeMode===value} className={`preference-option${state.homeMode===value?' selected':''}`} onClick={()=>chooseHomeMode(value)}>{renderPreferencePreview('home',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.homeMode===value?'✓':''}</i></button>)}
@@ -3079,8 +3128,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.08.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.08.0</strong><small>2026.11.03</small></div><ul><li>无图内容直接排版文字，详情页不再显示装饰性图片占位框。</li><li>详情页加入图片展开、轻微模糊上浮两种过渡动画，可在设置中切换。</li><li>多图切换改为预加载并解码后再切换，避免文字区跳动；每日卡片状态按当天记录显示。</li><li>发现瀑布流限制为 50 篇，自己的作品改为瀑布流并入个人内容标签。</li><li>收藏公开开关移入安全中心，设置和调试页的分隔线改为直角。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.09.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.09.0</strong><small>2026.11.03</small></div><ul><li>我的作品固定为双列瀑布流，发布入口由底栏中间按钮统一提供。</li><li>他人主页默认使用大图瀑布流，可在设置中切换为列表。</li><li>多图切换即时反馈，目标图片预加载和解码完成后平滑替换；滑动识别更稳定。</li><li>设置入口移到“我”标题旁，安全中心、会员中心和调试模式收进设置。</li><li>最近翻开的卡片只在发现页的推荐分类显示，详情切换动画更轻、更省性能。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.07.0</strong><small>2026.11.03</small></div><ul><li>聊天会话与内容详情进入沉浸状态时隐藏手机底栏，返回后自动恢复。</li><li>安全中心和会员中心移入“我的”设置入口，整理个人设置菜单。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.06.0</strong><small>2026.11.03</small></div><ul><li>支持将 HEIKA 安装到手机主屏幕，并使用新的黑卡应用图标。</li><li>补充独立应用显示模式、启动图标和基础离线页面缓存。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.05.0</strong><small>2026.11.03</small></div><ul><li>消息列表和私聊改为紧凑排版，私聊支持从对话顶部打开全屏个人主页。</li><li>帖子详情进入时预加载前后图片，减少切换时等待。</li><li>“我的”页新增“我的作品”入口，可直接管理发布内容、审核状态和草稿。</li></ul></div>
@@ -3343,7 +3392,7 @@ export default function Community() {
       )}
       {tab === "mine" && (
         <section className="page mine-page">
-          <h1 className="mine-title">我</h1>
+          <div className="mine-heading"><h1 className="mine-title">我</h1><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={() => { scrollPositions.current.mine = window.scrollY; setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><Settings size={19}/></button></div>
           <div className="profile-card">
             <div className="avatar">
               {state.avatar ? (
@@ -3409,8 +3458,7 @@ export default function Community() {
             {mineSection === "works" && (
               <div className="mine-tab-content">
                 <div className="section-head mine-panel-heading"><h2>我的作品</h2><span>{state.own.filter((post) => post.status === "published" || !post.status).length} 篇</span></div>
-                <button className="primary-button mine-create-button" onClick={() => void openComposer()}><Plus size={16} /> 发布内容</button>
-                {state.own.length ? <div className={`masonry mine-works-masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{state.own.map((post) => <article className="mine-work-card" key={post.id}>
+                {state.own.length ? <div className="masonry mine-works-masonry">{state.own.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
                   <div className="mine-work-actions"><span>{post.status === "draft" ? "草稿" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>编辑</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
                 </article>)}</div> : <div className="empty">你发布的内容会以瀑布流卡片显示在这里。</div>}
@@ -3468,32 +3516,6 @@ export default function Community() {
               </div>
             )}
           </div>
-          <div className="section-head profile-settings-entry">
-            <h2>设置</h2>
-          </div>
-          <button className="settings-entry-card" onClick={() => {
-            scrollPositions.current.mine = window.scrollY;
-            setTab("settings");
-            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-          }}>
-            <span><strong>个人设置</strong><small>外观、浏览、阅读与隐私偏好</small></span>
-            <ChevronRight size={18} />
-          </button>
-          <button className="settings-entry-card" onClick={() => openSettingsDetail("security", "mine")}>
-            <span><strong>安全中心</strong><small>笔记隐私、私聊范围、黑名单与账号安全</small></span>
-            <ChevronRight size={18} />
-          </button>
-          <button className="settings-entry-card" onClick={() => openSettingsDetail("membership", "mine")}>
-            <span><strong>会员中心</strong><small>{membershipTier === "pro" ? "Pro 会员" : membershipTier === "plus" ? "Plus 会员" : "免费版"} · 每日 {dailyAllowance} 次翻卡额度</small></span>
-            <ChevronRight size={18} />
-          </button>
-          <button className="settings-entry-card debug-entry-card" onClick={() => {
-            setTab("debug");
-            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-          }}>
-            <span><strong>调试模式</strong><small>重置为新人开始界面</small></span>
-            <ChevronRight size={18} />
-          </button>
         </section>
       )}
       {tab === "today" && viewerId === null && (
@@ -3667,21 +3689,34 @@ export default function Community() {
             <div className="detail-scroll" key={post.id}>
               <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
                 {detailImages.length > 0 && (
-                  <div className="detail-gallery" onTouchStart={(event) => { imageTouchStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => {
+                  <div className="detail-gallery" aria-busy={imageLoading} onPointerDown={(event) => {
+                    imageSwipeTriggered.current = false;
+                    if (event.pointerType === "mouse" || detailImages.length < 2 || (event.target as HTMLElement).closest(".detail-gallery-controls")) return;
+                    imageTouchStart.current = { x: event.clientX, y: event.clientY };
+                  }} onPointerUp={(event) => {
                     const start = imageTouchStart.current;
-                    const end = event.changedTouches[0]?.clientX;
                     imageTouchStart.current = null;
-                    if (start === null || end === undefined || detailImages.length < 2 || Math.abs(end - start) < 40) return;
-                    selectDetailImage(activeImageIndex + (end < start ? 1 : -1));
-                  }}>
-                  <button className={`detail-image-button detail-image-frame is-${detailImageDirection}`} onClick={() => setPreviewImage(true)} aria-label="查看大图">
-                    <img key={detailImages[activeImageIndex]} src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
+                    if (!start || detailImages.length < 2) return;
+                    const deltaX = event.clientX - start.x;
+                    const deltaY = event.clientY - start.y;
+                    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
+                    imageSwipeTriggered.current = true;
+                    event.preventDefault();
+                    selectDetailImage(activeImageIndex + (deltaX < 0 ? 1 : -1));
+                    window.setTimeout(() => { imageSwipeTriggered.current = false; }, 0);
+                  }} onPointerCancel={() => { imageTouchStart.current = null; imageSwipeTriggered.current = false; }}>
+                  <button className={`detail-image-button detail-image-frame is-${detailImageDirection}`} onClick={(event) => {
+                    if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
+                    setPreviewImage(true);
+                  }} aria-label="查看大图">
+                    <img key={detailImages[displayedImageIndex]} src={detailImages[displayedImageIndex]} alt={`${post.title}，第 ${displayedImageIndex + 1} 张`} loading="eager" fetchPriority="high" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
                     <span>查看大图</span>
                   </button>
+                  <span className={`detail-image-loading${imageLoading ? " is-visible" : ""}`} role="status" aria-live="polite">{imageLoading ? "正在加载" : ""}</span>
                   {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
-                    <button aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
+                    <button type="button" aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
                     <span>{activeImageIndex + 1} / {detailImages.length}</span>
-                    <button aria-label="下一张图片" onClick={() => selectDetailImage(activeImageIndex + 1)}><ArrowRight size={15} /></button>
+                    <button type="button" aria-label="下一张图片" onClick={() => selectDetailImage(activeImageIndex + 1)}><ArrowRight size={15} /></button>
                   </div>}
                   </div>
                 )}
@@ -3767,12 +3802,13 @@ export default function Community() {
               }}><Share2 size={20} /></button>
             </form>
           </div>
-          {previewImage && detailImages[activeImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[activeImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
+          {previewImage && detailImages[displayedImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[displayedImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
         </div>
       )}
       {authorProfile && (
         <PublicProfile
           id={authorProfile}
+          layout={profileLayout}
           onClose={() => setAuthorProfile(null)}
           onSelectPost={(id) => {
             setAuthorProfile(null);
