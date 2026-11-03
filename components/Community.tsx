@@ -2970,7 +2970,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 2.05.0</p>
+          <p className="lead">HEIKA · 版本 2.06.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.06.0</strong><small>2026.11.03</small></div><ul><li>支持将 HEIKA 安装到手机主屏幕，并使用新的黑卡应用图标。</li><li>补充独立应用显示模式、启动图标和基础离线页面缓存。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.05.0</strong><small>2026.11.03</small></div><ul><li>消息列表和私聊改为紧凑排版，私聊支持从对话顶部打开全屏个人主页。</li><li>帖子详情进入时预加载前后图片，减少切换时等待。</li><li>“我的”页新增“我的作品”入口，可直接管理发布内容、审核状态和草稿。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.04.0</strong><small>2026.11.03</small></div><ul><li>瀑布流每天固定展示 50 张黑卡，次日自动生成新卡组并重置当日翻卡次数。</li><li>已翻卡片按日期保留在探索历史，可随时回看。</li><li>瀑布流图片加载时由模糊渐清，详情多图支持按滑动方向平滑切换。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.02</small></div><ul><li>投稿图片在上传后立即显示，并在刷新和重新打开时获取新的图片链接。</li><li>新增安全中心，可设置笔记仅自己可见，并管理私聊范围、黑名单与账号安全。</li><li>消息时间移到气泡外，复制操作收进长按菜单。</li><li>经验记录、探索日历和探索记录支持折叠，收起时不渲染长列表。</li></ul></div>
