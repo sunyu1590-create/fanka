@@ -2563,3 +2563,36 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 @media(max-width:520px) { .monthly-recap-card { padding:16px; }.card-chain-create { padding:13px; }.monthly-recap-primary strong { font-size:48px; } }
 @media(min-width:900px) { .mine-page>.mine-exploration-tools { grid-column:1/-1; }.exploration-feature-page { max-width:880px; margin-inline:auto; }.card-chain-list { grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px; }.card-chain-card { min-width:0; } }
 @media(prefers-reduced-motion:reduce) { .exploration-feature-page,.card-chain-card { animation:none!important; transition:none!important; } }
+
+/* A compact HEIKA profile hero with shortcuts into existing account features. */
+.mine-profile-hero { position:relative; grid-column:1/-1; margin:0 -22px 10px; padding:0 22px 16px; overflow:hidden; background:linear-gradient(145deg,color-mix(in srgb,#182b3d 92%,var(--bg)),color-mix(in srgb,#111820 96%,var(--bg)) 57%,var(--bg)); }
+.mine-profile-hero::before { position:absolute; inset:0; background:radial-gradient(ellipse at 78% 6%,#c4a54a22,transparent 39%),linear-gradient(115deg,transparent 20%,#ffffff04 50%,transparent 80%); content:""; pointer-events:none; }
+.mine-profile-hero>* { position:relative; }
+.mine-profile-hero .mine-heading { margin:0 -22px; padding:0 22px; }
+.mine-profile-hero .mine-title { color:#f5f2e9; }
+.mine-profile-hero .mine-settings-button,.mine-profile-hero .mine-membership-button { border-color:#ffffff35; color:#f5f2e9; }
+.mine-profile-hero .mine-membership-button svg { color:#e4c773; }
+.mine-profile-hero .mine-profile-card { min-height:90px; gap:14px; margin:12px 0 7px; padding:12px 0; border:0; background:transparent; }
+.mine-profile-hero .mine-profile-card .avatar { width:66px; height:66px; flex:0 0 66px; overflow:hidden; border:2px solid #e3c56d; background:linear-gradient(145deg,#354656,#171b20); color:#f4e9c3; font-size:24px; box-shadow:0 5px 20px #0004; }
+.mine-profile-hero .mine-profile-card .avatar img { width:100%; height:100%; object-fit:cover; }
+.mine-profile-hero .mine-profile-card h2 { color:#fff; font-size:19px; }
+.mine-profile-hero .mine-profile-card p { color:#d0d4d4; font-size:12px; }
+.mine-profile-hero .mine-profile-card>button { color:#eee5c8; }
+.mine-account-id { display:block; margin-top:5px; color:#c0c4c3; font-size:9px; letter-spacing:.1em; }
+.mine-profile-stats { margin:6px 0 12px; padding:8px 0 12px; border-top:1px solid #ffffff24; border-bottom:1px solid #ffffff24; }
+.mine-profile-stats div { border-color:#ffffff24; }
+.mine-profile-stats strong { color:#fff; font-size:19px; }
+.mine-profile-stats span { color:#d3d4d1; font-size:10px; }
+.mine-quick-links { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:0 0 10px; }
+.mine-quick-links button { min-width:0; min-height:74px; padding:9px 8px; display:grid; grid-template-columns:22px minmax(0,1fr); align-content:center; align-items:center; gap:3px 6px; border:1px solid #ffffff20; background:#ffffff0c; color:#f2f0e9; text-align:left; }
+.mine-quick-links button:active { background:#ffffff18; }
+.mine-quick-icon { grid-row:1/3; width:22px; height:22px; display:grid; place-items:center; color:#e7cc7a; }
+.mine-quick-links strong { overflow:hidden; font-size:11px; font-weight:620; text-overflow:ellipsis; white-space:nowrap; }
+.mine-quick-links small { overflow:hidden; color:#c1c4c3; font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
+.mine-profile-hero>.experience-summary-card { margin:0; border-color:#ffffff27; color:#f4f1e9; }
+.mine-profile-hero .experience-summary-copy strong,.mine-profile-hero .experience-summary-copy small { color:#f1efe9; }
+.mine-profile-hero .experience-summary-copy i { background:#ffffff30; }
+.mine-profile-hero .experience-summary-copy i b { background:linear-gradient(90deg,#dfc263,#77b6a5); }
+.mine-profile-hero .experience-summary-badge { background:#ffffff16; color:#f0d782; }
+.mine-profile-hero>.experience-summary-card>svg { color:#d1c69f; }
+@media(max-width:380px) { .mine-profile-hero { margin-inline:-16px; padding-inline:16px; } .mine-profile-hero .mine-heading { margin-inline:-16px; padding-inline:16px; } .mine-quick-links { gap:6px; } .mine-quick-links button { grid-template-columns:19px minmax(0,1fr); gap:3px 4px; padding-inline:6px; } .mine-quick-icon { width:19px; } }
