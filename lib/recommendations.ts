@@ -38,5 +38,7 @@ export function rankRecommendations(
     );
   };
 
-  return [...posts].sort((a, b) => score(b) - score(a) || a.id - b.id);
+  return [...posts].sort((a, b) =>
+    score(b) - score(a) || b.date.localeCompare(a.date) || a.id - b.id,
+  );
 }

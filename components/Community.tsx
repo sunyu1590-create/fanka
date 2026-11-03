@@ -77,7 +77,10 @@ type Comment = {
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
-type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[] };
+type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission"; points: number; createdAt: string }[] };
+type BookmarkCollection = { id: string; name: string; created_at?: string };
+type CreatorMission = { key: "explore_days" | "publish_post" | "curate_posts"; title: string; description: string; progress: number; target: number; claimed: boolean; points: number };
+type CreatorCenter = { insights: { posts: number; views: number; likes: number; saves: number; comments: number; topPosts: { id: number; title: string; views: number; likes: number; saves: number; comments: number }[] }; weekStart: string; missions: CreatorMission[] };
 type SearchPerson = { id: string; nickname: string; bio: string | null; avatar_url: string | null };
 function relativeTime(timestamp: number) {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
@@ -322,6 +325,16 @@ export default function Community() {
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
   const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
+  const [bookmarkCollections, setBookmarkCollections] = useState<BookmarkCollection[]>([]);
+  const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
+  const [bookmarkMembership, setBookmarkMembership] = useState<Record<string, string | null>>({});
+  const [favoriteCollection, setFavoriteCollection] = useState("all");
+  const [favoriteSearch, setFavoriteSearch] = useState("");
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [editingCollection, setEditingCollection] = useState<string | null>(null);
+  const [editingCollectionName, setEditingCollectionName] = useState("");
+  const [creatorCenter, setCreatorCenter] = useState<CreatorCenter | null>(null);
+  const [creatorCenterLoading, setCreatorCenterLoading] = useState(false);
   const [detailImageTransition, setDetailImageTransition] = useState<{
     rect: DOMRect;
     src: string;
@@ -526,11 +539,11 @@ export default function Community() {
   const selectedDayIds = state.opened[selectedDay] || [];
   const all = useMemo(() => [
     ...new Map(
-      [...publicFeed, ...topicPosts, ...searchPosts, ...Object.values(state.revealed), ...state.own].map(
+      [...publicFeed, ...topicPosts, ...searchPosts, ...bookmarkedPosts, ...Object.values(state.revealed), ...state.own].map(
         (post) => [post.id, post],
       ),
     ).values(),
-  ], [publicFeed, topicPosts, searchPosts, state.revealed, state.own]);
+  ], [publicFeed, topicPosts, searchPosts, bookmarkedPosts, state.revealed, state.own]);
   const opened = state.opened[today] || [];
   const latestOpenedDay = Object.keys(state.opened)
     .filter((day) => state.opened[day]?.length)
@@ -602,6 +615,13 @@ export default function Community() {
       (state.savedFrom?.[post.id] || (state.revealed[post.id] ? "today" : "discover")) ===
         (favoriteSource === "今日翻卡" ? "today" : "discover")),
   );
+  const organizedFavoritePosts = favoritePosts.filter((post) => {
+    const assignedCollection = bookmarkMembership[post.cloudId || ""] || null;
+    const inCollection = favoriteCollection === "all" || (favoriteCollection === "uncategorized" ? !assignedCollection : assignedCollection === favoriteCollection);
+    const term = favoriteSearch.trim().toLocaleLowerCase();
+    const matches = !term || [post.title, post.tag, post.author, post.body].some((value) => value.toLocaleLowerCase().includes(term));
+    return inCollection && matches;
+  });
   const likedPosts = all.filter((post) => state.liked?.includes(post.id));
   useEffect(() => {
     let cancelled = false;
@@ -832,6 +852,90 @@ export default function Community() {
         toast("收藏公开状态保存失败，请重试");
       })
       .finally(() => setBookmarkVisibilityBusy(false));
+  };
+  const saveBookmarkCollection = async () => {
+    const name = newCollectionName.trim();
+    if (!name) return;
+    if (!accountId) { toast("登录后可以整理收藏夹"); return; }
+    try {
+      const data = await cloudRequest("/api/v1/bookmark-collections", { action: "create", name });
+      setBookmarkCollections((current) => [...current, data]);
+      setNewCollectionName("");
+      setFavoriteCollection(data.id);
+      toast("收藏夹已创建");
+    } catch (error) { toast(error instanceof Error ? error.message : "收藏夹创建失败"); }
+  };
+  const deleteBookmarkCollection = async (collection: BookmarkCollection) => {
+    if (!window.confirm(`删除“${collection.name}”？其中的内容会回到未分类收藏。`)) return;
+    try {
+      await cloudRequest("/api/v1/bookmark-collections", { action: "delete", id: collection.id });
+      setBookmarkCollections((current) => current.filter((item) => item.id !== collection.id));
+      setBookmarkMembership((current) => Object.fromEntries(Object.entries(current).map(([postId, id]) => [postId, id === collection.id ? null : id])));
+      if (favoriteCollection === collection.id) setFavoriteCollection("all");
+      toast("收藏夹已删除");
+    } catch (error) { toast(error instanceof Error ? error.message : "删除收藏夹失败"); }
+  };
+  const renameBookmarkCollection = async (collection: BookmarkCollection) => {
+    const name = editingCollectionName.trim();
+    if (!name) return;
+    try {
+      const updated = await cloudRequest("/api/v1/bookmark-collections", { action: "rename", id: collection.id, name });
+      setBookmarkCollections((current) => current.map((item) => item.id === collection.id ? updated : item));
+      setEditingCollection(null);
+      toast("收藏夹名称已更新");
+    } catch (error) { toast(error instanceof Error ? error.message : "重命名失败"); }
+  };
+  const assignBookmarkCollection = async (post: Post, collectionId: string) => {
+    if (!accountId || !post.cloudId) { toast("登录后可以整理云端收藏"); return; }
+    const value = collectionId || null;
+    const previous = bookmarkMembership[post.cloudId] || null;
+    setBookmarkMembership((current) => ({ ...current, [post.cloudId!]: value }));
+    try {
+      await cloudRequest("/api/v1/bookmark-collections", { action: "assign", postId: post.cloudId, collectionId: value });
+    } catch (error) {
+      setBookmarkMembership((current) => ({ ...current, [post.cloudId!]: previous }));
+      toast(error instanceof Error ? error.message : "收藏整理失败");
+    }
+  };
+  useEffect(() => {
+    let active = true;
+    if (!accountId) {
+      setBookmarkCollections([]);
+      setBookmarkMembership({});
+      setBookmarkedPosts([]);
+      setCreatorCenter(null);
+      return;
+    }
+    void cloudRequest("/api/v1/bookmark-collections").then((data) => {
+      if (!active || !data) return;
+      setBookmarkCollections(Array.isArray(data.collections) ? data.collections : []);
+      setBookmarkMembership(Object.fromEntries((data.bookmarks || []).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
+      setBookmarkedPosts((data.bookmarks || []).map((item: { post: Post | null }) => item.post).filter((post: Post | null): post is Post => Boolean(post)));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [accountId]);
+  useEffect(() => {
+    if (tab !== "my-content" || !accountId) return;
+    let active = true;
+    setCreatorCenterLoading(true);
+    void cloudRequest("/api/v1/creator-center").then((data) => {
+      if (active && data) setCreatorCenter(data);
+    }).catch((error) => {
+      if (active) toast(error instanceof Error ? error.message : "创作者数据加载失败");
+    }).finally(() => { if (active) setCreatorCenterLoading(false); });
+    return () => { active = false; };
+  }, [tab, accountId]);
+  const claimCreatorMission = async (missionKey: CreatorMission["key"]) => {
+    try {
+      const claimed = await cloudRequest("/api/v1/creator-center", { missionKey });
+      const [center, summary] = await Promise.all([
+        cloudRequest("/api/v1/creator-center"),
+        cloudRequest("/api/v1/progression"),
+      ]);
+      if (center) setCreatorCenter(center);
+      if (summary) setExperienceSummary(summary);
+      toast(claimed?.claimed ? `任务完成，获得 ${claimed.points} EXP` : "本周奖励已经领取");
+    } catch (error) { toast(error instanceof Error ? error.message : "领取失败，请重试"); }
   };
   const chooseHomeMode = (mode: "waterfall" | "blackcard") => {
     update((current) => ({ ...current, homeMode: mode }));
@@ -2041,7 +2145,8 @@ export default function Community() {
     return () => controller.abort();
   }, [ready, ratingIdsKey]);
   const filtered = useMemo(
-    () => rankRecommendations(
+    () => {
+      const ranked = rankRecommendations(
       publicFeed.filter(
         (p) =>
           !state.dismissed?.includes(p.id) &&
@@ -2051,7 +2156,11 @@ export default function Community() {
       state.viewed,
       state.ratings,
       communityRatings,
-    ),
+      );
+      if (sort === "最新") return ranked.sort((a, b) => b.date.localeCompare(a.date) || a.id - b.id);
+      if (sort === "高分") return ranked.sort((a, b) => (communityRatings[b.id]?.average || 0) - (communityRatings[a.id]?.average || 0) || b.date.localeCompare(a.date));
+      return ranked;
+    },
     [
       publicFeed,
       category,
@@ -2060,6 +2169,7 @@ export default function Community() {
       state.viewed,
       state.ratings,
       communityRatings,
+      sort,
     ],
   );
   const list = filtered.slice(0, page);
@@ -2763,6 +2873,9 @@ export default function Community() {
               </button>
             ))}
           </div>
+          <div className="discover-sort" role="group" aria-label="发现排序">
+            {["精选", "最新", "高分"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => setSort(option)}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
+          </div>
           {latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">
               <div className="recent-flip-heading">
@@ -2839,7 +2952,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.02.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.03.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2859,7 +2972,7 @@ export default function Community() {
               <div className="experience-rule-note"><strong>经验获取</strong><span>当天首次翻卡 +10 EXP · 每日最多 10 次翻卡计分</span><span>首次给每篇内容评分 +2 EXP · 每日最多 5 次</span><small>评分修改不会重复获得经验；给自己发布的内容评分不计入。</small></div>
               <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
               <div className="experience-rule-note"><strong>Plus / Pro 加成 · 当前 {experienceSummary.membershipTier.toUpperCase()}</strong><span>Plus 每日首次翻卡额外 +3 EXP · Pro 额外 +6 EXP。</span><small>会员等级由管理员根据已核验权益设置；订阅预览页不会自动开通会员。</small></div>
-              {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
+              {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : event.type === "mission" ? "创作者任务" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
@@ -2916,8 +3029,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 2.02.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.02.0</strong><small>2026.11.02</small></div><ul><li>他人主页改为全屏浏览，增加笔记与公开收藏分类。</li><li>等级经验页改用统一分割线和克制配色。</li><li>个人页的信息结构与公开主页统一，并可自行设置收藏公开状态。</li><li>上传图片自动压缩，单张上限调整为 4 MB。</li><li>修复图片加载失败显示乱码，并移除详情图片圆角。</li><li>调整消息列表排版与悬浮底栏留白，加入发现图片渐入效果。</li></ul></div>
+          <p className="lead">黑卡 HEIKA · 版本 2.03.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.03</small></div><ul><li>发现页新增个性化精选、最新和高评分排序。</li><li>收藏支持创建、重命名、删除收藏夹，按标题、话题和作者搜索并整理内容。</li><li>新增创作者数据面板，统计公开内容阅读、点赞、收藏与评论表现。</li><li>加入每周探索、发布和收藏任务，完成后可领取 EXP 并计入等级奖励。</li><li>收藏夹和任务奖励改由数据库权限与事务校验保护。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
@@ -3257,7 +3370,16 @@ export default function Community() {
                     <button key={source} className={favoriteSource === source ? "selected" : ""} aria-pressed={favoriteSource === source} onClick={() => setFavoriteSource(source)}>{source}</button>
                   ))}
                 </div>
-                {favoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{favoritePosts.map((post) => postCard(post, state.revealed[post.id] ? "today" : "discover"))}</div> : <div className="empty">收藏的内容会集中保存在这里。</div>}
+                <div className="collection-toolbar">
+                  <label className="collection-search"><Search size={15}/><input aria-label="搜索收藏" placeholder="搜标题、话题或作者" value={favoriteSearch} onChange={(event) => setFavoriteSearch(event.target.value)}/>{favoriteSearch && <button type="button" aria-label="清空搜索" onClick={() => setFavoriteSearch("")}><X size={14}/></button>}</label>
+                  <div className="collection-create"><input aria-label="新收藏夹名称" maxLength={24} placeholder="新建收藏夹" value={newCollectionName} onChange={(event) => setNewCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveBookmarkCollection(); }}/><button type="button" disabled={!newCollectionName.trim()} onClick={() => void saveBookmarkCollection()}><Plus size={15}/>创建</button></div>
+                </div>
+                <div className="collection-chips" role="group" aria-label="收藏夹筛选">
+                  <button type="button" className={favoriteCollection === "all" ? "selected" : ""} onClick={() => setFavoriteCollection("all")}>全部收藏</button>
+                  <button type="button" className={favoriteCollection === "uncategorized" ? "selected" : ""} onClick={() => setFavoriteCollection("uncategorized")}>未分类</button>
+                  {bookmarkCollections.map((collection) => <span className="collection-chip" key={collection.id}>{editingCollection === collection.id ? <><input aria-label="收藏夹新名称" maxLength={24} value={editingCollectionName} onChange={(event) => setEditingCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameBookmarkCollection(collection); if (event.key === "Escape") setEditingCollection(null); }}/><button type="button" className="collection-delete" aria-label="保存收藏夹名称" onClick={() => void renameBookmarkCollection(collection)}><Check size={13}/></button><button type="button" className="collection-delete" aria-label="取消重命名" onClick={() => setEditingCollection(null)}><X size={12}/></button></> : <><button type="button" className={favoriteCollection === collection.id ? "selected" : ""} onClick={() => setFavoriteCollection(collection.id)}>{collection.name}</button><button type="button" className="collection-delete" aria-label={`重命名收藏夹 ${collection.name}`} onClick={() => { setEditingCollection(collection.id); setEditingCollectionName(collection.name); }}><PenLine size={12}/></button><button type="button" className="collection-delete" aria-label={`删除收藏夹 ${collection.name}`} onClick={() => void deleteBookmarkCollection(collection)}><X size={12}/></button></>}</span>)}
+                </div>
+                {organizedFavoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{organizedFavoritePosts.map((post) => <div className="organized-favorite-card" key={post.id}>{postCard(post, state.revealed[post.id] ? "today" : "discover")}<label className="collection-assignment">整理到<select aria-label={`整理《${post.title}》到收藏夹`} value={bookmarkMembership[post.cloudId || ""] || ""} disabled={!accountId || !post.cloudId} onChange={(event) => void assignBookmarkCollection(post, event.target.value)}><option value="">未分类</option>{bookmarkCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label></div>)}</div> : <div className="empty">{favoritePosts.length ? "没有符合搜索条件的收藏。" : "收藏的内容会集中保存在这里。"}</div>}
               </div>
             )}
             {mineSection === "liked" && (
@@ -3330,6 +3452,14 @@ export default function Community() {
           <div className="eyebrow">ACCOUNT / MY CONTENT</div>
           <h1>我的内容<span className="red-dot">.</span></h1>
           <p className="lead">管理已发布内容、审核状态与本机草稿。</p>
+          <section className="creator-center" aria-labelledby="creator-center-heading">
+            <div className="creator-center-heading"><div><small>CREATOR / INSIGHTS</small><h2 id="creator-center-heading">创作者中心</h2></div><span>{creatorCenter?.weekStart ? `本周任务 · ${creatorCenter.weekStart}` : "数据仅统计已公开内容"}</span></div>
+            {!accountId ? <div className="empty">登录后查看创作数据并领取每周经验。</div> : creatorCenterLoading && !creatorCenter ? <div className="creator-center-loading">正在汇总创作数据…</div> : <>
+              <div className="creator-metrics">{[["公开内容", creatorCenter?.insights.posts || 0], ["阅读", creatorCenter?.insights.views || 0], ["点赞", creatorCenter?.insights.likes || 0], ["收藏", creatorCenter?.insights.saves || 0], ["评论", creatorCenter?.insights.comments || 0]].map(([label, value]) => <div key={label}><strong>{Number(value).toLocaleString("zh-CN")}</strong><span>{label}</span></div>)}</div>
+              <div className="creator-missions"><div className="creator-subheading"><h3>本周成长任务</h3><span>每项 +20 EXP</span></div>{(creatorCenter?.missions || []).map((mission) => <div className="creator-mission-row" key={mission.key}><div className="creator-mission-copy"><strong>{mission.title}</strong><small>{mission.description}</small><span className="creator-mission-progress"><i><b style={{ width: `${Math.min(100, mission.progress / mission.target * 100)}%` }}/></i>{mission.progress}/{mission.target}</span></div><button type="button" disabled={mission.claimed || mission.progress < mission.target} onClick={() => void claimCreatorMission(mission.key)}>{mission.claimed ? "已领取" : "领取"}</button></div>)}</div>
+              {!!creatorCenter?.insights.topPosts.length && <div className="creator-top-posts"><h3>表现较好的内容</h3>{creatorCenter.insights.topPosts.map((post) => <div key={post.id}><span>{post.title}</span><small>{post.views} 阅读 · {post.likes} 赞 · {post.saves} 收藏</small></div>)}</div>}
+            </>}
+          </section>
           <button className="primary-button mine-create-button" onClick={() => void openComposer()}><Plus size={16} /> 发布内容</button>
           {state.own.length ? state.own.map((post) => (
             <div className="own-row" key={post.id}>

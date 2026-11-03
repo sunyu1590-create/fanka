@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       const results = await Promise.all([
         db.from("user_interests").delete().eq("user_id", user!.id),
         db.from("bookmarks").delete().eq("user_id", user!.id),
+        db.from("bookmark_collections").delete().eq("user_id", user!.id),
         db.from("user_interactions").delete().eq("user_id", user!.id),
         db.from("comment_reactions").delete().eq("user_id", user!.id),
         db.from("user_blocks").delete().eq("owner_id", user!.id),
