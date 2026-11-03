@@ -358,6 +358,7 @@ export default function Community() {
   const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
   const [bookmarkCollections, setBookmarkCollections] = useState<BookmarkCollection[]>([]);
   const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
+  const [bookmarkCollectionContents, setBookmarkCollectionContents] = useState<Record<string, Post[]>>({});
   const [bookmarkMembership, setBookmarkMembership] = useState<Record<string, string | null>>({});
   const [favoriteCollection, setFavoriteCollection] = useState("all");
   const [favoriteSearch, setFavoriteSearch] = useState("");
@@ -691,9 +692,13 @@ export default function Community() {
       (state.savedFrom?.[post.id] || (state.revealed[post.id] ? "today" : "discover")) ===
         (favoriteSource === "今日翻卡" ? "today" : "discover")),
   );
-  const organizedFavoritePosts = favoritePosts.filter((post) => {
+  const collectionPosts = favoriteCollection !== "all" && favoriteCollection !== "uncategorized"
+    ? bookmarkCollectionContents[favoriteCollection] || []
+    : favoritePosts;
+  const favoritePostsForView = collectionPosts.filter((post) => favoriteSource === "全部" || (state.savedFrom?.[post.id] || (state.revealed[post.id] ? "today" : "discover")) === (favoriteSource === "今日翻卡" ? "today" : "discover"));
+  const organizedFavoritePosts = favoritePostsForView.filter((post) => {
     const assignedCollection = bookmarkMembership[post.cloudId || ""] || null;
-    const inCollection = favoriteCollection === "all" || (favoriteCollection === "uncategorized" ? !assignedCollection : assignedCollection === favoriteCollection);
+    const inCollection = favoriteCollection !== "all" && favoriteCollection !== "uncategorized" ? true : favoriteCollection === "all" || !assignedCollection;
     const term = favoriteSearch.trim().toLocaleLowerCase();
     const matches = !term || [post.title, post.tag, post.author, post.body].some((value) => value.toLocaleLowerCase().includes(term));
     return inCollection && matches;
@@ -1024,6 +1029,11 @@ export default function Community() {
     setBookmarkMembership((current) => ({ ...current, [post.cloudId!]: value }));
     try {
       await cloudRequest("/api/v1/bookmark-collections", { action: "assign", postId: post.cloudId, collectionId: value });
+      setBookmarkCollectionContents((current) => {
+        const next = Object.fromEntries(Object.entries(current).map(([id, items]) => [id, items.filter((item) => item.cloudId !== post.cloudId)]));
+        if (value) next[value] = [...(next[value] || []), post];
+        return next;
+      });
     } catch (error) {
       setBookmarkMembership((current) => ({ ...current, [post.cloudId!]: previous }));
       toast(error instanceof Error ? error.message : "收藏整理失败");
@@ -1043,7 +1053,15 @@ export default function Community() {
       const result = await cloudRequest("/api/v1/bookmark-collections", { action: "join", shareCode: collectionInviteCode.trim() });
       setCollectionInviteCode("");
       const data = await cloudRequest("/api/v1/bookmark-collections");
-      if (data?.collections) setBookmarkCollections(data.collections);
+      if (data?.collections) {
+        setBookmarkCollections(data.collections);
+        const rows = data.bookmarks || [];
+        setBookmarkMembership(Object.fromEntries(rows.filter((item: { userId: string }) => item.userId === accountId).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
+        const byCollection: Record<string, Post[]> = {};
+        for (const item of rows as { collectionId: string | null; post: Post | null }[]) if (item.collectionId && item.post) byCollection[item.collectionId] = [...(byCollection[item.collectionId] || []).filter((post) => post.id !== item.post!.id), item.post];
+        setBookmarkCollectionContents(byCollection);
+        setBookmarkedPosts([...new Map((rows as { post: Post | null }[]).map((item) => item.post).filter((post): post is Post => Boolean(post)).map((post) => [post.id, post])).values()]);
+      }
       setFavoriteCollection(result.collectionId);
       toast("已加入协作收藏夹");
     } catch (error) { toast(error instanceof Error ? error.message : "加入失败"); }
@@ -1054,16 +1072,36 @@ export default function Community() {
       setBookmarkCollections([]);
       setBookmarkMembership({});
       setBookmarkedPosts([]);
+      setBookmarkCollectionContents({});
       setCreatorCenter(null);
       return;
     }
     void cloudRequest("/api/v1/bookmark-collections").then((data) => {
       if (!active || !data) return;
       setBookmarkCollections(Array.isArray(data.collections) ? data.collections : []);
-      setBookmarkMembership(Object.fromEntries((data.bookmarks || []).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
-      setBookmarkedPosts((data.bookmarks || []).map((item: { post: Post | null }) => item.post).filter((post: Post | null): post is Post => Boolean(post)));
+      const rows = data.bookmarks || [];
+      setBookmarkMembership(Object.fromEntries(rows.filter((item: { userId: string }) => item.userId === accountId).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
+      const byCollection: Record<string, Post[]> = {};
+      for (const item of rows as { collectionId: string | null; post: Post | null }[]) if (item.collectionId && item.post) byCollection[item.collectionId] = [...(byCollection[item.collectionId] || []).filter((post) => post.id !== item.post!.id), item.post];
+      setBookmarkCollectionContents(byCollection);
+      setBookmarkedPosts([...new Map((rows as { post: Post | null }[]).map((item) => item.post).filter((post): post is Post => Boolean(post)).map((post) => [post.id, post])).values()]);
     }).catch(() => {});
     return () => { active = false; };
+  }, [accountId]);
+  useEffect(() => {
+    if (!accountId) return;
+    const sync = () => void cloudRequest("/api/v1/bookmark-collections").then((data) => {
+      if (!data) return;
+      setBookmarkCollections(data.collections || []);
+      const rows = data.bookmarks || [];
+      setBookmarkMembership(Object.fromEntries(rows.filter((item: { userId: string }) => item.userId === accountId).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
+      const byCollection: Record<string, Post[]> = {};
+      for (const item of rows as { collectionId: string | null; post: Post | null }[]) if (item.collectionId && item.post) byCollection[item.collectionId] = [...(byCollection[item.collectionId] || []).filter((post) => post.id !== item.post!.id), item.post];
+      setBookmarkCollectionContents(byCollection);
+      setBookmarkedPosts([...new Map((rows as { post: Post | null }[]).map((item) => item.post).filter((post): post is Post => Boolean(post)).map((post) => [post.id, post])).values()]);
+    }).catch(() => {});
+    window.addEventListener("heika-collections-updated", sync);
+    return () => window.removeEventListener("heika-collections-updated", sync);
   }, [accountId]);
   useEffect(() => {
     if (tab !== "creator-center" || !accountId) return;
@@ -3765,7 +3803,7 @@ export default function Community() {
             )}
             {mineSection === "favorites" && (
               <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>我的收藏</h2><span>{favoritePosts.length} 篇</span></div>
+                <div className="section-head mine-panel-heading"><h2>我的收藏</h2><span>{favoritePostsForView.length} 篇</span></div>
                 <div className="filters favorite-filters" role="group" aria-label="收藏来源">
                   {["全部", "今日翻卡", "发现"].map((source) => (
                     <button key={source} className={favoriteSource === source ? "selected" : ""} aria-pressed={favoriteSource === source} onClick={() => setFavoriteSource(source)}>{source}</button>
@@ -3781,7 +3819,7 @@ export default function Community() {
                   <button type="button" className={favoriteCollection === "uncategorized" ? "selected" : ""} onClick={() => setFavoriteCollection("uncategorized")}>未分类</button>
                   {bookmarkCollections.map((collection) => <span className="collection-chip" key={collection.id}>{editingCollection === collection.id ? <><input aria-label="收藏夹新名称" maxLength={24} value={editingCollectionName} onChange={(event) => setEditingCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameBookmarkCollection(collection); if (event.key === "Escape") setEditingCollection(null); }}/><button type="button" className="collection-delete" aria-label="保存收藏夹名称" onClick={() => void renameBookmarkCollection(collection)}><Check size={13}/></button><button type="button" className="collection-delete" aria-label="取消重命名" onClick={() => setEditingCollection(null)}><X size={12}/></button></> : <><button type="button" className={favoriteCollection === collection.id ? "selected" : ""} onClick={() => setFavoriteCollection(collection.id)}>{collection.name}{collection.role === "collaborator" ? " · 协作" : ""}</button>{collection.role !== "collaborator" && <><button type="button" className="collection-delete" aria-label={`分享收藏夹 ${collection.name}`} onClick={() => void shareBookmarkCollection(collection)}><Share2 size={12}/></button><button type="button" className="collection-delete" aria-label={`重命名收藏夹 ${collection.name}`} onClick={() => { setEditingCollection(collection.id); setEditingCollectionName(collection.name); }}><PenLine size={12}/></button><button type="button" className="collection-delete" aria-label={`删除收藏夹 ${collection.name}`} onClick={() => void deleteBookmarkCollection(collection)}><X size={12}/></button></>}</>}</span>)}
                 </div>
-                {organizedFavoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{organizedFavoritePosts.map((post) => <div className="organized-favorite-card" key={post.id}>{postCard(post, state.revealed[post.id] ? "today" : "discover")}<label className="collection-assignment">整理到<select aria-label={`整理《${post.title}》到收藏夹`} value={bookmarkMembership[post.cloudId || ""] || ""} disabled={!accountId || !post.cloudId} onChange={(event) => void assignBookmarkCollection(post, event.target.value)}><option value="">未分类</option>{bookmarkCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label></div>)}</div> : <div className="empty">{favoritePosts.length ? "没有符合搜索条件的收藏。" : "收藏的内容会集中保存在这里。"}</div>}
+                {organizedFavoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{organizedFavoritePosts.map((post) => <div className="organized-favorite-card" key={post.id}>{postCard(post, state.revealed[post.id] ? "today" : "discover")}{state.saved.includes(post.id) ? <label className="collection-assignment">整理到<select aria-label={`整理《${post.title}》到收藏夹`} value={bookmarkMembership[post.cloudId || ""] || ""} disabled={!accountId || !post.cloudId} onChange={(event) => void assignBookmarkCollection(post, event.target.value)}><option value="">未分类</option>{bookmarkCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label> : <small className="collection-assignment shared-bookmark-note">朋友也收藏了这份灵感</small>}</div>)}</div> : <div className="empty">{favoritePostsForView.length ? "没有符合搜索条件的收藏。" : favoriteCollection !== "all" && favoriteCollection !== "uncategorized" ? "这个协作收藏夹还没有内容。" : "收藏的内容会集中保存在这里。"}</div>}
               </div>
             )}
             {mineSection === "liked" && (
