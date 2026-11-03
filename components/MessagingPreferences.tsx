@@ -11,9 +11,17 @@ type BlockedProfile = { id: string; nickname: string; bio: string };
 export default function MessagingPreferences({
   accountId,
   onLogin,
+  publicBookmarks,
+  publicBookmarksLoaded,
+  bookmarkVisibilityBusy,
+  onBookmarkVisibilityChange,
 }: {
   accountId: string | null;
   onLogin: () => void;
+  publicBookmarks: boolean;
+  publicBookmarksLoaded: boolean;
+  bookmarkVisibilityBusy: boolean;
+  onBookmarkVisibilityChange: (value: boolean) => void;
 }) {
   const [permission, setPermission] = useState<"everyone" | "nobody">("everyone");
   const [notesPrivate, setNotesPrivate] = useState(false);
@@ -96,12 +104,13 @@ export default function MessagingPreferences({
     finally { setBusyId(""); }
   };
 
-  if (!accountId) return <section className="messaging-preferences-empty"><ShieldCheck size={22}/><strong>登录后使用安全中心</strong><p>登录账号后可以管理笔记可见范围、私聊接收范围和黑名单。</p><button className="primary-button" onClick={onLogin}>前往登录</button></section>;
+  if (!accountId) return <section className="messaging-preferences-empty"><ShieldCheck size={22}/><strong>登录后使用安全中心</strong><p>登录账号后可以管理笔记可见范围、收藏公开状态、私聊接收范围和黑名单。</p><button className="primary-button" onClick={onLogin}>前往登录</button></section>;
 
   return <div className="messaging-preferences">
     <section className="settings-module">
       <div className="settings-module-heading"><strong>隐私设置</strong></div>
       <div className="switch-row"><span><strong>笔记仅自己可见</strong><small>开启后，其他用户无法查看你已发布的笔记和图片。管理员仍可进行审核。</small></span><button type="button" role="switch" aria-checked={notesPrivate} aria-label="笔记仅自己可见" disabled={busyId === "notes"} className={`toggle-switch ${notesPrivate ? "on" : ""}`} onClick={() => void saveNotesPrivacy(!notesPrivate)}><i/></button></div>
+      <div className="switch-row"><span><strong>公开我的收藏</strong><small>{!publicBookmarksLoaded ? "正在读取收藏公开状态" : publicBookmarks ? "其他人可以在你的主页浏览收藏" : "目前仅自己可见"}</small></span><button type="button" role="switch" aria-checked={publicBookmarks} aria-label="公开我的收藏" disabled={bookmarkVisibilityBusy || !publicBookmarksLoaded} className={`toggle-switch ${publicBookmarks ? "on" : ""}`} onClick={() => onBookmarkVisibilityChange(!publicBookmarks)}><i/></button></div>
     </section>
     <section className="settings-module">
       <div className="settings-module-heading"><strong>私聊接收范围</strong></div>

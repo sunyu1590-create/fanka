@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       return data!.map((row) => ({ id: Number(row.client_id) }));
     }
     const page = Math.max(1, Math.min(10000, Number(req.nextUrl.searchParams.get("page")) || 1));
-    const limit = Math.max(1, Math.min(48, Number(req.nextUrl.searchParams.get("limit")) || 24));
+    const limit = Math.max(1, Math.min(50, Number(req.nextUrl.searchParams.get("limit")) || 24));
     const tag = (req.nextUrl.searchParams.get("tag") || "").trim().slice(0, 24);
     let tagId: number | undefined;
     if (tag && tag !== "全部") {
