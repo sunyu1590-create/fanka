@@ -366,6 +366,7 @@ export default function Community() {
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
   const [topicEvents, setTopicEvents] = useState<TopicEvent[]>([]);
   const [settingsPersonalOpen, setSettingsPersonalOpen] = useState(false);
+  const [recentPreview, setRecentPreview] = useState<{ post: Post; source: "today" | "discover" } | null>(null);
   const [creatorCenterLoading, setCreatorCenterLoading] = useState(false);
   const [rewardClaimBusyLevel, setRewardClaimBusyLevel] = useState<number | null>(null);
   const [detailImageTransition, setDetailImageTransition] = useState<{
@@ -519,6 +520,12 @@ export default function Community() {
     scrollPositions.current[returnTab] = window.scrollY;
     setMyContentReturnTab(returnTab);
     setTab("my-content");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
+  const openCreatorCenter = (returnTab: "mine" | "settings" = "settings") => {
+    scrollPositions.current[returnTab] = window.scrollY;
+    setMyContentReturnTab(returnTab);
+    setTab("creator-center");
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   };
   const submitSearch = (value = searchDraft) => {
@@ -1023,7 +1030,7 @@ export default function Community() {
     return () => { active = false; };
   }, [accountId]);
   useEffect(() => {
-    if (tab !== "my-content" || !accountId) return;
+    if (tab !== "creator-center" || !accountId) return;
     let active = true;
     setCreatorCenterLoading(true);
     void cloudRequest("/api/v1/creator-center").then((data) => {
@@ -2191,21 +2198,29 @@ export default function Community() {
   const secondaryTitle = modal === "write"
     ? "取消"
     : tab === "settings"
-      ? settingsDetail ? settingsReturnTab === "mine" ? "我的" : "设置" : "我的"
+      ? settingsDetail ? settingsReturnTab === "mine" ? "我的" : "设置" : settingsPersonalOpen ? "设置" : "我的"
       : tab === "topic" ? "发现"
         : tab === "search" ? "搜索"
         : tab === "about" || tab === "moderation" ? "设置"
-          : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的" : null;
+          : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的"
+            : tab === "creator-center" || tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
+            : null;
   const handleSecondaryBack = () => {
     if (modal === "write") { setModal(null); return; }
     if (tab === "settings" && settingsDetail) { closeSettingsDetail(); return; }
-    if (tab === "settings") { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
+    if (tab === "settings" && settingsPersonalOpen) { setSettingsPersonalOpen(false); return; }
+    if (tab === "settings") { setSettingsPersonalOpen(false); setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
     if (tab === "topic") { closeTopicPage(); return; }
     if (tab === "search") { closeSearch(); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
     if (tab === "debug") {
       setTab(debugReturnTab);
       requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[debugReturnTab] || 0, behavior: "instant" }));
+      return;
+    }
+    if (tab === "creator-center" || tab === "my-content") {
+      setTab(myContentReturnTab);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
       return;
     }
   };
@@ -3143,6 +3158,8 @@ export default function Community() {
       {tab === "settings" && settingsDetail === null && (
         <section className="page settings-page">
           <button className="back settings-back" onClick={() => {
+            if (settingsPersonalOpen) { setSettingsPersonalOpen(false); return; }
+            setSettingsPersonalOpen(false);
             setTab("mine");
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> 我的</button>
@@ -3152,7 +3169,7 @@ export default function Community() {
             <button className="settings-category-card" onClick={() => openSettingsDetail("security")}><span className="settings-category-icon"><ShieldCheck size={19}/></span><span><strong>安全中心</strong><small>隐私、私聊范围与账号安全</small></span><ChevronRight size={18}/></button>
             <button className="settings-category-card" onClick={() => setSettingsPersonalOpen(true)}><span className="settings-category-icon"><Settings size={19}/></span><span><strong>个人设置</strong><small>外观、浏览、阅读与通知偏好</small></span><ChevronRight size={18}/></button>
             <button className="settings-category-card" onClick={() => { setDebugReturnTab("settings"); setTab("debug"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="settings-category-icon"><RefreshCw size={18}/></span><span><strong>调试模式</strong><small>开发工具与重置体验</small></span><ChevronRight size={18}/></button>
-            <button className="settings-category-card" onClick={() => openMyContent("settings")}><span className="settings-category-icon"><Sparkles size={19}/></span><span><strong>创作者中心</strong><small>创作数据、成长任务与作品管理</small></span><ChevronRight size={18}/></button>
+            <button className="settings-category-card" onClick={() => openCreatorCenter("settings")}><span className="settings-category-icon"><Sparkles size={19}/></span><span><strong>创作者中心</strong><small>创作数据与成长任务</small></span><ChevronRight size={18}/></button>
             {isAdmin && <button className="settings-category-card" onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="settings-category-icon"><ShieldCheck size={18}/></span><span><strong>安全管理</strong><small>举报与内容审核</small></span><ChevronRight size={18}/></button>}
           </div>}
           {settingsPersonalOpen && <button type="button" className="back settings-back settings-category-back" onClick={() => setSettingsPersonalOpen(false)}><ArrowLeft size={18}/> 设置分类</button>}
@@ -3187,7 +3204,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.12.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.23.1</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3343,7 +3360,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.12.0</p>
+          <p className="lead">HEIKA · 版本 2.23.1</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.23.1</strong><small>2026.11.03</small></div><ul><li>创作者中心与作品草稿管理拆分，入口与页面标题各自独立。</li><li>修正设置分类页的返回层级与重新进入时的状态恢复。</li><li>最近发现恢复卡片预览，再由“查看内容”进入详情。</li><li>评分后渐进展示社区结果，并加入模糊缩放反馈动效。</li><li>管理员可新增、编辑和上下线发现页的话题共创活动。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.12.0</strong><small>2026.11.03</small></div><ul><li>个人设置、调试模式、安全中心和创作者中心统一收纳在右上角设置入口，并按分类进入。</li><li>移除“我的”页底部重复的设置入口，设置不再被挤到页面末尾。</li><li>可以关注创作者，在发现页切换到关注动态。</li><li>支持创建作品系列，并在发布时将内容归入系列。</li><li>发现页上线限时话题共创，可加入后直接带话题创作。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.11.0</strong><small>2026.11.03</small></div><ul><li>发现页新增个性化精选、最新和高评分排序。</li><li>收藏支持创建、重命名、删除收藏夹，按标题、话题和作者搜索并整理内容。</li><li>新增创作者数据面板，统计公开内容阅读、点赞、收藏与评论表现。</li><li>加入每周探索、发布和收藏任务，完成后可领取 EXP 并计入等级奖励。</li><li>收藏夹和任务奖励改由数据库权限与事务校验保护。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.10.0</strong><small>2026.11.03</small></div><ul><li>修复图片加载状态误覆盖和切图卡住的问题，增强多图切换的柔和模糊动效。</li><li>我的作品改用固定双列网格，会员中心入口放到“我”页面设置旁。</li><li>评分星星加入分色反馈、光晕和逐颗跃动效果。</li><li>等级奖励支持解锁后领取，领取记录同步保存到账号。</li></ul></div>
@@ -3609,7 +3627,7 @@ export default function Community() {
       )}
       {tab === "mine" && (
         <section className="page mine-page">
-          <div className="mine-heading"><h1 className="mine-title">我</h1><div className="mine-heading-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={() => { scrollPositions.current.mine = window.scrollY; setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><Settings size={19}/></button></div></div>
+          <div className="mine-heading"><h1 className="mine-title">我</h1><div className="mine-heading-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={() => { scrollPositions.current.mine = window.scrollY; setSettingsPersonalOpen(false); setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><Settings size={19}/></button></div></div>
           <div className="profile-card">
             <div className="avatar">
               {state.avatar ? (
@@ -3732,7 +3750,7 @@ export default function Community() {
                 {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => {
                   const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
                   const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                  return <button key={`${date}-${post.id}`} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong></button>;
+                  return <button key={`${date}-${post.id}`} onClick={() => setRecentPreview({ post, source: state.revealed[post.id] ? "today" : "discover" })}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong><small>点按预览</small></button>;
                 })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
                 <div id="flip-history" className="section-head mine-panel-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天 <ChevronDown size={16}/></span></button></div>
                 {explorationHistoryOpen && Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
@@ -3746,24 +3764,35 @@ export default function Community() {
           </div>
         </section>
       )}
-      {tab === "my-content" && (
-        <section className="page my-content-page">
+      {tab === "creator-center" && (
+        <section className="page my-content-page creator-dashboard-page">
           <button className="back settings-back" onClick={() => {
             setTab(myContentReturnTab);
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
           <div className="eyebrow">CREATOR CENTER / HEIKA</div>
           <h1>创作者中心<span className="red-dot">.</span></h1>
-          <p className="lead">查看创作表现、完成成长任务，并管理作品与草稿。</p>
-          <section className="creator-center" aria-labelledby="creator-center-heading">
-            <div className="creator-center-heading"><div><small>CREATOR / INSIGHTS</small><h2 id="creator-center-heading">创作者中心</h2></div><span>{creatorCenter?.weekStart ? `本周任务 · ${creatorCenter.weekStart}` : "数据仅统计已公开内容"}</span></div>
+          <p className="lead">查看公开内容表现与本周成长任务。</p>
+          <section className="creator-center" aria-label="创作者数据与成长任务">
+            <div className="creator-center-heading"><div><small>CREATOR / INSIGHTS</small><h2>创作数据</h2></div><span>{creatorCenter?.weekStart ? `本周任务 · ${creatorCenter.weekStart}` : "数据仅统计已公开内容"}</span></div>
             {!accountId ? <div className="empty">登录后查看创作数据并领取每周经验。</div> : creatorCenterLoading && !creatorCenter ? <div className="creator-center-loading">正在汇总创作数据…</div> : <>
               <div className="creator-metrics">{[["公开内容", creatorCenter?.insights.posts || 0], ["阅读", creatorCenter?.insights.views || 0], ["点赞", creatorCenter?.insights.likes || 0], ["收藏", creatorCenter?.insights.saves || 0], ["评论", creatorCenter?.insights.comments || 0]].map(([label, value]) => <div key={label}><strong>{Number(value).toLocaleString("zh-CN")}</strong><span>{label}</span></div>)}</div>
               <div className="creator-missions"><div className="creator-subheading"><h3>本周成长任务</h3><span>每项 +20 EXP</span></div>{(creatorCenter?.missions || []).map((mission) => <div className="creator-mission-row" key={mission.key}><div className="creator-mission-copy"><strong>{mission.title}</strong><small>{mission.description}</small><span className="creator-mission-progress"><i><b style={{ width: `${Math.min(100, mission.progress / mission.target * 100)}%` }}/></i>{mission.progress}/{mission.target}</span></div><button type="button" disabled={mission.claimed || mission.progress < mission.target} onClick={() => void claimCreatorMission(mission.key)}>{mission.claimed ? "已领取" : "领取"}</button></div>)}</div>
               {!!creatorCenter?.insights.topPosts.length && <div className="creator-top-posts"><h3>表现较好的内容</h3>{creatorCenter.insights.topPosts.map((post) => <div key={post.id}><span>{post.title}</span><small>{post.views} 阅读 · {post.likes} 赞 · {post.saves} 收藏</small></div>)}</div>}
             </>}
           </section>
-          <div className="section-head"><h2>我的作品与草稿</h2><span>{state.own.length} 项</span></div>
+        </section>
+      )}
+      {tab === "my-content" && (
+        <section className="page my-content-page">
+          <button className="back settings-back" onClick={() => {
+            setTab(myContentReturnTab);
+            requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
+          }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
+          <div className="eyebrow">MY CONTENT / HEIKA</div>
+          <h1>我的作品与草稿<span className="red-dot">.</span></h1>
+          <p className="lead">管理已发布内容、审核状态和草稿。</p>
+          <div className="section-head"><h2>作品列表</h2><span>{state.own.length} 项</span></div>
           <button className="primary-button mine-create-button" onClick={() => void openComposer()}><Plus size={16} /> 发布内容</button>
           {state.own.length ? state.own.map((post) => (
             <div className="own-row" key={post.id}>
@@ -3994,11 +4023,11 @@ export default function Community() {
                       <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
                     </button>
                   ))}</div>
-                  {communityRatings[post.id]?.count ? (
+                  {(state.ratings[post.id] || ratingPulse?.postId === post.id) && (communityRatings[post.id]?.count ? (
                     <small className="community-rating" aria-live="polite">
                       <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人 <i className={`rarity-badge rarity-${cardRarity(communityRatings[post.id].average, communityRatings[post.id].count).replaceAll(" ", "")}`}>{cardRarity(communityRatings[post.id].average, communityRatings[post.id].count)}</i>
                     </small>
-                  ) : <small className="community-rating">社区评分形成中</small>}
+                  ) : null)}
                   {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
                 </section>
                 <section id="detail-comments" className="detail-comments">
@@ -4093,6 +4122,15 @@ export default function Community() {
             setViewerId(null);
           }}
         />
+      )}
+      {recentPreview && (
+        <div className="recent-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setRecentPreview(null); }}>
+          <section className="recent-preview-card" role="dialog" aria-modal="true" aria-labelledby="recent-preview-title">
+            <button type="button" className="recent-preview-close" aria-label="关闭预览" onClick={() => setRecentPreview(null)}><X size={19}/></button>
+            {recentPreview.post.image || recentPreview.post.images?.[0] ? <img className="recent-preview-image" src={recentPreview.post.image || recentPreview.post.images?.[0]} alt="" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /> : <div className="recent-preview-image recent-preview-placeholder" style={{ background: coverColor(recentPreview.post.tag) }} aria-hidden="true"><span>{recentPreview.post.tag}</span></div>}
+            <div className="recent-preview-copy"><small>{recentPreview.post.tag} · {recentPreview.post.author}</small><h2 id="recent-preview-title">{recentPreview.post.title}</h2><p>{recentPreview.post.body}</p><button type="button" className="recent-preview-open" onClick={() => { const item = recentPreview; setRecentPreview(null); requestAnimationFrame(() => openPost(item.post.id, item.source)); }}>查看内容 <ArrowRight size={17}/></button></div>
+          </section>
+        </div>
       )}
       {modal && (
         <div className={`modal-backdrop${modal === "write" ? " composer-backdrop" : ""}${modalClosing ? " is-closing" : ""}`} aria-hidden={modalClosing || undefined}>

@@ -4,7 +4,7 @@ import { ApiError, context, dbError, jsonBody, respond, uuid } from "@/lib/serve
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req, false);
-    const { data: events, error } = await db.from("topic_events").select("id,title,description,starts_at,ends_at,interest_tags(name)").lte("starts_at", new Date().toISOString()).gt("ends_at", new Date().toISOString()).order("ends_at");
+    const { data: events, error } = await db.from("topic_events").select("id,title,description,starts_at,ends_at,interest_tags(name)").eq("is_active", true).lte("starts_at", new Date().toISOString()).gt("ends_at", new Date().toISOString()).order("ends_at");
     dbError(error);
     const ids = (events || []).map((event) => event.id);
     if (!ids.length) return { items: [] };
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const { db, user } = await context(req);
     const body = await jsonBody(req);
     const eventId = uuid(body.eventId, "活动");
-    const { data: event, error: eventError } = await db.from("topic_events").select("id").eq("id", eventId).lte("starts_at", new Date().toISOString()).gt("ends_at", new Date().toISOString()).maybeSingle();
+    const { data: event, error: eventError } = await db.from("topic_events").select("id").eq("id", eventId).eq("is_active", true).lte("starts_at", new Date().toISOString()).gt("ends_at", new Date().toISOString()).maybeSingle();
     dbError(eventError);
     if (!event) throw new ApiError(404, "活动已结束");
     const { data: existing, error: readError } = await db.from("topic_event_participants").select("event_id").eq("event_id", eventId).eq("user_id", user!.id).maybeSingle();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, Check, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
@@ -18,14 +18,17 @@ type Report = {
 type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[] };
 type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null };
 type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string };
+type TopicTag = { id: number; name: string };
+type TopicEventAdmin = { id: string; topic_id: number; title: string; description: string; starts_at: string; ends_at: string; is_active: boolean; interest_tags?: { name: string } | { name: string }[] | null };
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void };
 
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
+const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
 
 export default function AdminModeration({ onBack }: Props) {
-  const [section, setSection] = useState<"reports" | "messages" | "content" | "users">("reports");
+  const [section, setSection] = useState<"reports" | "messages" | "content" | "users" | "topic-events">("reports");
   const [status, setStatus] = useState<(typeof filters)[number][0]>("open");
   const [reports, setReports] = useState<Report[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -42,6 +45,60 @@ export default function AdminModeration({ onBack }: Props) {
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [topicEvents, setTopicEvents] = useState<TopicEventAdmin[]>([]);
+  const [topicTags, setTopicTags] = useState<TopicTag[]>([]);
+  const [topicEventBusy, setTopicEventBusy] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<TopicEventAdmin | null>(null);
+  const [eventTopic, setEventTopic] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDescription, setEventDescription] = useState("");
+  const [eventStarts, setEventStarts] = useState(() => localDateTime(new Date()));
+  const [eventEnds, setEventEnds] = useState(() => { const date = new Date(); date.setDate(date.getDate() + 30); return localDateTime(date); });
+
+  const loadTopicEvents = useCallback(async () => {
+    setTopicEventBusy(true); setError("");
+    try {
+      const result = await cloudRequest("/api/v1/admin/topic-events") as { items: TopicEventAdmin[]; topics: TopicTag[] };
+      setTopicEvents(result.items || []); setTopicTags(result.topics || []);
+      if (!eventTopic && result.topics?.[0]) setEventTopic(String(result.topics[0].id));
+    } catch (e) { setError(e instanceof Error ? e.message : "共创活动加载失败"); }
+    finally { setTopicEventBusy(false); }
+  }, [eventTopic]);
+
+  useEffect(() => { if (section === "topic-events") void loadTopicEvents(); }, [section, loadTopicEvents]);
+
+  const resetTopicEventForm = () => {
+    setEditingEvent(null); setEventTitle(""); setEventDescription("");
+    const start = new Date(); const end = new Date(); end.setDate(end.getDate() + 30);
+    setEventStarts(localDateTime(start)); setEventEnds(localDateTime(end));
+  };
+  const editTopicEvent = (event: TopicEventAdmin) => {
+    setEditingEvent(event); setEventTopic(String(event.topic_id)); setEventTitle(event.title); setEventDescription(event.description);
+    setEventStarts(localDateTime(new Date(event.starts_at))); setEventEnds(localDateTime(new Date(event.ends_at)));
+  };
+  const saveTopicEvent = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!eventTopic || !eventTitle.trim() || !eventDescription.trim()) { setError("请完整填写共创活动信息"); return; }
+    if (new Date(eventEnds) <= new Date(eventStarts)) { setError("结束时间需要晚于开始时间"); return; }
+    setTopicEventBusy(true); setError(""); setNotice("");
+    try {
+      const selected = topicTags.find((item) => String(item.id) === eventTopic);
+      if (!selected) throw new Error("请选择有效话题");
+      await cloudRequest("/api/v1/admin/topic-events", { id: editingEvent?.id, topic: selected.name, title: eventTitle, description: eventDescription, starts_at: new Date(eventStarts).toISOString(), ends_at: new Date(eventEnds).toISOString(), is_active: editingEvent?.is_active ?? true });
+      setNotice(editingEvent ? "共创活动已更新。" : "共创活动已创建。"); resetTopicEventForm(); await loadTopicEvents();
+    } catch (e) { setError(e instanceof Error ? e.message : "保存共创活动失败"); }
+    finally { setTopicEventBusy(false); }
+  };
+  const toggleTopicEvent = async (event: TopicEventAdmin) => {
+    const topic = topicTags.find((item) => item.id === event.topic_id);
+    if (!topic) { setError("活动话题无效，请重新编辑后保存"); return; }
+    setSaving(event.id); setError(""); setNotice("");
+    try {
+      await cloudRequest("/api/v1/admin/topic-events", { id: event.id, topic: topic.name, title: event.title, description: event.description, starts_at: event.starts_at, ends_at: event.ends_at, is_active: !event.is_active });
+      setNotice(!event.is_active ? "活动已上线。" : "活动已下线，历史参与记录已保留。"); await loadTopicEvents();
+    } catch (e) { setError(e instanceof Error ? e.message : "活动状态更新失败"); }
+    finally { setSaving(null); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,14 +210,30 @@ export default function AdminModeration({ onBack }: Props) {
       <button role="tab" aria-selected={section === "messages"} className={section === "messages" ? "selected" : ""} onClick={() => setSection("messages")}>私信举报 <small>{messageReports.filter((item) => item.status === "open").length}</small></button>
       <button role="tab" aria-selected={section === "content"} className={section === "content" ? "selected" : ""} onClick={() => setSection("content")}>待审核内容 <small>{submissionTotal}</small></button>
       <button role="tab" aria-selected={section === "users"} className={section === "users" ? "selected" : ""} onClick={() => setSection("users")}>账号管理 <small>{userTotal}</small></button>
-      <button className="moderation-refresh" aria-label="刷新队列" onClick={() => section === "users" ? void loadUsers() : void load()} disabled={loading || usersLoading}><RefreshCw size={16} /></button>
+      <button role="tab" aria-selected={section === "topic-events"} className={section === "topic-events" ? "selected" : ""} onClick={() => setSection("topic-events")}>话题共创</button>
+      <button className="moderation-refresh" aria-label="刷新队列" onClick={() => section === "users" ? void loadUsers() : section === "topic-events" ? void loadTopicEvents() : void load()} disabled={loading || usersLoading || topicEventBusy}><RefreshCw size={16} /></button>
     </div>
     {section === "reports" && <div className="moderation-filters" role="group" aria-label="举报状态">
       {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "users" ? <>
+    {section === "topic-events" ? <>
+      <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
+        <div className="admin-topic-event-form-heading"><div><small>COMMUNITY / OPEN CALL</small><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
+        <label>关联话题<select required value={eventTopic} onChange={(event) => setEventTopic(event.target.value)}><option value="" disabled>选择一个话题</option>{topicTags.map((topic) => <option key={topic.id} value={topic.id}>#{topic.name}</option>)}</select></label>
+        <label>活动标题<input required minLength={4} maxLength={80} value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="例如：本月共创 · 给生活留一点空白" /></label>
+        <label>活动说明<textarea required minLength={8} maxLength={500} value={eventDescription} onChange={(event) => setEventDescription(event.target.value)} placeholder="说明创作方向与参与方式" /></label>
+        <div className="admin-topic-event-dates"><label>开始时间<input required type="datetime-local" value={eventStarts} onChange={(event) => setEventStarts(event.target.value)} /></label><label>结束时间<input required type="datetime-local" value={eventEnds} onChange={(event) => setEventEnds(event.target.value)} /></label></div>
+        <button className="primary-button full" disabled={topicEventBusy}>{topicEventBusy ? "正在保存…" : editingEvent ? "保存活动" : "创建活动"}</button>
+      </form>
+      <div className="admin-topic-event-list"><div className="creator-subheading"><h2>活动管理</h2><span>{topicEvents.length} 项</span></div>
+        {topicEventBusy && !topicEvents.length ? <p className="moderation-empty">正在加载共创活动…</p> : topicEvents.length ? topicEvents.map((event) => { const topic = Array.isArray(event.interest_tags) ? event.interest_tags[0]?.name : event.interest_tags?.name || topicTags.find((item) => item.id === event.topic_id)?.name; return <article className="admin-topic-event-row" key={event.id}>
+          <div><span>#{topic || "话题"} · {event.is_active ? "已上线" : "已下线"}</span><strong>{event.title}</strong><p>{event.description}</p><small>{new Date(event.starts_at).toLocaleString("zh-CN")} — {new Date(event.ends_at).toLocaleString("zh-CN")}</small></div>
+          <div className="admin-topic-event-actions"><button type="button" className="soft-button" onClick={() => editTopicEvent(event)}>编辑</button><button type="button" className="soft-button" disabled={saving === event.id} onClick={() => void toggleTopicEvent(event)}>{saving === event.id ? "保存中" : event.is_active ? "下线" : "上线"}</button></div>
+        </article>; }) : <p className="moderation-empty">还没有共创活动，填写上方表单来创建。</p>}
+      </div>
+    </> : section === "users" ? <>
       <form className="admin-user-search" onSubmit={(event) => { event.preventDefault(); setAppliedUserQuery(userQuery.trim()); }}>
         <input aria-label="搜索账号昵称" placeholder="按昵称搜索账号" value={userQuery} onChange={(event) => setUserQuery(event.target.value)} />
         <button className="soft-button" type="submit">搜索</button>
