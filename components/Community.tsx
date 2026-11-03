@@ -28,6 +28,7 @@ import {
   Sparkles,
   Crown,
   ShieldCheck,
+  FileText,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -513,6 +514,7 @@ export default function Community() {
   const [previewImage, setPreviewImage] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [detailImageDirection, setDetailImageDirection] = useState<"next" | "previous">("next");
+  const preloadedDetailImages = useRef(new Set<string>());
   const imageTouchStart = useRef<number | null>(null);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
@@ -2138,9 +2140,30 @@ export default function Community() {
     };
   }, [detailReady, detail]);
   const post = detail === null ? null : all.find((p) => p.id === detail);
-  const detailImages = post
+  const detailImages = useMemo(() => post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
-    : [];
+    : [], [post]);
+  useEffect(() => {
+    if (detail === null || detailImages.length < 2) return;
+    const count = detailImages.length;
+    const adjacent = [...new Set([
+      (activeImageIndex + 1) % count,
+      (activeImageIndex - 1 + count) % count,
+    ])];
+    for (const index of adjacent) {
+      const src = detailImages[index];
+      if (!src || preloadedDetailImages.current.has(src)) continue;
+      preloadedDetailImages.current.add(src);
+      const image = new Image();
+      image.decoding = "async";
+      image.fetchPriority = "low";
+      image.src = src;
+      if (preloadedDetailImages.current.size > 36) {
+        const oldest = preloadedDetailImages.current.values().next().value;
+        if (oldest) preloadedDetailImages.current.delete(oldest);
+      }
+    }
+  }, [detail, detailImages, activeImageIndex]);
   const selectDetailImage = (nextIndex: number) => {
     if (detailImages.length < 2) return;
     const normalized = (nextIndex + detailImages.length) % detailImages.length;
@@ -2829,6 +2852,7 @@ export default function Community() {
             initialPeer={messagePeer}
             isActive={tab === "messages"}
             onPeerOpened={() => setMessagePeer(null)}
+            onOpenProfile={(id) => setAuthorProfile(id)}
           />
         </div>
       )}
@@ -2869,7 +2893,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("security")}><span>安全中心</span><small>笔记隐私、私聊与账号安全</small><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.04.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.05.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2946,7 +2970,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 2.04.0</p>
+          <p className="lead">黑卡 HEIKA · 版本 2.05.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.05.0</strong><small>2026.11.03</small></div><ul><li>消息列表和私聊改为紧凑排版，私聊支持从对话顶部打开全屏个人主页。</li><li>帖子详情进入时预加载前后图片，减少切换时等待。</li><li>“我的”页新增“我的作品”入口，可直接管理发布内容、审核状态和草稿。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.04.0</strong><small>2026.11.03</small></div><ul><li>瀑布流每天固定展示 50 张黑卡，次日自动生成新卡组并重置当日翻卡次数。</li><li>已翻卡片按日期保留在探索历史，可随时回看。</li><li>瀑布流图片加载时由模糊渐清，详情多图支持按滑动方向平滑切换。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.02</small></div><ul><li>投稿图片在上传后立即显示，并在刷新和重新打开时获取新的图片链接。</li><li>新增安全中心，可设置笔记仅自己可见，并管理私聊范围、黑名单与账号安全。</li><li>消息时间移到气泡外，复制操作收进长按菜单。</li><li>经验记录、探索日历和探索记录支持折叠，收起时不渲染长列表。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.02.0</strong><small>2026.11.02</small></div><ul><li>他人主页改为全屏浏览，增加笔记与公开收藏分类。</li><li>等级经验页改用统一分割线和克制配色。</li><li>个人页的信息结构与公开主页统一，并可自行设置收藏公开状态。</li><li>上传图片自动压缩，单张上限调整为 4 MB。</li><li>修复图片加载失败显示乱码，并移除详情图片圆角。</li><li>调整消息列表排版与悬浮底栏留白，加入发现图片渐入效果。</li></ul></div>
@@ -3251,6 +3276,12 @@ export default function Community() {
               <ChevronRight size={17}/>
             </button>
           </div>
+          <button className="mine-works-entry" type="button" onClick={() => openMyContent("mine")}>
+            <span className="mine-works-icon"><FileText size={19}/></span>
+            <span className="mine-works-copy"><strong>我的作品</strong><small>查看已发布内容、审核状态和草稿</small></span>
+            <span className="mine-works-count">{state.own.filter((post) => post.status === "published").length} 篇</span>
+            <ChevronRight size={17}/>
+          </button>
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
               {([
@@ -3359,9 +3390,9 @@ export default function Community() {
             setTab(myContentReturnTab);
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
-          <div className="eyebrow">ACCOUNT / MY CONTENT</div>
-          <h1>我的内容<span className="red-dot">.</span></h1>
-          <p className="lead">管理已发布内容、审核状态与本机草稿。</p>
+          <div className="eyebrow">ACCOUNT / MY WORKS</div>
+          <h1>我的作品<span className="red-dot">.</span></h1>
+          <p className="lead">查看已发布内容、审核状态和草稿。</p>
           <button className="primary-button mine-create-button" onClick={() => void openComposer()}><Plus size={16} /> 发布内容</button>
           {state.own.length ? state.own.map((post) => (
             <div className="own-row" key={post.id}>

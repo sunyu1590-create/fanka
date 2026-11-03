@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { ArrowLeft, FileImage, MoreHorizontal, Send } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
@@ -18,10 +19,12 @@ type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | 
 export default function Messages({
   initialPeer,
   onPeerOpened,
+  onOpenProfile,
   isActive = true,
 }: {
   initialPeer?: string | null;
   onPeerOpened?: () => void;
+  onOpenProfile?: (id: string) => void;
   isActive?: boolean;
 }) {
   const [db, setDb] = useState<SupabaseClient>(),
@@ -431,6 +434,11 @@ export default function Messages({
       });
     setError(error?.message || "举报已提交，等待管理员处理。");
   };
+  const showPublicProfile = (person: Profile) => {
+    setProfile(null);
+    if (onOpenProfile) onOpenProfile(person.id);
+    else setProfile(person);
+  };
   if (!authReady)
     return (
       <section className="page messages-loading" aria-busy="true" aria-label="正在恢复消息状态">
@@ -476,7 +484,7 @@ export default function Messages({
       <div className="messages-inbox-pane">
       <div className="eyebrow">MESSAGES / PRIVATE</div>
       <h1>消息。</h1>
-      <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />
+      {!active && <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />}
       <form
         className="search"
         onSubmit={(e) => {
@@ -554,6 +562,9 @@ export default function Messages({
             >
               私聊
             </button>
+            <button className="soft-button" onClick={() => showPublicProfile(profile)}>
+              查看完整主页
+            </button>
             <button
               className="soft-button"
               onClick={async () => {
@@ -618,25 +629,29 @@ export default function Messages({
               </div>
             </div>
           )}
-          <header>
+          <header className="chat-topbar">
             <button
-              className="text-button"
+              className="chat-back"
+              aria-label="返回消息列表"
               onClick={() => {
                 setActive(null);
                 void refresh();
               }}
             >
-              ← 返回
+              <ArrowLeft size={21} />
             </button>
             <button
-              className="text-button"
-              onClick={() =>
-                setProfile(
-                  names[peer] || { id: peer, nickname: "探索者", bio: "" },
-                )
-              }
+              className="chat-peer-profile"
+              aria-label={`打开${names[peer]?.nickname || "探索者"}的个人主页`}
+              onClick={() => showPublicProfile(names[peer] || { id: peer, nickname: "探索者", bio: "" })}
             >
-              {names[peer]?.nickname || "探索者"}
+              <span className="chat-peer-avatar">
+                {names[peer]?.avatar_url ? <img src={names[peer].avatar_url!} alt="" /> : (names[peer]?.nickname || "探").slice(0, 1)}
+              </span>
+              <span className="chat-peer-copy"><strong>{names[peer]?.nickname || "探索者"}</strong><small>个人主页</small></span>
+            </button>
+            <button className="chat-more" aria-label="会话选项" onClick={() => setProfile(names[peer] || { id: peer, nickname: "探索者", bio: "" })}>
+              <MoreHorizontal size={21} />
             </button>
           </header>
           <div
@@ -658,44 +673,44 @@ export default function Messages({
             )}
             {messages.map((m) => (
               <div key={m.id} className={`message-row ${m.sender_id === user.id ? "own" : ""}`}>
-                <small className="message-time">{new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</small>
-                <div
-                className="message-bubble"
-                onPointerDown={() => {
-                  pressTimer.current = setTimeout(
-                    () => setSelectedMessage(m),
-                    550,
-                  );
-                }}
-                onPointerUp={() => {
-                  if (pressTimer.current) clearTimeout(pressTimer.current);
-                }}
-                onPointerCancel={() => {
-                  if (pressTimer.current) clearTimeout(pressTimer.current);
-                }}
-                onPointerMove={() => {
-                  if (pressTimer.current) clearTimeout(pressTimer.current);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setSelectedMessage(m);
-                }}
-              >
-                <p>{m.body}</p>
-                {media[m.id] && (
-                  <img
-                    src={media[m.id]}
-                    alt="聊天图片"
-                    loading="lazy"
-                    onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}
-                    style={{
-                      maxWidth: "100%",
-                      maxHeight: 300,
-                      objectFit: "contain",
+                <span className="chat-message-avatar" aria-hidden="true">
+                  {(m.sender_id === user.id ? user.user_metadata?.nickname || user.email : names[peer]?.nickname || "探")?.toString().slice(0, 1) || "探"}
+                  {m.sender_id === user.id && typeof user.user_metadata?.avatar_url === "string" && <img src={user.user_metadata.avatar_url} alt="" />}
+                  {m.sender_id !== user.id && names[peer]?.avatar_url && <img src={names[peer].avatar_url!} alt="" />}
+                </span>
+                <div className="message-content">
+                  <small className="message-time">{new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</small>
+                  <div
+                    className="message-bubble"
+                    onPointerDown={() => {
+                      pressTimer.current = setTimeout(() => setSelectedMessage(m), 550);
                     }}
-                  />
-                )}
-              </div>
+                    onPointerUp={() => {
+                      if (pressTimer.current) clearTimeout(pressTimer.current);
+                    }}
+                    onPointerCancel={() => {
+                      if (pressTimer.current) clearTimeout(pressTimer.current);
+                    }}
+                    onPointerMove={() => {
+                      if (pressTimer.current) clearTimeout(pressTimer.current);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setSelectedMessage(m);
+                    }}
+                  >
+                    {m.body !== "[图片]" && <p>{m.body}</p>}
+                    {media[m.id] && (
+                      <img
+                        src={media[m.id]}
+                        alt="聊天图片"
+                        loading="lazy"
+                        onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}
+                        style={{ maxWidth: "100%", maxHeight: 300, objectFit: "contain" }}
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -718,46 +733,6 @@ export default function Messages({
               发送失败 · 点击重试
             </button>
           )}
-          <label className="chat-upload">
-            发送图片（JPEG / PNG / WebP，自动压缩，最大 4MB）
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={busy}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file || !db || !active) return;
-                setBusy(true);
-                try {
-                  const compressedFile = await compressUploadImage(file);
-                  if (compressedFile.size > MAX_UPLOAD_IMAGE_BYTES) throw new Error("图片压缩后仍超过 4 MB");
-                  const nonce = crypto.randomUUID(),
-                    path = `${active.id}/${user.id}/${nonce}`;
-                  const { error: uploadError } = await db.storage
-                    .from("heika-chat")
-                    .upload(path, compressedFile, { contentType: compressedFile.type });
-                  if (uploadError) throw uploadError;
-                  const { data, error } = await db.rpc("send_dm", {
-                    room: active.id,
-                    content: "[图片]",
-                    nonce,
-                    image_path: path,
-                  });
-                  if (error) throw error;
-                  setMessages((old) =>
-                    old.some((m) => m.id === data.id) ? old : [...old, data],
-                  );
-                  void refresh();
-                } catch (e) {
-                  setError(
-                    e instanceof Error ? e.message : "图片发送失败，请重新选择",
-                  );
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            />
-          </label>
           <form
             className="chat-compose"
             onSubmit={(e) => {
@@ -765,6 +740,49 @@ export default function Messages({
               void send();
             }}
           >
+            <label className="chat-attach" aria-label="发送图片">
+              <FileImage size={20} />
+              <input
+                aria-label="选择要发送的图片"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={busy}
+                onChange={async (e) => {
+                  const input = e.currentTarget;
+                  const file = input.files?.[0];
+                  if (!file || !db || !active) return;
+                  setBusy(true);
+                  try {
+                    const compressedFile = await compressUploadImage(file);
+                    if (compressedFile.size > MAX_UPLOAD_IMAGE_BYTES) throw new Error("图片压缩后仍超过 4 MB");
+                    const nonce = crypto.randomUUID(),
+                      path = `${active.id}/${user.id}/${nonce}`;
+                    const { error: uploadError } = await db.storage
+                      .from("heika-chat")
+                      .upload(path, compressedFile, { contentType: compressedFile.type });
+                    if (uploadError) throw uploadError;
+                    const { data, error } = await db.rpc("send_dm", {
+                      room: active.id,
+                      content: "[图片]",
+                      nonce,
+                      image_path: path,
+                    });
+                    if (error) throw error;
+                    setMessages((old) =>
+                      old.some((m) => m.id === data.id) ? old : [...old, data],
+                    );
+                    void refresh();
+                  } catch (e) {
+                    setError(
+                      e instanceof Error ? e.message : "图片发送失败，请重新选择",
+                    );
+                  } finally {
+                    setBusy(false);
+                    input.value = "";
+                  }
+                }}
+              />
+            </label>
             <input
               aria-label="消息内容"
               maxLength={2000}
@@ -772,8 +790,8 @@ export default function Messages({
               onChange={(e) => setDraft(e.target.value)}
               placeholder="写下消息…"
             />
-            <button className="primary-button" disabled={busy || !draft.trim()}>
-              {busy ? "发送中…" : "发送"}
+            <button className="chat-send" disabled={busy || !draft.trim()} aria-label="发送消息">
+              <Send size={17}/>
             </button>
           </form>
           <AnimatedNotice message={error} />
