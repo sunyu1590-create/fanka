@@ -29,6 +29,7 @@ import {
   Crown,
   ShieldCheck,
   Settings,
+  GitBranch,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -47,6 +48,7 @@ import DailyMissions from "./DailyMissions";
 import NotificationCenter from "./NotificationCenter";
 import CoExplore from "./CoExplore";
 import SharedCollection from "./SharedCollection";
+import { CardChainPanel, ExplorationRecap } from "./ExplorationFeatures";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
@@ -474,6 +476,8 @@ export default function Community() {
     [body, setBody] = useState(""),
     [aiWorkbenchOpen, setAiWorkbenchOpen] = useState(false),
     [aiWorkbenchMode, setAiWorkbenchMode] = useState<"title" | "outline" | "polish" | "topics">("outline"),
+    [aiWorkbenchOutput, setAiWorkbenchOutput] = useState(""),
+    [aiWorkbenchBusy, setAiWorkbenchBusy] = useState(false),
     [writeTag, setWriteTag] = useState<string>(tags[0]),
     [writeTopics, setWriteTopics] = useState<string[]>([]),
     [writeSeriesId, setWriteSeriesId] = useState(""),
@@ -507,8 +511,9 @@ export default function Community() {
   const [sharedCollectionCode, setSharedCollectionCode] = useState("");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("room")) { setSecondaryReturnTab("discover"); setTabState("co-explore"); }
+    if (params.get("room")) { setSecondaryReturnTab("mine"); setTabState("co-explore"); }
     else if (params.get("collection")) { setSharedCollectionCode(params.get("collection") || ""); setSecondaryReturnTab("discover"); setTabState("shared-collection"); }
+    else if (params.get("chain")) { setSecondaryReturnTab("mine"); setTabState("card-chain"); }
   }, []);
   const startPageTransition = (updatePage: () => void) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -532,7 +537,8 @@ export default function Community() {
     setTab("search");
   };
   const openNotifications = () => { setSecondaryReturnTab("messages"); setTab("notifications"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
-  const openCoExplore = () => { setSecondaryReturnTab("discover"); setTab("co-explore"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openCoExplore = () => { setSecondaryReturnTab("mine"); setTab("co-explore"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openMineFeature = (feature: "monthly-recap" | "card-chain") => { scrollPositions.current.mine = window.scrollY; setSecondaryReturnTab("mine"); setTab(feature); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
   const closeSearch = () => setTab(searchReturnTab || "discover");
   const openMyContent = (returnTab: "mine" | "settings" = "mine") => {
     scrollPositions.current[returnTab] = window.scrollY;
@@ -2269,6 +2275,15 @@ export default function Community() {
     } catch (error) { toast(error instanceof Error ? error.message : "话题创建失败"); }
     finally { setCreatingTopic(false); }
   };
+  const generateAiWorkbench = async () => {
+    if (!accountId) { toast("登录后可以使用 AI 创作工作台"); return; }
+    setAiWorkbenchBusy(true); setAiWorkbenchOutput("");
+    try {
+      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag }) as { output: string };
+      setAiWorkbenchOutput(result.output);
+    } catch (error) { toast(error instanceof Error ? error.message : "AI 生成失败，请稍后重试"); }
+    finally { setAiWorkbenchBusy(false); }
+  };
   const secondaryTitle = modal === "write"
     ? "取消"
     : tab === "settings"
@@ -2276,7 +2291,7 @@ export default function Community() {
       : tab === "topic" ? "发现"
         : tab === "search" ? "搜索"
         : tab === "notifications" ? "通知"
-        : tab === "co-explore" ? "双人探索"
+        : tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain" ? "我的"
         : tab === "shared-collection" ? "分享收藏夹"
         : tab === "about" || tab === "moderation" ? "设置"
           : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的"
@@ -2289,7 +2304,7 @@ export default function Community() {
     if (tab === "settings") { setSettingsPersonalOpen(false); setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
     if (tab === "topic") { closeTopicPage(); return; }
     if (tab === "search") { closeSearch(); return; }
-    if (tab === "notifications" || tab === "co-explore" || tab === "shared-collection") { setTab(secondaryReturnTab); return; }
+    if (tab === "notifications" || tab === "co-explore" || tab === "shared-collection" || tab === "monthly-recap" || tab === "card-chain") { setTab(secondaryReturnTab); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
     if (tab === "debug") {
       setTab(debugReturnTab);
@@ -2609,7 +2624,7 @@ export default function Community() {
   const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => (
     <button
       key={id}
-      className={tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "co-explore" || tab === "shared-collection") && id === "discover") || (tab === "notifications" && id === "messages") ? "active" : ""}
+      className={tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "shared-collection") && id === "discover") || ((tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain") && id === "mine") || (tab === "notifications" && id === "messages") ? "active" : ""}
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
@@ -3173,7 +3188,6 @@ export default function Community() {
       {tab === "discover" && (
         <section className="page editorial-home">
           <button className="search search-launch" onClick={openSearch}><Search size={18}/><span>搜索内容或用户</span><kbd>⌕</kbd></button>
-          <button className="co-explore-entry" type="button" onClick={openCoExplore}><span><UsersRound size={18}/></span><strong>和朋友一起探索<small>各选一篇内容，互相交换灵感</small></strong><ChevronRight size={18}/></button>
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
@@ -3301,7 +3315,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.24.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.25.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3457,8 +3471,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.24.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.24.0</strong><small>2026.11.03</small></div><ul><li>新增可领取的每日探索任务、经验奖励和个人稀有卡图鉴。</li><li>支持创建双人探索房间，和朋友交换私藏内容。</li><li>收藏夹可生成协作分享链接，邀请好友共同整理。</li><li>新增关注动态、评论和回复通知中心。</li><li>创作页加入 AI 工作台演示，可预览标题、提纲、润色与话题建议。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.25.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.25.0</strong><small>2026.11.03</small></div><ul><li>新增月度探索回顾，汇总翻卡、探索日与 S/SS/SSS 稀有卡并可分享。</li><li>新增卡片接龙，从已发布内容发起故事，探索者可续写一段。</li><li>AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.23.1</strong><small>2026.11.03</small></div><ul><li>创作者中心与作品草稿管理拆分，入口与页面标题各自独立。</li><li>修正设置分类页的返回层级与重新进入时的状态恢复。</li><li>最近发现恢复卡片预览，再由“查看内容”进入详情。</li><li>评分后渐进展示社区结果，并加入模糊缩放反馈动效。</li><li>管理员可新增、编辑和上下线发现页的话题共创活动。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.12.0</strong><small>2026.11.03</small></div><ul><li>个人设置、调试模式、安全中心和创作者中心统一收纳在右上角设置入口，并按分类进入。</li><li>移除“我的”页底部重复的设置入口，设置不再被挤到页面末尾。</li><li>可以关注创作者，在发现页切换到关注动态。</li><li>支持创建作品系列，并在发布时将内容归入系列。</li><li>发现页上线限时话题共创，可加入后直接带话题创作。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.11.0</strong><small>2026.11.03</small></div><ul><li>发现页新增个性化精选、最新和高评分排序。</li><li>收藏支持创建、重命名、删除收藏夹，按标题、话题和作者搜索并整理内容。</li><li>新增创作者数据面板，统计公开内容阅读、点赞、收藏与评论表现。</li><li>加入每周探索、发布和收藏任务，完成后可领取 EXP 并计入等级奖励。</li><li>收藏夹和任务奖励改由数据库权限与事务校验保护。</li></ul></div>
@@ -3761,6 +3775,7 @@ export default function Community() {
               <span>我的收藏</span>
             </div>
           </div>
+          <div className="mine-exploration-tools"><button className="co-explore-entry" type="button" onClick={openCoExplore}><span><UsersRound size={18}/></span><strong>和朋友一起探索<small>各选一篇内容，互相交换灵感</small></strong><ChevronRight size={18}/></button><button className="mine-feature-link" type="button" onClick={() => openMineFeature("monthly-recap")}><span><Sparkles size={17}/></span><strong>探索月报<small>回看这个月的发现与稀有卡</small></strong><ChevronRight size={17}/></button><button className="mine-feature-link" type="button" onClick={() => openMineFeature("card-chain")}><span><GitBranch size={17}/></span><strong>卡片接龙<small>从一张卡片开始续写故事</small></strong><ChevronRight size={17}/></button></div>
           <DailyMissions accountId={accountId} onNotice={toast}/>
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
@@ -3870,6 +3885,8 @@ export default function Community() {
           </div>
         </section>
       )}
+      {tab === "monthly-recap" && <ExplorationRecap opened={state.opened} rarityTiers={state.rarityTiers} posts={all} onNotice={toast} onBack={() => { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); }} />}
+      {tab === "card-chain" && <CardChainPanel accountId={accountId} posts={all} onLogin={() => setTab("messages")} onBack={() => { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); }} onNotice={toast} />}
       {tab === "creator-center" && (
         <section className="page my-content-page creator-dashboard-page">
           <button className="back settings-back" onClick={() => {
@@ -4501,14 +4518,9 @@ export default function Community() {
                     rows={7}
                   />
                 </label>
-                <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台演示">
-                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEMO</i></span><small>{aiWorkbenchOpen ? "收起演示" : "试用提纲、标题与润色建议"}</small><ChevronDown size={17}/></button>
-                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => setAiWorkbenchMode(mode)}>{label}</button>)}</div>{(() => {
-                    const source = body.trim();
-                    const sample = source || "把最近印象最深的一次观察、一个细节，以及它带来的感受写下来。";
-                    const output = aiWorkbenchMode === "title" ? (title.trim() || `${writeTag}里的小发现：把日常过成值得收藏的瞬间`) : aiWorkbenchMode === "outline" ? `开篇：从「${sample.slice(0, 30)}」这个具体场景切入\n\n展开：补充当时的细节、感受和一个值得记住的发现\n\n收尾：写下它带给你的变化，留一个自然的问题` : aiWorkbenchMode === "polish" ? source ? `${source.replace(/\s+/g, "，").replace(/[，。；]+$/g, "")}。\n\n试着再补充一个具体场景或细节，让读者更容易走进你的观察。` : "先写下你的真实想法，工作台会在这里展示一版更顺畅的表达建议。" : `推荐话题：#${writeTag}  #日常观察  #灵感记录`;
-                    return <><div className="ai-workbench-result"><small>演示结果 · 不会自动发布</small><p>{output}</p></div><button type="button" className="ai-workbench-apply" onClick={() => { if (aiWorkbenchMode === "title") setTitle(output); else if (aiWorkbenchMode === "polish") setBody(output); else if (aiWorkbenchMode === "topics") setWriteTopics((items) => [...new Set([...items, writeTag, "日常观察", "灵感记录"])].slice(0, 5)); else setBody((current) => current.trim() ? `${current.trim()}\n\n${output}` : output); toast("演示建议已放入编辑区，可继续修改"); }}>{aiWorkbenchMode === "title" ? "使用这个标题" : aiWorkbenchMode === "topics" ? "添加推荐话题" : aiWorkbenchMode === "polish" ? "使用润色建议" : "插入写作提纲"}</button></>;
-                  })()}</div>}
+                <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
+                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
+                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); }}>{label}</button>)}</div><p className="ai-workbench-guidance">AI 只提供可编辑的创作建议，不会自动发布内容。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><p>{aiWorkbenchOutput}</p></div><button type="button" className="ai-workbench-apply" onClick={() => { if (aiWorkbenchMode === "title") setTitle(aiWorkbenchOutput.split("\n").filter(Boolean)[0]?.replace(/^\d+[.、)）]\s*/, "") || aiWorkbenchOutput); else if (aiWorkbenchMode === "polish") setBody(aiWorkbenchOutput); else if (aiWorkbenchMode === "topics") setWriteTopics((items) => [...new Set([...items, ...[...aiWorkbenchOutput.matchAll(/#?([\u4e00-\u9fa5A-Za-z0-9_-]{2,20})/g)].map((match) => match[1])])].slice(0, 5)); else setBody((current) => current.trim() ? `${current.trim()}\n\n${aiWorkbenchOutput}` : aiWorkbenchOutput); toast("建议已放入编辑区，可以继续修改"); }}>{aiWorkbenchMode === "title" ? "使用第一个标题" : aiWorkbenchMode === "topics" ? "添加推荐话题" : aiWorkbenchMode === "polish" ? "使用润色建议" : "插入写作提纲"}</button></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
                 </section>
                 <section className="composer-media-section" aria-label="内容图片">
                   <div className="composer-section-heading"><span><strong>图片</strong><small>最多 9 张 · 上传时自动压缩，每张不超过 4 MB</small></span><span>{composerImages.length}/9</span></div>

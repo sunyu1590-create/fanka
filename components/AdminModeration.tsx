@@ -28,7 +28,7 @@ const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed",
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
 
 export default function AdminModeration({ onBack }: Props) {
-  const [section, setSection] = useState<"reports" | "messages" | "content" | "users" | "topic-events">("reports");
+  const [section, setSection] = useState<"reports" | "messages" | "content" | "users" | "topic-events" | "ai-settings">("reports");
   const [status, setStatus] = useState<(typeof filters)[number][0]>("open");
   const [reports, setReports] = useState<Report[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -54,6 +54,10 @@ export default function AdminModeration({ onBack }: Props) {
   const [eventDescription, setEventDescription] = useState("");
   const [eventStarts, setEventStarts] = useState(() => localDateTime(new Date()));
   const [eventEnds, setEventEnds] = useState(() => { const date = new Date(); date.setDate(date.getDate() + 30); return localDateTime(date); });
+  const [aiKey, setAiKey] = useState("");
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiMasked, setAiMasked] = useState("");
+  const [aiSettingsBusy, setAiSettingsBusy] = useState(false);
 
   const loadTopicEvents = useCallback(async () => {
     setTopicEventBusy(true); setError("");
@@ -66,6 +70,28 @@ export default function AdminModeration({ onBack }: Props) {
   }, [eventTopic]);
 
   useEffect(() => { if (section === "topic-events") void loadTopicEvents(); }, [section, loadTopicEvents]);
+  const loadAiSettings = useCallback(async () => {
+    setAiSettingsBusy(true); setError("");
+    try { const result = await cloudRequest("/api/v1/admin/ai-settings") as { configured: boolean; masked: string }; setAiConfigured(result.configured); setAiMasked(result.masked); }
+    catch (e) { setError(e instanceof Error ? e.message : "AI 设置读取失败"); }
+    finally { setAiSettingsBusy(false); }
+  }, []);
+  useEffect(() => { if (section === "ai-settings") void loadAiSettings(); }, [section, loadAiSettings]);
+  const saveAiSettings = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!aiKey.trim()) { setError("请输入 DeepSeek API 密钥"); return; }
+    setAiSettingsBusy(true); setError(""); setNotice("");
+    try { await cloudRequest("/api/v1/admin/ai-settings", { key: aiKey.trim() }); setAiKey(""); setAiConfigured(true); await loadAiSettings(); setNotice("DeepSeek 密钥已加密保存到私有云存储。"); }
+    catch (e) { setError(e instanceof Error ? e.message : "AI 密钥保存失败"); }
+    finally { setAiSettingsBusy(false); }
+  };
+  const removeAiSettings = async () => {
+    if (!window.confirm("确定删除云端 DeepSeek 密钥吗？删除后 AI 工作台将暂停服务。")) return;
+    setAiSettingsBusy(true); setError(""); setNotice("");
+    try { await cloudRequest("/api/v1/admin/ai-settings", { action: "delete" }); setAiConfigured(false); setAiMasked(""); setNotice("云端 AI 密钥已删除。"); }
+    catch (e) { setError(e instanceof Error ? e.message : "AI 密钥删除失败"); }
+    finally { setAiSettingsBusy(false); }
+  };
 
   const resetTopicEventForm = () => {
     setEditingEvent(null); setEventTitle(""); setEventDescription("");
@@ -211,14 +237,25 @@ export default function AdminModeration({ onBack }: Props) {
       <button role="tab" aria-selected={section === "content"} className={section === "content" ? "selected" : ""} onClick={() => setSection("content")}>待审核内容 <small>{submissionTotal}</small></button>
       <button role="tab" aria-selected={section === "users"} className={section === "users" ? "selected" : ""} onClick={() => setSection("users")}>账号管理 <small>{userTotal}</small></button>
       <button role="tab" aria-selected={section === "topic-events"} className={section === "topic-events" ? "selected" : ""} onClick={() => setSection("topic-events")}>话题共创</button>
-      <button className="moderation-refresh" aria-label="刷新队列" onClick={() => section === "users" ? void loadUsers() : section === "topic-events" ? void loadTopicEvents() : void load()} disabled={loading || usersLoading || topicEventBusy}><RefreshCw size={16} /></button>
+      <button role="tab" aria-selected={section === "ai-settings"} className={section === "ai-settings" ? "selected" : ""} onClick={() => setSection("ai-settings")}>AI 工作台</button>
+      <button className="moderation-refresh" aria-label="刷新队列" onClick={() => section === "users" ? void loadUsers() : section === "topic-events" ? void loadTopicEvents() : section === "ai-settings" ? void loadAiSettings() : void load()} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy}><RefreshCw size={16} /></button>
     </div>
     {section === "reports" && <div className="moderation-filters" role="group" aria-label="举报状态">
       {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "topic-events" ? <>
+    {section === "ai-settings" ? <>
+      <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
+        <div className="admin-topic-event-form-heading"><div><small>AI / PROVIDER</small><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
+        {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}
+        <p>密钥使用 AES-256-GCM 加密后保存在 Vercel 私有云存储。只有服务端可读取明文，页面不会回显密钥。</p>
+        <label>API 密钥<input type="password" autoComplete="new-password" value={aiKey} onChange={(event) => setAiKey(event.target.value)} placeholder={aiConfigured ? "已配置，输入新密钥可替换" : "粘贴 DeepSeek API 密钥"} /></label>
+        <button className="primary-button full" disabled={aiSettingsBusy || !aiKey.trim()}>{aiSettingsBusy ? "正在加密保存…" : aiConfigured ? "更换并保存密钥" : "加密保存密钥"}</button>
+        {aiConfigured && <button type="button" className="soft-button" disabled={aiSettingsBusy} onClick={() => void removeAiSettings()}>删除云端密钥</button>}
+        <small>推荐仅在可信设备上操作。更换后所有用户的 AI 创作工作台会立即使用新密钥。</small>
+      </form>
+    </> : section === "topic-events" ? <>
       <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
         <div className="admin-topic-event-form-heading"><div><small>COMMUNITY / OPEN CALL</small><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
         <label>关联话题<select required value={eventTopic} onChange={(event) => setEventTopic(event.target.value)}><option value="" disabled>选择一个话题</option>{topicTags.map((topic) => <option key={topic.id} value={topic.id}>#{topic.name}</option>)}</select></label>
