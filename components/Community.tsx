@@ -30,6 +30,8 @@ import {
   ShieldCheck,
   Settings,
   GitBranch,
+  History,
+  CalendarDays,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
