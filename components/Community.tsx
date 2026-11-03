@@ -63,6 +63,7 @@ const FLIP_RAIN_LEAD_MS = 240;
 const FLIP_RAIN_STAGGER_WINDOW_MS = 900;
 const FLIP_RAIN_JITTER_MS = 90;
 const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
+const RATING_COLORS = ["#ff5d78", "#ff9452", "#edbd36", "#65b95e", "#34aeb5"];
 
 type Comment = {
   id: number;
@@ -79,7 +80,7 @@ type Comment = {
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
-type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[] };
+type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[]; claimedLevels: number[] };
 type SearchPerson = { id: string; nickname: string; bio: string | null; avatar_url: string | null };
 function relativeTime(timestamp: number) {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
@@ -345,7 +346,8 @@ export default function Community() {
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
-  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
+  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
+  const [rewardClaimBusyLevel, setRewardClaimBusyLevel] = useState<number | null>(null);
   const [detailImageTransition, setDetailImageTransition] = useState<{
     rect: DOMRect;
     src: string;
@@ -934,6 +936,24 @@ export default function Community() {
       ratingBusy.current = false;
     }
   };
+  const claimExperienceReward = async (level: number) => {
+    if (!accountId) {
+      toast("登录后即可领取并同步等级奖励");
+      return;
+    }
+    if (rewardClaimBusyLevel !== null) return;
+    setRewardClaimBusyLevel(level);
+    try {
+      const result = await cloudRequest("/api/v1/progression", { level });
+      const summary = await cloudRequest("/api/v1/progression");
+      if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+      toast(result?.claimed ? `LV.${level} 奖励已领取并保存到账号` : `LV.${level} 奖励此前已领取`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "奖励领取失败，请稍后重试");
+    } finally {
+      setRewardClaimBusyLevel(null);
+    }
+  };
   const toast = (msg: string) => {
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
@@ -985,6 +1005,8 @@ export default function Community() {
       setBottomNavStyle("fixed");
       setSelectedCalendarDate("");
       setTab("today");
+      imageSwitchSequence.current += 1;
+      setImageLoading(false);
       setDetail(null);
       setDetailReady(false);
       setTransitionPhase(null);
@@ -1129,6 +1151,8 @@ export default function Community() {
       window.setTimeout(() => closeDetail(true), 420);
       return;
     }
+    imageSwitchSequence.current += 1;
+    setImageLoading(false);
     transitionBusy.current = true;
     setDetailReady(false);
     setTransitionPhase("closing");
@@ -1948,7 +1972,7 @@ export default function Community() {
       const page = result.data as TopicPageResponse;
       setTopicSummary(page.topic); setTopicPosts(page.items); setTopicTotal(page.total); setTopicPage(1);
       setTopicReturnPostId(detail); setTopicReturnTab(detail === null ? tab : detailSource.current);
-      if (detail !== null) { setDetail(null); setDetailReady(false); }
+      if (detail !== null) { imageSwitchSequence.current += 1; setImageLoading(false); setDetail(null); setDetailReady(false); }
       scrollPositions.current[tab] = window.scrollY;
       setTab("topic"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
     } catch (error) { toast(error instanceof Error ? error.message : "话题读取失败"); }
@@ -1971,6 +1995,7 @@ export default function Community() {
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[backTab] || 0, behavior: "instant" }));
     if (topicReturnPostId !== null) {
       const postId = topicReturnPostId;
+      imageSwitchSequence.current += 1;
       setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
     }
   };
@@ -2185,9 +2210,6 @@ export default function Community() {
   const detailImages = useMemo(() => post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
     : [], [post]);
-  useEffect(() => {
-    imageSwitchSequence.current += 1;
-  }, [detail]);
   const preloadDetailImage = useCallback((src: string, priority: "low" | "high" = "low") => {
     const cached = preloadedDetailImages.current.get(src);
     if (cached) {
@@ -2332,6 +2354,8 @@ export default function Community() {
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
+        imageSwitchSequence.current += 1;
+        setImageLoading(false);
         setDetail(null);
         setDetailReady(false);
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
@@ -2419,7 +2443,7 @@ export default function Community() {
             setIsAdmin(false);
             setPublicBookmarks(false);
             setPublicBookmarksLoaded(true);
-            setExperienceSummary({ total: 0, membershipTier: "free", events: [] });
+            setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
             setStorageKey("heika-demo-v1");
             try {
               const guest = JSON.parse(
@@ -2983,9 +3007,8 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("security")}><span>安全中心</span><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("membership")}><span>会员中心</span><small>{membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}</small><ChevronRight size={16}/></button>
               <button onClick={() => { scrollPositions.current.settings = window.scrollY; setDebugReturnTab("settings"); setTab("debug"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>调试模式</span><small>开发与重置工具</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.09.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.10.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -3003,7 +3026,20 @@ export default function Community() {
             return <div className="experience-page-content">
               <div className="experience-total-card"><span>当前等级</span><strong>LV.{progress.current.level}</strong><b>{experienceSummary.total} EXP</b><div className="experience-track"><i style={{ width: `${progress.percent}%` }} /></div><small>{progress.next ? `距离 LV.${progress.next.level} 还差 ${progress.next.threshold - experienceSummary.total} EXP` : "已达到当前最高等级"}</small></div>
               <div className="experience-rule-note"><strong>经验获取</strong><span>当天首次翻卡 +10 EXP · 每日最多 10 次翻卡计分</span><span>首次给每篇内容评分 +2 EXP · 每日最多 5 次</span><small>评分修改不会重复获得经验；给自己发布的内容评分不计入。</small></div>
-              <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
+              <div className="experience-level-list">
+                <h2>等级奖励</h2>
+                <p className="experience-reward-intro">达到经验要求后领取奖励，领取记录会同步保存到账号。</p>
+                {EXPERIENCE_LEVELS.map((item) => {
+                  const unlocked = experienceSummary.total >= item.threshold;
+                  const claimed = experienceSummary.claimedLevels.includes(item.level);
+                  return <div className={`experience-level-row${unlocked ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}${claimed ? " is-claimed" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}>
+                    <strong>LV.{item.level}</strong>
+                    <span className="experience-reward-copy"><b>{item.reward}</b><small>{item.description}</small></span>
+                    <small className="experience-reward-threshold">{item.threshold} EXP</small>
+                    {claimed ? <span className="experience-reward-state"><Check size={13}/> 已领取</span> : unlocked ? <button className="experience-reward-claim" type="button" disabled={rewardClaimBusyLevel !== null} onClick={() => void claimExperienceReward(item.level)}>{rewardClaimBusyLevel === item.level ? "领取中…" : "领取奖励"}</button> : <span className="experience-reward-state is-locked">未解锁</span>}
+                  </div>;
+                })}
+              </div>
               <div className="experience-rule-note"><strong>Plus / Pro 加成 · 当前 {experienceSummary.membershipTier.toUpperCase()}</strong><span>Plus 每日首次翻卡额外 +3 EXP · Pro 额外 +6 EXP。</span><small>会员等级由管理员根据已核验权益设置；订阅预览页不会自动开通会员。</small></div>
               {!!experienceSummary.events.length && <div className="experience-level-list"><button type="button" className="collapsible-panel-toggle" aria-expanded={recentExperienceOpen} onClick={() => setRecentExperienceOpen((open) => !open)}><h2>最近经验</h2><span>{experienceSummary.events.length} 条 <ChevronDown size={16}/></span></button>{recentExperienceOpen && experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
@@ -3128,7 +3164,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.09.0</p>
+          <p className="lead">HEIKA · 版本 2.10.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.10.0</strong><small>2026.11.03</small></div><ul><li>修复图片加载状态误覆盖和切图卡住的问题，增强多图切换的柔和模糊动效。</li><li>我的作品改用固定双列网格，会员中心入口放到“我”页面设置旁。</li><li>评分星星加入分色反馈、光晕和逐颗跃动效果。</li><li>等级奖励支持解锁后领取，领取记录同步保存到账号。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.09.0</strong><small>2026.11.03</small></div><ul><li>我的作品固定为双列瀑布流，发布入口由底栏中间按钮统一提供。</li><li>他人主页默认使用大图瀑布流，可在设置中切换为列表。</li><li>多图切换即时反馈，目标图片预加载和解码完成后平滑替换；滑动识别更稳定。</li><li>设置入口移到“我”标题旁，安全中心、会员中心和调试模式收进设置。</li><li>最近翻开的卡片只在发现页的推荐分类显示，详情切换动画更轻、更省性能。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.07.0</strong><small>2026.11.03</small></div><ul><li>聊天会话与内容详情进入沉浸状态时隐藏手机底栏，返回后自动恢复。</li><li>安全中心和会员中心移入“我的”设置入口，整理个人设置菜单。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.06.0</strong><small>2026.11.03</small></div><ul><li>支持将 HEIKA 安装到手机主屏幕，并使用新的黑卡应用图标。</li><li>补充独立应用显示模式、启动图标和基础离线页面缓存。</li></ul></div>
@@ -3392,7 +3429,7 @@ export default function Community() {
       )}
       {tab === "mine" && (
         <section className="page mine-page">
-          <div className="mine-heading"><h1 className="mine-title">我</h1><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={() => { scrollPositions.current.mine = window.scrollY; setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><Settings size={19}/></button></div>
+          <div className="mine-heading"><h1 className="mine-title">我</h1><div className="mine-heading-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={() => { scrollPositions.current.mine = window.scrollY; setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><Settings size={19}/></button></div></div>
           <div className="profile-card">
             <div className="avatar">
               {state.avatar ? (
@@ -3709,10 +3746,10 @@ export default function Community() {
                     if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
                     setPreviewImage(true);
                   }} aria-label="查看大图">
-                    <img key={detailImages[displayedImageIndex]} src={detailImages[displayedImageIndex]} alt={`${post.title}，第 ${displayedImageIndex + 1} 张`} loading="eager" fetchPriority="high" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
+                    <img key={detailImages[displayedImageIndex]} src={detailImages[displayedImageIndex]} alt={`${post.title}，第 ${displayedImageIndex + 1} 张`} loading="eager" fetchPriority="high" onLoad={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }} onError={(event) => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
                     <span>查看大图</span>
                   </button>
-                  <span className={`detail-image-loading${imageLoading ? " is-visible" : ""}`} role="status" aria-live="polite">{imageLoading ? "正在加载" : ""}</span>
+                  {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
                   {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
                     <button type="button" aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
                     <span>{activeImageIndex + 1} / {detailImages.length}</span>
@@ -3733,7 +3770,7 @@ export default function Community() {
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <span>给这篇内容评分</span>
                   <div>{[1, 2, 3, 4, 5].map((n) => (
-                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms` }} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
+                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms`, "--star-delay": `${(n - 1) * 58}ms`, "--rating-color": RATING_COLORS[n - 1] } as CSSProperties} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
                       <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
                     </button>
                   ))}</div>
@@ -3830,6 +3867,8 @@ export default function Community() {
             setAuthorProfile(null);
             setMessagePeer(id);
             setTab("messages");
+            imageSwitchSequence.current += 1;
+            setImageLoading(false);
             setDetail(null);
             setViewerId(null);
           }}
