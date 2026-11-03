@@ -7,7 +7,7 @@ import {
   ApiError,
   textField,
 } from "@/lib/server/api";
-import { libraryFields, present, type LibraryRow } from "@/lib/server/library";
+import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateTopicNames } from "@/lib/topic-validation";
 import { cardRarityTier } from "@/lib/progression";
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
       bookmarks: bookmarks.data,
       interactions: interactions.data,
       interests: interests.data,
-      own: (own.data as unknown as LibraryRow[]).map(present),
+      own: await presentMany(db, own.data as unknown as LibraryRow[]),
     };
   });
 }
@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
       const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single();
       dbError(refreshed.error);
-      return present(refreshed.data as unknown as LibraryRow);
+      return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];
     }
     if (action === "publish") {
       const { data: tag, error: tagError } = await db
@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
       dbError(publishError);
       const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single();
       dbError(refreshed.error);
-      return present(refreshed.data as unknown as LibraryRow);
+      return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];
     }
     let postQuery = db
       .from("posts")

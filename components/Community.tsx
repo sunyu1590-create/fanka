@@ -14,6 +14,7 @@ import {
   Send,
   Trash2,
   PenLine,
+  ChevronDown,
   ChevronRight,
   X,
   Check,
@@ -27,6 +28,7 @@ import {
   Sparkles,
   Crown,
   ShieldCheck,
+  Settings,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -41,7 +43,7 @@ import type { ProfileDetails } from "./AccountProfile";
 import PublicProfile from "./PublicProfile";
 import MessagingPreferences from "./MessagingPreferences";
 import InboxBadge from "./InboxBadge";
-import { cloudRequest } from "@/lib/cloud";
+import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { browserDb } from "@/lib/browser-db";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
 import { validateComposerFiles } from "@/lib/composer-validation";
@@ -61,6 +63,7 @@ const FLIP_RAIN_LEAD_MS = 240;
 const FLIP_RAIN_STAGGER_WINDOW_MS = 900;
 const FLIP_RAIN_JITTER_MS = 90;
 const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
+const RATING_COLORS = ["#ff5d78", "#ff9452", "#edbd36", "#65b95e", "#34aeb5"];
 
 type Comment = {
   id: number;
@@ -77,7 +80,7 @@ type Comment = {
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
-type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission"; points: number; createdAt: string }[] };
+type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
 type BookmarkCollection = { id: string; name: string; created_at?: string };
 type CreatorMission = { key: "explore_days" | "publish_post" | "curate_posts"; title: string; description: string; progress: number; target: number; claimed: boolean; points: number };
 type CreatorCenter = { insights: { posts: number; views: number; likes: number; saves: number; comments: number; topPosts: { id: number; title: string; views: number; likes: number; saves: number; comments: number }[] }; weekStart: string; missions: CreatorMission[] };
@@ -266,6 +269,10 @@ export default function Community() {
   const [themeReady, setThemeReady] = useState(false);
   const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("fixed");
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
+  const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise">("image-zoom");
+  const [detailTransitionLoaded, setDetailTransitionLoaded] = useState(false);
+  const [profileLayout, setProfileLayout] = useState<"masonry" | "list">("masonry");
+  const [profileLayoutLoaded, setProfileLayoutLoaded] = useState(false);
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
   const [fontReady, setFontReady] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
@@ -280,6 +287,14 @@ export default function Community() {
     if (savedBottomNavStyle === "glass" || savedBottomNavStyle === "fixed")
       setBottomNavStyle(savedBottomNavStyle);
     setBottomNavStyleReady(true);
+    const savedDetailTransition = localStorage.getItem("heika-detail-transition");
+    if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise")
+      setDetailTransition(savedDetailTransition);
+    setDetailTransitionLoaded(true);
+    const savedProfileLayout = localStorage.getItem("heika-public-profile-layout");
+    if (savedProfileLayout === "masonry" || savedProfileLayout === "list")
+      setProfileLayout(savedProfileLayout);
+    setProfileLayoutLoaded(true);
   }, []);
   useEffect(() => {
     if (!themeReady) return;
@@ -301,6 +316,14 @@ export default function Community() {
     document.documentElement.dataset.bottomNav = bottomNavStyle;
     localStorage.setItem("heika-bottom-nav-style", bottomNavStyle);
   }, [bottomNavStyle, bottomNavStyleReady]);
+  useEffect(() => {
+    if (!detailTransitionLoaded) return;
+    localStorage.setItem("heika-detail-transition", detailTransition);
+  }, [detailTransition, detailTransitionLoaded]);
+  useEffect(() => {
+    if (!profileLayoutLoaded) return;
+    localStorage.setItem("heika-public-profile-layout", profileLayout);
+  }, [profileLayout, profileLayoutLoaded]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
@@ -309,8 +332,10 @@ export default function Community() {
   const sharedPostHandled = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [publicBookmarks, setPublicBookmarks] = useState(false);
+  const [publicBookmarksLoaded, setPublicBookmarksLoaded] = useState(false);
   const [bookmarkVisibilityBusy, setBookmarkVisibilityBusy] = useState(false);
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
+  const [chatConversationOpen, setChatConversationOpen] = useState(false);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -324,7 +349,7 @@ export default function Community() {
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
-  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
+  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
   const [bookmarkCollections, setBookmarkCollections] = useState<BookmarkCollection[]>([]);
   const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
   const [bookmarkMembership, setBookmarkMembership] = useState<Record<string, string | null>>({});
@@ -335,6 +360,7 @@ export default function Community() {
   const [editingCollectionName, setEditingCollectionName] = useState("");
   const [creatorCenter, setCreatorCenter] = useState<CreatorCenter | null>(null);
   const [creatorCenterLoading, setCreatorCenterLoading] = useState(false);
+  const [rewardClaimBusyLevel, setRewardClaimBusyLevel] = useState<number | null>(null);
   const [detailImageTransition, setDetailImageTransition] = useState<{
     rect: DOMRect;
     src: string;
@@ -373,10 +399,10 @@ export default function Community() {
     loadedRatingIds = useRef(new Set<number>()),
     detailSource = useRef<"today" | "discover">("today");
   const [favoriteSource, setFavoriteSource] = useState("全部"),
-    [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression" | null>(null),
+    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked" | "calendar" | "recent">("works"),
+    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
-    [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
+    [debugReturnTab, setDebugReturnTab] = useState<"settings" | "mine">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
     [readingTransition, setReadingTransition] = useState<"out" | "in" | null>(
       null,
@@ -384,6 +410,10 @@ export default function Community() {
     [notificationPermission, setNotificationPermission] = useState<
       "default" | "granted" | "denied" | "unsupported"
     >("default");
+  const [recentExperienceOpen, setRecentExperienceOpen] = useState(false);
+  const [explorationCalendarOpen, setExplorationCalendarOpen] = useState(false);
+  const [explorationHistoryOpen, setExplorationHistoryOpen] = useState(false);
+  const [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("mine");
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
     ratingPulseTimer = useRef<number | null>(null);
@@ -421,7 +451,6 @@ export default function Community() {
       | "notifications"
       | "reading"
       | "browsing"
-      | "subscription"
       | "report"
       | null
     >(null),
@@ -477,6 +506,12 @@ export default function Community() {
     setTab("search");
   };
   const closeSearch = () => setTab(searchReturnTab || "discover");
+  const openMyContent = (returnTab: "mine" | "settings" = "mine") => {
+    scrollPositions.current[returnTab] = window.scrollY;
+    setMyContentReturnTab(returnTab);
+    setTab("my-content");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
   const submitSearch = (value = searchDraft) => {
     const normalized = value.trim().slice(0, 60);
     setSearchDraft(normalized);
@@ -521,7 +556,13 @@ export default function Community() {
   const [likeBusy, setLikeBusy] = useState(false);
   const [previewImage, setPreviewImage] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const imageTouchStart = useRef<number | null>(null);
+  const [displayedImageIndex, setDisplayedImageIndex] = useState(0);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [detailImageDirection, setDetailImageDirection] = useState<"next" | "previous">("next");
+  const preloadedDetailImages = useRef(new Map<string, { image: HTMLImageElement; promise: Promise<HTMLImageElement> }>());
+  const imageSwitchSequence = useRef(0);
+  const imageTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const imageSwipeTriggered = useRef(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -576,8 +617,10 @@ export default function Community() {
     candidatePosts,
     state.interests,
     state.deck[today] || [],
+    50,
+    today,
   );
-  const visibleCandidates = candidates.slice(0, page);
+  const visibleCandidates = candidates;
   const openedIds = [
     ...new Set([
       ...Object.values(state.opened).flat(),
@@ -646,10 +689,14 @@ export default function Community() {
           const legacyOpened = [
             ...new Set<number>(Object.values(loaded.opened).flat()),
           ].filter((id) => !loaded.revealed[id]);
-          if (legacyOpened.length) {
-            const batches = Array.from({ length: Math.ceil(legacyOpened.length / 100) }, (_, index) => legacyOpened.slice(index * 100, (index + 1) * 100));
+          const refreshIds = [...new Set([
+            ...legacyOpened,
+            ...Object.keys(loaded.revealed).map(Number).filter(Number.isSafeInteger),
+          ])];
+          if (refreshIds.length) {
+            const batches = Array.from({ length: Math.ceil(refreshIds.length / 100) }, (_, index) => refreshIds.slice(index * 100, (index + 1) * 100));
             const results = (await Promise.all(batches.map(async (ids) => {
-              const response = await fetch("/api/demo/cards", {
+              const response = await cloudFetch("/api/demo/cards", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ids }),
@@ -682,7 +729,7 @@ export default function Community() {
       if (cancelled) return;
       setState(loaded);
       try {
-        const response = await fetch("/api/demo/cards", { cache: "no-store" });
+        const response = await cloudFetch("/api/demo/cards", { cache: "no-store" });
         const { data } = await response.json();
         if (!cancelled && Array.isArray(data))
           setState((current) => ({
@@ -702,6 +749,12 @@ export default function Community() {
     const timer = window.setTimeout(() => {
       const cachedState: Partial<State> = { ...state };
       delete cachedState.comments;
+      const isSignedImage = (src?: string) => Boolean(src && (src.startsWith("/api/v1/media?") || src.includes("/storage/v1/object/sign/")));
+      cachedState.revealed = Object.fromEntries(Object.entries(state.revealed).map(([id, post]) => [id, {
+        ...post,
+        image: isSignedImage(post.image) ? undefined : post.image,
+        images: post.images?.filter((image) => !isSignedImage(image)),
+      }]));
       localStorage.setItem(storageKey, JSON.stringify(cachedState));
     }, 220);
     return () => window.clearTimeout(timer);
@@ -730,10 +783,10 @@ export default function Community() {
     publicFeedLoading.current = true;
     setFeedLoading(true);
     setFeedError("");
-    const params = new URLSearchParams({ mode: "discover", page: String(requestedPage), limit: "24" });
+    const params = new URLSearchParams({ mode: "discover", page: String(requestedPage), limit: "50" });
     if (requestedTag !== "全部") params.set("tag", requestedTag);
     try {
-      const response = await fetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
+      const response = await cloudFetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
       const result = await response.json();
       if (!response.ok) throw new Error("内容加载失败");
       const payload = result.data;
@@ -742,9 +795,9 @@ export default function Community() {
       if (controller.signal.aborted) return;
       setPublicFeed((current) => reset ? items : [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
       const total = Array.isArray(payload) ? items.length : Number(payload.total) || 0;
-      setFeedTotal(total);
+      setFeedTotal(Math.min(total, 50));
       setFeedPage(requestedPage);
-      setFeedHasMore(!Array.isArray(payload) && requestedPage * 24 < total);
+      setFeedHasMore(false);
       setFeedLoadedTag(requestedTag);
       setPage((current) => reset ? 12 : current + items.length);
     } catch {
@@ -770,7 +823,7 @@ export default function Community() {
     const ids = missingMineIdsKey.split(",").map(Number);
     const batches = Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) => ids.slice(index * 100, (index + 1) * 100));
     void Promise.all(batches.map(async (batch) => {
-      const response = await fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch }), signal: controller.signal });
+      const response = await cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch }), signal: controller.signal });
       if (!response.ok) throw new Error("内容加载失败");
       const result = await response.json();
       return Array.isArray(result.data?.items) ? result.data.items as Post[] : [];
@@ -790,6 +843,15 @@ export default function Community() {
     );
     return () => window.clearTimeout(timer);
   }, [dayTick]);
+  useEffect(() => {
+    if (!ready || !state.cardIds.length || state.deck[today]?.length) return;
+    const deck = dailyCandidates(candidatePosts, state.interests, [], 50, today).map((post) => post.id);
+    if (!deck.length) return;
+    update((current) => current.deck[today]?.length ? current : {
+      ...current,
+      deck: { ...current.deck, [today]: deck },
+    });
+  }, [ready, today, state.cardIds, state.deck, state.interests, candidatePosts]);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("heika-search-recent") || "[]");
@@ -821,7 +883,7 @@ export default function Community() {
     return () => controller.abort();
   }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression", returnTab: "settings" | "mine" = "settings") => {
+  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
     startPageTransition(() => {
       setSettingsReturnTab(returnTab);
@@ -845,6 +907,7 @@ export default function Community() {
     }
     const previous = publicBookmarks;
     setPublicBookmarks(value);
+    setPublicBookmarksLoaded(true);
     setBookmarkVisibilityBusy(true);
     void cloudRequest("/api/v1/me", { show_bookmarks: value }, "PATCH")
       .catch(() => {
@@ -957,12 +1020,6 @@ export default function Community() {
         <><i /><i /><i /><i /><i /></>}
     </span>
   );
-  const openMyContent = (returnTab: "mine" | "settings") => {
-    setMyContentReturnTab(returnTab);
-    scrollPositions.current[returnTab] = window.scrollY;
-    setTab("my-content");
-    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-  };
   const submitRating = async (postId: number, score: number) => {
     if (ratingBusy.current) return;
     ratingBusy.current = true;
@@ -988,6 +1045,24 @@ export default function Community() {
       toast(error instanceof Error ? error.message : "评分暂未同步，请稍后重试");
     } finally {
       ratingBusy.current = false;
+    }
+  };
+  const claimExperienceReward = async (level: number) => {
+    if (!accountId) {
+      toast("登录后即可领取并同步等级奖励");
+      return;
+    }
+    if (rewardClaimBusyLevel !== null) return;
+    setRewardClaimBusyLevel(level);
+    try {
+      const result = await cloudRequest("/api/v1/progression", { level });
+      const summary = await cloudRequest("/api/v1/progression");
+      if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+      toast(result?.claimed ? `LV.${level} 奖励已领取并保存到账号` : `LV.${level} 奖励此前已领取`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "奖励领取失败，请稍后重试");
+    } finally {
+      setRewardClaimBusyLevel(null);
     }
   };
   const toast = (msg: string) => {
@@ -1035,11 +1110,14 @@ export default function Community() {
       localStorage.removeItem("heika-bottom-nav-style");
       setState({ ...initial, cardIds: state.cardIds });
       setPublicBookmarks(false);
+      setPublicBookmarksLoaded(true);
       setTheme("dark");
       setFontChoice("oppo");
       setBottomNavStyle("fixed");
       setSelectedCalendarDate("");
       setTab("today");
+      imageSwitchSequence.current += 1;
+      setImageLoading(false);
       setDetail(null);
       setDetailReady(false);
       setTransitionPhase(null);
@@ -1113,8 +1191,13 @@ export default function Community() {
     const sourceRect = sourceImage?.getBoundingClientRect();
     const sourceImageUrl = sourceImage?.currentSrc || sourceImage?.src;
     scrollBeforeDetail.current = window.scrollY;
+    imageSwitchSequence.current += 1;
+    setActiveImageIndex(0);
+    setDisplayedImageIndex(0);
+    setImageLoading(false);
+    setPreviewImage(false);
     setDetailImageTransition(
-      sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
+      detailTransition === "image-zoom" && sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
         ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
         : null,
     );
@@ -1161,7 +1244,7 @@ export default function Community() {
     const id = Number(sharedId);
     if (!ready || !sharedId || !Number.isSafeInteger(id) || all.some((item) => item.id === id) || sharedPostLoading.current === sharedId) return;
     sharedPostLoading.current = sharedId;
-    void fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+    void cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
       .then((response) => response.json().then((result) => ({ response, result })))
       .then(({ response, result }) => {
         if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [result.data as Post, ...current]);
@@ -1179,6 +1262,8 @@ export default function Community() {
       window.setTimeout(() => closeDetail(true), 420);
       return;
     }
+    imageSwitchSequence.current += 1;
+    setImageLoading(false);
     transitionBusy.current = true;
     setDetailReady(false);
     setTransitionPhase("closing");
@@ -1279,6 +1364,7 @@ export default function Community() {
   useLayoutEffect(() => {
     if (!transitionPhase) return;
     const opening = transitionPhase === "opening";
+    const usesImageZoom = detailTransition === "image-zoom";
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let imageAnimation: Animation | undefined;
     let imageClone: HTMLImageElement | null = null;
@@ -1310,17 +1396,27 @@ export default function Community() {
       finish();
       return;
     }
-    const duration = opening ? 320 : 240;
+    const duration = usesImageZoom ? (opening ? 320 : 240) : (opening ? 240 : 190);
     const animation = detailNode.animate(
-      opening
-        ? [
-            { opacity: 1, transform: "translate3d(0,24px,0)" },
-            { opacity: 1, transform: "translate3d(0,0,0)" },
-          ]
-        : [
-            { opacity: 1, transform: "translate3d(0,0,0)" },
-            { opacity: 1, transform: "translate3d(0,18px,0)" },
-          ],
+      usesImageZoom
+        ? opening
+          ? [
+              { opacity: 1, transform: "translate3d(0,24px,0)" },
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+            ]
+          : [
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+              { opacity: 1, transform: "translate3d(0,18px,0)" },
+            ]
+        : opening
+          ? [
+              { opacity: .84, filter: "blur(3px)", transform: "translate3d(0,8px,0)" },
+              { opacity: 1, filter: "blur(0)", transform: "translate3d(0,0,0)" },
+            ]
+          : [
+              { opacity: 1, filter: "blur(0)", transform: "translate3d(0,0,0)" },
+              { opacity: .84, filter: "blur(2px)", transform: "translate3d(0,6px,0)" },
+            ],
       { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
     );
     animation.onfinish = () => {
@@ -1328,7 +1424,7 @@ export default function Community() {
       settle();
     };
     const transitionImage = detailImageTransition;
-    if (transitionImage) {
+    if (usesImageZoom && transitionImage) {
       imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
       if (imageTarget) {
         imageAnimationPending = true;
@@ -1405,7 +1501,7 @@ export default function Community() {
       imageTarget?.style.removeProperty("visibility");
       imageClone?.remove();
     };
-  }, [transitionPhase, detailImageTransition]);
+  }, [transitionPhase, detailImageTransition, detailTransition]);
   const toggleSave = async (id: number) => {
     const value = !state.saved.includes(id);
     try {
@@ -1426,7 +1522,7 @@ export default function Community() {
   const flip = (id: number, origin?: Element) => {
     if (flipBusy.current || justFlippedId === id || transitionBusy.current)
       return;
-    if (state.revealed[id]) {
+    if (opened.includes(id) && state.revealed[id]) {
       setViewerRect(origin?.getBoundingClientRect() || findVisibleCard(id));
       setViewerId(id);
       setViewerFlipped(true);
@@ -1450,16 +1546,16 @@ export default function Community() {
       return;
     }
     const available = candidates.filter(
-      (candidate) => !state.revealed[candidate.id] && !opened.includes(candidate.id),
+      (candidate) => !opened.includes(candidate.id),
     );
-    const unlocked = candidates.filter((candidate) => Boolean(state.revealed[candidate.id]));
+    const unlocked = candidates.filter((candidate) => opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]));
     const pool = opened.length < dailyAllowance ? [...available, ...unlocked] : unlocked;
     if (!pool.length) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
     }
     const assigned = candidates.find((candidate, candidatePosition) =>
-      Boolean(state.revealed[candidate.id]) &&
+      opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]) &&
       (state.facetSlots?.[candidate.id] ?? candidatePosition % blackCardFacets.length) === facet,
     );
     const candidate = assigned || pool[(facetIndex + facet) % pool.length];
@@ -1484,7 +1580,7 @@ export default function Community() {
     flipBusy.current = true;
     setFlippingId(id);
     try {
-      const response = await fetch("/api/demo/cards", {
+      const response = await cloudFetch("/api/demo/cards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -1976,18 +2072,18 @@ export default function Community() {
   const openTopic = async (name: string) => {
     setTopicLoading(true);
     try {
-      const listResponse = await fetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
+      const listResponse = await cloudFetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
       const listResult = await listResponse.json();
       if (!listResponse.ok) throw new Error(listResult.error || "话题读取失败");
       const topic = (listResult.data as TopicSummary[]).find((item) => item.name === name);
       if (!topic) throw new Error("话题不存在");
-      const response = await fetch(`/api/v1/topics/${topic.id}?page=1&limit=12`);
+      const response = await cloudFetch(`/api/v1/topics/${topic.id}?page=1&limit=12`);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题内容读取失败");
       const page = result.data as TopicPageResponse;
       setTopicSummary(page.topic); setTopicPosts(page.items); setTopicTotal(page.total); setTopicPage(1);
       setTopicReturnPostId(detail); setTopicReturnTab(detail === null ? tab : detailSource.current);
-      if (detail !== null) { setDetail(null); setDetailReady(false); }
+      if (detail !== null) { imageSwitchSequence.current += 1; setImageLoading(false); setDetail(null); setDetailReady(false); }
       scrollPositions.current[tab] = window.scrollY;
       setTab("topic"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
     } catch (error) { toast(error instanceof Error ? error.message : "话题读取失败"); }
@@ -1997,7 +2093,7 @@ export default function Community() {
     if (!topicSummary || topicLoading || topicPosts.length >= topicTotal) return;
     const nextPage = topicPage + 1; setTopicLoading(true);
     try {
-      const response = await fetch(`/api/v1/topics/${topicSummary.id}?page=${nextPage}&limit=12`);
+      const response = await cloudFetch(`/api/v1/topics/${topicSummary.id}?page=${nextPage}&limit=12`);
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "内容读取失败");
       const page = result.data as TopicPageResponse;
       setTopicPosts((items) => [...items, ...page.items]); setTopicTotal(page.total); setTopicPage(nextPage);
@@ -2010,6 +2106,7 @@ export default function Community() {
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[backTab] || 0, behavior: "instant" }));
     if (topicReturnPostId !== null) {
       const postId = topicReturnPostId;
+      imageSwitchSequence.current += 1;
       setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
     }
   };
@@ -2018,7 +2115,7 @@ export default function Community() {
     if (!isDiscover && modal !== "write") return;
     let alive = true;
     const suffix = isDiscover ? "?featured=1" : topicSearch.trim() ? `?q=${encodeURIComponent(topicSearch.trim())}` : "";
-    void fetch(`/api/v1/topics${suffix}`).then(async (response) => {
+    void cloudFetch(`/api/v1/topics${suffix}`).then(async (response) => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题读取失败");
       if (alive && Array.isArray(result.data)) setTopicChoices(result.data as TopicSummary[]);
@@ -2050,8 +2147,7 @@ export default function Community() {
       : tab === "topic" ? "发现"
         : tab === "search" ? "搜索"
         : tab === "about" || tab === "moderation" ? "设置"
-          : tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
-            : tab === "debug" ? "我的" : null;
+          : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的" : null;
   const handleSecondaryBack = () => {
     if (modal === "write") { setModal(null); return; }
     if (tab === "settings" && settingsDetail) { closeSettingsDetail(); return; }
@@ -2059,12 +2155,18 @@ export default function Community() {
     if (tab === "topic") { closeTopicPage(); return; }
     if (tab === "search") { closeSearch(); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
-    if (tab === "my-content") { setTab(myContentReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" })); return; }
-    if (tab === "debug") { setTab("mine"); return; }
+    if (tab === "debug") {
+      setTab(debugReturnTab);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[debugReturnTab] || 0, behavior: "instant" }));
+      return;
+    }
   };
   useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
+    setDisplayedImageIndex(0);
+    setImageLoading(false);
+    setDetailImageDirection("next");
     setPreviewImage(false);
     setCommentsLoading(true);
     setCommentsError(false);
@@ -2115,7 +2217,7 @@ export default function Community() {
   const refreshFeed = async () => {
     if (tab === "today") {
       try {
-        const response = await fetch("/api/demo/cards", { cache: "no-store" });
+        const response = await cloudFetch("/api/demo/cards", { cache: "no-store" });
         const result = await response.json();
         if (!response.ok || !Array.isArray(result.data)) throw new Error();
         setState((current) => ({ ...current, cardIds: result.data.map((item: { id: number }) => item.id) }));
@@ -2220,37 +2322,107 @@ export default function Community() {
       observer?.disconnect();
     };
   }, [detailReady, detail]);
+  const isImmersive = (tab === "messages" && (chatConversationOpen || messagePeer !== null)) || detail !== null || transitionPhase !== null;
   const post = detail === null ? null : all.find((p) => p.id === detail);
-  const detailImages = post
+  const detailImages = useMemo(() => post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
-    : [];
-  const postCard = (p: Post, source: "today" | "discover" = "discover") => {
+    : [], [post]);
+  const preloadDetailImage = useCallback((src: string, priority: "low" | "high" = "low") => {
+    const cached = preloadedDetailImages.current.get(src);
+    if (cached) {
+      if (priority === "high") cached.image.fetchPriority = "high";
+      return cached.promise;
+    }
+    const image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = priority;
+    const loaded = new Promise<HTMLImageElement>((resolve, reject) => {
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("图片加载失败"));
+      image.src = src;
+      if (image.complete) {
+        if (image.naturalWidth > 0) resolve(image);
+        else reject(new Error("图片加载失败"));
+      }
+    }).then(async (readyImage) => {
+      try { await readyImage.decode(); } catch {}
+      return readyImage;
+    }).catch((error: unknown) => {
+      preloadedDetailImages.current.delete(src);
+      throw error;
+    });
+    preloadedDetailImages.current.set(src, { image, promise: loaded });
+    if (preloadedDetailImages.current.size > 36) {
+      const oldest = preloadedDetailImages.current.keys().next().value;
+      if (oldest && oldest !== src) preloadedDetailImages.current.delete(oldest);
+    }
+    return loaded;
+  }, []);
+  useEffect(() => {
+    if (detail === null || detailImages.length < 2) return;
+    const count = detailImages.length;
+    const adjacent = [...new Set([
+      (activeImageIndex + 1) % count,
+      (activeImageIndex - 1 + count) % count,
+    ])];
+    for (const index of adjacent) {
+      const src = detailImages[index];
+      if (src) void preloadDetailImage(src).catch(() => {});
+    }
+  }, [detail, detailImages, activeImageIndex, preloadDetailImage]);
+  const selectDetailImage = (nextIndex: number) => {
+    if (detailImages.length < 2) return;
+    const normalized = (nextIndex + detailImages.length) % detailImages.length;
+    if (normalized === activeImageIndex) return;
+    const forward = (normalized - activeImageIndex + detailImages.length) % detailImages.length;
+    const direction = forward <= detailImages.length / 2 ? "next" : "previous";
+    const sequence = ++imageSwitchSequence.current;
+    setActiveImageIndex(normalized);
+    setDetailImageDirection(direction);
+    if (normalized === displayedImageIndex) {
+      setImageLoading(false);
+      return;
+    }
+    setImageLoading(true);
+    void preloadDetailImage(detailImages[normalized], "high").then(() => {
+      if (sequence === imageSwitchSequence.current && detail !== null) {
+        setDisplayedImageIndex(normalized);
+        setImageLoading(false);
+      }
+    }).catch(() => {
+      if (sequence === imageSwitchSequence.current) {
+        setActiveImageIndex(displayedImageIndex);
+        setImageLoading(false);
+        toast("这张图片暂时无法加载，请稍后重试");
+      }
+    });
+  };
+  const postCard = (p: Post, source: "today" | "discover" = "discover", own = false) => {
     const rating = communityRatings[p.id];
     const rarityTier = p.rarityTier || (rating ? cardRarityTier(rating.average, rating.count) : "pending");
     const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier;
+    const coverImage = p.image || p.images?.find(Boolean);
     return <button
       className="post-card editorial-post"
       key={p.id}
       data-discover-id={p.id}
-      onClick={(event) => openPost(p.id, source, event.currentTarget)}
+      onClick={(event) => own && p.status === "draft" ? void openComposer(p) : openPost(p.id, source, event.currentTarget)}
     >
-      <div
+      {coverImage && <div
         className="post-cover editorial-cover"
         style={{ background: coverColor(p.tag) }}
       >
-        {p.image && (
-          <img
-            src={p.image}
+        <img
+            src={coverImage}
             alt=""
             loading="lazy"
             onError={(e) => {
               if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
             }}
           />
-        )}
         <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有度`}>{rarityLabel}</i>
-        <span>{p.cover}</span>
-      </div>
+        {p.cover && <span>{p.cover}</span>}
+      </div>}
       <div className="post-meta">
         <small>{p.tag}</small>
         <b>{p.title}</b>
@@ -2258,7 +2430,7 @@ export default function Community() {
         {communityRatings[p.id]?.count ? <span className={`post-card-rarity rarity-${cardRarity(communityRatings[p.id].average, communityRatings[p.id].count).replaceAll(" ", "")}`}><Star size={11} fill="currentColor"/> {cardRarity(communityRatings[p.id].average, communityRatings[p.id].count)} · {communityRatings[p.id].average.toFixed(1)}</span> : null}
         <div>
           <span>{p.author}</span>
-          <span>{state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
+          <span>{own && p.status === "draft" ? "编辑草稿" : own && p.status === "pending_review" ? "审核中" : own && p.status === "hidden" ? "审核未通过" : state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
         </div>
       </div>
     </button>;
@@ -2295,10 +2467,12 @@ export default function Community() {
   const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => (
     <button
       key={id}
-      className={tab === id || ((tab === "settings" || tab === "my-content") && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
+      className={tab === id || (tab === "settings" && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
+        imageSwitchSequence.current += 1;
+        setImageLoading(false);
         setDetail(null);
         setDetailReady(false);
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
@@ -2310,10 +2484,11 @@ export default function Community() {
     </button>
   );
 
-  const renderCandidate = (p: Post) => {
-    const revealed = state.revealed[p.id],
-      unlocked = Boolean(revealed),
-      rarityTier = state.rarityTiers[p.id] || revealed?.rarityTier || p.rarityTier,
+  const renderCandidate = (p: Post, deckPosition = candidates.findIndex((candidate) => candidate.id === p.id), showHistoricalReveal = false) => {
+    const historical = showHistoricalReveal || (deckPosition < 0 && Boolean(state.revealed[p.id]));
+    const unlocked = historical || opened.includes(p.id),
+      revealed = unlocked ? state.revealed[p.id] : undefined,
+      rarityTier = unlocked ? state.rarityTiers[p.id] || revealed?.rarityTier || p.rarityTier : undefined,
       rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" || !rarityTier ? "" : rarityTier,
       rareTier = rarityTier === "S" || rarityTier === "SS" || rarityTier === "SSS" ? rarityTier : null;
     return (
@@ -2321,12 +2496,12 @@ export default function Community() {
         key={p.id}
         data-card-id={p.id}
         className={`candidate-feed-card flip-in-place${unlocked ? " is-unlocked" : ""}${justFlippedId === p.id ? " just-flipped" : ""}${detail === p.id ? " is-detail-source" : ""}`}
-        onClick={() => flip(p.id)}
-        aria-label={unlocked ? `阅读 ${revealed.title}${rareTier ? `，${rareTier}级稀有卡` : ""}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
+        onClick={() => historical ? openPost(p.id, "today") : flip(p.id)}
+        aria-label={unlocked ? `阅读 ${revealed?.title || "已翻开的卡片"}${rareTier ? `，${rareTier}级稀有卡` : ""}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
       >
         <span className="card-flip-inner">
           <span className="card-flip-face card-flip-front">
-            <span className="card-number">{String(p.id).padStart(2, "0")}</span>
+            <span className="card-number">{deckPosition >= 0 ? String(deckPosition + 1).padStart(2, "0") : "—"}</span>
             {rarityLabel && <i className={`candidate-rarity-chip rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有卡`}>{rarityLabel}</i>}
             <span className="card-brand">黑卡 · HEIKA</span>
             <span className="card-prompt">轻触翻开</span>
@@ -2375,6 +2550,7 @@ export default function Community() {
       .then(async (db) => {
         const hydrate = async () => {
           cloudHydrated.current = false;
+          setPublicBookmarksLoaded(false);
           const {
             data: { user },
           } = await db.auth.getUser();
@@ -2383,7 +2559,8 @@ export default function Community() {
           if (!user) {
             setIsAdmin(false);
             setPublicBookmarks(false);
-            setExperienceSummary({ total: 0, membershipTier: "free", events: [] });
+            setPublicBookmarksLoaded(true);
+            setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
             setStorageKey("heika-demo-v1");
             try {
               const guest = JSON.parse(
@@ -2404,6 +2581,7 @@ export default function Community() {
               setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
             }
             setPublicBookmarks(Boolean(data.profile?.show_bookmarks));
+            setPublicBookmarksLoaded(true);
             const hasAdminAccess = data.profile?.role === "admin";
             setIsAdmin(hasAdminAccess);
             if (adminEntryPending.current) {
@@ -2530,6 +2708,7 @@ export default function Community() {
             });
             cloudHydrated.current = true;
           } catch (e) {
+            setPublicBookmarksLoaded(true);
             toast(e instanceof Error ? e.message : "云端同步失败");
           }
         };
@@ -2705,7 +2884,7 @@ export default function Community() {
       </main>
     );
   return (
-    <main className={`app${secondaryTitle ? " has-secondary-header" : ""}`}>
+    <main className={`app${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}`}>
       <header className={`topline${secondaryTitle ? " secondary-topline" : ""}`}>
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand">黑卡 <i>HEIKA</i></span>}
         <span className="demo-pill">
@@ -2742,20 +2921,14 @@ export default function Community() {
             <div className="daily-quota-summary" role="status" aria-live="polite">
               <strong>今日已翻开 {Math.min(opened.length, dailyAllowance)} / {dailyAllowance} 张</strong>
               <span>{opened.length >= dailyAllowance ? "今日额度已用完，已解锁卡片仍可查看" : `还可翻开 ${dailyAllowance - opened.length} 张`}</span>
-              <button className="quota-plan-link" onClick={() => setModal("subscription")}><Crown size={14}/> 翻卡方案</button>
             </div>
           )}
           {state.homeMode === "waterfall" ? (
             <>
               <div className="candidate-feed waterfall-card-feed">
-                {visibleCandidates.map(renderCandidate)}
+                {visibleCandidates.map((candidate, index) => renderCandidate(candidate, index))}
               </div>
-              {visibleCandidates.length < candidates.length && (
-                <div ref={loadMoreRef} className="feed-sentinel">
-                  <span>继续浏览未解锁的卡片</span>
-                  <button onClick={() => setPage((count) => count + 12)}>加载更多</button>
-                </div>
-              )}
+              <p className="daily-deck-caption">今日卡池 · 50 张 · 翻卡次数将在明日自动重置</p>
             </>
           ) : (
             <>
@@ -2771,8 +2944,8 @@ export default function Community() {
                     <linearGradient id="facet-metal-d" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#34434a"/><stop offset=".46" stopColor="#8c999e"/><stop offset="1" stopColor="#4c5c63"/></linearGradient>
                   </defs>
                   {blackCardFacets.map((points, index) => {
-                    const hasUnlocked = candidates.some((candidate, candidatePosition) =>
-                      Boolean(state.revealed[candidate.id]) &&
+            const hasUnlocked = candidates.some((candidate, candidatePosition) =>
+                      opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]) &&
                       (state.facetSlots?.[candidate.id] ?? candidatePosition % blackCardFacets.length) === index,
                     );
                     const unavailable = !candidates.length || (!hasUnlocked && opened.length >= dailyAllowance);
@@ -2798,7 +2971,6 @@ export default function Community() {
               </div>
               <div className="black-card-quota-meta">
                 <p className="fineprint">每日基础 5 次{luckyBonusToday ? ` · 幸运加成 +${luckyBonusToday}` : ""} · 已选 {Math.min(opened.length, dailyAllowance)}/{dailyAllowance}</p>
-                <button className="quota-plan-link" onClick={() => setModal("subscription")}><Crown size={14}/> 翻卡方案</button>
               </div>
             </>
           )}
@@ -2876,18 +3048,18 @@ export default function Community() {
           <div className="discover-sort" role="group" aria-label="发现排序">
             {["精选", "最新", "高分"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => setSort(option)}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
           </div>
-          {latestOpenedPost && (
+          {category === "全部" && latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">
               <div className="recent-flip-heading">
                 <div><small>RECENTLY REVEALED</small><h2 id="recent-flip-title">最近翻开的卡</h2></div>
                 <span>随时回来继续阅读</span>
               </div>
-              {renderCandidate(latestOpenedPost)}
+              {renderCandidate(latestOpenedPost, -1, true)}
             </section>
           )}
           <div className="section-head editorial-section-head">
             <h2>{category === "全部" ? "为你推荐" : category}</h2>
-            <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
+            <span>{Math.min(50, Math.max(filtered.length, feedTotal))} 篇内容</span>
           </div>
           {feed(list)}
         </section>
@@ -2912,6 +3084,8 @@ export default function Community() {
             initialPeer={messagePeer}
             isActive={tab === "messages"}
             onPeerOpened={() => setMessagePeer(null)}
+            onConversationChange={setChatConversationOpen}
+            onOpenProfile={(id) => setAuthorProfile(id)}
           />
         </div>
       )}
@@ -2936,14 +3110,15 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("homeMode")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("detailTransition")}><span>详情过渡动画</span><small>{detailTransition === "image-zoom" ? "图片展开" : "轻微模糊上浮"}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("profileLayout")}><span>他人主页布局</span><small>{profileLayout === "masonry" ? "大图瀑布流" : "列表"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
-            <div className="settings-module-heading"><strong>消息与隐私</strong></div>
+            <div className="settings-module-heading"><strong>消息</strong></div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("privacy")}><span>私聊权限与黑名单</span><small>接收范围与黑名单</small><ChevronRight size={16}/></button>
             </div>
           </div>
           <div className="settings-module">
@@ -2952,7 +3127,9 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.03.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("security")}><span>安全中心</span><ChevronRight size={16}/></button>
+              <button onClick={() => { scrollPositions.current.settings = window.scrollY; setDebugReturnTab("settings"); setTab("debug"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>调试模式</span><small>开发与重置工具</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.11.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2963,20 +3140,84 @@ export default function Community() {
         <section key={settingsDetail} className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",privacy:"私聊权限与黑名单",progression:"等级与奖励"})[settingsDetail]}</h1>
-          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "privacy" ? "管理私聊接收范围，并随时调整黑名单。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览模式",reading:"阅读模式",detailTransition:"详情过渡动画",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",security:"安全中心",membership:"会员中心",progression:"等级与奖励"})[settingsDetail]}</h1>
+          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "membership" ? "查看当前会员等级、每日翻卡额度与可选权益。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
               <div className="experience-total-card"><span>当前等级</span><strong>LV.{progress.current.level}</strong><b>{experienceSummary.total} EXP</b><div className="experience-track"><i style={{ width: `${progress.percent}%` }} /></div><small>{progress.next ? `距离 LV.${progress.next.level} 还差 ${progress.next.threshold - experienceSummary.total} EXP` : "已达到当前最高等级"}</small></div>
               <div className="experience-rule-note"><strong>经验获取</strong><span>当天首次翻卡 +10 EXP · 每日最多 10 次翻卡计分</span><span>首次给每篇内容评分 +2 EXP · 每日最多 5 次</span><small>评分修改不会重复获得经验；给自己发布的内容评分不计入。</small></div>
-              <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
+              <div className="experience-level-list">
+                <h2>等级奖励</h2>
+                <p className="experience-reward-intro">达到经验要求后领取奖励，领取记录会同步保存到账号。</p>
+                {EXPERIENCE_LEVELS.map((item) => {
+                  const unlocked = experienceSummary.total >= item.threshold;
+                  const claimed = experienceSummary.claimedLevels.includes(item.level);
+                  return <div className={`experience-level-row${unlocked ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}${claimed ? " is-claimed" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}>
+                    <strong>LV.{item.level}</strong>
+                    <span className="experience-reward-copy"><b>{item.reward}</b><small>{item.description}</small></span>
+                    <small className="experience-reward-threshold">{item.threshold} EXP</small>
+                    {claimed ? <span className="experience-reward-state"><Check size={13}/> 已领取</span> : unlocked ? <button className="experience-reward-claim" type="button" disabled={rewardClaimBusyLevel !== null} onClick={() => void claimExperienceReward(item.level)}>{rewardClaimBusyLevel === item.level ? "领取中…" : "领取奖励"}</button> : <span className="experience-reward-state is-locked">未解锁</span>}
+                  </div>;
+                })}
+              </div>
               <div className="experience-rule-note"><strong>Plus / Pro 加成 · 当前 {experienceSummary.membershipTier.toUpperCase()}</strong><span>Plus 每日首次翻卡额外 +3 EXP · Pro 额外 +6 EXP。</span><small>会员等级由管理员根据已核验权益设置；订阅预览页不会自动开通会员。</small></div>
-              {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : event.type === "mission" ? "创作者任务" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
+              {!!experienceSummary.events.length && <div className="experience-level-list"><button type="button" className="collapsible-panel-toggle" aria-expanded={recentExperienceOpen} onClick={() => setRecentExperienceOpen((open) => !open)}><h2>最近经验</h2><span>{experienceSummary.events.length} 条 <ChevronDown size={16}/></span></button>{recentExperienceOpen && experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : event.type === "mission" ? "创作者任务" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
-          {settingsDetail === "privacy" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }}/ >}
+          {settingsDetail === "security" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility}/ >}
+          {settingsDetail === "membership" && <div className="membership-center-page">
+            <div className="membership-center-summary">
+              <span className="membership-center-mark"><Crown size={19}/></span>
+              <div><small>当前会员</small><strong>{membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}</strong></div>
+              <span className="membership-center-quota">今日 {dailyAllowance} 次</span>
+            </div>
+            <p className="membership-center-note">免费版每日 5 次 · Plus 每日 9 次 · Pro 每日 13 次；幸运加成会另行计入。</p>
+            <div className="subscription-section-label"><strong>会员方案预览</strong></div>
+            <div className="subscription-plans" role="group" aria-label="选择会员套餐">
+              {membershipPlans.map((plan) => {
+                const selected = selectedPlan === plan.id;
+                return <button type="button" key={plan.id} className={`subscription-plan${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setSelectedPlan(plan.id)}>
+                  <span className="subscription-plan-name">{plan.name}</span>
+                  <span className="subscription-plan-daily">{plan.dailyFlips} 次 <small>/ 日</small></span>
+                  <span className="subscription-plan-price">¥{plan.price}<small> / 月</small></span>
+                  <span className="subscription-plan-check" aria-hidden="true">{selected ? <Check size={15}/> : null}</span>
+                </button>;
+              })}
+            </div>
+            <button className="primary-button full subscription-continue" type="button" disabled={!selectedPlan} onClick={() => toast("当前仅预览，不会扣款")}>{selectedPlan ? `预览 ${membershipPlans.find((plan) => plan.id === selectedPlan)?.name} 订阅` : "请选择套餐"}</button>
+            <p className="subscription-preview-note">当前仅预览 · 不会扣款或开通套餐</p>
+            <section className="membership-disclosure-group">
+              <button type="button" className="membership-disclosure" aria-expanded={extraPacksOpen} onClick={() => setExtraPacksOpen((open) => !open)}>
+                <span><strong>额外翻卡包</strong><small>{selectedFlipPack ? `已选 +${selectedFlipPack} 次` : "一次性补充翻卡机会"}</small></span>
+                <ChevronRight size={17}/>
+              </button>
+              <div className={`membership-collapsible${extraPacksOpen ? " open" : ""}`} aria-hidden={!extraPacksOpen} inert={!extraPacksOpen}>
+                <div className="membership-collapsible-inner">
+                  <div className="extra-flip-options">
+                    {extraFlipPacks.map((count) => <button type="button" key={count} className={selectedFlipPack === count ? "selected" : ""} aria-pressed={selectedFlipPack === count} onClick={() => setSelectedFlipPack(count)}><strong>+{count}</strong><span>次翻卡</span></button>)}
+                  </div>
+                  {selectedFlipPack && <button className="soft-button full extra-pack-preview" type="button" onClick={() => toast("当前仅预览，不会扣款")}>预览 +{selectedFlipPack} 次卡包</button>}
+                  <p className="subscription-preview-note">一次性补充机会；当前仅预览，不会扣款。</p>
+                </div>
+              </div>
+            </section>
+            <section className="membership-disclosure-group rules-disclosure-group">
+              <button type="button" className="membership-disclosure" aria-expanded={subscriptionRulesOpen} onClick={() => setSubscriptionRulesOpen((open) => !open)}>
+                <span><strong>翻卡与订阅规则</strong><small>权益、概率与额度说明</small></span>
+                <ChevronRight size={17}/>
+              </button>
+              <div className={`membership-collapsible${subscriptionRulesOpen ? " open" : ""}`} aria-hidden={!subscriptionRulesOpen} inert={!subscriptionRulesOpen}>
+                <div className="membership-collapsible-inner subscription-rules-copy">
+                  <p>免费每日 5 次；Plus 每日共 9 次，Pro 每日共 13 次。会员次数按天刷新，幸运加成另行累计。</p>
+                  <p>Plus 每日首次翻卡额外 +3 EXP，Pro 额外 +6 EXP。</p>
+                  <p>每次翻卡的幸运奖励概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%；幸运加成每日最多累计 10 次。</p>
+                  <p>额外翻卡包为一次性补充。当前页面仅供预览，不会扣款、创建订单或开通权益。</p>
+                </div>
+              </div>
+            </section>
+          </div>}
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>偏好会自动保存在你的账号中。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
@@ -3003,6 +3244,11 @@ export default function Community() {
               {([['waterfall','瀑布流','双列卡片，快速浏览更多内容'],['single','单列阅读','单列排版，适合连续阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.discoverLayout===value} className={`preference-option${state.discoverLayout===value?' selected':''}`} onClick={()=>update(current=>({...current,discoverLayout:value}))}>{renderPreferencePreview('discover',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.discoverLayout===value?'✓':''}</i></button>)}
             </div>
           )}
+          {settingsDetail === "profileLayout" && (
+            <div className="preference-options" role="radiogroup" aria-label="他人主页布局">
+              {([['masonry','大图瀑布流','用图片卡片快速浏览对方发布的内容'],['list','列表','以紧凑条目展示标题和发布时间']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={profileLayout===value} className={`preference-option${profileLayout===value?' selected':''}`} onClick={()=>setProfileLayout(value)}>{renderPreferencePreview('discover',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{profileLayout===value?'✓':''}</i></button>)}
+            </div>
+          )}
           {settingsDetail === "homeMode" && (
             <div className="preference-options" role="radiogroup" aria-label="首页浏览模式">
               {([['waterfall','瀑布流','未翻开前隐藏内容，每日选 5 张'],['blackcard','黑卡','逐张探索，每日最多翻开 5 张']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.homeMode===value} className={`preference-option${state.homeMode===value?' selected':''}`} onClick={()=>chooseHomeMode(value)}>{renderPreferencePreview('home',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.homeMode===value?'✓':''}</i></button>)}
@@ -3011,6 +3257,16 @@ export default function Community() {
           {settingsDetail === "reading" && (
             <div className="preference-options" role="radiogroup" aria-label="阅读模式">
               {([['standard','标准模式','舒展排版与清晰层级'],['focus','专注模式','减少干扰，突出正文'],['night','夜间模式','深色背景，适合暗光阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.readingMode===value} className={`preference-option${state.readingMode===value?' selected':''}`} onClick={()=>chooseReadingMode(value)}>{renderPreferencePreview('reading',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.readingMode===value?'✓':''}</i></button>)}
+            </div>
+          )}
+          {settingsDetail === "detailTransition" && (
+            <div className="preference-options" role="radiogroup" aria-label="详情过渡动画">
+              {([
+                ["image-zoom", "图片展开", "图片从卡片位置放大进入详情页，保持连贯过渡"],
+                ["blur-rise", "轻微模糊上浮", "详情内容轻微模糊并上浮切入，不连贯放大图片"],
+              ] as const).map(([value, label, description]) => <button key={value} role="radio" aria-checked={detailTransition === value} className={`preference-option${detailTransition === value ? " selected" : ""}`} onClick={() => setDetailTransition(value)}>
+                <span className={`preference-preview preview-transition preview-transition-${value}`} aria-hidden="true"><i/><b/></span><span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{detailTransition === value ? "✓" : ""}</i>
+              </button>)}
             </div>
           )}
           {settingsDetail === "notifications" && (
@@ -3029,8 +3285,15 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 2.03.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.03</small></div><ul><li>发现页新增个性化精选、最新和高评分排序。</li><li>收藏支持创建、重命名、删除收藏夹，按标题、话题和作者搜索并整理内容。</li><li>新增创作者数据面板，统计公开内容阅读、点赞、收藏与评论表现。</li><li>加入每周探索、发布和收藏任务，完成后可领取 EXP 并计入等级奖励。</li><li>收藏夹和任务奖励改由数据库权限与事务校验保护。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.11.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.11.0</strong><small>2026.11.03</small></div><ul><li>发现页新增个性化精选、最新和高评分排序。</li><li>收藏支持创建、重命名、删除收藏夹，按标题、话题和作者搜索并整理内容。</li><li>新增创作者数据面板，统计公开内容阅读、点赞、收藏与评论表现。</li><li>加入每周探索、发布和收藏任务，完成后可领取 EXP 并计入等级奖励。</li><li>收藏夹和任务奖励改由数据库权限与事务校验保护。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.10.0</strong><small>2026.11.03</small></div><ul><li>修复图片加载状态误覆盖和切图卡住的问题，增强多图切换的柔和模糊动效。</li><li>我的作品改用固定双列网格，会员中心入口放到“我”页面设置旁。</li><li>评分星星加入分色反馈、光晕和逐颗跃动效果。</li><li>等级奖励支持解锁后领取，领取记录同步保存到账号。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.09.0</strong><small>2026.11.03</small></div><ul><li>我的作品固定为双列瀑布流，发布入口由底栏中间按钮统一提供。</li><li>他人主页默认使用大图瀑布流，可在设置中切换为列表。</li><li>多图切换即时反馈，目标图片预加载和解码完成后平滑替换；滑动识别更稳定。</li><li>设置入口移到“我”标题旁，安全中心、会员中心和调试模式收进设置。</li><li>最近翻开的卡片只在发现页的推荐分类显示，详情切换动画更轻、更省性能。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.07.0</strong><small>2026.11.03</small></div><ul><li>聊天会话与内容详情进入沉浸状态时隐藏手机底栏，返回后自动恢复。</li><li>安全中心和会员中心移入“我的”设置入口，整理个人设置菜单。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.06.0</strong><small>2026.11.03</small></div><ul><li>支持将 HEIKA 安装到手机主屏幕，并使用新的黑卡应用图标。</li><li>补充独立应用显示模式、启动图标和基础离线页面缓存。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.05.0</strong><small>2026.11.03</small></div><ul><li>消息列表和私聊改为紧凑排版，私聊支持从对话顶部打开全屏个人主页。</li><li>帖子详情进入时预加载前后图片，减少切换时等待。</li><li>“我的”页新增“我的作品”入口，可直接管理发布内容、审核状态和草稿。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.04.0</strong><small>2026.11.03</small></div><ul><li>瀑布流每天固定展示 50 张黑卡，次日自动生成新卡组并重置当日翻卡次数。</li><li>已翻卡片按日期保留在探索历史，可随时回看。</li><li>瀑布流图片加载时由模糊渐清，详情多图支持按滑动方向平滑切换。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.02</small></div><ul><li>投稿图片在上传后立即显示，并在刷新和重新打开时获取新的图片链接。</li><li>新增安全中心，可设置笔记仅自己可见，并管理私聊范围、黑名单与账号安全。</li><li>消息时间移到气泡外，复制操作收进长按菜单。</li><li>经验记录、探索日历和探索记录支持折叠，收起时不渲染长列表。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
@@ -3287,7 +3550,7 @@ export default function Community() {
       )}
       {tab === "mine" && (
         <section className="page mine-page">
-          <h1 className="mine-title">我</h1>
+          <div className="mine-heading"><h1 className="mine-title">我</h1><div className="mine-heading-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={() => { scrollPositions.current.mine = window.scrollY; setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><Settings size={19}/></button></div></div>
           <div className="profile-card">
             <div className="avatar">
               {state.avatar ? (
@@ -3323,21 +3586,13 @@ export default function Community() {
               <span>我的收藏</span>
             </div>
           </div>
-          <div className="mine-membership-section">
-              <div className="section-head"><h2>会员与翻卡额度</h2><span>PLUS / PRO</span></div>
-            <button className="mine-membership-card" onClick={() => setModal("subscription")}>
-              <span className="mine-membership-mark"><Crown size={19}/></span>
-              <span className="mine-membership-copy"><strong>当前 {membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"} · 订阅方案</strong><small>免费 5 次 · Plus 9 次 · Pro 13 次 / 日</small></span>
-              <span className="mine-membership-count">今日 {dailyAllowance} 次</span>
-              <ChevronRight size={17}/>
-            </button>
-          </div>
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
               {([
+                ["works", "我的作品"],
                 ["favorites", "我的收藏"],
                 ["liked", "我的点赞"],
-                ["calendar", "我的探索日历"],
+                ["calendar", "探索日历"],
                 ["recent", "最近发现"],
               ] as const).map(([id, label]) => (
                 <button
@@ -3354,17 +3609,22 @@ export default function Community() {
                   {label}
                 </button>
               ))}
-              <span className="mine-tab-indicator" style={{ transform: `translateX(${["favorites", "liked", "calendar", "recent"].indexOf(mineSection) * 100}%)` }} />
+              <span className="mine-tab-indicator" style={{ transform: `translateX(${["works", "favorites", "liked", "calendar", "recent"].indexOf(mineSection) * 100}%)` }} />
             </div>
           </div>
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
+            {mineSection === "works" && (
+              <div className="mine-tab-content">
+                <div className="section-head mine-panel-heading"><h2>我的作品</h2><span>{state.own.filter((post) => post.status === "published" || !post.status).length} 篇</span></div>
+                {state.own.length ? <div className="masonry mine-works-masonry">{state.own.map((post) => <article className="mine-work-card" key={post.id}>
+                  {postCard(post, "discover", true)}
+                  <div className="mine-work-actions"><span>{post.status === "draft" ? "草稿" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>编辑</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
+                </article>)}</div> : <div className="empty">你发布的内容会以瀑布流卡片显示在这里。</div>}
+              </div>
+            )}
             {mineSection === "favorites" && (
               <div className="mine-tab-content">
                 <div className="section-head mine-panel-heading"><h2>我的收藏</h2><span>{favoritePosts.length} 篇</span></div>
-                <button className="public-bookmarks-setting" type="button" role="switch" aria-checked={publicBookmarks} disabled={bookmarkVisibilityBusy} onClick={() => updateBookmarkVisibility(!publicBookmarks)}>
-                  <span><strong>公开我的收藏</strong><small>{accountId ? publicBookmarks ? "其他人可以在你的主页浏览收藏" : "目前仅自己可见" : "登录后管理公开状态"}</small></span>
-                  <i className={publicBookmarks ? "is-on" : ""}><b/></i>
-                </button>
                 <div className="filters favorite-filters" role="group" aria-label="收藏来源">
                   {["全部", "今日翻卡", "发现"].map((source) => (
                     <button key={source} className={favoriteSource === source ? "selected" : ""} aria-pressed={favoriteSource === source} onClick={() => setFavoriteSource(source)}>{source}</button>
@@ -3390,8 +3650,8 @@ export default function Community() {
             )}
             {mineSection === "calendar" && (
               <div className="mine-tab-content">
-                <div className="section-head exploration-calendar-heading mine-panel-heading"><h2>我的探索日历</h2><span>最近 28 天</span></div>
-                <div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
+                <div className="section-head exploration-calendar-heading mine-panel-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationCalendarOpen} aria-controls="exploration-calendar-content" onClick={() => setExplorationCalendarOpen((open) => !open)}><h2>我的探索日历</h2><span>最近 28 天 <ChevronDown size={16}/></span></button></div>
+                {explorationCalendarOpen && <div id="exploration-calendar-content"><div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
                   {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
                 </div>
                 <div className="calendar-day-detail">
@@ -3402,7 +3662,7 @@ export default function Community() {
                     const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                     return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
                   })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
-                </div>
+                </div></div>}
               </div>
             )}
             {mineSection === "recent" && (
@@ -3413,13 +3673,13 @@ export default function Community() {
                   const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                   return <button key={`${date}-${post.id}`} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong></button>;
                 })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
-                <div id="flip-history" className="section-head mine-panel-heading"><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天</span></div>
-                {Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
+                <div id="flip-history" className="section-head mine-panel-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天 <ChevronDown size={16}/></span></button></div>
+                {explorationHistoryOpen && Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
                   const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
                   const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                   return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
                 })}</div>)}
-                {!Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
+                {explorationHistoryOpen && !Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
               </div>
             )}
           </div>
@@ -3641,43 +3901,35 @@ export default function Community() {
             <div className="detail-scroll" key={post.id}>
               <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
                 {detailImages.length > 0 && (
-                  <div className="detail-gallery" onTouchStart={(event) => { imageTouchStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => {
+                  <div className="detail-gallery" aria-busy={imageLoading} onPointerDown={(event) => {
+                    imageSwipeTriggered.current = false;
+                    if (event.pointerType === "mouse" || detailImages.length < 2 || (event.target as HTMLElement).closest(".detail-gallery-controls")) return;
+                    imageTouchStart.current = { x: event.clientX, y: event.clientY };
+                  }} onPointerUp={(event) => {
                     const start = imageTouchStart.current;
-                    const end = event.changedTouches[0]?.clientX;
                     imageTouchStart.current = null;
-                    if (start === null || end === undefined || detailImages.length < 2 || Math.abs(end - start) < 40) return;
-                    setActiveImageIndex((index) => (index + (end < start ? 1 : -1) + detailImages.length) % detailImages.length);
-                  }}>
-                  <button className="detail-image-button" onClick={() => setPreviewImage(true)} aria-label="查看大图">
-                    <img src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
+                    if (!start || detailImages.length < 2) return;
+                    const deltaX = event.clientX - start.x;
+                    const deltaY = event.clientY - start.y;
+                    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
+                    imageSwipeTriggered.current = true;
+                    event.preventDefault();
+                    selectDetailImage(activeImageIndex + (deltaX < 0 ? 1 : -1));
+                    window.setTimeout(() => { imageSwipeTriggered.current = false; }, 0);
+                  }} onPointerCancel={() => { imageTouchStart.current = null; imageSwipeTriggered.current = false; }}>
+                  <button className={`detail-image-button detail-image-frame is-${detailImageDirection}`} onClick={(event) => {
+                    if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
+                    setPreviewImage(true);
+                  }} aria-label="查看大图">
+                    <img key={detailImages[displayedImageIndex]} src={detailImages[displayedImageIndex]} alt={`${post.title}，第 ${displayedImageIndex + 1} 张`} loading="eager" fetchPriority="high" onLoad={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }} onError={(event) => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
                     <span>查看大图</span>
                   </button>
+                  {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
                   {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
-                    <button aria-label="上一张图片" onClick={() => setActiveImageIndex((index) => (index - 1 + detailImages.length) % detailImages.length)}><ArrowLeft size={15} /></button>
+                    <button type="button" aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
                     <span>{activeImageIndex + 1} / {detailImages.length}</span>
-                    <button aria-label="下一张图片" onClick={() => setActiveImageIndex((index) => (index + 1) % detailImages.length)}><ArrowRight size={15} /></button>
+                    <button type="button" aria-label="下一张图片" onClick={() => selectDetailImage(activeImageIndex + 1)}><ArrowRight size={15} /></button>
                   </div>}
-                  </div>
-                )}
-                {!detailImages.length && (
-                  <div className="detail-metal-art" aria-hidden="true">
-                    <svg viewBox="0 0 100 100" role="presentation">
-                      <defs>
-                        <linearGradient id="detail-metal-one" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#d3dcdf"/><stop offset="1" stopColor="#485960"/></linearGradient>
-                        <linearGradient id="detail-metal-two" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#aebdc2"/><stop offset="1" stopColor="#26353c"/></linearGradient>
-                        <linearGradient id="detail-metal-three" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#778a92"/><stop offset="1" stopColor="#d0d9db"/></linearGradient>
-                        <linearGradient id="detail-metal-four" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#394a52"/><stop offset="1" stopColor="#aebcc1"/></linearGradient>
-                      </defs>
-                      <rect width="100" height="100" fill="#172126"/>
-                      <path d="M50 10 90 50 50 50Z" fill="url(#detail-metal-one)"/>
-                      <path d="M50 10 50 50 10 50Z" fill="url(#detail-metal-two)"/>
-                      <path d="M10 50 50 50 50 90Z" fill="url(#detail-metal-three)"/>
-                      <path d="M50 50 90 50 50 90Z" fill="url(#detail-metal-four)"/>
-                      <path d="M50 10 90 50 50 90 10 50Z" fill="none" stroke="#121a1e" strokeWidth=".8"/>
-                      <path d="M50 10V90M10 50H90" fill="none" stroke="#e0e7e8" strokeOpacity=".28" strokeWidth=".35"/>
-                      <rect x="2" y="2" width="96" height="96" fill="none" stroke="#c0cdd0" strokeOpacity=".42" strokeWidth=".45"/>
-                    </svg>
-                    <span>{post.tag} <i>· LUCENT</i></span>
                   </div>
                 )}
                 <h1>{post.title}</h1>
@@ -3693,7 +3945,7 @@ export default function Community() {
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <span>给这篇内容评分</span>
                   <div>{[1, 2, 3, 4, 5].map((n) => (
-                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms` }} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
+                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms`, "--star-delay": `${(n - 1) * 58}ms`, "--rating-color": RATING_COLORS[n - 1] } as CSSProperties} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
                       <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
                     </button>
                   ))}</div>
@@ -3762,12 +4014,13 @@ export default function Community() {
               }}><Share2 size={20} /></button>
             </form>
           </div>
-          {previewImage && detailImages[activeImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[activeImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
+          {previewImage && detailImages[displayedImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[displayedImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
         </div>
       )}
       {authorProfile && (
         <PublicProfile
           id={authorProfile}
+          layout={profileLayout}
           onClose={() => setAuthorProfile(null)}
           onSelectPost={(id) => {
             setAuthorProfile(null);
@@ -3789,6 +4042,8 @@ export default function Community() {
             setAuthorProfile(null);
             setMessagePeer(id);
             setTab("messages");
+            imageSwitchSequence.current += 1;
+            setImageLoading(false);
             setDetail(null);
             setViewerId(null);
           }}
@@ -3797,7 +4052,7 @@ export default function Community() {
       {modal && (
         <div className={`modal-backdrop${modal === "write" ? " composer-backdrop" : ""}${modalClosing ? " is-closing" : ""}`} aria-hidden={modalClosing || undefined}>
           <div
-            className={`modal ${modal === "subscription" ? "subscription-dialog" : ""} ${modal === "write" ? "composer-modal" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
+            className={`modal ${modal === "write" ? "composer-modal" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
           >
             {modal === "write" ? <header className="composer-topbar">
               <button type="button" className="composer-back" onClick={() => setModal(null)} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
@@ -3818,57 +4073,6 @@ export default function Community() {
                 <fieldset className="report-reasons"><legend>选择原因</legend>{REPORT_REASONS.map((reason) => <label key={reason} className={reportReason === reason ? "selected" : ""}><input type="radio" name="report-reason" value={reason} checked={reportReason === reason} onChange={() => setReportReason(reason)} />{reason}</label>)}</fieldset>
                 <label className="report-note-label">补充说明 <span>选填</span><textarea value={reportNote} maxLength={300} onChange={(event) => setReportNote(event.target.value)} placeholder="可简要说明你认为不合适的部分" /></label>
                 <button className="primary-button full" disabled={!reportReason || reportSubmitting} onClick={() => void submitContentReport()}>{reportSubmitting ? "正在提交…" : "提交举报"}</button>
-              </div>
-            ) : modal === "subscription" ? (
-              <div className="subscription-layout">
-                <header className="subscription-header"><h2>翻卡计划</h2></header>
-                <div className="subscription-scroll">
-                  <div className="subscription-quota" aria-live="polite"><span>当前额度</span><strong>{dailyAllowance} 次</strong></div>
-                  <div className="subscription-section-label"><strong>选择套餐</strong></div>
-                  <div className="subscription-plans" role="group" aria-label="选择会员套餐">
-                    {membershipPlans.map((plan) => {
-                      const selected = selectedPlan === plan.id;
-                      return <button type="button" key={plan.id} className={`subscription-plan${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setSelectedPlan(plan.id)}>
-                        <span className="subscription-plan-name">{plan.name}</span>
-                        <span className="subscription-plan-daily">{plan.dailyFlips} 次 <small>/ 日</small></span>
-                        <span className="subscription-plan-price">¥{plan.price}<small> / 月</small></span>
-                        <span className="subscription-plan-check" aria-hidden="true">{selected ? <Check size={15}/> : null}</span>
-                      </button>;
-                    })}
-                  </div>
-                  <button className="primary-button full subscription-continue" type="button" disabled={!selectedPlan} onClick={() => toast("当前仅预览，不会扣款")}>{selectedPlan ? `预览 ${membershipPlans.find((plan) => plan.id === selectedPlan)?.name} 订阅` : "请选择套餐"}</button>
-                  <p className="subscription-preview-note">当前仅预览 · 不会扣款或开通套餐</p>
-                  <section className="membership-disclosure-group">
-                    <button type="button" className="membership-disclosure" aria-expanded={extraPacksOpen} onClick={() => setExtraPacksOpen((open) => !open)}>
-                      <span><strong>额外翻卡包</strong><small>{selectedFlipPack ? `已选 +${selectedFlipPack} 次` : "一次性补充翻卡机会"}</small></span>
-                      <ChevronRight size={17}/>
-                    </button>
-                    <div className={`membership-collapsible${extraPacksOpen ? " open" : ""}`} aria-hidden={!extraPacksOpen} inert={!extraPacksOpen}>
-                      <div className="membership-collapsible-inner">
-                        <div className="extra-flip-options">
-                          {extraFlipPacks.map((count) => <button type="button" key={count} className={selectedFlipPack === count ? "selected" : ""} aria-pressed={selectedFlipPack === count} onClick={() => setSelectedFlipPack(count)}>
-                            <strong>+{count}</strong><span>次翻卡</span>
-                          </button>)}
-                        </div>
-                        {selectedFlipPack && <button className="soft-button full extra-pack-preview" type="button" onClick={() => toast("当前仅预览，不会扣款")}>预览 +{selectedFlipPack} 次卡包</button>}
-                        <p className="subscription-preview-note">一次性补充机会；当前仅预览，不会扣款。</p>
-                      </div>
-                    </div>
-                  </section>
-                  <section className="membership-disclosure-group rules-disclosure-group">
-                    <button type="button" className="membership-disclosure" aria-expanded={subscriptionRulesOpen} onClick={() => setSubscriptionRulesOpen((open) => !open)}>
-                      <span><strong>翻卡与订阅规则</strong><small>权益、概率与额度说明</small></span>
-                      <ChevronRight size={17}/>
-                    </button>
-                    <div className={`membership-collapsible${subscriptionRulesOpen ? " open" : ""}`} aria-hidden={!subscriptionRulesOpen} inert={!subscriptionRulesOpen}>
-                      <div className="membership-collapsible-inner subscription-rules-copy">
-                        <p>免费每日 5 次；Plus 每日共 9 次，Pro 每日共 13 次。会员次数按天刷新，幸运加成另行累计。</p>
-                        <p>每次翻卡的幸运奖励概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%；幸运加成每日最多累计 10 次。</p>
-                        <p>额外翻卡包为一次性补充。当前页面仅供预览，不会扣款、创建订单或开通权益。</p>
-                      </div>
-                    </div>
-                  </section>
-                </div>
               </div>
             ) : modal === "browsing" ? (
               <>

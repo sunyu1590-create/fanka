@@ -6,7 +6,7 @@ import {
   respond,
   ApiError,
 } from "@/lib/server/api";
-import { libraryFields, present, type LibraryRow } from "@/lib/server/library";
+import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
 import { cardRarityTier } from "@/lib/progression";
 export async function GET(req: NextRequest) {
   return respond(async () => {
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       return data!.map((row) => ({ id: Number(row.client_id) }));
     }
     const page = Math.max(1, Math.min(10000, Number(req.nextUrl.searchParams.get("page")) || 1));
-    const limit = Math.max(1, Math.min(48, Number(req.nextUrl.searchParams.get("limit")) || 24));
+    const limit = Math.max(1, Math.min(50, Number(req.nextUrl.searchParams.get("limit")) || 24));
     const tag = (req.nextUrl.searchParams.get("tag") || "").trim().slice(0, 24);
     let tagId: number | undefined;
     if (tag && tag !== "全部") {
@@ -55,12 +55,13 @@ export async function GET(req: NextRequest) {
       : { data: [], error: null };
     dbError(statsError);
     const byPost = new Map((stats || []).map((stat) => [stat.post_id, stat]));
+    const presentations = await presentMany(db, rows);
     return {
-      items: rows.map((row) => {
+      items: rows.map((row, index) => {
         const stat = byPost.get(row.id);
         const ratingCount = stat?.rating_count || 0;
         const average = ratingCount ? stat!.rating_sum / ratingCount : 0;
-        return { ...present(row), rarityTier: cardRarityTier(average, ratingCount) };
+        return { ...presentations[index], rarityTier: cardRarityTier(average, ratingCount) };
       }),
       total: count || 0,
       page,
@@ -89,11 +90,12 @@ export async function POST(req: NextRequest) {
         .in("post_id", rows.map((row) => row.id));
       dbError(statsError);
       const byPost = new Map((stats || []).map((stat) => [stat.post_id, stat]));
-      const items = rows.map((row) => {
+      const presentations = await presentMany(db, rows);
+      const items = rows.map((row, index) => {
         const stat = byPost.get(row.id);
         const count = stat?.rating_count || 0;
         const average = count ? stat!.rating_sum / count : 0;
-        return { ...present(row), rarityTier: cardRarityTier(average, count) };
+        return { ...presentations[index], rarityTier: cardRarityTier(average, count) };
       });
       const byClientId = new Map(items.map((item) => [item.id, item]));
       return { items: ids.flatMap((id) => byClientId.has(id) ? [byClientId.get(id)!] : []) };
@@ -115,6 +117,6 @@ export async function POST(req: NextRequest) {
     dbError(statsError);
     const count = stats?.rating_count || 0;
     const average = count ? stats!.rating_sum / count : 0;
-    return { ...present(post), rarityTier: cardRarityTier(average, count) };
+    return { ...(await presentMany(db, [post]))[0], rarityTier: cardRarityTier(average, count) };
   });
 }
