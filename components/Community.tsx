@@ -3312,7 +3312,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.26.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.27.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3468,7 +3468,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.26.0</p>
+          <p className="lead">HEIKA · 版本 2.27.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.27.0</strong><small>2026.11.03</small></div><ul><li>统一页面间距、组件圆角与直角分隔线，减少重复横线。</li><li>顶栏、底栏和消息输入区加入克制的液态玻璃层，保留现有页面和控件动画。</li><li>消息列表支持会话/找人切换、未读筛选、昵称与最近消息搜索，以及本机置顶会话。</li><li>聊天输入支持 Enter 发送、Shift + Enter 换行，并按日期分组消息。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.26.0</strong><small>2026.11.03</small></div><ul><li>统一亮暗主题的色彩、控件、卡片与页面转场，提升桌面端首屏卡片排布与无图兜底纹理。</li><li>修复 AI 工作台额度校验权限错误，按当前登录账号安全扣减调用次数，并明确报告密钥错误和请求超时。</li><li>“我的”页面保留五个内容栏目，移除稀有图鉴；探索日历默认展开热力图。</li><li>新增月度探索回顾和卡片接龙；AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.23.1</strong><small>2026.11.03</small></div><ul><li>创作者中心与作品草稿管理拆分，入口与页面标题各自独立。</li><li>修正设置分类页的返回层级与重新进入时的状态恢复。</li><li>最近发现恢复卡片预览，再由“查看内容”进入详情。</li><li>评分后渐进展示社区结果，并加入模糊缩放反馈动效。</li><li>管理员可新增、编辑和上下线发现页的话题共创活动。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.12.0</strong><small>2026.11.03</small></div><ul><li>个人设置、调试模式、安全中心和创作者中心统一收纳在右上角设置入口，并按分类进入。</li><li>移除“我的”页底部重复的设置入口，设置不再被挤到页面末尾。</li><li>可以关注创作者，在发现页切换到关注动态。</li><li>支持创建作品系列，并在发布时将内容归入系列。</li><li>发现页上线限时话题共创，可加入后直接带话题创作。</li></ul></div>

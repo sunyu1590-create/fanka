@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { ArrowLeft, Bell, FileImage, MoreHorizontal, Send } from "lucide-react";
+import { ArrowLeft, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Send, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
@@ -46,6 +46,8 @@ export default function Messages({
     [resendSeconds, setResendSeconds] = useState(0),
     [authPurpose, setAuthPurpose] = useState<"signup" | "recovery">("signup"),
     [busy, setBusy] = useState(false),
+    [inboxMode, setInboxMode] = useState<"chats" | "people">("chats"),
+    [inboxFilter, setInboxFilter] = useState<"all" | "unread">("all"),
     [query, setQuery] = useState(""),
     [people, setPeople] = useState<Profile[]>([]),
     [rooms, setRooms] = useState<Room[]>([]),
@@ -59,6 +61,7 @@ export default function Messages({
     [hasMore, setHasMore] = useState(false),
     [newBelow, setNewBelow] = useState(false),
     [profile, setProfile] = useState<Profile | null>(null);
+  const [pinnedRooms, setPinnedRooms] = useState<string[]>([]);
   const updateActiveConversation = useCallback((room: Room | null) => {
     setActive(room);
     onConversationChange?.(room !== null);
@@ -143,6 +146,20 @@ export default function Messages({
       cleanup();
     };
   }, [updateActiveConversation]);
+  useEffect(() => {
+    if (!user) { setPinnedRooms([]); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(`heika-pinned-chats:${user.id}`) || "[]");
+      setPinnedRooms(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
+    } catch { setPinnedRooms([]); }
+  }, [user?.id]);
+  const togglePinnedRoom = (roomId: string) => {
+    setPinnedRooms((current) => {
+      const next = current.includes(roomId) ? current.filter((id) => id !== roomId) : [roomId, ...current];
+      if (user) localStorage.setItem(`heika-pinned-chats:${user.id}`, JSON.stringify(next));
+      return next;
+    });
+  };
   const refresh = async () => {
     if (!db || !user) return;
     const { data, error } = await db
@@ -490,69 +507,74 @@ export default function Messages({
   return (
     <section className={`page messages-page${active ? " is-chat-open" : ""}`}>
       <div className="messages-inbox-pane">
-      <div className="messages-title-row"><div><div className="eyebrow">MESSAGES / PRIVATE</div><h1>消息。</h1></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
+      <div className="messages-title-row"><div><div className="eyebrow">MESSAGES / PRIVATE</div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0)} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
       {!active && <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />}
+      <div className="messages-inbox-switch" role="tablist" aria-label="消息列表类别">
+        <button type="button" role="tab" aria-selected={inboxMode === "chats"} className={inboxMode === "chats" ? "selected" : ""} onClick={() => { setInboxMode("chats"); setQuery(""); setPeople([]); }}>会话 <small>{rooms.length}</small></button>
+        <button type="button" role="tab" aria-selected={inboxMode === "people"} className={inboxMode === "people" ? "selected" : ""} onClick={() => { setInboxMode("people"); setQuery(""); }}>找人 <Users size={14}/></button>
+      </div>
       <form
         className="search"
         onSubmit={(e) => {
           e.preventDefault();
-          void search();
+          if (inboxMode === "people") void search();
         }}
       >
+        <Search size={16} aria-hidden="true" />
         <input
-          placeholder="搜索用户昵称，开始交流"
+          placeholder={inboxMode === "people" ? "搜索昵称，发现新朋友" : "搜索会话昵称或最近消息"}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button type="submit" className="text-button">
-          搜索
-        </button>
+        {inboxMode === "people" && <button type="submit" className="text-button">搜索</button>}
       </form>
-      {people.map((p) => (
+      {inboxMode === "chats" && <div className="messages-filter-row" role="group" aria-label="筛选会话">
+        <button type="button" className={inboxFilter === "all" ? "selected" : ""} aria-pressed={inboxFilter === "all"} onClick={() => setInboxFilter("all")}>全部</button>
+        <button type="button" className={inboxFilter === "unread" ? "selected" : ""} aria-pressed={inboxFilter === "unread"} onClick={() => setInboxFilter("unread")}>未读{Object.values(unread).reduce((sum, count) => sum + count, 0) ? ` · ${Object.values(unread).reduce((sum, count) => sum + count, 0)}` : ""}</button>
+      </div>}
+      {inboxMode === "people" && people.map((p) => (
         <button
-          className="conversation-row"
+          className="conversation-row conversation-person-row"
           key={p.id}
           onClick={() => setProfile(p)}
         >
           <span className="conversation-row-head">
             <span className="conversation-avatar">{(p.nickname || "探").slice(0, 1)}{p.avatar_url && <img src={p.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-            <strong>{p.nickname || "探索者"}</strong>
-            <time>用户</time>
+            <span className="conversation-row-copy"><strong>{p.nickname || "探索者"}</strong><small>{p.bio || "查看主页并开始交流"}</small></span>
+            <span className="conversation-row-meta"><small>用户</small></span>
           </span>
-          <small className="conversation-preview">{p.bio || "点击查看主页并开始交流"}</small>
         </button>
       ))}
-      {rooms
-        .sort((a, b) =>
-          (preview[b.id]?.created_at || b.created_at || "").localeCompare(
-            preview[a.id]?.created_at || a.created_at || "",
-          ),
-        )
+      {inboxMode === "chats" && rooms
+        .filter((room) => {
+          const peerId = room.user_a === user.id ? room.user_b : room.user_a;
+          const term = query.trim().toLocaleLowerCase();
+          const content = `${names[peerId]?.nickname || ""} ${preview[room.id]?.body || ""}`.toLocaleLowerCase();
+          return (inboxFilter !== "unread" || !!unread[room.id]) && (!term || content.includes(term));
+        })
+        .sort((a, b) => Number(pinnedRooms.includes(b.id)) - Number(pinnedRooms.includes(a.id)) ||
+          (preview[b.id]?.created_at || b.created_at || "").localeCompare(preview[a.id]?.created_at || a.created_at || ""))
         .map((r) => {
           const id = r.user_a === user.id ? r.user_b : r.user_a;
           return (
-            <button
-              className="conversation-row"
-              key={r.id}
-              onClick={() => {
-                updateActiveConversation(r);
-                setMessages([]);
-                void load(r);
-              }}
-            >
-              <span className="conversation-row-head">
-                <span className="conversation-avatar">{(names[id]?.nickname || "探").slice(0, 1)}{names[id]?.avatar_url && <img src={names[id].avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-                <strong>{names[id]?.nickname || "探索者"}</strong>
-                <time>{preview[r.id] ? new Date(preview[r.id].created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}</time>
-                {unread[r.id] ? <i className="conversation-unread">{unread[r.id] > 99 ? "99+" : unread[r.id]}</i> : null}
-              </span>
-              <small className="conversation-preview">{preview[r.id]?.body || "尚无消息"}</small>
-            </button>
+            <div className="conversation-item" key={r.id}>
+              <button className="conversation-row" onClick={() => { updateActiveConversation(r); setMessages([]); void load(r); }}>
+                <span className="conversation-row-head">
+                  <span className="conversation-avatar">{(names[id]?.nickname || "探").slice(0, 1)}{names[id]?.avatar_url && <img src={names[id].avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
+                  <span className="conversation-row-copy"><strong>{names[id]?.nickname || "探索者"}{pinnedRooms.includes(r.id) && <Pin size={11} aria-label="已置顶"/>}</strong><small>{preview[r.id]?.body || "开启一段新的交流"}</small></span>
+                  <span className="conversation-row-meta"><time>{preview[r.id] ? new Date(preview[r.id].created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}</time>{unread[r.id] ? <i className="conversation-unread">{unread[r.id] > 99 ? "99+" : unread[r.id]}</i> : null}</span>
+                </span>
+              </button>
+              <button type="button" className={`conversation-pin${pinnedRooms.includes(r.id) ? " is-pinned" : ""}`} aria-label={pinnedRooms.includes(r.id) ? "取消置顶会话" : "置顶会话"} aria-pressed={pinnedRooms.includes(r.id)} onClick={() => togglePinnedRoom(r.id)}><Pin size={15}/></button>
+            </div>
           );
         })}
-      {!rooms.length && (
-        <div className="empty">还没有会话。搜索其他用户，开始第一段交流。</div>
-      )}
+      {inboxMode === "chats" && rooms.length === 0 && <div className="messages-empty"><MessageCircle size={24}/><strong>从一段交流开始</strong><span>搜索用户，发现聊得来的新朋友。</span><button type="button" onClick={() => { setInboxMode("people"); setQuery(""); }}>发现用户</button></div>}
+      {inboxMode === "people" && query.trim() && !people.length && <div className="messages-empty compact"><strong>没有找到用户</strong><span>换个昵称关键词再试试。</span></div>}
+      {inboxMode === "chats" && rooms.length > 0 && !rooms.some((room) => {
+        const peerId = room.user_a === user.id ? room.user_b : room.user_a;
+        return (inboxFilter !== "unread" || !!unread[room.id]) && (!query.trim() || `${names[peerId]?.nickname || ""} ${preview[room.id]?.body || ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+      }) && <div className="messages-empty compact"><strong>{inboxFilter === "unread" ? "没有未读会话" : "没有匹配的会话"}</strong><span>{inboxFilter === "unread" ? "新消息会出现在这里。" : "试试昵称或最近消息中的关键词。"}</span></div>}
       </div>
       {profile && (
         <div className="modal-backdrop">
@@ -678,8 +700,13 @@ export default function Messages({
                 加载更早消息
               </button>
             )}
-            {messages.map((m) => (
-              <div key={m.id} className={`message-row ${m.sender_id === user.id ? "own" : ""}`}>
+            {messages.map((m, index) => {
+              const previous = messages[index - 1];
+              const day = new Date(m.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
+              const previousDay = previous ? new Date(previous.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }) : "";
+              return <div key={m.id} className="chat-message-group">
+              {day !== previousDay && <div className="chat-day-divider"><span>{day}</span></div>}
+              <div className={`message-row ${m.sender_id === user.id ? "own" : ""}`}>
                 <span className="chat-message-avatar" aria-hidden="true">
                   {(m.sender_id === user.id ? user.user_metadata?.nickname || user.email : names[peer]?.nickname || "探")?.toString().slice(0, 1) || "探"}
                   {m.sender_id === user.id && typeof user.user_metadata?.avatar_url === "string" && <img src={user.user_metadata.avatar_url} alt="" />}
@@ -719,7 +746,8 @@ export default function Messages({
                   </div>
                 </div>
               </div>
-            ))}
+              </div>;
+            })}
           </div>
           {newBelow && (
             <button
@@ -790,11 +818,19 @@ export default function Messages({
                 }}
               />
             </label>
-            <input
-              aria-label="消息内容"
+            <textarea
+              aria-label="消息内容，按 Enter 发送，Shift 加 Enter 换行"
+              className="chat-compose-textarea"
               maxLength={2000}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  if (draft.trim() && !busy) void send();
+                }
+              }}
+              rows={1}
               placeholder="写下消息…"
             />
             <button className="chat-send" disabled={busy || !draft.trim()} aria-label="发送消息">
