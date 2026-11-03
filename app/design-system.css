@@ -411,6 +411,11 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 .detail-gallery-controls{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:7px;padding:3px 5px;border-radius:18px;background:#111a;color:white;font-size:10px;line-height:1}
 .detail-gallery-controls button{width:26px;height:26px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:white}
 .detail-image-button img{display:block;width:100%;height:auto;max-height:68dvh;object-fit:contain;background:var(--surface);animation:image-reveal .3s ease both}
+.detail-image-frame{isolation:isolate}
+.detail-image-frame img{will-change:opacity,transform,filter;animation:detail-image-enter-next 360ms var(--ease) both}
+.detail-image-frame.is-previous img{animation-name:detail-image-enter-previous}
+@keyframes detail-image-enter-next{from{opacity:0;filter:blur(10px);transform:translate3d(18px,0,0) scale(1.025)}to{opacity:1;filter:blur(0);transform:translate3d(0,0,0) scale(1)}}
+@keyframes detail-image-enter-previous{from{opacity:0;filter:blur(10px);transform:translate3d(-18px,0,0) scale(1.025)}to{opacity:1;filter:blur(0);transform:translate3d(0,0,0) scale(1)}}
 .detail-image-button>span{position:absolute;right:12px;bottom:12px;padding:6px 9px;background:#1119;color:white;font-size:10px;line-height:1.2;opacity:0;transition:opacity .18s ease}
 .detail-image-button:focus-visible>span,.detail-image-button:hover>span{opacity:1}
 .detail-category{display:block;margin:0 0 9px;color:var(--muted)!important;font-size:11px;letter-spacing:.08em}
@@ -2139,6 +2144,9 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   from { opacity: .58; filter: blur(5px); }
   to { opacity: 1; filter: blur(0); }
 }
+.detail-image-frame img{animation:detail-image-enter-next 360ms var(--ease) both}
+.detail-image-frame.is-previous img{animation-name:detail-image-enter-previous}
+.daily-deck-caption{margin:18px 0 0;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;letter-spacing:.05em;text-align:center}
 .editorial-cover img[data-failed="true"],.editorial-post img[data-failed="true"],.search-post-thumbnail img[data-failed="true"] { display: block; }
 
 /* Compact, aligned message rows with enough room for names and previews. */

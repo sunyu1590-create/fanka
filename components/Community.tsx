@@ -512,6 +512,7 @@ export default function Community() {
   const [likeBusy, setLikeBusy] = useState(false);
   const [previewImage, setPreviewImage] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [detailImageDirection, setDetailImageDirection] = useState<"next" | "previous">("next");
   const imageTouchStart = useRef<number | null>(null);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
@@ -567,8 +568,10 @@ export default function Community() {
     candidatePosts,
     state.interests,
     state.deck[today] || [],
+    50,
+    today,
   );
-  const visibleCandidates = candidates.slice(0, page);
+  const visibleCandidates = candidates;
   const openedIds = [
     ...new Set([
       ...Object.values(state.opened).flat(),
@@ -784,6 +787,15 @@ export default function Community() {
     );
     return () => window.clearTimeout(timer);
   }, [dayTick]);
+  useEffect(() => {
+    if (!ready || !state.cardIds.length || state.deck[today]?.length) return;
+    const deck = dailyCandidates(candidatePosts, state.interests, [], 50, today).map((post) => post.id);
+    if (!deck.length) return;
+    update((current) => current.deck[today]?.length ? current : {
+      ...current,
+      deck: { ...current.deck, [today]: deck },
+    });
+  }, [ready, today, state.cardIds, state.deck, state.interests, candidatePosts]);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("heika-search-recent") || "[]");
@@ -1975,6 +1987,7 @@ export default function Community() {
   useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
+    setDetailImageDirection("next");
     setPreviewImage(false);
     setCommentsLoading(true);
     setCommentsError(false);
@@ -2128,6 +2141,14 @@ export default function Community() {
   const detailImages = post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
     : [];
+  const selectDetailImage = (nextIndex: number) => {
+    if (detailImages.length < 2) return;
+    const normalized = (nextIndex + detailImages.length) % detailImages.length;
+    if (normalized === activeImageIndex) return;
+    const forward = (normalized - activeImageIndex + detailImages.length) % detailImages.length;
+    setDetailImageDirection(forward <= detailImages.length / 2 ? "next" : "previous");
+    setActiveImageIndex(normalized);
+  };
   const postCard = (p: Post, source: "today" | "discover" = "discover") => {
     const rating = communityRatings[p.id];
     const rarityTier = p.rarityTier || (rating ? cardRarityTier(rating.average, rating.count) : "pending");
@@ -2654,12 +2675,7 @@ export default function Community() {
               <div className="candidate-feed waterfall-card-feed">
                 {visibleCandidates.map(renderCandidate)}
               </div>
-              {visibleCandidates.length < candidates.length && (
-                <div ref={loadMoreRef} className="feed-sentinel">
-                  <span>继续浏览未解锁的卡片</span>
-                  <button onClick={() => setPage((count) => count + 12)}>加载更多</button>
-                </div>
-              )}
+              <p className="daily-deck-caption">今日卡池 · 50 张 · 翻卡次数将在明日自动重置</p>
             </>
           ) : (
             <>
@@ -2853,7 +2869,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("security")}><span>安全中心</span><small>笔记隐私、私聊与账号安全</small><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.03.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.04.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -2930,7 +2946,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 2.03.0</p>
+          <p className="lead">黑卡 HEIKA · 版本 2.04.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.04.0</strong><small>2026.11.03</small></div><ul><li>瀑布流每天固定展示 50 张黑卡，次日自动生成新卡组并重置当日翻卡次数。</li><li>已翻卡片按日期保留在探索历史，可随时回看。</li><li>瀑布流图片加载时由模糊渐清，详情多图支持按滑动方向平滑切换。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.02</small></div><ul><li>投稿图片在上传后立即显示，并在刷新和重新打开时获取新的图片链接。</li><li>新增安全中心，可设置笔记仅自己可见，并管理私聊范围、黑名单与账号安全。</li><li>消息时间移到气泡外，复制操作收进长按菜单。</li><li>经验记录、探索日历和探索记录支持折叠，收起时不渲染长列表。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.02.0</strong><small>2026.11.02</small></div><ul><li>他人主页改为全屏浏览，增加笔记与公开收藏分类。</li><li>等级经验页改用统一分割线和克制配色。</li><li>个人页的信息结构与公开主页统一，并可自行设置收藏公开状态。</li><li>上传图片自动压缩，单张上限调整为 4 MB。</li><li>修复图片加载失败显示乱码，并移除详情图片圆角。</li><li>调整消息列表排版与悬浮底栏留白，加入发现图片渐入效果。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
@@ -3531,16 +3548,16 @@ export default function Community() {
                     const end = event.changedTouches[0]?.clientX;
                     imageTouchStart.current = null;
                     if (start === null || end === undefined || detailImages.length < 2 || Math.abs(end - start) < 40) return;
-                    setActiveImageIndex((index) => (index + (end < start ? 1 : -1) + detailImages.length) % detailImages.length);
+                    selectDetailImage(activeImageIndex + (end < start ? 1 : -1));
                   }}>
-                  <button className="detail-image-button" onClick={() => setPreviewImage(true)} aria-label="查看大图">
-                    <img src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
+                  <button className={`detail-image-button detail-image-frame is-${detailImageDirection}`} onClick={() => setPreviewImage(true)} aria-label="查看大图">
+                    <img key={detailImages[activeImageIndex]} src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
                     <span>查看大图</span>
                   </button>
                   {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
-                    <button aria-label="上一张图片" onClick={() => setActiveImageIndex((index) => (index - 1 + detailImages.length) % detailImages.length)}><ArrowLeft size={15} /></button>
+                    <button aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
                     <span>{activeImageIndex + 1} / {detailImages.length}</span>
-                    <button aria-label="下一张图片" onClick={() => setActiveImageIndex((index) => (index + 1) % detailImages.length)}><ArrowRight size={15} /></button>
+                    <button aria-label="下一张图片" onClick={() => selectDetailImage(activeImageIndex + 1)}><ArrowRight size={15} /></button>
                   </div>}
                   </div>
                 )}
