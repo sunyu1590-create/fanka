@@ -142,9 +142,15 @@ export async function POST(req: NextRequest) {
       if (title.length > 80 || body.length > 5000) throw new ApiError(400, "标题或正文超过长度限制");
       const { data: tag, error: tagError } = await db.from("interest_tags").select("id").eq("name", String(b.tag || "生活")).single();
       dbError(tagError);
+      const seriesId = typeof b.seriesId === "string" && b.seriesId ? b.seriesId : null;
+      if (seriesId) {
+        const owned = await db.from("post_series").select("id").eq("id", seriesId).eq("creator_id", user!.id).maybeSingle();
+        dbError(owned.error);
+        if (!owned.data) throw new ApiError(400, "请选择自己的作品系列");
+      }
       const { data: existing, error: existingError } = await db.from("posts").select("id").eq("author_id", user!.id).eq("status", "draft").eq("is_demo", false).order("updated_at", { ascending: false }).limit(1).maybeSingle();
       dbError(existingError);
-      const values = { author_id: user!.id, tag_id: tag!.id, title, body, status: "draft", image_url: typeof b.coverUrl === "string" ? (() => { try { const url = new URL(b.coverUrl); return ["https:", "http:"].includes(url.protocol) ? url.toString() : null; } catch { return null; } })() : null, updated_at: new Date().toISOString() };
+      const values = { author_id: user!.id, tag_id: tag!.id, title, body, series_id: seriesId, status: "draft", image_url: typeof b.coverUrl === "string" ? (() => { try { const url = new URL(b.coverUrl); return ["https:", "http:"].includes(url.protocol) ? url.toString() : null; } catch { return null; } })() : null, updated_at: new Date().toISOString() };
       let result = existing
         ? await db.from("posts").update(values).eq("id", existing.id).eq("author_id", user!.id).select(libraryFields).single()
         : await db.from("posts").insert(values).select(libraryFields).single();
@@ -169,11 +175,18 @@ export async function POST(req: NextRequest) {
       dbError(tagError);
       const existingPost = b.id ? await db.from("posts").select("id,status").eq("client_id", Number(b.id)).eq("author_id", user!.id).single() : null;
       if (existingPost) dbError(existingPost.error);
+      const seriesId = typeof b.seriesId === "string" && b.seriesId ? b.seriesId : null;
+      if (seriesId) {
+        const owned = await db.from("post_series").select("id").eq("id", seriesId).eq("creator_id", user!.id).maybeSingle();
+        dbError(owned.error);
+        if (!owned.data) throw new ApiError(400, "请选择自己的作品系列");
+      }
       const values = {
         author_id: user!.id,
         tag_id: tag!.id,
         title: textField(b.title, "标题", 1, 80),
         body: textField(b.body, "正文", 1, 5000),
+        series_id: seriesId,
         status: existingPost?.data?.status === "draft" ? "draft" : "pending_review",
         image_url: typeof b.coverUrl === "string" ? (() => { try { const url = new URL(b.coverUrl); return ["https:", "http:"].includes(url.protocol) ? url.toString() : null; } catch { return null; } })() : null,
       };

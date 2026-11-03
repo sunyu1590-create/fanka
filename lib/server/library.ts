@@ -8,6 +8,8 @@ export type LibraryRow = {
   cover_text: string | null;
   image_url: string | null;
   author_id: string | null;
+  series_id?: string | null;
+  post_series?: { title: string } | null;
   created_at: string;
   is_demo: boolean;
   status?: "draft" | "pending_review" | "published" | "hidden";
@@ -17,7 +19,7 @@ export type LibraryRow = {
   post_topics?: { interest_tags: { name: string } | null }[];
 };
 export const libraryFields =
-  "id,client_id,title,body,cover_text,image_url,author_id,created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name))";
+  "id,client_id,title,body,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name))";
 export function present(row: LibraryRow, mediaUrls?: Map<string, string>) {
   const images = [
     ...(row.image_url ? [row.image_url] : []),
@@ -38,6 +40,8 @@ export function present(row: LibraryRow, mediaUrls?: Map<string, string>) {
     images: images.length ? images : undefined,
     author: row.profiles?.nickname || "黑卡编辑部",
     authorId: row.author_id || undefined,
+    seriesId: row.series_id || undefined,
+    seriesTitle: row.post_series?.title || undefined,
     date: row.created_at.slice(0, 10),
     isDemo: row.is_demo,
     status: row.status || "published",

@@ -10,7 +10,7 @@ import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/librar
 import { cardRarityTier } from "@/lib/progression";
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await context(req, false);
+    const { db, user } = await context(req, false);
     if (req.nextUrl.searchParams.get("mode") !== "discover") {
       const { data, error } = await db
         .from("posts")
@@ -24,6 +24,15 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, Math.min(10000, Number(req.nextUrl.searchParams.get("page")) || 1));
     const limit = Math.max(1, Math.min(50, Number(req.nextUrl.searchParams.get("limit")) || 24));
     const tag = (req.nextUrl.searchParams.get("tag") || "").trim().slice(0, 24);
+    const followingOnly = req.nextUrl.searchParams.get("following") === "1";
+    let followedCreatorIds: string[] | null = null;
+    if (followingOnly) {
+      if (!user) return { items: [], total: 0, page: 1, limit: 24 };
+      const { data: follows, error: followsError } = await db.from("creator_follows").select("creator_id").eq("follower_id", user.id);
+      dbError(followsError);
+      followedCreatorIds = (follows || []).map((item) => item.creator_id);
+      if (!followedCreatorIds.length) return { items: [], total: 0, page, limit };
+    }
     let tagId: number | undefined;
     if (tag && tag !== "全部") {
       const { data: topic, error: tagError } = await db
@@ -44,6 +53,7 @@ export async function GET(req: NextRequest) {
       .order("client_id", { ascending: false })
       .range((page - 1) * limit, page * limit - 1);
     if (tagId !== undefined) query = query.eq("tag_id", tagId);
+    if (followedCreatorIds) query = query.in("author_id", followedCreatorIds);
     const { data, error, count } = await query;
     dbError(error);
     const rows = (data as unknown as LibraryRow[] || []);

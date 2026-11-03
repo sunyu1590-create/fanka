@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronRight, LockKeyhole, MessageCircle, UserRound } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
+import { cloudFetch, cloudRequest } from "@/lib/cloud";
 
 type PublicInfo = { nickname: string; bio: string; avatar_url: string | null; show_bookmarks: boolean };
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
@@ -45,6 +46,9 @@ export default function PublicProfile({
   const [attributes, setAttributes] = useState<PublicAttribute[]>([]);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [bookmarks, setBookmarks] = useState<ProfilePost[]>([]);
+  const [following, setFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followBusy, setFollowBusy] = useState(false);
   const [section, setSection] = useState<"posts" | "bookmarks">("posts");
   const [error, setError] = useState("");
 
@@ -52,10 +56,11 @@ export default function PublicProfile({
     let alive = true;
     void browserDb()
       .then(async (db) => {
-        const [p, a, c] = await Promise.all([
+        const [p, a, c, followResponse] = await Promise.all([
           db.from("profiles").select("nickname,bio,avatar_url,show_bookmarks").eq("id", id).single(),
           db.from("profile_attributes").select("attribute,value").eq("user_id", id).eq("is_public", true),
           db.from("posts").select("client_id,title,body,image_url,created_at,post_media(storage_path,sort_order)").eq("author_id", id).eq("status", "published").order("created_at", { ascending: false }).limit(30),
+          cloudFetch(`/api/v1/creator-follows?creator=${encodeURIComponent(id)}`, { cache: "no-store" }),
         ]);
         if (!alive) return;
         if (p.error) { setError(p.error.message); return; }
@@ -63,6 +68,8 @@ export default function PublicProfile({
         setProfile(info);
         setAttributes((a.data || []) as PublicAttribute[]);
         setPosts(await withSignedPostImages(db, (c.data || []) as ProfilePost[]));
+        const followData = await followResponse.json();
+        if (followResponse.ok) { setFollowing(Boolean(followData.data?.following)); setFollowerCount(Number(followData.data?.followerCount) || 0); }
         if (info.show_bookmarks) {
           const saved = await db.from("bookmarks").select("created_at,posts(client_id,title,body,image_url,post_media(storage_path,sort_order))").eq("user_id", id).order("created_at", { ascending: false }).limit(30);
           if (!alive) return;
@@ -90,6 +97,16 @@ export default function PublicProfile({
   }, [onClose]);
 
   const displayedPosts = section === "posts" ? posts : bookmarks;
+  const toggleFollow = async () => {
+    if (followBusy) return;
+    setFollowBusy(true);
+    try {
+      const result = await cloudRequest("/api/v1/creator-follows", { creatorId: id }) as { following: boolean; followerCount: number } | null;
+      if (!result) throw new Error("登录后可以关注创作者");
+      setFollowing(result.following); setFollowerCount(result.followerCount);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "关注失败，请重试"); }
+    finally { setFollowBusy(false); }
+  };
 
   return (
     <main className="public-profile" role="dialog" aria-modal="true" aria-label="个人主页">
@@ -103,8 +120,8 @@ export default function PublicProfile({
           <div className="public-profile-content">
             <section className="public-profile-identity">
               {profile.avatar_url ? <img className="public-profile-avatar" src={profile.avatar_url} alt={`${profile.nickname}的头像`} /> : <div className="public-profile-avatar public-profile-avatar-placeholder"><UserRound size={31}/></div>}
-              <div className="public-profile-name-block"><h1>{profile.nickname || "探索者"}</h1><p>{profile.bio || "还没有填写简介。"}</p></div>
-              <button className="public-profile-message" type="button" onClick={() => onMessage(id)}><MessageCircle size={16}/> 私聊</button>
+              <div className="public-profile-name-block"><h1>{profile.nickname || "探索者"}</h1><p>{profile.bio || "还没有填写简介。"}</p><small className="public-profile-followers">{followerCount.toLocaleString("zh-CN")} 位关注者</small></div>
+              <div className="public-profile-actions"><button className={`public-profile-follow${following ? " is-following" : ""}`} type="button" disabled={followBusy} onClick={() => void toggleFollow()}>{following ? "已关注" : "关注"}</button><button className="public-profile-message" type="button" onClick={() => onMessage(id)}><MessageCircle size={16}/> 私聊</button></div>
             </section>
             {!!attributes.filter((item) => item.value).length && <div className="public-profile-facts" aria-label="公开资料">
               {attributes.filter((item) => item.value).map((item) => <span key={item.attribute}><small>{{ gender: "性别", mbti: "MBTI", birthday: "生日", hobbies: "兴趣" }[item.attribute]}</small><strong>{displayAttributeValue(item)}</strong></span>)}
