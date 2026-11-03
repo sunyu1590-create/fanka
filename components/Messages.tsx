@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ArrowLeft, FileImage, MoreHorizontal, Send } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
@@ -19,11 +19,13 @@ type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | 
 export default function Messages({
   initialPeer,
   onPeerOpened,
+  onConversationChange,
   onOpenProfile,
   isActive = true,
 }: {
   initialPeer?: string | null;
   onPeerOpened?: () => void;
+  onConversationChange?: (isOpen: boolean) => void;
   onOpenProfile?: (id: string) => void;
   isActive?: boolean;
 }) {
@@ -55,6 +57,10 @@ export default function Messages({
     [hasMore, setHasMore] = useState(false),
     [newBelow, setNewBelow] = useState(false),
     [profile, setProfile] = useState<Profile | null>(null);
+  const updateActiveConversation = useCallback((room: Room | null) => {
+    setActive(room);
+    onConversationChange?.(room !== null);
+  }, [onConversationChange]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaRequests = useRef(new Set<string>());
@@ -113,7 +119,7 @@ export default function Messages({
             if (event === "PASSWORD_RECOVERY") setAuthView("reset");
             if (event === "SIGNED_OUT" ||
                 (userIdRef.current && userIdRef.current !== session?.user?.id)) {
-              setActive(null);
+              updateActiveConversation(null);
               setMessages([]);
               setRooms([]);
               setPeople([]);
@@ -134,7 +140,7 @@ export default function Messages({
       alive = false;
       cleanup();
     };
-  }, []);
+  }, [updateActiveConversation]);
   const refresh = async () => {
     if (!db || !user) return;
     const { data, error } = await db
@@ -360,7 +366,7 @@ export default function Messages({
     else {
       const room = { id: data, user_a: user!.id, user_b: peer.id };
       setNames((old) => ({ ...old, [peer.id]: peer }));
-      setActive(room);
+      updateActiveConversation(room);
       setProfile(null);
       setMessages([]);
       void load(room);
@@ -528,7 +534,7 @@ export default function Messages({
               className="conversation-row"
               key={r.id}
               onClick={() => {
-                setActive(r);
+                updateActiveConversation(r);
                 setMessages([]);
                 void load(r);
               }}
@@ -634,7 +640,7 @@ export default function Messages({
               className="chat-back"
               aria-label="返回消息列表"
               onClick={() => {
-                setActive(null);
+                updateActiveConversation(null);
                 void refresh();
               }}
             >
