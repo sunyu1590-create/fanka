@@ -419,7 +419,7 @@ export default function Community() {
     detailSource = useRef<"today" | "discover">("today");
   const [feedLoadedSort, setFeedLoadedSort] = useState<string | null>(null);
   const [favoriteSource, setFavoriteSource] = useState("全部"),
-    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked" | "calendar" | "recent" | "rarity">("works"),
+    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked" | "calendar" | "recent">("works"),
     [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [debugReturnTab, setDebugReturnTab] = useState<"settings" | "mine">("settings"),
@@ -431,7 +431,7 @@ export default function Community() {
       "default" | "granted" | "denied" | "unsupported"
     >("default");
   const [recentExperienceOpen, setRecentExperienceOpen] = useState(false);
-  const [explorationCalendarOpen, setExplorationCalendarOpen] = useState(false);
+  const [explorationCalendarOpen, setExplorationCalendarOpen] = useState(true);
   const [explorationHistoryOpen, setExplorationHistoryOpen] = useState(false);
   const [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("mine");
   const readingTimer = useRef<number[]>([]),
@@ -2256,7 +2256,9 @@ export default function Community() {
     if (!accountId) { toast("登录后可以使用 AI 创作工作台"); return; }
     setAiWorkbenchBusy(true); setAiWorkbenchOutput("");
     try {
-      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag }) as { output: string };
+      setAiWorkbenchOutput("");
+      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag }) as { output?: unknown } | null;
+      if (typeof result?.output !== "string" || !result.output.trim()) throw new Error("登录状态已失效或 AI 没有返回内容，请重试");
       setAiWorkbenchOutput(result.output);
     } catch (error) { toast(error instanceof Error ? error.message : "AI 生成失败，请稍后重试"); }
     finally { setAiWorkbenchBusy(false); }
@@ -3467,7 +3469,7 @@ export default function Community() {
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
           <p className="lead">HEIKA · 版本 2.26.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.26.0</strong><small>2026.11.03</small></div><ul><li>统一亮暗主题的色彩、控件、卡片与页面转场，提升桌面端首屏卡片排布与无图兜底纹理。</li><li>新增月度探索回顾，汇总翻卡、探索日与 S/SS/SSS 稀有卡并可分享。</li><li>新增卡片接龙，从已发布内容发起故事，探索者可续写一段。</li><li>AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.26.0</strong><small>2026.11.03</small></div><ul><li>统一亮暗主题的色彩、控件、卡片与页面转场，提升桌面端首屏卡片排布与无图兜底纹理。</li><li>修复 AI 工作台额度校验权限错误，按当前登录账号安全扣减调用次数，并明确报告密钥错误和请求超时。</li><li>“我的”页面保留五个内容栏目，移除稀有图鉴；探索日历默认展开热力图。</li><li>新增月度探索回顾和卡片接龙；AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.23.1</strong><small>2026.11.03</small></div><ul><li>创作者中心与作品草稿管理拆分，入口与页面标题各自独立。</li><li>修正设置分类页的返回层级与重新进入时的状态恢复。</li><li>最近发现恢复卡片预览，再由“查看内容”进入详情。</li><li>评分后渐进展示社区结果，并加入模糊缩放反馈动效。</li><li>管理员可新增、编辑和上下线发现页的话题共创活动。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.12.0</strong><small>2026.11.03</small></div><ul><li>个人设置、调试模式、安全中心和创作者中心统一收纳在右上角设置入口，并按分类进入。</li><li>移除“我的”页底部重复的设置入口，设置不再被挤到页面末尾。</li><li>可以关注创作者，在发现页切换到关注动态。</li><li>支持创建作品系列，并在发布时将内容归入系列。</li><li>发现页上线限时话题共创，可加入后直接带话题创作。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.11.0</strong><small>2026.11.03</small></div><ul><li>发现页新增个性化精选、最新和高评分排序。</li><li>收藏支持创建、重命名、删除收藏夹，按标题、话题和作者搜索并整理内容。</li><li>新增创作者数据面板，统计公开内容阅读、点赞、收藏与评论表现。</li><li>加入每周探索、发布和收藏任务，完成后可领取 EXP 并计入等级奖励。</li><li>收藏夹和任务奖励改由数据库权限与事务校验保护。</li></ul></div>
@@ -3762,7 +3764,6 @@ export default function Community() {
                 ["liked", "我的点赞"],
                 ["calendar", "探索日历"],
                 ["recent", "最近发现"],
-                ["rarity", "稀有图鉴"],
               ] as const).map(([id, label]) => (
                 <button
                   key={id}
@@ -3778,7 +3779,7 @@ export default function Community() {
                   {label}
                 </button>
               ))}
-              <span className="mine-tab-indicator" style={{ transform: `translateX(${["works", "favorites", "liked", "calendar", "recent", "rarity"].indexOf(mineSection) * 100}%)` }} />
+              <span className="mine-tab-indicator" style={{ transform: `translateX(${["works", "favorites", "liked", "calendar", "recent"].indexOf(mineSection) * 100}%)` }} />
             </div>
           </div>
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
@@ -3854,11 +3855,6 @@ export default function Community() {
                 {explorationHistoryOpen && !Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
               </div>
             )}
-            {mineSection === "rarity" && (() => {
-              const grades = { S: 1, SS: 2, SSS: 3 } as const;
-              const rareCards = openedIds.map((id) => state.revealed[id] || all.find((post) => post.id === id)).filter((post): post is Post => Boolean(post)).map((post) => ({ post, tier: state.rarityTiers[post.id] || post.rarityTier })).filter((item): item is { post: Post; tier: keyof typeof grades } => item.tier === "S" || item.tier === "SS" || item.tier === "SSS").sort((a, b) => grades[b.tier] - grades[a.tier]);
-              return <div className="mine-tab-content rarity-album"><div className="section-head mine-panel-heading"><h2>稀有图鉴</h2><span>{rareCards.length} 张珍藏</span></div><p className="rarity-album-intro">探索时遇见的稀有卡会自动收录在这里。</p>{rareCards.length ? <div className="rarity-album-grid">{rareCards.map(({ post, tier }) => <button type="button" className={`rarity-album-card rarity-tier-${tier}`} key={post.id} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{tier}</span>{post.image && <img src={post.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.src = "/image-not-loaded.svg"; }}/>}<strong>{post.title}</strong><small>{post.tag}</small></button>)}</div> : <div className="rarity-album-empty"><Sparkles size={23}/><strong>还没有收录稀有卡</strong><span>继续探索，遇见 S、SS、SSS 级卡片时会自动珍藏。</span></div>}</div>;
-            })()}
           </div>
         </section>
       )}
