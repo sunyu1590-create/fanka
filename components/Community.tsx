@@ -2480,10 +2480,8 @@ export default function Community() {
       }
       columns[target].push(post);
       const coverRatio = discoverCoverRatio(post.id).split("/").map(Number);
-      const coverHeight = (post.image || post.images?.some(Boolean)) && coverRatio.length === 2
-        ? (coverRatio[1] / coverRatio[0]) * 100
-        : 0;
-      const textHeight = 118 + Math.min(54, post.title.length * 1.4) + Math.min(25, Math.ceil(post.body.length / 48) * 12);
+      const coverHeight = coverRatio.length === 2 ? (coverRatio[1] / coverRatio[0]) * 100 : 125;
+      const textHeight = 48;
       heights[target] += coverHeight + textHeight;
     }
     return columns;
@@ -2611,33 +2609,46 @@ export default function Community() {
       }
     });
   };
-  const postCard = (p: Post, source: "today" | "discover" = "discover", own = false) => {
+  const postCard = (p: Post, source: "today" | "discover" = "discover", own = false, discoveryFeed = false) => {
     const rating = communityRatings[p.id];
     const rarityTier = p.rarityTier || (rating ? cardRarityTier(rating.average, rating.count) : "pending");
     const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier;
     const coverImage = p.image || p.images?.find(Boolean);
     return <button
-      className="post-card editorial-post"
+      className={`post-card editorial-post${discoveryFeed ? " discover-content-card" : ""}`}
       key={p.id}
       data-discover-id={p.id}
       onClick={(event) => own && p.status === "draft" ? void openComposer(p) : openPost(p.id, source, event.currentTarget)}
     >
-      {coverImage && <div
-        className="post-cover editorial-cover"
-        style={{ background: coverColor(p.tag), ...(own ? { aspectRatio: "3 / 4" } : source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
+      {(coverImage || discoveryFeed) && <div
+        className={`post-cover editorial-cover${discoveryFeed ? ` discover-post-cover${coverImage ? "" : " is-placeholder"}` : ""}`}
+        style={{ background: discoveryFeed && !coverImage ? "linear-gradient(145deg,#30383d,#13171a)" : coverColor(p.tag), ...(own ? { aspectRatio: "3 / 4" } : source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
       >
-        <img
+        {coverImage && <img
             src={coverImage}
-            alt=""
+            alt={discoveryFeed ? p.title : ""}
             loading="lazy"
             onError={(e) => {
               if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
             }}
-          />
-        <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有度`}>{rarityLabel}</i>
-        {p.cover && <span>{p.cover}</span>}
+          />}
+        {discoveryFeed ? <>
+          <span className="post-cover-tag">{p.tag}</span>
+          <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`评级：${rarityLabel}`}>{rarityLabel}</i>
+          <strong className="post-cover-title">{p.title}</strong>
+        </> : <>
+          <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有度`}>{rarityLabel}</i>
+          {p.cover && <span>{p.cover}</span>}
+        </>}
       </div>}
-      <div className="post-meta">
+      <div className={`post-meta${discoveryFeed ? " discover-post-meta" : ""}`}>
+        {discoveryFeed ? <>
+          <span className="discover-post-author">{p.author}</span>
+          <span className="post-card-footer-trailing">
+            <span className={`post-card-like-count${state.liked?.includes(p.id) ? " is-liked" : ""}`} aria-label={`${p.likeCount ?? 0} 个赞`}><Heart size={12} fill={state.liked?.includes(p.id) ? "currentColor" : "none"} /> {p.likeCount ?? 0}</span>
+            <span className="post-read-action">阅读 ↗</span>
+          </span>
+        </> : <>
         <small>{p.tag}</small>
         <b>{p.title}</b>
         <p className="post-summary">{p.body.slice(0, 100)}</p>
@@ -2649,6 +2660,7 @@ export default function Community() {
             <span>{own && p.status === "draft" ? "编辑草稿" : own && p.status === "pending_review" ? "审核中" : own && p.status === "hidden" ? "审核未通过" : state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
           </span>
         </div>
+        </>}
       </div>
     </button>;
   };
@@ -2668,7 +2680,7 @@ export default function Community() {
       {items.length ? (
         <div className={`stable-editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`} style={{ "--masonry-columns": state.discoverLayout === "single" ? 1 : discoverColumnCount } as CSSProperties}>
           {discoverColumns.map((column, index) => <div className="stable-editorial-column" key={`discover-column-${index}`}>
-            {column.map((item) => postCard(item))}
+            {column.map((item) => postCard(item, "discover", false, true))}
           </div>)}
         </div>
       ) : (
@@ -3131,7 +3143,7 @@ export default function Community() {
   const currentExperience = experienceProgress(experienceSummary.total);
   const visibleOwnPosts = selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own;
   return (
-    <main className={`app${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}`}>
+    <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}`}>
       <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}`}>
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand">黑卡 <i>HEIKA</i></span>}
         {tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : <span className="demo-pill">{accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}</span>}
@@ -3266,7 +3278,7 @@ export default function Community() {
         </section>
       )}
       {tab === "discover" && (
-        <section className="page editorial-home">
+        <section className="page editorial-home discover-page">
           <button className="search search-launch" onClick={openSearch}><Search size={18}/><span>搜索内容或用户</span><kbd>⌕</kbd></button>
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
@@ -3400,7 +3412,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.30.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.31.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3556,7 +3568,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.30.0</p>
+          <p className="lead">HEIKA · 版本 2.31.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.31.0</strong><small>2026.11.04</small></div><ul><li>发现页卡片改为图片主导：标签与评级置于封面上方，标题在图片内最多显示两行。</li><li>封面下方收敛为作者、点赞数和“阅读 ↗”，移除重复标题与摘要。</li><li>加大页面边距和双列间距，统一卡片圆角，并让底栏更轻盈，保留醒目的金色发布按钮。</li><li>保持瀑布流加载和既有图片进入动画，统一悬停、焦点与图片反馈的衔接。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.30.0</strong><small>2026.11.04</small></div><ul><li>重构个人主页，优先展示个人资料、等级与双列作品。</li><li>将好友探索、探索月报、卡片接龙、探索日历和最近发现集中到探索中心。</li><li>每日任务改为紧凑可展开入口；作品系列和状态管理移入作品管理页。</li><li>调整个人主页深浅主题、移动端间距与桌面端作品网格。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.29.0</strong><small>2026.11.04</small></div><ul><li>阅读正文可摘录并写私人笔记，仅本人可见，也能随时删除。</li><li>可关注话题，关注的话题有新内容时会收到通知；帖子可订阅系列更新。</li><li>推荐菜单支持减少某位创作者或话题，并可在发现页的推荐偏好中恢复。</li><li>发布帖子可添加单选投票，投票结果即时更新并按账号限制重复投票。</li><li>关注、投票与私人摘录均同步账号，数据库权限隔离投票身份和个人笔记。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.27.0</strong><small>2026.11.03</small></div><ul><li>统一页面间距、组件圆角与直角分隔线，减少重复横线。</li><li>顶栏、底栏和消息输入区加入克制的液态玻璃层，保留现有页面和控件动画。</li><li>消息列表支持会话/找人切换、未读筛选、昵称与最近消息搜索，以及本机置顶会话。</li><li>聊天输入支持 Enter 发送、Shift + Enter 换行，并按日期分组消息。</li></ul></div>
