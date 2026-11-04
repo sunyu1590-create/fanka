@@ -2378,6 +2378,27 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 }
 .experience-reward-copy { min-width:0; display:grid; gap:3px; }
 .experience-reward-copy>b { color:var(--ink); font-size:12px; font-weight:650; }
+
+/* Discover cards keep their waterfall columns fixed as later cursor pages arrive. */
+.stable-editorial-feed {
+  display:grid !important;
+  grid-template-columns:repeat(var(--masonry-columns,2),minmax(0,1fr));
+  align-items:start;
+  gap:12px;
+  columns:unset !important;
+  column-gap:unset !important;
+}
+.stable-editorial-column { display:flex; min-width:0; flex-direction:column; gap:16px; }
+.stable-editorial-column>.editorial-post { width:100%; min-width:0; margin:0 !important; break-inside:auto; }
+.stable-editorial-feed .editorial-post .editorial-cover { height:auto; min-height:0; }
+.post-card-footer { display:flex; min-width:0; align-items:center; justify-content:space-between; gap:8px; }
+.post-card-footer>span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.post-card-footer-trailing { display:inline-flex; min-width:0; flex:0 0 auto; align-items:center; gap:8px; }
+.post-card-like-count { display:inline-flex; align-items:center; gap:3px; color:var(--muted); font-size:10px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.post-card-like-count svg { color:var(--action); }
+.post-card-like-count.is-liked { color:var(--action); }
+@media (min-width:700px) { .stable-editorial-feed { gap:18px; } .stable-editorial-column { gap:20px; } }
+@media (min-width:1024px) { .stable-editorial-feed { gap:22px; } .stable-editorial-column { gap:22px; } }
 .experience-reward-copy>small,.experience-reward-threshold { color:var(--muted); font-size:10px; line-height:1.45; }
 .experience-reward-intro { margin:-2px 0 10px; color:var(--muted); font-size:11px; line-height:1.6; }
 .experience-reward-claim { min-height:30px; padding:0 9px; border:1px solid color-mix(in srgb,var(--action) 48%,var(--line)); background:color-mix(in srgb,var(--action) 9%,transparent); color:var(--action); font:inherit; font-size:10px; font-weight:650; white-space:nowrap; }

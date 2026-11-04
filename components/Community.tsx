@@ -75,6 +75,13 @@ const FLIP_RAIN_JITTER_MS = 90;
 const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
 const RATING_COLORS = ["#ff5d78", "#ff9452", "#edbd36", "#65b95e", "#34aeb5"];
 
+function discoverCoverRatio(postId: number) {
+  const shape = Math.abs(postId) % 8;
+  if (shape === 0) return "1 / 1.45";
+  if (shape === 1 || shape === 2) return "1 / 1.18";
+  return "4 / 5";
+}
+
 type Comment = {
   id: number;
   cloudId?: string;
@@ -409,6 +416,7 @@ export default function Community() {
     [viewerRevealPhase, setViewerRevealPhase] = useState<"rarity" | "content" | null>(null),
     [flippingId, setFlippingId] = useState<number | null>(null),
     [publicFeed, setPublicFeed] = useState<Post[]>([]),
+    [feedPostIds, setFeedPostIds] = useState<number[]>([]),
     [feedError, setFeedError] = useState(""),
     [feedPage, setFeedPage] = useState(0),
     [feedTotal, setFeedTotal] = useState(0),
@@ -417,9 +425,11 @@ export default function Community() {
     [feedLoadedTag, setFeedLoadedTag] = useState<string | null>(null),
     publicFeedLoading = useRef(false),
     feedController = useRef<AbortController | null>(null),
+    feedCursor = useRef<{ createdAt: string; postId: string } | null>(null),
     loadedRatingIds = useRef(new Set<number>()),
     detailSource = useRef<"today" | "discover">("today");
   const [feedLoadedSort, setFeedLoadedSort] = useState<string | null>(null);
+  const [discoverColumnCount, setDiscoverColumnCount] = useState(2);
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"works" | "favorites" | "liked" | "calendar" | "recent">("works"),
     [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | null>(null),
@@ -803,14 +813,19 @@ export default function Community() {
   const loadPublicFeed = useCallback(async (requestedPage = 1, reset = false, requestedTag = category) => {
     if (publicFeedLoading.current && !reset) return;
     if (reset) feedController.current?.abort();
+    if (reset) feedCursor.current = null;
     const controller = new AbortController();
     feedController.current = controller;
     publicFeedLoading.current = true;
     setFeedLoading(true);
     setFeedError("");
-    const params = new URLSearchParams({ mode: "discover", page: String(requestedPage), limit: "50" });
+    const params = new URLSearchParams({ mode: "discover", limit: "24" });
     if (requestedTag !== "全部") params.set("tag", requestedTag);
     if (sort === "关注") params.set("following", "1");
+    if (!reset && feedCursor.current) {
+      params.set("cursorCreatedAt", feedCursor.current.createdAt);
+      params.set("cursorPostId", feedCursor.current.postId);
+    }
     try {
       const response = await cloudFetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
       const result = await response.json();
@@ -819,14 +834,38 @@ export default function Community() {
       const items: Post[] | undefined = Array.isArray(payload) ? payload : payload?.items;
       if (!Array.isArray(items)) throw new Error("内容格式无效");
       if (controller.signal.aborted) return;
-      setPublicFeed((current) => reset ? items : [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
-      const total = Array.isArray(payload) ? items.length : Number(payload.total) || 0;
-      setFeedTotal(Math.min(total, 50));
-      setFeedPage(requestedPage);
-      setFeedHasMore(false);
+      const pageRatings = { ...communityRatings };
+      for (const item of items) {
+        if (typeof item.ratingAverage === "number" && typeof item.ratingCount === "number") {
+          pageRatings[item.id] = { average: item.ratingAverage, count: item.ratingCount };
+        }
+      }
+      const orderedItems = sort === "最新"
+        ? items
+        : sort === "高分"
+          ? [...items].sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0) || (b.ratingCount || 0) - (a.ratingCount || 0) || b.date.localeCompare(a.date) || b.id - a.id)
+          : rankRecommendations(items, state.interests, [], state.ratings, pageRatings);
+      setPublicFeed((current) => {
+        if (reset) return orderedItems;
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...orderedItems.filter((item) => !seen.has(item.id))];
+      });
+      setFeedPostIds((current) => reset
+        ? orderedItems.map((item) => item.id)
+        : [...current, ...orderedItems.filter((item) => !current.includes(item.id)).map((item) => item.id)]);
+      setCommunityRatings((current) => ({ ...current, ...Object.fromEntries(items.flatMap((item) =>
+        typeof item.ratingAverage === "number" && typeof item.ratingCount === "number"
+          ? [[item.id, { average: item.ratingAverage, count: item.ratingCount }]]
+          : [],
+      )) }));
+      feedCursor.current = !Array.isArray(payload) && payload.cursor ? payload.cursor : null;
+      const total = Array.isArray(payload) ? items.length : typeof payload.total === "number" ? payload.total : null;
+      setFeedTotal((current) => reset ? total ?? items.length : total ?? current);
+      setFeedPage((current) => reset ? 1 : Math.max(current + 1, requestedPage));
+      setFeedHasMore(!Array.isArray(payload) && Boolean(payload.hasMore));
       setFeedLoadedTag(requestedTag);
       setFeedLoadedSort(sort);
-      setPage((current) => reset ? 12 : current + items.length);
+      setPage((current) => reset ? Math.min(12, items.length) : current);
     } catch {
       if (!controller.signal.aborted) setFeedError("内容加载失败，请重试");
     } finally {
@@ -835,7 +874,13 @@ export default function Community() {
         setFeedLoading(false);
       }
     }
-  }, [category, sort]);
+  }, [category, sort, state.interests, state.ratings, communityRatings]);
+  useEffect(() => {
+    const updateColumns = () => setDiscoverColumnCount(window.innerWidth >= 1640 ? 5 : window.innerWidth >= 700 ? 3 : 2);
+    updateColumns();
+    window.addEventListener("resize", updateColumns, { passive: true });
+    return () => window.removeEventListener("resize", updateColumns);
+  }, []);
   useEffect(() => {
     if (!ready || tab !== "discover") return;
     const wantedTag = category;
@@ -1360,7 +1405,7 @@ export default function Community() {
     void cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
       .then((response) => response.json().then((result) => ({ response, result })))
       .then(({ response, result }) => {
-        if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [result.data as Post, ...current]);
+        if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [...current, result.data as Post]);
       })
       .catch(() => {})
       .finally(() => { sharedPostLoading.current = null; });
@@ -1978,7 +2023,6 @@ export default function Community() {
         ],
         cardIds: item.status === "published" ? [...new Set([...s.cardIds, item.id])] : s.cardIds,
       }));
-      setPublicFeed((s) => item.status === "published" ? [item, ...s.filter((p) => p.id !== item.id)] : s.filter((p) => p.id !== item.id));
       setModal(null);
       setTitle("");
       setBody("");
@@ -2407,34 +2451,36 @@ export default function Community() {
   }, [ready, ratingIdsKey]);
   const filtered = useMemo(
     () => {
-      const ranked = rankRecommendations(
-      publicFeed.filter(
-        (p) =>
-          !state.dismissed?.includes(p.id) &&
-          (category === "全部" || p.tag === category),
-      ),
-      state.interests,
-      state.viewed,
-      state.ratings,
-      communityRatings,
-      );
-      if (sort === "关注") return ranked;
-      if (sort === "最新") return ranked.sort((a, b) => b.date.localeCompare(a.date) || a.id - b.id);
-      if (sort === "高分") return ranked.sort((a, b) => (communityRatings[b.id]?.average || 0) - (communityRatings[a.id]?.average || 0) || b.date.localeCompare(a.date));
-      return ranked;
+      const postsById = new Map(publicFeed.map((post) => [post.id, post]));
+      return feedPostIds.flatMap((id) => {
+        const post = postsById.get(id);
+        return post && !state.dismissed?.includes(post.id) && (category === "全部" || post.tag === category)
+          ? [post]
+          : [];
+      });
     },
-    [
-      publicFeed,
-      category,
-      state.dismissed,
-      state.interests,
-      state.viewed,
-      state.ratings,
-      communityRatings,
-      sort,
-    ],
+    [publicFeed, feedPostIds, category, state.dismissed],
   );
   const list = filtered.slice(0, page);
+  const discoverColumns = useMemo(() => {
+    const columnCount = state.discoverLayout === "single" ? 1 : discoverColumnCount;
+    const columns = Array.from({ length: columnCount }, () => [] as Post[]);
+    const heights = Array.from({ length: columnCount }, () => 0);
+    for (const post of filtered.slice(0, page)) {
+      let target = 0;
+      for (let index = 1; index < heights.length; index += 1) {
+        if (heights[index] < heights[target]) target = index;
+      }
+      columns[target].push(post);
+      const coverRatio = discoverCoverRatio(post.id).split("/").map(Number);
+      const coverHeight = (post.image || post.images?.some(Boolean)) && coverRatio.length === 2
+        ? (coverRatio[1] / coverRatio[0]) * 100
+        : 0;
+      const textHeight = 118 + Math.min(54, post.title.length * 1.4) + Math.min(25, Math.ceil(post.body.length / 48) * 12);
+      heights[target] += coverHeight + textHeight;
+    }
+    return columns;
+  }, [filtered, page, discoverColumnCount, state.discoverLayout]);
   useEffect(() => {
     if (
       !ready ||
@@ -2571,7 +2617,7 @@ export default function Community() {
     >
       {coverImage && <div
         className="post-cover editorial-cover"
-        style={{ background: coverColor(p.tag) }}
+        style={{ background: coverColor(p.tag), ...(source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
       >
         <img
             src={coverImage}
@@ -2589,9 +2635,12 @@ export default function Community() {
         <b>{p.title}</b>
         <p className="post-summary">{p.body.slice(0, 100)}</p>
         {communityRatings[p.id]?.count ? <span className={`post-card-rarity rarity-${cardRarity(communityRatings[p.id].average, communityRatings[p.id].count).replaceAll(" ", "")}`}><Star size={11} fill="currentColor"/> {cardRarity(communityRatings[p.id].average, communityRatings[p.id].count)} · {communityRatings[p.id].average.toFixed(1)}</span> : null}
-        <div>
+        <div className="post-card-footer">
           <span>{p.author}</span>
-          <span>{own && p.status === "draft" ? "编辑草稿" : own && p.status === "pending_review" ? "审核中" : own && p.status === "hidden" ? "审核未通过" : state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
+          <span className="post-card-footer-trailing">
+            {typeof p.likeCount === "number" && <span className={`post-card-like-count${state.liked?.includes(p.id) ? " is-liked" : ""}`} aria-label={`${p.likeCount} 个赞`}><Heart size={12} fill={state.liked?.includes(p.id) ? "currentColor" : "none"} /> {p.likeCount}</span>}
+            <span>{own && p.status === "draft" ? "编辑草稿" : own && p.status === "pending_review" ? "审核中" : own && p.status === "hidden" ? "审核未通过" : state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
+          </span>
         </div>
       </div>
     </button>;
@@ -2610,8 +2659,10 @@ export default function Community() {
         </button>
       )}
       {items.length ? (
-        <div className={`masonry editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`}>
-          {items.map((item) => postCard(item))}
+        <div className={`stable-editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`} style={{ "--masonry-columns": state.discoverLayout === "single" ? 1 : discoverColumnCount } as CSSProperties}>
+          {discoverColumns.map((column, index) => <div className="stable-editorial-column" key={`discover-column-${index}`}>
+            {column.map((item) => postCard(item))}
+          </div>)}
         </div>
       ) : (
         <div className="empty">{sort === "关注" ? accountId ? "还没有关注创作者，去搜索用户并打开主页关注他们。" : "登录后关注喜欢的创作者，这里会汇集他们的更新。" : "这里暂时没有内容，试试其他话题。"}</div>
@@ -3223,9 +3274,11 @@ export default function Community() {
                 onClick={() => {
                   setCategory(t);
                   setPublicFeed([]);
+                  setFeedPostIds([]);
                   setFeedPage(0);
                   setFeedTotal(0);
                   setFeedHasMore(false);
+                  feedCursor.current = null;
                   setFeedLoadedTag(null);
                   setPage(12);
                 }}
@@ -3236,7 +3289,7 @@ export default function Community() {
           </div>
           {topicEvents.length > 0 && <section className="topic-events-section" aria-labelledby="topic-events-title"><div className="topic-events-heading"><div><small>COMMUNITY / OPEN CALL</small><h2 id="topic-events-title">本期话题共创</h2></div><span>{topicEvents.length} 个进行中</span></div><div className="topic-event-list">{topicEvents.map((event) => <article className="topic-event-card" key={event.id}><div className="topic-event-mark">#{event.topic}</div><div className="topic-event-copy"><h3>{event.title}</h3><p>{event.description}</p><small>{event.participantCount} 人参与 · {event.postCount} 篇内容 · 截止 {new Date(event.ends_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</small></div><button type="button" className={event.joined ? "joined" : ""} onClick={() => void joinTopicEvent(event)}>{event.joined ? "继续创作" : "加入共创"}</button></article>)}</div></section>}
           <div className="discover-sort" role="group" aria-label="发现排序">
-            {["精选", "最新", "高分", "关注"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => { if (sort !== option) { setPublicFeed([]); setFeedPage(0); setFeedTotal(0); setFeedLoadedTag(null); setFeedLoadedSort(null); setSort(option); } }}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
+            {["精选", "最新", "高分", "关注"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => { if (sort !== option) { setPublicFeed([]); setFeedPostIds([]); setFeedPage(0); setFeedTotal(0); setFeedHasMore(false); feedCursor.current = null; setFeedLoadedTag(null); setFeedLoadedSort(null); setPage(12); setSort(option); } }}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
           </div>
           {sort === "关注" && !accountId && <p className="fineprint follow-feed-hint">登录并关注创作者后，这里会集中显示他们的新内容。</p>}
           {category === "全部" && latestOpenedPost && (
@@ -3250,7 +3303,7 @@ export default function Community() {
           )}
           <div className="section-head editorial-section-head">
             <h2>{category === "全部" ? "为你推荐" : category}</h2>
-            <span>{Math.min(50, Math.max(filtered.length, feedTotal))} 篇内容</span>
+            <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
           </div>
           {feed(list)}
         </section>
@@ -3258,10 +3311,10 @@ export default function Community() {
       {tab === "co-explore" && <CoExplore accountId={accountId} posts={publicFeed.length ? publicFeed : all} onLogin={() => setTab("messages")} onNotice={toast}/>}
       {tab === "notifications" && <NotificationCenter accountId={accountId} onLogin={() => setTab("messages")} onOpenPost={(item) => {
         const post = item.post_id ? all.find((candidate) => candidate.cloudId === item.post_id || candidate.id.toString() === item.post_id) || item.post : item.post;
-        if (post) { setPublicFeed((items) => items.some((candidate) => candidate.id === post.id) ? items : [post, ...items]); requestAnimationFrame(() => openPost(post.id, "discover")); } else toast("这篇内容暂时不可用");
+        if (post) { setPublicFeed((items) => items.some((candidate) => candidate.id === post.id) ? items : [...items, post]); requestAnimationFrame(() => openPost(post.id, "discover")); } else toast("这篇内容暂时不可用");
       }}/ >}
       {tab === "shared-collection" && <SharedCollection code={sharedCollectionCode} accountId={accountId} onNotice={toast} onLogin={() => setTab("messages")} onOpenPost={(post) => {
-        setPublicFeed((items) => items.some((item) => item.id === post.id) ? items : [post, ...items]);
+        setPublicFeed((items) => items.some((item) => item.id === post.id) ? items : [...items, post]);
         requestAnimationFrame(() => openPost(post.id, "discover"));
       }}/>}
       {tab === "topic" && topicSummary && (
@@ -4250,7 +4303,7 @@ export default function Community() {
               .then(({ data }) => {
                 const post = data?.items?.[0] as Post | undefined;
                 if (!post) { toast("这篇内容暂时无法查看"); return; }
-                setPublicFeed((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+                setPublicFeed((current) => current.some((item) => item.id === post.id) ? current : [...current, post]);
                 requestAnimationFrame(() => openPostRef.current(id, "discover"));
               })
               .catch(() => toast("内容加载失败，请稍后重试"));
