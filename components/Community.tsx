@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Search,
   Plus,
+  ImagePlus,
   Heart,
   Star,
   RefreshCw,
@@ -2459,6 +2460,7 @@ export default function Community() {
     };
   }, [detailReady, detail]);
   const isImmersive = (tab === "messages" && (chatConversationOpen || messagePeer !== null)) || detail !== null || transitionPhase !== null;
+  const composerPreviewImage = composerImages[coverIndex] || composerImages[0];
   const post = detail === null ? null : all.find((p) => p.id === detail);
   const detailImages = useMemo(() => post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
@@ -3312,7 +3314,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.27.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.28.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3468,7 +3470,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.27.0</p>
+          <p className="lead">HEIKA · 版本 2.28.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.28.0</strong><small>2026.11.04</small></div><ul><li>发布页调整为先写标题、正文和图片，再设置分类、系列与话题，并加入实时帖子预览。</li><li>个人资料编辑页新增公开主页实时预览，整理基础资料、个人特征和逐项公开范围。</li><li>统一两页的圆角、直角分割线、输入反馈与明暗主题，并补齐手机安全区和桌面编辑布局。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.27.0</strong><small>2026.11.03</small></div><ul><li>统一页面间距、组件圆角与直角分隔线，减少重复横线。</li><li>顶栏、底栏和消息输入区加入克制的液态玻璃层，保留现有页面和控件动画。</li><li>消息列表支持会话/找人切换、未读筛选、昵称与最近消息搜索，以及本机置顶会话。</li><li>聊天输入支持 Enter 发送、Shift + Enter 换行，并按日期分组消息。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.26.0</strong><small>2026.11.03</small></div><ul><li>统一亮暗主题的色彩、控件、卡片与页面转场，提升桌面端首屏卡片排布与无图兜底纹理。</li><li>修复 AI 工作台额度校验权限错误，按当前登录账号安全扣减调用次数，并明确报告密钥错误和请求超时。</li><li>“我的”页面保留五个内容栏目，移除稀有图鉴；探索日历默认展开热力图。</li><li>新增月度探索回顾和卡片接龙；AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.23.1</strong><small>2026.11.03</small></div><ul><li>创作者中心与作品草稿管理拆分，入口与页面标题各自独立。</li><li>修正设置分类页的返回层级与重新进入时的状态恢复。</li><li>最近发现恢复卡片预览，再由“查看内容”进入详情。</li><li>评分后渐进展示社区结果，并加入模糊缩放反馈动效。</li><li>管理员可新增、编辑和上下线发现页的话题共创活动。</li></ul></div>
@@ -4448,9 +4451,10 @@ export default function Community() {
                 </button>
               </>
             ) : (
+              <div className="composer-workspace">
               <div className="composer-scroll">
                 <div className="eyebrow">CREATE / STORY</div>
-                <label>
+                <label className="composer-title-field">
                   标题
                   <input
                     value={title}
@@ -4459,30 +4463,7 @@ export default function Community() {
                     placeholder="给你的发现一个标题"
                   />
                 </label>
-                <label>
-                  分类
-                  <select value={writeTag} onChange={(event) => setWriteTag(event.target.value)}>
-                    {tags.map((tag) => <option key={tag}>{tag}</option>)}
-                  </select>
-                </label>
-                {accountId && <label className="composer-series-field">加入作品系列<select value={writeSeriesId} onChange={(event) => setWriteSeriesId(event.target.value)}><option value="">暂不加入系列</option>{creatorSeries.map((series) => <option key={series.id} value={series.id}>{series.title}</option>)}</select><small>系列可在「我的 → 我的作品」中创建和管理。</small></label>}
-                <section className="composer-topic-section" aria-label="选择话题">
-                  <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
-                  <label className="composer-topic-search"><Search size={16} /><input value={topicSearch} onChange={(event) => setTopicSearch(event.target.value)} placeholder="搜索话题" aria-label="搜索话题" /></label>
-                  <div className="composer-topic-options">
-                    {topicChoices.filter((topic) => !topicSearch.trim() || topic.name.toLocaleLowerCase("zh-CN").includes(topicSearch.trim().toLocaleLowerCase("zh-CN"))).map(({ name: topic }) => {
-                      const selected = writeTopics.includes(topic);
-                      return <button type="button" key={topic} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => {
-                        if (selected) setWriteTopics((current) => current.filter((item) => item !== topic));
-                        else if (writeTopics.length >= 5) toast("最多选择 5 个话题");
-                        else setWriteTopics((current) => [...current, topic]);
-                      }}>#{topic}</button>;
-                    })}
-                    {topicSearch.trim() && !topicChoices.some((topic) => topic.name.toLocaleLowerCase("zh-CN") === topicSearch.trim().toLocaleLowerCase("zh-CN")) && <button type="button" className="composer-topic-create" onClick={() => void createTopic()} disabled={creatingTopic}>{creatingTopic ? "正在创建…" : `创建 #${topicSearch.trim().replace(/^#+/, "")}`}</button>}
-                    {!topicChoices.length && !topicSearch.trim() && <small className="composer-topic-empty">正在加载话题…</small>}
-                  </div>
-                </section>
-                <label>
+                <label className="composer-body-field">
                   正文
                   <textarea
                     value={body}
@@ -4520,14 +4501,48 @@ export default function Community() {
                   </div>
                   <p className="composer-draft-status" role="status">{draftSaving ? "正在同步草稿…" : draftSaved ? "草稿已自动保存" : "输入内容后自动保存草稿"}</p>
                 </section>
-                <div className="preview">
-                  <strong>预览 · {title || "未命名内容"}</strong>
-                  <p>{body || "正文预览将显示在这里"}</p>
-                </div>
+                <label className="composer-category-field">
+                  分类
+                  <select value={writeTag} onChange={(event) => setWriteTag(event.target.value)}>
+                    {tags.map((tag) => <option key={tag}>{tag}</option>)}
+                  </select>
+                </label>
+                {accountId && <label className="composer-series-field">加入作品系列<select value={writeSeriesId} onChange={(event) => setWriteSeriesId(event.target.value)}><option value="">暂不加入系列</option>{creatorSeries.map((series) => <option key={series.id} value={series.id}>{series.title}</option>)}</select><small>系列可在「我的 → 我的作品」中创建和管理。</small></label>}
+                <section className="composer-topic-section" aria-label="选择话题">
+                  <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
+                  {writeTopics.length > 0 && <div className="composer-selected-topics" aria-label="已选话题">{writeTopics.map((topic) => <button type="button" key={topic} onClick={() => setWriteTopics((current) => current.filter((item) => item !== topic))}>#{topic}<span aria-hidden="true">×</span></button>)}</div>}
+                  <label className="composer-topic-search"><Search size={16} /><input value={topicSearch} onChange={(event) => setTopicSearch(event.target.value)} placeholder="搜索话题" aria-label="搜索话题" /></label>
+                  <div className="composer-topic-options">
+                    {topicChoices.filter((topic) => !topicSearch.trim() || topic.name.toLocaleLowerCase("zh-CN").includes(topicSearch.trim().toLocaleLowerCase("zh-CN"))).map(({ name: topic }) => {
+                      const selected = writeTopics.includes(topic);
+                      return <button type="button" key={topic} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => {
+                        if (selected) setWriteTopics((current) => current.filter((item) => item !== topic));
+                        else if (writeTopics.length >= 5) toast("最多选择 5 个话题");
+                        else setWriteTopics((current) => [...current, topic]);
+                      }}>#{topic}</button>;
+                    })}
+                    {topicSearch.trim() && !topicChoices.some((topic) => topic.name.toLocaleLowerCase("zh-CN") === topicSearch.trim().toLocaleLowerCase("zh-CN")) && <button type="button" className="composer-topic-create" onClick={() => void createTopic()} disabled={creatingTopic}>{creatingTopic ? "正在创建…" : `创建 #${topicSearch.trim().replace(/^#+/, "")}`}</button>}
+                    {!topicChoices.length && !topicSearch.trim() && <small className="composer-topic-empty">正在加载话题…</small>}
+                  </div>
+                </section>
                 {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
                 <p className="fineprint">
                   {accountId ? "草稿会自动同步到当前账号，发布后图片与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
                 </p>
+              </div>
+              <aside className="composer-preview-pane" aria-label="帖子效果预览">
+                <div className="composer-preview-heading"><span><strong>帖子预览</strong><small>发布后展示效果</small></span><span>实时</span></div>
+                <article className="composer-preview-card">
+                  {composerPreviewImage ? <img className="composer-preview-cover" src={composerPreviewImage.url} alt="帖子封面预览" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /> : <div className="composer-preview-cover composer-preview-cover-empty" style={{ background: coverColor(writeTag) }}><ImagePlus size={22}/><span>添加图片后，这里会显示帖子封面</span></div>}
+                  <div className="composer-preview-copy">
+                    <div className="composer-preview-topics"><span>#{writeTag}</span>{writeTopics.slice(0, 2).map((topic) => <span key={topic}>#{topic}</span>)}</div>
+                    <h2>{title.trim() || "你的帖子标题"}</h2>
+                    <p>{body.trim() || "写下你的观察、经验或想法，正文会在这里呈现。"}</p>
+                    <div className="composer-preview-author"><span>{state.name.trim().slice(0, 1) || "探"}{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/>}</span><strong>{state.name.trim() || "探索者"}</strong><small>{composerImages.length ? `${composerImages.length} 张图片` : "刚刚发布"}</small></div>
+                  </div>
+                </article>
+                <p className="composer-preview-note">图片封面、标题和话题会随你的编辑即时更新。</p>
+              </aside>
               </div>
             )}
             {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={publish}>{uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
