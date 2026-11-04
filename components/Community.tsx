@@ -3412,7 +3412,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.31.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.32.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3568,7 +3568,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.31.0</p>
+          <p className="lead">HEIKA · 版本 2.32.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.32.0</strong><small>2026.11.04</small></div><ul><li>修复发现页双列间距没有实际生效的问题，调整卡片列宽和纵向节奏。</li><li>作者、点赞和阅读信息行增加浅底色与克制圆角，和封面形成清楚层级。</li><li>私人笔记改为选中正文后自动显示；已保存摘录收进默认折叠的入口。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.31.0</strong><small>2026.11.04</small></div><ul><li>发现页卡片改为图片主导：标签与评级置于封面上方，标题在图片内最多显示两行。</li><li>封面下方收敛为作者、点赞数和“阅读 ↗”，移除重复标题与摘要。</li><li>加大页面边距和双列间距，统一卡片圆角，并让底栏更轻盈，保留醒目的金色发布按钮。</li><li>保持瀑布流加载和既有图片进入动画，统一悬停、焦点与图片反馈的衔接。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.30.0</strong><small>2026.11.04</small></div><ul><li>重构个人主页，优先展示个人资料、等级与双列作品。</li><li>将好友探索、探索月报、卡片接龙、探索日历和最近发现集中到探索中心。</li><li>每日任务改为紧凑可展开入口；作品系列和状态管理移入作品管理页。</li><li>调整个人主页深浅主题、移动端间距与桌面端作品网格。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.29.0</strong><small>2026.11.04</small></div><ul><li>阅读正文可摘录并写私人笔记，仅本人可见，也能随时删除。</li><li>可关注话题，关注的话题有新内容时会收到通知；帖子可订阅系列更新。</li><li>推荐菜单支持减少某位创作者或话题，并可在发现页的推荐偏好中恢复。</li><li>发布帖子可添加单选投票，投票结果即时更新并按账号限制重复投票。</li><li>关注、投票与私人摘录均同步账号，数据库权限隔离投票身份和个人笔记。</li></ul></div>

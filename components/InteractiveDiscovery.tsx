@@ -87,7 +87,7 @@ export function PostPoll({ postId, accountId, onLogin, onNotice }: { postId: str
 
 export function PrivateHighlights({ postId, accountId, onLogin, onNotice, children }: { postId: string; accountId: string | null; onLogin: () => void; onNotice: (message: string) => void; children: ReactNode }) {
   const root = useRef<HTMLDivElement | null>(null);
-  const [items, setItems] = useState<Highlight[]>([]), [selected, setSelected] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
+  const [items, setItems] = useState<Highlight[]>([]), [selected, setSelected] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false), [savedOpen, setSavedOpen] = useState(false);
   const load = useCallback(async () => {
     if (!accountId) { setItems([]); return; }
     const response = await cloudFetch(`/api/v1/highlights?postId=${postId}`, { cache: "no-store" }); const result = await response.json();
@@ -96,22 +96,27 @@ export function PrivateHighlights({ postId, accountId, onLogin, onNotice, childr
   useEffect(() => { if (!accountId) { setItems([]); return; } void load().catch(() => {}); }, [accountId, load]);
   const capture = () => {
     const selection = window.getSelection(); const text = selection?.toString().trim() || "";
-    if (!text || text.length > 1000 || !root.current?.contains(selection?.anchorNode || null) || !root.current?.contains(selection?.focusNode || null)) return;
+    if (!text || text.length > 1000 || !root.current?.contains(selection?.anchorNode || null) || !root.current?.contains(selection?.focusNode || null)) {
+      setSelected(""); setNote("");
+      return;
+    }
+    if (text !== selected) setNote("");
+    setSavedOpen(false);
     setSelected(text);
   };
+  const clearSelection = () => { setSelected(""); setNote(""); window.getSelection()?.removeAllRanges(); };
   const save = async () => {
     if (!accountId) return onLogin();
     if (!selected) return onNotice("先在正文中选中一段内容");
     setBusy(true);
-    try { await cloudRequest("/api/v1/highlights", { postId, excerpt: selected, note }); await load(); setSelected(""); setNote(""); window.getSelection()?.removeAllRanges(); onNotice("已保存为仅自己可见的摘录"); }
+    try { await cloudRequest("/api/v1/highlights", { postId, excerpt: selected, note }); await load(); clearSelection(); setSavedOpen(false); onNotice("已保存为仅自己可见的摘录"); }
     catch (error) { onNotice(error instanceof Error ? error.message : "摘录保存失败"); }
     finally { setBusy(false); }
   };
   const remove = async (id: string) => { try { await cloudRequest(`/api/v1/highlights?id=${id}`, undefined, "DELETE"); setItems((current) => current.filter((item) => item.id !== id)); } catch (error) { onNotice(error instanceof Error ? error.message : "删除失败"); } };
   return <div className="private-highlights-area"><div ref={root} className="private-highlight-selectable" onMouseUp={capture} onTouchEnd={capture}>{children}</div>
-    <div className="private-highlight-tools"><span><Highlighter size={15}/>私人摘录</span><small>仅自己可见</small><button type="button" onClick={capture}>保存选中内容</button></div>
-    {selected && <div className="private-highlight-compose"><blockquote>{selected}</blockquote><textarea value={note} maxLength={1000} onChange={(event) => setNote(event.target.value)} placeholder="添加一条私人笔记（可选）"/><div><button type="button" onClick={() => setSelected("")}>取消</button><button type="button" className="interactive-primary" disabled={busy} onClick={() => void save()}><BookmarkPlus size={14}/>{busy ? "保存中…" : "保存摘录"}</button></div></div>}
-    {!!items.length && <div className="private-highlight-list">{items.map((item) => <article key={item.id}><blockquote>{item.excerpt}</blockquote>{item.note && <p>{item.note}</p>}<button type="button" aria-label="删除摘录" onClick={() => void remove(item.id)}><X size={14}/></button></article>)}</div>}
+    {selected && <div className="private-highlight-compose"><div className="private-highlight-heading"><span><Highlighter size={15}/>私人笔记</span><small>仅自己可见</small></div><blockquote>{selected}</blockquote><textarea value={note} maxLength={1000} onChange={(event) => setNote(event.target.value)} placeholder="添加一条私人笔记（可选）"/><div><button type="button" onClick={clearSelection}>取消</button><button type="button" className="interactive-primary" disabled={busy} onClick={() => void save()}><BookmarkPlus size={14}/>{busy ? "保存中…" : "保存摘录"}</button></div></div>}
+    {!!items.length && <><button type="button" className="private-highlight-saved-toggle" aria-expanded={savedOpen} onClick={() => setSavedOpen((open) => !open)}><span>已保存的私人摘录</span><small>{items.length}</small><ChevronDown size={14}/></button>{savedOpen && <div className="private-highlight-list">{items.map((item) => <article key={item.id}><blockquote>{item.excerpt}</blockquote>{item.note && <p>{item.note}</p>}<button type="button" aria-label="删除摘录" onClick={() => void remove(item.id)}><X size={14}/></button></article>)}</div>}</>}
   </div>;
 }
 
