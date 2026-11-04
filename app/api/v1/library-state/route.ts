@@ -11,6 +11,65 @@ import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/librar
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateTopicNames } from "@/lib/topic-validation";
 import { cardRarityTier } from "@/lib/progression";
+async function replacePoll(db: SupabaseClient, postId: string, value: unknown) {
+  if (value === undefined) return;
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : null;
+  const question = typeof input?.question === "string" ? input.question.trim() : "";
+  const rawOptions = Array.isArray(input?.options) ? input.options : [];
+  const options = [...new Set(rawOptions.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+  const existing = await db.from("post_polls").select("id,question").eq("post_id", postId).maybeSingle();
+  dbError(existing.error);
+  if (!question && !options.length) {
+    if (existing.data) {
+      const current = await db.from("post_poll_options").select("vote_count").eq("poll_id", existing.data.id);
+      dbError(current.error);
+      if ((current.data || []).some((option) => option.vote_count > 0)) throw new ApiError(409, "投票已经开始，暂时不能移除");
+      const removed = await db.from("post_polls").delete().eq("id", existing.data.id);
+      dbError(removed.error);
+    }
+    return;
+  }
+  if (!question || question.length > 180 || options.length < 2 || options.length > 4 || options.some((option) => option.length > 80))
+    throw new ApiError(400, "投票需要填写问题，并设置 2–4 个不重复选项");
+  const current = existing.data ? await db.from("post_poll_options").select("id,label,position,vote_count").eq("poll_id", existing.data.id).order("position") : { data: [], error: null };
+  dbError(current.error);
+  const currentOptions = (current.data || []).map((option) => option.label);
+  const same = existing.data?.question === question && currentOptions.length === options.length && currentOptions.every((option, index) => option === options[index]);
+  if (same) return;
+  if ((current.data || []).some((option) => option.vote_count > 0)) throw new ApiError(409, "投票已经开始，不能再更改选项");
+  let pollId = existing.data?.id;
+  if (existing.data) {
+    const updated = await db.from("post_polls").update({ question }).eq("id", existing.data.id).select("id").single();
+    dbError(updated.error);
+    if (!updated.data) throw new ApiError(404, "投票不存在");
+    pollId = updated.data.id;
+    const cleared = await db.from("post_poll_options").delete().eq("poll_id", pollId);
+    dbError(cleared.error);
+  } else {
+    const created = await db.from("post_polls").insert({ post_id: postId, question }).select("id").single();
+    dbError(created.error);
+    if (!created.data) throw new ApiError(500, "投票创建失败");
+    pollId = created.data.id;
+  }
+  if (!pollId) throw new ApiError(500, "投票保存失败");
+  const inserted = await db.from("post_poll_options").insert(options.map((label, position) => ({ poll_id: pollId, label, position })));
+  dbError(inserted.error);
+}
+async function ensurePollEditable(db: SupabaseClient, postId: string, value: unknown) {
+  if (value === undefined) return;
+  const existing = await db.from("post_polls").select("id,question").eq("post_id", postId).maybeSingle();
+  dbError(existing.error);
+  if (!existing.data) return;
+  const { data: current, error } = await db.from("post_poll_options").select("label,vote_count").eq("poll_id", existing.data.id).order("position");
+  dbError(error);
+  if (!(current || []).some((option) => option.vote_count > 0)) return;
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : null;
+  const question = typeof input?.question === "string" ? input.question.trim() : "";
+  const rawOptions = Array.isArray(input?.options) ? input.options : [];
+  const options = [...new Set(rawOptions.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+  const same = question === existing.data.question && options.length === current?.length && options.every((option, index) => option === current?.[index]?.label);
+  if (!same) throw new ApiError(409, "投票已经开始，不能再更改选项");
+}
 async function replaceTopics(db: SupabaseClient, postId: string, value: unknown) {
   const { data: official, error: catalogError } = await db.from("interest_tags").select("name").eq("active", true);
   dbError(catalogError);
@@ -162,6 +221,7 @@ export async function POST(req: NextRequest) {
       dbError(result.error);
       const postId = (result.data as { id: string }).id;
       if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
+      await replacePoll(db, postId, b.poll);
       const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single();
       dbError(refreshed.error);
       return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];
@@ -175,6 +235,7 @@ export async function POST(req: NextRequest) {
       dbError(tagError);
       const existingPost = b.id ? await db.from("posts").select("id,status").eq("client_id", Number(b.id)).eq("author_id", user!.id).single() : null;
       if (existingPost) dbError(existingPost.error);
+      if (existingPost?.data) await ensurePollEditable(db, existingPost.data.id, b.poll);
       const seriesId = typeof b.seriesId === "string" && b.seriesId ? b.seriesId : null;
       if (seriesId) {
         const owned = await db.from("post_series").select("id").eq("id", seriesId).eq("creator_id", user!.id).maybeSingle();
@@ -202,6 +263,7 @@ export async function POST(req: NextRequest) {
       dbError(error);
       const postId = (data as { id: string }).id;
       if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
+      await replacePoll(db, postId, b.poll);
       if (Array.isArray(b.mediaPaths)) {
         const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];
         if (mediaPaths.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300))

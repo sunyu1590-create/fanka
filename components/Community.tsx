@@ -40,6 +40,7 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
   loading: () => <div className="empty">正在加载审核队列…</div>,
 });
 import EditorialArticle from "./EditorialArticle";
+import { FollowedTopics, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
 const PublicProfile = dynamic(() => import("./PublicProfile"), { loading: () => <div className="empty">正在加载…</div> });
@@ -477,6 +478,8 @@ export default function Community() {
     >(null),
     [title, setTitle] = useState(""),
     [body, setBody] = useState(""),
+    [pollQuestion, setPollQuestion] = useState(""),
+    [pollOptions, setPollOptions] = useState(["", ""]),
     [aiWorkbenchOpen, setAiWorkbenchOpen] = useState(false),
     [aiWorkbenchMode, setAiWorkbenchMode] = useState<"title" | "outline" | "polish" | "topics">("outline"),
     [aiWorkbenchOutput, setAiWorkbenchOutput] = useState(""),
@@ -1928,11 +1931,13 @@ export default function Community() {
   };
   const publish = async () => {
     if (!title.trim() || !body.trim()) return toast("请填写标题和正文");
+    const pollDraft = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
+    if ((pollDraft.question || pollDraft.options.length) && (!pollDraft.question || pollDraft.options.length < 2 || pollDraft.options.length > 4)) return toast("投票需要填写问题，并设置 2–4 个选项");
     if (!accountId) return toast("请先在消息页面登录，当前输入会保留");
     if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
     try {
       const old = state.own.find((p) => p.id === editing);
-      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
+      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
@@ -1960,6 +1965,7 @@ export default function Community() {
         tag: writeTag,
         topics: writeTopics,
         seriesId: writeSeriesId || null,
+        poll: pollDraft.question ? pollDraft : null,
         mediaPaths: uploaded.map((image) => image.path!),
         coverUrl: cover?.external ? cover.url : null,
       });
@@ -1976,6 +1982,8 @@ export default function Community() {
       setModal(null);
       setTitle("");
       setBody("");
+      setPollQuestion("");
+      setPollOptions(["", ""]);
       composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
       setComposerImages([]);
       setCoverIndex(0);
@@ -1998,6 +2006,8 @@ export default function Community() {
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
     setTitle(initialPost?.title || "");
     setBody(initialPost?.body || "");
+    setPollQuestion("");
+    setPollOptions(["", ""]);
     setWriteTag(initialPost?.tag || tags[0]);
     setWriteTopics(initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [tags[0]]);
     setWriteSeriesId(initialPost?.seriesId || "");
@@ -2008,6 +2018,14 @@ export default function Community() {
     if (initialPost?.cloudId) {
       try {
         const data = await cloudRequest(`/api/v1/posts/${initialPost.cloudId}`) as { post_media?: { storage_path: string; sort_order: number }[] } | null;
+        const pollResponse = await cloudFetch(`/api/v1/posts/${initialPost.cloudId}/poll`, { cache: "no-store" });
+        if (pollResponse.ok) {
+          const pollResult = await pollResponse.json();
+          if (pollResult.data?.poll) {
+            setPollQuestion(pollResult.data.poll.question || "");
+            setPollOptions((pollResult.data.poll.options || []).map((option: { label: string }) => option.label).concat(["", ""]).slice(0, 4));
+          }
+        }
         if (data?.post_media?.length) {
           const db = await browserDb();
           const images = await Promise.all(data.post_media.sort((a,b) => a.sort_order-b.sort_order).map(async (item, index) => {
@@ -2026,12 +2044,14 @@ export default function Community() {
         const raw = ownRaw || (accountId ? localStorage.getItem("heika-compose-guest") : null);
         const fileOwner = ownRaw || !accountId ? owner : "guest";
         if (raw) {
-          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[] };
+          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[] };
           setTitle(saved.title || "");
           setBody(saved.body || "");
           setWriteTag(saved.tag || tags[0]);
           setWriteTopics(saved.topics || [saved.tag || tags[0]]);
           setWriteSeriesId(saved.seriesId || "");
+          setPollQuestion(saved.poll?.question || "");
+          setPollOptions(saved.poll?.options?.length ? [...saved.poll.options, "", ""].slice(0, 4) : ["", ""]);
           if (saved.images?.length) {
             const db = await browserDb();
             const files = await loadDraftFiles(fileOwner);
@@ -2060,20 +2080,21 @@ export default function Community() {
   useEffect(() => {
     if (modal !== "write") return;
     const timer = window.setTimeout(() => {
-      if (!title && !body && !composerImages.length) return;
+      if (!title && !body && !composerImages.length && !pollQuestion && !pollOptions.some(Boolean)) return;
       const persist = async () => {
         const owner = accountId || "guest";
         await saveDraftFiles(owner, composerImages.map(({ id, file }) => ({ id, file })));
-        const draftData = { title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), savedAt: Date.now() };
+        const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
+        const draftData = { title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), savedAt: Date.now() };
         localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData)); setDraftSaved(true);
         if (accountId && !composerEditingPublished) {
-          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, coverIndex });
+          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex });
           let cloudDraft = state.own.find((item) => item.id === editing && item.status === "draft");
           if (lastDraftPayload.current !== signature || !cloudDraft) {
             lastDraftPayload.current = signature; setDraftSaving(true);
             try {
               const cover = composerImages[coverIndex];
-              const saved = await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, coverUrl: cover?.external ? cover.url : null }) as Post | null;
+              const saved = await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
               if (saved) { cloudDraft = saved; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] })); }
             } catch { setDraftSaved(false); toast("云端草稿保存失败，已保留本机草稿"); }
             finally { setDraftSaving(false); }
@@ -2103,7 +2124,9 @@ export default function Community() {
       void persist().catch(() => toast("本机草稿保存失败，请检查设备存储空间"));
     }, 500);
     return () => window.clearTimeout(timer);
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, coverIndex, composerImages, composerEditingPublished]);
+  // Including state.own and the per-render upload helper would restart cloud autosave after each synchronized draft update.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerEditingPublished]);
   const chooseComposerImages = async (files: FileList | null) => {
     if (!files?.length) return;
     const validation = validateComposerFiles(Array.from(files), composerImages.length);
@@ -2180,7 +2203,7 @@ export default function Community() {
     const owner = accountId || "guest";
     localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(owner).catch(() => {});
     composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
-    setComposerImages([]); setTitle(""); setBody(""); setEditing(null); setModal(null); toast("草稿已删除");
+    setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
   };
   const openTopic = async (name: string) => {
     setTopicLoading(true);
@@ -3190,6 +3213,8 @@ export default function Community() {
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
+          <FollowedTopics accountId={accountId} onOpen={(name) => void openTopic(name)} />
+          <RecommendationControls accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
           <div className="filters editorial-filters">
             {["全部", ...tags].map((t) => (
               <button
@@ -3248,6 +3273,7 @@ export default function Community() {
           <div className="topic-detail-stats">
             <span><strong>{topicSummary.postCount}</strong> 篇公开内容</span>
             <span><strong>{topicSummary.participantCount}</strong> 位创作者</span>
+            <TopicFollowButton topicId={topicSummary.id} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />
           </div>
           {topicPosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{topicPosts.map((item) => postCard(item, "discover"))}</div> : <p className="topic-empty-state">这个话题还没有公开内容，来分享你的第一篇发现。</p>}
           {topicPosts.length < topicTotal && <button className="feed-refresh" disabled={topicLoading} onClick={() => void loadMoreTopicPosts()}>{topicLoading ? "正在加载…" : "加载更多"}</button>}
@@ -3314,7 +3340,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.28.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.29.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3470,8 +3496,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.28.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.28.0</strong><small>2026.11.04</small></div><ul><li>发布页调整为先写标题、正文和图片，再设置分类、系列与话题，并加入实时帖子预览。</li><li>个人资料编辑页新增公开主页实时预览，整理基础资料、个人特征和逐项公开范围。</li><li>统一两页的圆角、直角分割线、输入反馈与明暗主题，并补齐手机安全区和桌面编辑布局。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.29.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.29.0</strong><small>2026.11.04</small></div><ul><li>阅读正文可摘录并写私人笔记，仅本人可见，也能随时删除。</li><li>可关注话题，关注的话题有新内容时会收到通知；帖子可订阅系列更新。</li><li>推荐菜单支持减少某位创作者或话题，并可在发现页的推荐偏好中恢复。</li><li>发布帖子可添加单选投票，投票结果即时更新并按账号限制重复投票。</li><li>关注、投票与私人摘录均同步账号，数据库权限隔离投票身份和个人笔记。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.27.0</strong><small>2026.11.03</small></div><ul><li>统一页面间距、组件圆角与直角分隔线，减少重复横线。</li><li>顶栏、底栏和消息输入区加入克制的液态玻璃层，保留现有页面和控件动画。</li><li>消息列表支持会话/找人切换、未读筛选、昵称与最近消息搜索，以及本机置顶会话。</li><li>聊天输入支持 Enter 发送、Shift + Enter 换行，并按日期分组消息。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.26.0</strong><small>2026.11.03</small></div><ul><li>统一亮暗主题的色彩、控件、卡片与页面转场，提升桌面端首屏卡片排布与无图兜底纹理。</li><li>修复 AI 工作台额度校验权限错误，按当前登录账号安全扣减调用次数，并明确报告密钥错误和请求超时。</li><li>“我的”页面保留五个内容栏目，移除稀有图鉴；探索日历默认展开热力图。</li><li>新增月度探索回顾和卡片接龙；AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.23.1</strong><small>2026.11.03</small></div><ul><li>创作者中心与作品草稿管理拆分，入口与页面标题各自独立。</li><li>修正设置分类页的返回层级与重新进入时的状态恢复。</li><li>最近发现恢复卡片预览，再由“查看内容”进入详情。</li><li>评分后渐进展示社区结果，并加入模糊缩放反馈动效。</li><li>管理员可新增、编辑和上下线发现页的话题共创活动。</li></ul></div>
@@ -4058,6 +4084,22 @@ export default function Community() {
                       setDetailMoreOpen(false);
                       toast("已减少类似内容推荐");
                     }}><ThumbsDown size={16} /> 不感兴趣</button>
+                    {post.authorId && <button onClick={() => {
+                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
+                      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_author", authorId: post.authorId }).then(() => {
+                        setPublicFeed((items) => items.filter((item) => item.authorId !== post.authorId));
+                        void loadPublicFeed(1, true, category);
+                        setDetailMoreOpen(false); toast("已减少这位创作者的推荐，可在推荐偏好中恢复");
+                      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
+                    }}><UserRound size={16} /> 减少此作者推荐</button>}
+                    {post.topics?.[0] && (() => { const firstTopic = post.topics[0]; return <button onClick={() => {
+                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
+                      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_topic", topic: firstTopic }).then(() => {
+                        setPublicFeed((items) => items.filter((item) => !item.topics?.includes(firstTopic)));
+                        void loadPublicFeed(1, true, category);
+                        setDetailMoreOpen(false); toast(`已减少 #${firstTopic} 推荐，可在推荐偏好中恢复`);
+                      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
+                    }}><ThumbsDown size={16} /> 减少 #{firstTopic}</button>; })()}
                     <button onClick={() => {
                       const url = `${location.origin}/?post=${post.id}`;
                       void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
@@ -4113,9 +4155,10 @@ export default function Community() {
                 <button className="detail-reading-setting" onClick={() => setModal("reading")}>
                   阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
                 </button>
-                {post.seriesTitle && <div className="detail-series-badge"><span>系列</span><strong>{post.seriesTitle}</strong></div>}
+                {post.seriesTitle && <div className="detail-series-badge"><span>系列</span><strong>{post.seriesTitle}</strong>{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
-                <EditorialArticle post={post} />
+                {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}><EditorialArticle post={post} /></PrivateHighlights> : <EditorialArticle post={post} />}
+                {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <span>给这篇内容评分</span>
                   <div>{[1, 2, 3, 4, 5].map((n) => (
@@ -4473,6 +4516,12 @@ export default function Community() {
                     rows={7}
                   />
                 </label>
+                <section className="composer-poll-editor" aria-label="添加投票">
+                  <div className="composer-section-heading"><span><strong>互动投票</strong><small>给帖子增加一个单选问题，读者可查看实时结果</small></span><span>{pollQuestion.trim() ? "已添加" : "可选"}</span></div>
+                  <input className="composer-poll-question" value={pollQuestion} maxLength={180} onChange={(event) => setPollQuestion(event.target.value)} placeholder="输入投票问题" aria-label="投票问题" />
+                  <div className="composer-poll-options">{pollOptions.map((option, index) => <div key={index}><span>{index + 1}</span><input value={option} maxLength={80} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`选项 ${index + 1}`} aria-label={`投票选项 ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label={`删除选项 ${index + 1}`} onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15}/></button>}</div>)}</div>
+                  {pollOptions.length < 4 && <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ""])}><Plus size={14}/>添加选项</button>}
+                </section>
                 <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
                   <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
                   {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); }}>{label}</button>)}</div><p className="ai-workbench-guidance">AI 只提供可编辑的创作建议，不会自动发布内容。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><p>{aiWorkbenchOutput}</p></div><button type="button" className="ai-workbench-apply" onClick={() => { if (aiWorkbenchMode === "title") setTitle(aiWorkbenchOutput.split("\n").filter(Boolean)[0]?.replace(/^\d+[.、)）]\s*/, "") || aiWorkbenchOutput); else if (aiWorkbenchMode === "polish") setBody(aiWorkbenchOutput); else if (aiWorkbenchMode === "topics") setWriteTopics((items) => [...new Set([...items, ...[...aiWorkbenchOutput.matchAll(/#?([\u4e00-\u9fa5A-Za-z0-9_-]{2,20})/g)].map((match) => match[1])])].slice(0, 5)); else setBody((current) => current.trim() ? `${current.trim()}\n\n${aiWorkbenchOutput}` : aiWorkbenchOutput); toast("建议已放入编辑区，可以继续修改"); }}>{aiWorkbenchMode === "title" ? "使用第一个标题" : aiWorkbenchMode === "topics" ? "添加推荐话题" : aiWorkbenchMode === "polish" ? "使用润色建议" : "插入写作提纲"}</button></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}

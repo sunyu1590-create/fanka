@@ -45,18 +45,34 @@ export async function GET(req: NextRequest) {
       if (!topic) return { items: [], total: 0, page, limit };
       tagId = Number(topic.id);
     }
-    let query = db
-      .from("posts")
-      .select(libraryFields, { count: "exact" })
-      .eq("status", "published")
-      .order("created_at", { ascending: false })
-      .order("client_id", { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
-    if (tagId !== undefined) query = query.eq("tag_id", tagId);
-    if (followedCreatorIds) query = query.in("author_id", followedCreatorIds);
-    const { data, error, count } = await query;
-    dbError(error);
-    const rows = (data as unknown as LibraryRow[] || []);
+    let rows: LibraryRow[];
+    let total = 0;
+    if (!followedCreatorIds) {
+      const pageResult = await db.rpc("get_recommendation_page", { p_page: page, p_limit: limit, p_tag: tagId ?? null, p_query: null });
+      dbError(pageResult.error);
+      const payload = pageResult.data as { ids?: string[]; total?: number };
+      const ids = Array.isArray(payload?.ids) ? payload.ids : [];
+      total = Number(payload?.total) || 0;
+      if (!ids.length) return { items: [], total, page, limit };
+      const { data, error } = await db.from("posts").select(libraryFields).in("id", ids).eq("status", "published");
+      dbError(error);
+      const byId = new Map(((data || []) as unknown as LibraryRow[]).map((row) => [row.id, row]));
+      rows = ids.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
+    } else {
+      let query = db
+        .from("posts")
+        .select(libraryFields, { count: "exact" })
+        .eq("status", "published")
+        .order("created_at", { ascending: false })
+        .order("client_id", { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
+      if (tagId !== undefined) query = query.eq("tag_id", tagId);
+      query = query.in("author_id", followedCreatorIds);
+      const { data, error, count } = await query;
+      dbError(error);
+      rows = (data as unknown as LibraryRow[] || []);
+      total = count || 0;
+    }
     const { data: stats, error: statsError } = rows.length
       ? await db
         .from("post_rating_stats")
@@ -73,7 +89,7 @@ export async function GET(req: NextRequest) {
         const average = ratingCount ? stat!.rating_sum / ratingCount : 0;
         return { ...presentations[index], rarityTier: cardRarityTier(average, ratingCount) };
       }),
-      total: count || 0,
+      total,
       page,
       limit,
     };
