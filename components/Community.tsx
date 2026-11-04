@@ -48,7 +48,7 @@ import type { ProfileDetails } from "./AccountProfile";
 const PublicProfile = dynamic(() => import("./PublicProfile"), { loading: () => <div className="empty">正在加载…</div> });
 const MessagingPreferences = dynamic(() => import("./MessagingPreferences"), { loading: () => <div className="empty">正在加载…</div> });
 import InboxBadge from "./InboxBadge";
-const DailyMissions = dynamic(() => import("./DailyMissions"), { loading: () => <div className="empty">正在加载…</div> });
+const DailyMissions = dynamic(() => import("./DailyMissions"), { loading: () => <div className="daily-missions-loading" aria-hidden="true" /> });
 const NotificationCenter = dynamic(() => import("./NotificationCenter"), { loading: () => <div className="empty">正在加载…</div> });
 const CoExplore = dynamic(() => import("./CoExplore"), { loading: () => <div className="empty">正在加载…</div> });
 const SharedCollection = dynamic(() => import("./SharedCollection"), { loading: () => <div className="empty">正在加载…</div> });
@@ -2624,7 +2624,7 @@ export default function Community() {
     >
       {coverImage && <div
         className="post-cover editorial-cover"
-        style={{ background: coverColor(p.tag), ...(source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
+        style={{ background: coverColor(p.tag), ...(own ? { aspectRatio: "3 / 4" } : source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
       >
         <img
             src={coverImage}

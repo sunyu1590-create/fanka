@@ -174,12 +174,12 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   await enterApp(page);
   await setDiscoverLayout(page, "单列阅读");
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
-  await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("1");
+  await expect.poll(() => page.locator(".stable-editorial-feed").evaluate((feed) => getComputedStyle(feed).gridTemplateColumns.split(" ").length)).toBe(1);
   await setDiscoverLayout(page, "瀑布流");
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
-  await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("2");
-  await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
-  await page.locator(".editorial-feed .post-card").first().click();
+  await expect.poll(() => page.locator(".stable-editorial-feed").evaluate((feed) => getComputedStyle(feed).gridTemplateColumns.split(" ").length)).toBe(2);
+  await expect(page.locator(".stable-editorial-feed .post-card").first()).toBeVisible();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail")).toBeVisible();
   await expect(page.locator(".detail-header")).toBeVisible();
   await expect(page.locator(".detail-more-button")).toBeVisible();
@@ -206,7 +206,7 @@ test("report sheet and admin queue use the same theme tokens for signed-in accou
   await page.setViewportSize({ width: 360, height: 780 });
   await enterApp(page, { role: "admin" });
   await page.getByRole("button", { name: "发现" }).click();
-  await page.locator(".editorial-feed .post-card").first().click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
   await page.locator(".detail-more-button").click();
   await page.getByRole("button", { name: "举报内容" }).click();
   await expect(page.getByRole("heading", { name: "举报内容" })).toBeVisible();
