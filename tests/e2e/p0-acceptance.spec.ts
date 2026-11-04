@@ -50,6 +50,8 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
     } } }));
     await page.route("**/api/v1/admin/reports**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/posts**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
+    await page.route("**/api/v1/admin/users**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
+    await page.route("**/api/v1/admin/message-reports**", (route) => route.fulfill({ json: { data: [] } }));
   }
   await page.goto("/");
   const skip = page.getByRole("button", { name: /先随便看看/ });
@@ -57,6 +59,17 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
   await expect.poll(async () => (await skip.isVisible().catch(() => false)) || await navigation.isVisible().catch(() => false)).toBeTruthy();
   if (await skip.isVisible().catch(() => false)) await skip.click();
   await expect(navigation).toBeVisible();
+}
+
+async function setDiscoverLayout(page: import("@playwright/test").Page, layout: "单列阅读" | "瀑布流") {
+  await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: /个人设置/ }).click();
+  await page.getByRole("button", { name: /发现页布局/ }).click();
+  await page.getByRole("radio", { name: new RegExp(layout) }).click();
+  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
+  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
+  await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
 }
 
 function fixturePost(id: number) {
@@ -86,7 +99,7 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
   await enterApp(page);
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   const light = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim());
-  expect(light).toBe("#F8F7F4");
+  expect(light).toBe("#f6f5f1");
 
   await page.evaluate(() => localStorage.setItem("heika-theme", "dark"));
   await page.reload();
@@ -114,13 +127,14 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   await expect.poll(() => cards.count()).toBeGreaterThanOrEqual(6);
 
   const first = cards.nth(0);
+  const firstCardId = await first.getAttribute("data-card-id");
   await expect(first.locator(".card-back-copy strong")).toHaveText("");
   const before = await first.boundingBox();
   await first.click();
   await expect(page.getByRole("button", { name: "确认翻开" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "今日已翻开 0 / 5 张" })).toBeVisible();
   await page.getByRole("button", { name: "确认翻开" }).click();
-  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
+  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 " + firstCardId);
   await page.locator(".flip-close").click({ timeout: 10_000 });
   await expect(first).toHaveClass(/is-unlocked/);
   await expect(first.locator(".card-back-copy strong")).not.toHaveText("");
@@ -158,16 +172,10 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
 test("discovery, image detail, and publish composer remain responsive with soft keyboard focus", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await enterApp(page);
-  await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.getByRole("button", { name: "单列阅读" }).click();
-  await page.locator(".settings-page .settings-back").click();
+  await setDiscoverLayout(page, "单列阅读");
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
   await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("1");
-  await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.locator(".discover-layout-options").getByRole("button", { name: "瀑布流", exact: true }).click();
-  await page.locator(".settings-page .settings-back").click();
+  await setDiscoverLayout(page, "瀑布流");
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
   await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("2");
   await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
@@ -180,14 +188,14 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   await page.locator(".detail-topic-list").getByRole("button", { name: "#生活" }).click();
   await expect(page.locator(".topic-detail-page h1")).toHaveText("#生活");
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#0D0F12");
-  await page.locator(".topic-detail-page .settings-back").click();
+  await page.getByRole("button", { name: "返回，当前页面：发现" }).click();
   await expect(page.locator(".detail")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "返回" }).click();
   await page.getByRole("button", { name: "发布内容" }).click();
-  await expect(page.getByRole("heading", { name: "分享一篇内容" })).toBeVisible();
+  await expect(page.getByText("分享一篇内容", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "标题" }).fill("浏览器验收草稿");
   await page.getByRole("textbox", { name: "正文" }).focus();
   await expect(page.getByRole("textbox", { name: "正文" })).toBeFocused();
@@ -212,11 +220,11 @@ test("report sheet and admin queue use the same theme tokens for signed-in accou
   await enterApp(page, { role: "admin" });
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   await page.getByRole("button", { name: "我的" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
+  await page.getByRole("button", { name: "打开设置" }).click();
   await page.getByRole("button", { name: /举报与内容审核/ }).click();
-  await expect(page.getByRole("heading", { name: /内容审核/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "管理后台" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("当前没有符合条件的举报。" )).toBeVisible();
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#F8F7F4");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#f6f5f1");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });

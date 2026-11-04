@@ -31,6 +31,8 @@ import {
   ShieldCheck,
   Settings,
   GitBranch,
+  CalendarDays,
+  History,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -431,7 +433,7 @@ export default function Community() {
   const [feedLoadedSort, setFeedLoadedSort] = useState<string | null>(null);
   const [discoverColumnCount, setDiscoverColumnCount] = useState(2);
   const [favoriteSource, setFavoriteSource] = useState("全部"),
-    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked" | "calendar" | "recent">("works"),
+    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked">("works"),
     [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [debugReturnTab, setDebugReturnTab] = useState<"settings" | "mine">("settings"),
@@ -553,8 +555,11 @@ export default function Community() {
     setTab("search");
   };
   const openNotifications = () => { setSecondaryReturnTab("messages"); setTab("notifications"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
-  const openCoExplore = () => { setSecondaryReturnTab("mine"); setTab("co-explore"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
-  const openMineFeature = (feature: "monthly-recap" | "card-chain") => { scrollPositions.current.mine = window.scrollY; setSecondaryReturnTab("mine"); setTab(feature); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openMineSettings = () => { scrollPositions.current.mine = window.scrollY; setSettingsPersonalOpen(false); setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openExplorationCenter = () => { scrollPositions.current.mine = window.scrollY; setTab("exploration-center"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openCoExplore = (returnTab: "mine" | "exploration-center" = "mine") => { scrollPositions.current[returnTab] = window.scrollY; setSecondaryReturnTab(returnTab); setTab("co-explore"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openMineFeature = (feature: "monthly-recap" | "card-chain", returnTab: "mine" | "exploration-center" = "mine") => { scrollPositions.current[returnTab] = window.scrollY; setSecondaryReturnTab(returnTab); setTab(feature); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const returnToSecondaryTab = () => { const destination = secondaryReturnTab; setTab(destination); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[destination] || 0, behavior: "instant" })); };
   const closeSearch = () => setTab(searchReturnTab || "discover");
   const openMyContent = (returnTab: "mine" | "settings" = "mine") => {
     scrollPositions.current[returnTab] = window.scrollY;
@@ -2338,7 +2343,8 @@ export default function Community() {
       : tab === "topic" ? "发现"
         : tab === "search" ? "搜索"
         : tab === "notifications" ? "通知"
-        : tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain" ? "我的"
+        : tab === "exploration-center" ? "探索中心"
+        : tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain" ? secondaryReturnTab === "exploration-center" ? "探索中心" : "我的"
         : tab === "shared-collection" ? "分享收藏夹"
         : tab === "about" || tab === "moderation" ? "设置"
           : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的"
@@ -2351,7 +2357,8 @@ export default function Community() {
     if (tab === "settings") { setSettingsPersonalOpen(false); setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
     if (tab === "topic") { closeTopicPage(); return; }
     if (tab === "search") { closeSearch(); return; }
-    if (tab === "notifications" || tab === "co-explore" || tab === "shared-collection" || tab === "monthly-recap" || tab === "card-chain") { setTab(secondaryReturnTab); return; }
+    if (tab === "exploration-center") { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
+    if (tab === "notifications" || tab === "co-explore" || tab === "shared-collection" || tab === "monthly-recap" || tab === "card-chain") { returnToSecondaryTab(); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
     if (tab === "debug") {
       setTab(debugReturnTab);
@@ -2679,7 +2686,7 @@ export default function Community() {
   const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => (
     <button
       key={id}
-      className={tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "shared-collection") && id === "discover") || ((tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain") && id === "mine") || (tab === "notifications" && id === "messages") ? "active" : ""}
+      className={tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "shared-collection") && id === "discover") || ((tab === "exploration-center" || tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain") && id === "mine") || (tab === "notifications" && id === "messages") ? "active" : ""}
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
@@ -3121,13 +3128,13 @@ export default function Community() {
         </footer>
       </main>
     );
+  const currentExperience = experienceProgress(experienceSummary.total);
+  const visibleOwnPosts = selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own;
   return (
     <main className={`app${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}`}>
-      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}`}>
+      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}`}>
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand">黑卡 <i>HEIKA</i></span>}
-        <span className="demo-pill">
-          {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
-        </span>
+        {tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : <span className="demo-pill">{accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}</span>}
       </header>
       {tab === "today" && (
         <section
@@ -3393,7 +3400,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.29.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.30.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3549,7 +3556,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.29.0</p>
+          <p className="lead">HEIKA · 版本 2.30.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.30.0</strong><small>2026.11.04</small></div><ul><li>重构个人主页，优先展示个人资料、等级与双列作品。</li><li>将好友探索、探索月报、卡片接龙、探索日历和最近发现集中到探索中心。</li><li>每日任务改为紧凑可展开入口；作品系列和状态管理移入作品管理页。</li><li>调整个人主页深浅主题、移动端间距与桌面端作品网格。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.29.0</strong><small>2026.11.04</small></div><ul><li>阅读正文可摘录并写私人笔记，仅本人可见，也能随时删除。</li><li>可关注话题，关注的话题有新内容时会收到通知；帖子可订阅系列更新。</li><li>推荐菜单支持减少某位创作者或话题，并可在发现页的推荐偏好中恢复。</li><li>发布帖子可添加单选投票，投票结果即时更新并按账号限制重复投票。</li><li>关注、投票与私人摘录均同步账号，数据库权限隔离投票身份和个人笔记。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.27.0</strong><small>2026.11.03</small></div><ul><li>统一页面间距、组件圆角与直角分隔线，减少重复横线。</li><li>顶栏、底栏和消息输入区加入克制的液态玻璃层，保留现有页面和控件动画。</li><li>消息列表支持会话/找人切换、未读筛选、昵称与最近消息搜索，以及本机置顶会话。</li><li>聊天输入支持 Enter 发送、Shift + Enter 换行，并按日期分组消息。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.26.0</strong><small>2026.11.03</small></div><ul><li>统一亮暗主题的色彩、控件、卡片与页面转场，提升桌面端首屏卡片排布与无图兜底纹理。</li><li>修复 AI 工作台额度校验权限错误，按当前登录账号安全扣减调用次数，并明确报告密钥错误和请求超时。</li><li>“我的”页面保留五个内容栏目，移除稀有图鉴；探索日历默认展开热力图。</li><li>新增月度探索回顾和卡片接龙；AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
@@ -3820,33 +3828,25 @@ export default function Community() {
       {tab === "mine" && (
         <section className="page mine-page">
           <section className="mine-profile-hero" aria-label="个人资料">
-            <div className="mine-heading"><h1 className="mine-title">我</h1><div className="mine-heading-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={() => { scrollPositions.current.mine = window.scrollY; setSettingsPersonalOpen(false); setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><Settings size={19}/></button></div></div>
             <div className="profile-card mine-profile-card">
               <div className="avatar">{state.avatar ? <img src={state.avatar} alt="头像" /> : state.name[0]}</div>
-              <div><h2>{state.name}</h2><p>{state.bio}</p>{accountId && <small className="mine-account-id">HEIKA ID · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
-              <button aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={18} /></button>
+              <div className="mine-profile-copy"><div className="mine-profile-name-row"><h2>{state.name}</h2><button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button></div><p>{state.bio || "记录生活，继续探索。"}</p>{accountId && <small className="mine-account-id">HEIKA ID · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
+              <button type="button" aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={18} /></button>
             </div>
             <div className="stats exploration-stats mine-profile-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>
-            <div className="mine-quick-links" role="group" aria-label="个人快捷入口">
-              <button type="button" onClick={openCoExplore}><span className="mine-quick-icon"><UsersRound size={15}/></span><strong>和朋友一起探索</strong></button>
-              <button type="button" onClick={() => openMineFeature("monthly-recap")}><span className="mine-quick-icon"><Sparkles size={15}/></span><strong>探索月报</strong></button>
-              <button type="button" onClick={() => openMineFeature("card-chain")}><span className="mine-quick-icon"><GitBranch size={15}/></span><strong>卡片接龙</strong></button>
-            </div>
-            <button className="experience-summary-card" onClick={() => openSettingsDetail("progression", "mine")}>
-              <span className="experience-summary-badge">LV.{experienceProgress(experienceSummary.total).current.level}</span>
-              <span className="experience-summary-copy"><strong>探索等级 · {experienceSummary.total} EXP</strong><small>{accountId ? experienceProgress(experienceSummary.total).next ? `距离 LV.${experienceProgress(experienceSummary.total).next!.level} 还差 ${experienceProgress(experienceSummary.total).next!.threshold - experienceSummary.total} EXP` : "已达到当前最高等级" : "登录后同步你的经验与奖励"}</small><i><b style={{ width: `${experienceProgress(experienceSummary.total).percent}%` }} /></i></span>
-              <ChevronRight size={17}/>
-            </button>
           </section>
           <DailyMissions accountId={accountId} onNotice={toast}/>
+          <button type="button" className="mine-exploration-entry" onClick={openExplorationCenter}>
+            <span className="mine-exploration-entry-icon"><Compass size={18}/></span>
+            <span><strong>探索中心</strong><small>好友探索 · 月报 · 接龙 · 日历 · 最近发现</small></span>
+            <ChevronRight size={18}/>
+          </button>
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
               {([
                 ["works", "我的作品"],
                 ["favorites", "我的收藏"],
                 ["liked", "我的点赞"],
-                ["calendar", "探索日历"],
-                ["recent", "最近发现"],
               ] as const).map(([id, label]) => (
                 <button
                   key={id}
@@ -3862,16 +3862,15 @@ export default function Community() {
                   {label}
                 </button>
               ))}
-              <span className="mine-tab-indicator" style={{ transform: `translateX(${["works", "favorites", "liked", "calendar", "recent"].indexOf(mineSection) * 100}%)` }} />
+              <span className="mine-tab-indicator" style={{ transform: `translateX(${["works", "favorites", "liked"].indexOf(mineSection) * 100}%)` }} />
             </div>
           </div>
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
             {mineSection === "works" && (
               <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>我的作品</h2><span>{state.own.filter((post) => post.status === "published" || !post.status).length} 篇</span></div>
-                <div className="series-manager"><div className="series-manager-heading"><strong>作品系列</strong><span>把有关联的内容整理成专栏</span></div><div className="series-create-form"><input aria-label="系列名称" maxLength={48} placeholder="例如：一周城市观察" value={seriesName} onChange={(event) => setSeriesName(event.target.value)}/><input aria-label="系列简介" maxLength={240} placeholder="一句话介绍（可选）" value={seriesDescription} onChange={(event) => setSeriesDescription(event.target.value)}/><button type="button" disabled={!accountId || seriesName.trim().length < 2} onClick={() => void createPostSeries()}><Plus size={15}/>新建</button></div>{creatorSeries.length > 0 && <div className="series-list">{creatorSeries.map((series) => <button type="button" className={selectedSeriesId === series.id ? "active" : ""} key={series.id} onClick={() => setSelectedSeriesId((current) => current === series.id ? "" : series.id)}><strong>{series.title}</strong><span>{series.description || "持续更新中"}</span><small>{series.postCount || 0} 篇</small></button>)}</div>}</div>
+                <div className="mine-works-heading"><div><h2>我的作品</h2><span>{state.own.filter((post) => post.status === "published" || !post.status).length} 篇</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
-                {(selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own).length ? <div className="masonry mine-works-masonry">{(selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own).map((post) => <article className="mine-work-card" key={post.id}>
+                {visibleOwnPosts.length ? <div className="masonry mine-works-masonry">{visibleOwnPosts.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
                   <div className="mine-work-actions"><span>{post.status === "draft" ? "草稿" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>编辑</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
                 </article>)}</div> : <div className="empty">{selectedSeriesId ? "这个系列还没有内容，发布时可以从系列菜单加入。" : "你发布的内容会以瀑布流卡片显示在这里。"}</div>}
@@ -3904,45 +3903,51 @@ export default function Community() {
                 {likedPosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{likedPosts.map((post) => postCard(post, state.revealed[post.id] ? "today" : "discover"))}</div> : <div className="empty">点过赞的内容会显示在这里。</div>}
               </div>
             )}
-            {mineSection === "calendar" && (
-              <div className="mine-tab-content">
-                <div className="section-head exploration-calendar-heading mine-panel-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationCalendarOpen} aria-controls="exploration-calendar-content" onClick={() => setExplorationCalendarOpen((open) => !open)}><h2>我的探索日历</h2><span>最近 28 天 <ChevronDown size={16}/></span></button></div>
-                {explorationCalendarOpen && <div id="exploration-calendar-content"><div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
-                  {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
-                </div>
-                <div className="calendar-day-detail">
-                  <div><strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong><span>探索：{selectedDayIds.length} 张</span></div>
-                  {selectedDayIds.length ? <div className="calendar-posts">{selectedDayIds.map((id) => {
-                    const item = state.revealed[id] || all.find((post) => post.id === id);
-                    const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
-                    const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                    return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
-                  })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
-                </div></div>}
-              </div>
-            )}
-            {mineSection === "recent" && (
-              <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>最近的发现</h2><span>最近 8 条</span></div>
-                {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => {
-                  const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
-                  const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                  return <button key={`${date}-${post.id}`} onClick={() => setRecentPreview({ post, source: state.revealed[post.id] ? "today" : "discover" })}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong><small>点按预览</small></button>;
-                })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
-                <div id="flip-history" className="section-head mine-panel-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天 <ChevronDown size={16}/></span></button></div>
-                {explorationHistoryOpen && Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
-                  const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
-                  const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                  return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
-                })}</div>)}
-                {explorationHistoryOpen && !Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
-              </div>
-            )}
           </div>
         </section>
       )}
-      {tab === "monthly-recap" && <ExplorationRecap opened={state.opened} rarityTiers={state.rarityTiers} posts={all} onNotice={toast} onBack={() => { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); }} />}
-      {tab === "card-chain" && <CardChainPanel accountId={accountId} posts={all} onLogin={() => setTab("messages")} onBack={() => { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); }} onNotice={toast} />}
+      {tab === "exploration-center" && (
+        <section className="page exploration-center-page">
+          <div className="exploration-center-intro"><span>HEIKA / EXPLORE</span><h1>探索中心</h1><p>和朋友一起发现，也回看自己的探索轨迹。</p></div>
+          <div className="exploration-center-actions" aria-label="探索功能">
+            <button type="button" onClick={() => openCoExplore("exploration-center")}><span><UsersRound size={18}/></span><span><strong>和朋友一起探索</strong><small>共同翻卡，分享发现</small></span><ChevronRight size={17}/></button>
+            <button type="button" onClick={() => openMineFeature("monthly-recap", "exploration-center")}><span><Sparkles size={18}/></span><span><strong>探索月报</strong><small>回看本月发现与稀有卡</small></span><ChevronRight size={17}/></button>
+            <button type="button" onClick={() => openMineFeature("card-chain", "exploration-center")}><span><GitBranch size={18}/></span><span><strong>卡片接龙</strong><small>从一张卡片续写故事</small></span><ChevronRight size={17}/></button>
+          </div>
+          <section className="exploration-center-section">
+            <div className="section-head exploration-calendar-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationCalendarOpen} aria-controls="exploration-calendar-content" onClick={() => setExplorationCalendarOpen((open) => !open)}><h2><CalendarDays size={17}/>探索日历</h2><span>最近 28 天 <ChevronDown size={16}/></span></button></div>
+            {explorationCalendarOpen && <div id="exploration-calendar-content"><div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
+              {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
+            </div>
+            <div className="calendar-day-detail">
+              <div><strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong><span>探索：{selectedDayIds.length} 张</span></div>
+              {selectedDayIds.length ? <div className="calendar-posts">{selectedDayIds.map((id) => {
+                const item = state.revealed[id] || all.find((post) => post.id === id);
+                const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15}/></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
+              })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
+            </div></div>}
+          </section>
+          <section className="exploration-center-section">
+            <div className="section-head exploration-center-subhead"><h2><History size={17}/>最近发现</h2><span>最近 8 条</span></div>
+            {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => {
+              const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
+              const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+              return <button key={`${date}-${post.id}`} onClick={() => setRecentPreview({ post, source: state.revealed[post.id] ? "today" : "discover" })}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong><small>点按预览</small></button>;
+            })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
+            <div id="flip-history" className="section-head exploration-history-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天 <ChevronDown size={16}/></span></button></div>
+            {explorationHistoryOpen && Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
+              const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+              const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+              return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
+            })}</div>)}
+            {explorationHistoryOpen && !Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
+          </section>
+        </section>
+      )}
+      {tab === "monthly-recap" && <ExplorationRecap opened={state.opened} rarityTiers={state.rarityTiers} posts={all} onNotice={toast} onBack={returnToSecondaryTab} backLabel={secondaryReturnTab === "exploration-center" ? "‹　探索中心" : "‹　我的"} />}
+      {tab === "card-chain" && <CardChainPanel accountId={accountId} posts={all} onLogin={() => setTab("messages")} onBack={returnToSecondaryTab} onNotice={toast} backLabel={secondaryReturnTab === "exploration-center" ? "‹　探索中心" : "‹　我的"} />}
       {tab === "creator-center" && (
         <section className="page my-content-page creator-dashboard-page">
           <button className="back settings-back" onClick={() => {
@@ -3969,11 +3974,12 @@ export default function Community() {
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
           <div className="eyebrow">MY CONTENT / HEIKA</div>
-          <h1>我的作品与草稿<span className="red-dot">.</span></h1>
-          <p className="lead">管理已发布内容、审核状态和草稿。</p>
-          <div className="section-head"><h2>作品列表</h2><span>{state.own.length} 项</span></div>
-          <button className="primary-button mine-create-button" onClick={() => void openComposer()}><Plus size={16} /> 发布内容</button>
-          {state.own.length ? state.own.map((post) => (
+          <h1>作品管理<span className="red-dot">.</span></h1>
+          <p className="lead">整理系列、查看内容状态并管理草稿。</p>
+          <div className="series-manager"><div className="series-manager-heading"><strong>作品系列</strong><span>把有关联的内容整理成专栏</span></div><div className="series-create-form"><input aria-label="系列名称" maxLength={48} placeholder="例如：一周城市观察" value={seriesName} onChange={(event) => setSeriesName(event.target.value)}/><input aria-label="系列简介" maxLength={240} placeholder="一句话介绍（可选）" value={seriesDescription} onChange={(event) => setSeriesDescription(event.target.value)}/><button type="button" disabled={!accountId || seriesName.trim().length < 2} onClick={() => void createPostSeries()}><Plus size={15}/>新建</button></div>{creatorSeries.length > 0 && <div className="series-list">{creatorSeries.map((series) => <button type="button" className={selectedSeriesId === series.id ? "active" : ""} key={series.id} onClick={() => setSelectedSeriesId((current) => current === series.id ? "" : series.id)}><strong>{series.title}</strong><span>{series.description || "持续更新中"}</span><small>{series.postCount || 0} 篇</small></button>)}</div>}</div>
+          <div className="section-head"><h2>作品列表</h2><span>{visibleOwnPosts.length} 项</span></div>
+          {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
+          {visibleOwnPosts.length ? visibleOwnPosts.map((post) => (
             <div className="own-row" key={post.id}>
               <button onClick={() => post.status === "draft" ? void openComposer(post) : openPost(post.id)}>{post.status === "draft" ? `草稿 · ${post.title || "未命名内容"}` : post.status === "pending_review" ? `审核中 · ${post.title}` : post.status === "hidden" ? `审核未通过 · ${post.title}` : post.title}</button>
               <button aria-label="编辑" onClick={() => void openComposer(post)}><PenLine size={16} /></button>
@@ -4609,7 +4615,7 @@ export default function Community() {
                     {tags.map((tag) => <option key={tag}>{tag}</option>)}
                   </select>
                 </label>
-                {accountId && <label className="composer-series-field">加入作品系列<select value={writeSeriesId} onChange={(event) => setWriteSeriesId(event.target.value)}><option value="">暂不加入系列</option>{creatorSeries.map((series) => <option key={series.id} value={series.id}>{series.title}</option>)}</select><small>系列可在「我的 → 我的作品」中创建和管理。</small></label>}
+                {accountId && <label className="composer-series-field">加入作品系列<select value={writeSeriesId} onChange={(event) => setWriteSeriesId(event.target.value)}><option value="">暂不加入系列</option>{creatorSeries.map((series) => <option key={series.id} value={series.id}>{series.title}</option>)}</select><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
                 <section className="composer-topic-section" aria-label="选择话题">
                   <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
                   {writeTopics.length > 0 && <div className="composer-selected-topics" aria-label="已选话题">{writeTopics.map((topic) => <button type="button" key={topic} onClick={() => setWriteTopics((current) => current.filter((item) => item !== topic))}>#{topic}<span aria-hidden="true">×</span></button>)}</div>}

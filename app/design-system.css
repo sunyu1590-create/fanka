@@ -3184,3 +3184,113 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
 .post-poll{margin:18px 0;padding:14px;border:1px solid var(--line);background:var(--surface)}.post-poll-heading{display:flex;align-items:flex-start;gap:8px;color:var(--action)}.post-poll-heading strong{color:var(--ink);font-size:13px;line-height:1.5}.post-poll-options{display:grid;gap:8px;margin-top:12px}.post-poll-option{position:relative;min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;overflow:hidden;padding:8px 10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);text-align:left;font-size:12px}.post-poll-option>i{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--action) 14%,transparent);pointer-events:none;transition:width .35s cubic-bezier(.2,.8,.2,1)}.post-poll-option>span,.post-poll-option>small{position:relative;z-index:1}.post-poll-option>small{color:var(--muted);font-size:10px}.post-poll-option.is-selected{border-color:var(--action)}.post-poll-total{display:block;margin-top:9px;color:var(--muted);font-size:10px}
 .composer-poll-editor{margin:15px 0;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.composer-poll-editor .composer-section-heading{margin-bottom:10px}.composer-poll-question,.composer-poll-options input{width:100%;min-height:40px;padding:9px 10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:12px}.composer-poll-options{display:grid;gap:7px;margin-top:7px}.composer-poll-options>div{display:flex;align-items:center;gap:7px}.composer-poll-options>div>span{width:21px;height:21px;display:grid;place-items:center;flex:none;border:1px solid var(--line);color:var(--muted);font-size:10px}.composer-poll-options>div>button{width:32px;height:34px;display:grid;place-items:center;flex:none;border:1px solid var(--line);background:var(--surface);color:var(--muted)}.composer-poll-add{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:6px 0;border:0;background:transparent;color:var(--action);font-size:11px}
 @media(max-width:520px){.followed-topics-strip{align-items:flex-start;flex-direction:column;gap:7px}.topic-detail-stats{flex-wrap:wrap}.topic-detail-stats>.interactive-follow-button{margin-left:auto}.private-highlight-tools>small{max-width:60%;text-align:right}}
+
+/* Content-first personal profile and exploration tools. */
+.mine-topline { height:58px; padding-inline:16px; }
+.mine-topline-actions { display:flex; align-items:center; gap:8px; }
+.mine-topline .mine-membership-button { min-height:34px; padding:0 9px; border:0; color:var(--ink); font-size:11px; }
+.mine-topline .mine-membership-button svg { color:#c5a94e; }
+.mine-topline .mine-settings-button { width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; background:transparent; color:var(--ink); }
+.mine-page { display:block; max-width:900px; margin-inline:auto; padding:17px 16px 64px; }
+.mine-profile-hero { margin:0; padding:0; overflow:visible; background:transparent; }
+.mine-profile-hero .mine-profile-card { min-height:78px; gap:12px; margin:0; padding:2px 0 12px; border:0; background:transparent; }
+.mine-profile-card::before,.mine-profile-card::after { display:none; }
+.mine-profile-hero .mine-profile-card .avatar { width:68px; height:68px; flex:0 0 68px; border:1px solid var(--line); border-radius:50%; background:var(--surface); color:var(--ink); }
+.mine-profile-copy { min-width:0; flex:1; }
+.mine-profile-name-row { display:flex; align-items:center; gap:8px; min-width:0; }
+.mine-profile-name-row h2 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mine-profile-name-row .mine-level-tag { flex:none; min-height:22px; padding:0 7px; border:1px solid color-mix(in srgb,#c5a94e 48%,var(--line)); border-radius:999px; background:color-mix(in srgb,#c5a94e 10%,transparent); color:#c5a94e; font-size:10px; font-weight:650; }
+.mine-profile-hero .mine-profile-card p { margin:3px 0 0; overflow:hidden; color:var(--muted); text-overflow:ellipsis; white-space:nowrap; }
+.mine-account-id { display:block; margin-top:4px; color:var(--muted); font-size:9px; letter-spacing:.06em; }
+.mine-profile-hero .mine-profile-card>button { width:34px; height:34px; flex:none; display:grid; place-items:center; border:0; background:transparent; color:var(--muted); }
+.mine-profile-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:2px 0 5px; padding:8px 0 10px; border:0; }
+.mine-profile-stats div { display:grid; gap:3px; justify-items:start; padding:0 10px 0 0; border:0; text-align:left; }
+.mine-profile-stats strong { font-family:inherit; font-size:17px; font-weight:640; }
+.mine-profile-stats span { color:var(--muted); font-size:10px; }
+.daily-missions-panel { margin:6px 0 3px; padding:0; border:0; }
+.daily-missions-toggle { width:100%; min-height:43px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0; border:0; background:transparent; color:var(--ink); text-align:left; }
+.daily-missions-toggle-label { min-width:0; display:flex; align-items:center; gap:8px; }
+.daily-missions-toggle-label>svg { flex:none; color:var(--action); }
+.daily-missions-toggle-label strong { font-size:12px; font-weight:620; white-space:nowrap; }
+.daily-missions-toggle-label small { min-width:0; overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.daily-missions-toggle>svg { flex:none; color:var(--muted); transition:transform .24s var(--ease); }
+.daily-missions-panel.is-open .daily-missions-toggle>svg { transform:rotate(180deg); }
+.daily-missions-details { display:grid; grid-template-rows:0fr; opacity:0; transition:grid-template-rows .3s var(--ease),opacity .22s ease; }
+.daily-missions-panel.is-open .daily-missions-details { grid-template-rows:1fr; opacity:1; }
+.daily-missions-details-inner { min-height:0; overflow:hidden; }
+.daily-missions-list { margin:0; }
+.daily-mission-row:first-child { border-top:1px solid var(--line); }
+.daily-missions-login-hint { display:flex; align-items:center; gap:7px; margin:0; padding:11px 0; border-top:1px solid var(--line); color:var(--muted); font-size:11px; }
+.daily-missions-login-hint svg { color:var(--action); }
+.mine-exploration-entry { width:100%; min-height:56px; display:grid; grid-template-columns:34px minmax(0,1fr) 18px; align-items:center; gap:10px; margin:4px 0 12px; padding:4px 0; border:0; border-block:1px solid var(--line); background:transparent; color:var(--ink); text-align:left; }
+.mine-exploration-entry-icon { display:grid; width:30px; height:30px; place-items:center; color:var(--action); }
+.mine-exploration-entry>span:nth-child(2) { min-width:0; display:grid; gap:3px; }
+.mine-exploration-entry strong { font-size:12px; font-weight:620; }
+.mine-exploration-entry small { overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.mine-exploration-entry>svg { color:var(--muted); }
+.mine-tabs-shell { top:58px; margin:0 -16px; padding:0 16px; border-bottom:1px solid var(--line); }
+.mine-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); min-height:44px; }
+.mine-tab-indicator { width:33.3333%; transition:transform .28s var(--ease); }
+.mine-tabs button { font-size:12px; transition:color .2s var(--ease); }
+.mine-category-panel { min-height:180px; scroll-margin-top:112px; }
+.mine-tab-content { padding-top:1px; animation:heika-profile-tab-in .24s var(--ease) both; }
+@keyframes heika-profile-tab-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+.mine-works-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:13px 0 12px; }
+.mine-works-heading>div { display:flex; align-items:baseline; gap:8px; }
+.mine-works-heading h2 { margin:0; font-size:14px; font-weight:620; }
+.mine-works-heading span { color:var(--muted); font-size:10px; }
+.mine-works-manage-button { display:inline-flex; align-items:center; gap:3px; min-height:30px; padding:0; border:0; background:transparent; color:var(--muted); font-size:10px; }
+.mine-works-masonry { display:grid!important; grid-template-columns:repeat(2,minmax(0,1fr))!important; gap:14px 9px; columns:unset!important; }
+.mine-works-masonry>.mine-work-card { min-width:0; display:block; width:auto; margin:0; }
+.mine-work-card .post-card { width:100%; margin:0; text-align:left; }
+.mine-work-card .post-cover { height:auto; aspect-ratio:3/4; padding:0; overflow:hidden; }
+.mine-work-card .post-cover img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.mine-work-card .post-meta { padding:7px 1px 0; }
+.mine-work-card .post-meta small { font-size:9px; }
+.mine-work-card .post-meta b { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; font-size:12px; line-height:1.45; }
+.mine-work-card .post-summary { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; margin:4px 0 0; font-size:10px; line-height:1.45; }
+.mine-work-card .post-meta>div { gap:5px; margin-top:6px; font-size:9px; }
+.mine-work-actions { gap:7px; padding:5px 1px 0; border:0; }
+.mine-works-masonry .empty { grid-column:1/-1; }
+.exploration-center-page { max-width:760px; margin-inline:auto; padding:18px 16px 70px; }
+.exploration-center-intro { margin:0 0 16px; }
+.exploration-center-intro>span { color:var(--muted); font:9px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.18em; }
+.exploration-center-intro h1 { margin:5px 0 3px; font-size:25px; }
+.exploration-center-intro p { margin:0; color:var(--muted); font-size:11px; line-height:1.6; }
+.exploration-center-actions { display:grid; margin:8px 0 24px; }
+.exploration-center-actions>button { min-height:60px; display:grid; grid-template-columns:36px minmax(0,1fr) 18px; align-items:center; gap:10px; padding:8px 0; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--ink); text-align:left; }
+.exploration-center-actions>button:first-child { border-top:1px solid var(--line); }
+.exploration-center-actions>button>span:first-child { width:32px; height:32px; display:grid; place-items:center; color:var(--action); }
+.exploration-center-actions>button>span:nth-child(2) { min-width:0; display:grid; gap:4px; }
+.exploration-center-actions strong { font-size:12px; font-weight:620; }
+.exploration-center-actions small { color:var(--muted); font-size:10px; }
+.exploration-center-actions>button>svg { color:var(--muted); }
+.exploration-center-section { margin:22px 0; }
+.exploration-center-section .section-head { margin:0 0 12px; padding:0; border:0; }
+.exploration-center-section .section-head h2 { display:flex; align-items:center; gap:7px; font-size:14px; font-weight:620; }
+.exploration-center-section .section-head h2 svg { color:var(--muted); }
+.exploration-center-section .collapsible-panel-toggle { min-height:34px; }
+.exploration-center-section .exploration-calendar { margin-top:10px; }
+.exploration-center-section .calendar-day-detail { margin-top:12px; }
+.exploration-center-section .recent-discoveries { margin:0 0 14px; }
+.exploration-center-section .recent-discoveries button { background:transparent; }
+.exploration-history-heading { margin-top:18px!important; }
+.my-content-page .series-manager { margin:14px 0 20px; padding:0; border:0; background:transparent; }
+.my-content-page .series-create-form input { border-radius:var(--radius); }
+@media (min-width:700px) {
+  .mine-page { padding:24px 26px 76px; }
+  .mine-profile-stats { max-width:460px; }
+  .mine-tabs-shell { margin-inline:-26px; padding-inline:26px; }
+  .mine-page .mine-works-masonry { max-width:780px; gap:18px 12px; }
+  .mine-work-card .post-meta b { font-size:13px; }
+}
+@media (max-width:380px) {
+  .mine-page { padding-inline:14px; }
+  .mine-tabs-shell { margin-inline:-14px; padding-inline:14px; }
+  .mine-profile-stats div { padding-right:5px; }
+  .mine-profile-stats span { font-size:9px; }
+  .mine-exploration-entry small { font-size:9px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .daily-missions-toggle>svg,.daily-missions-details,.mine-tab-indicator,.mine-tabs button,.mine-tab-content { transition:none!important; animation:none!important; }
+}
