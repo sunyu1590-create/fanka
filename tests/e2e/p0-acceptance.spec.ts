@@ -104,6 +104,15 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
     } else {
       expect(navigation!.y, `tablet and phone navigation should stay at the bottom at ${width}px`).toBeGreaterThan(700);
       expect(navigation!.width, `tablet and phone navigation should span the viewport at ${width}px`).toBeGreaterThanOrEqual(width - 1);
+      if (width >= 768) {
+        const centers = await page.locator(".bottom-nav button").evaluateAll((buttons) => buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          return box.left + box.width / 2;
+        }));
+        for (const [index, expected] of [0.1, 0.3, 0.5, 0.7, 0.9].entries()) {
+          expect(centers[index], `navigation button ${index + 1} should stay in its tablet slot at ${width}px`).toBeCloseTo(width * expected, -1);
+        }
+      }
     }
   }
 

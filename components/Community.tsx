@@ -3457,7 +3457,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.1</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3614,7 +3614,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.35.0</p>
+          <p className="lead">HEIKA · 版本 2.35.1</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.1</strong><small>2026.11.05</small></div><ul><li>修正平板底栏消息与“我的”入口的网格位置，确保五个入口始终各就其位。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.0</strong><small>2026.11.05</small></div><ul><li>统一适配手机、平板、桌面与超宽屏，桌面导航固定在侧栏。</li><li>发现与个人作品网格根据屏幕宽度扩展列数，详情、消息与编辑器布局同步适配大屏。</li><li>保留现有翻卡、内容、认证和互动逻辑，并修整窄屏与平板导航切换。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.32.0</strong><small>2026.11.04</small></div><ul><li>修复发现页双列间距没有实际生效的问题，调整卡片列宽和纵向节奏。</li><li>作者、点赞和阅读信息行增加浅底色与克制圆角，和封面形成清楚层级。</li><li>私人笔记改为选中正文后自动显示；已保存摘录收进默认折叠的入口。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.31.0</strong><small>2026.11.04</small></div><ul><li>发现页卡片改为图片主导：标签与评级置于封面上方，标题在图片内最多显示两行。</li><li>封面下方收敛为作者、点赞数和“阅读 ↗”，移除重复标题与摘要。</li><li>加大页面边距和双列间距，统一卡片圆角，并让底栏更轻盈，保留醒目的金色发布按钮。</li><li>保持瀑布流加载和既有图片进入动画，统一悬停、焦点与图片反馈的衔接。</li></ul></div>
