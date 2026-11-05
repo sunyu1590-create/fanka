@@ -3624,8 +3624,8 @@ export default function Community() {
       {tab === "discover" && (
         <section className="page editorial-home discover-page">
           <div className="discover-channel-tabs" role="tablist" aria-label="发现频道">
-            <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>社区</span><small>创作与灵感</small></button>
-            <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected" : ""} onClick={() => switchDiscoverChannel("ai")}><span>AI 空间</span><small>知识与资源</small></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>社区</span></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected" : ""} onClick={() => switchDiscoverChannel("ai")}><span>AI 空间</span></button>
           </div>
           <div className="discover-community-channel" hidden={discoverChannel !== "community"}>
           <button className="search search-launch" onClick={openSearch}><Search size={18}/><span>搜索内容或用户</span><kbd>⌕</kbd></button>
@@ -3766,7 +3766,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.36.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.36.1</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3924,8 +3924,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.36.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.36.0</strong><small>2026.11.05</small></div><ul><li>发现页新增独立的 AI 空间频道，支持 Agent、Skills、Prompt、AI 知识、AI 工具与实战教程。</li><li>AI 内容使用结构化发布、收藏、评论、资源版本记录与失效反馈，并经审核后公开。</li><li>管理后台增加真实运营概览、AI 审核与精选、分类标签治理、申诉处理和分级管理员角色。</li><li>原有社区分类和翻卡数据保留；社区推荐与每日翻卡继续沿用既有交互规则。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.36.1</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.36.1</strong><small>2026.11.05</small></div><ul><li>发现频道切换收紧为紧凑圆角控件，AI 分类与搜索改为独立二级页面。</li><li>AI 空间收藏入口统一回个人中心的「我的收藏」，减少频道内重复入口。</li><li>管理员工作台统一视觉层级，管理首页移除重复的最近操作列表。</li><li>发布入口与选项统一圆角和动态反馈，继续使用系统动效节奏。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.5</strong><small>2026.11.05</small></div><ul><li>发布页移除顶部说明块与独立写作提示，标题和正文直接进入编辑。</li><li>图片和视频 Beta 改为并列常驻入口，上传、审核和草稿提示就近展示。</li><li>大视频在浏览器支持时使用本地编码降至 720p 级别并压缩码率，保留音轨、原画质回退及现有分片续传。</li><li>发布操作栏和媒体选择加入轻量玻璃质感，并优化窄屏可读性与安全区间距。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.4</strong><small>2026.11.05</small></div><ul><li>通知横幅按场景显示爱心、评论、收藏、关注等对应图标，并下移 4px。</li><li>详情页点赞按钮显示作品获赞数，成功点赞或取消后同步更新数字。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.3</strong><small>2026.11.05</small></div><ul><li>通知恢复紧凑旧版样式，保留新版顶部入场、退场动画及滑动交互。</li><li>管理员后台改为分组工作台，点击模块即可进入对应审核或管理界面。</li><li>修复带图片或视频的已发布作品修改审核失败问题，媒体路径长度校验不再触发 PostgreSQL 正则错误。</li></ul></div>

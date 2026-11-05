@@ -1,6 +1,6 @@
 {
   "name": "fanka",
-  "version": "2.36.0",
+  "version": "2.36.1",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",

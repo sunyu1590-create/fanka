@@ -90,7 +90,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const [pendingReportTotal, setPendingReportTotal] = useState(0);
   const [submissionTotal, setSubmissionTotal] = useState(0);
   const [userTotal, setUserTotal] = useState(0);
-  const [overview, setOverview] = useState<{ usersToday: number; postsToday: number; pending: number; pendingReports: number; aiResources: number; views: number; likes: number; saves: number; comments: number; recent: { id: string; action: string; target_type: string; target_id: string; reason: string; created_at: string; nickname: string | null }[] } | null>(null);
+  const [overview, setOverview] = useState<{ usersToday: number; postsToday: number; pending: number; pendingReports: number; aiResources: number; views: number; likes: number; saves: number; comments: number } | null>(null);
   const [messageReports, setMessageReports] = useState<DmReport[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [userQuery, setUserQuery] = useState("");
@@ -333,7 +333,6 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         <div><strong>{overview?.saves?.toLocaleString("zh-CN") ?? "—"}</strong><span>累计收藏</span></div>
         <div><strong>{overview?.comments?.toLocaleString("zh-CN") ?? "—"}</strong><span>可见评论</span></div>
       </div>
-      {overview?.recent?.length ? <section className="admin-recent-operations"><h2>最近管理员操作</h2>{overview.recent.map((item) => <p key={item.id}><strong>{item.nickname || "管理员"}</strong><span>{item.reason || item.action}</span><time>{new Date(item.created_at).toLocaleString("zh-CN")}</time></p>)}</section> : null}
       <div className="admin-module-groups">
         <div className="admin-module-heading"><div><small>WORKSPACE</small><strong>管理模块</strong></div><button type="button" className="soft-button" onClick={refreshCurrent} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
         {adminModuleGroups.map((group) => {
