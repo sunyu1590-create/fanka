@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronRight, LockKeyhole, MessageCircle, UserRound } from "
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
+import { markdownToText } from "./MarkdownContent";
 
 type PublicInfo = { nickname: string; bio: string; avatar_url: string | null; show_bookmarks: boolean };
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
@@ -139,7 +140,7 @@ export default function PublicProfile({
                   {post.image_url && <img src={post.image_url} alt="" loading="lazy" decoding="async"/>}
                   <span className="public-profile-post-copy">
                     <span className="public-profile-post-title">{post.title || "未命名内容"}</span>
-                    {layout === "masonry" && post.body && <span className="public-profile-post-excerpt">{post.body}</span>}
+                    {layout === "masonry" && post.body && <span className="public-profile-post-excerpt">{markdownToText(post.body)}</span>}
                     {section === "posts" && <small>{post.created_at ? new Date(post.created_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "黑卡内容"}</small>}
                   </span>
                   {layout === "list" && <ChevronRight size={15}/>}

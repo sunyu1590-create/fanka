@@ -43,6 +43,26 @@ export function FollowedTopics({ accountId, onOpen }: { accountId: string | null
   return <section className="followed-topics-strip" aria-label="已关注话题"><span>关注的话题</span><div>{items.map((item) => { const topic = relation(item.interest_tags); return topic ? <button type="button" key={item.topic_id} onClick={() => onOpen(topic.name)}>#{topic.name}<ChevronRight size={13}/></button> : null; })}</div></section>;
 }
 
+export function FollowedTopicsSettings({ accountId, onOpen, onNotice }: { accountId: string | null; onOpen: (name: string) => void; onNotice: (message: string) => void }) {
+  const [items, setItems] = useState<TopicFollow[]>([]);
+  const [busy, setBusy] = useState<number | null>(null);
+  const onNoticeRef = useRef(onNotice);
+  useEffect(() => { onNoticeRef.current = onNotice; }, [onNotice]);
+  const load = useCallback(async () => {
+    if (!accountId) { setItems([]); return; }
+    try { const response = await cloudFetch("/api/v1/topic-follows", { cache: "no-store" }); const result = await response.json(); if (response.ok && Array.isArray(result.data?.items)) setItems(result.data.items); }
+    catch { onNoticeRef.current("关注话题暂时无法读取"); }
+  }, [accountId]);
+  useEffect(() => { void load(); }, [load]);
+  const unfollow = async (topicId: number) => {
+    setBusy(topicId);
+    try { await cloudRequest("/api/v1/topic-follows", { topicId, follow: false }); setItems((current) => current.filter((item) => item.topic_id !== topicId)); onNoticeRef.current("已取消关注话题"); }
+    catch (error) { onNoticeRef.current(error instanceof Error ? error.message : "取消关注失败"); }
+    finally { setBusy(null); }
+  };
+  return <section className="followed-topics-settings" aria-labelledby="followed-topics-title"><div><h2 id="followed-topics-title">关注的话题</h2><p>管理你关注的社区话题，新内容仍会出现在通知中。</p></div>{items.length ? <ul>{items.map((item) => { const topic = relation(item.interest_tags); return topic ? <li key={item.topic_id}><button type="button" className="followed-topic-open" onClick={() => onOpen(topic.name)}>#{topic.name}<ChevronRight size={14}/></button><button type="button" className="followed-topic-remove" disabled={busy === item.topic_id} onClick={() => void unfollow(item.topic_id)}>{busy === item.topic_id ? "处理中…" : "取消关注"}</button></li> : null; })}</ul> : <div className="followed-topics-empty">还没有关注的话题。浏览话题页时可随时关注感兴趣的方向。</div>}</section>;
+}
+
 export function SeriesSubscription({ seriesId, accountId, onLogin, onNotice }: { seriesId: string; accountId: string | null; onLogin: () => void; onNotice: (message: string) => void }) {
   const [subscribed, setSubscribed] = useState(false), [isOwner, setIsOwner] = useState(false), [busy, setBusy] = useState(false);
   useEffect(() => {

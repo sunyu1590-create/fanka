@@ -5,6 +5,7 @@ import { ArrowLeft, Check, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { userMessage } from "@/lib/user-message";
+import { MarkdownContent } from "./MarkdownContent";
 
 type Report = {
   id: string;
@@ -15,7 +16,7 @@ type Report = {
   reviewed_at: string | null;
   target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[] };
 };
-type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[] };
+type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; kind?: "new" | "revision"; originalTitle?: string | null };
 type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null };
 type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string };
 type TopicTag = { id: number; name: string };
@@ -26,6 +27,11 @@ type Props = { onBack: () => void };
 
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
+
+function CollapsibleMarkdown({ source, label }: { source: string; label: string }) {
+  const [open, setOpen] = useState(false);
+  return <details className="moderation-longtext" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}><summary>{open ? "收起" : label} · {source.length} 字</summary>{open && <MarkdownContent source={source} className="moderation-markdown"/>}</details>;
+}
 
 export default function AdminModeration({ onBack }: Props) {
   const [section, setSection] = useState<"reports" | "messages" | "content" | "users" | "topic-events" | "ai-settings">("reports");
@@ -214,7 +220,7 @@ export default function AdminModeration({ onBack }: Props) {
     setSaving(post.id); setError("");
     try {
       await cloudRequest(`/api/v1/admin/posts/${post.id}`, { status: next, review_note: note }, "PATCH");
-      setNotice(next === "published" ? "内容已审核并公开" : "内容已驳回并保持隐藏");
+      setNotice(post.kind === "revision" ? next === "published" ? "修改已审核并替换公开版本" : "修改已驳回，原公开版本保持不变" : next === "published" ? "内容已审核并公开" : "内容已驳回并保持隐藏");
       setNotes((current) => ({ ...current, [post.id]: "" }));
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "审核失败"); }
@@ -292,17 +298,17 @@ export default function AdminModeration({ onBack }: Props) {
     ) : section === "reports" ? (
       reports.length ? <div className="moderation-list">{reports.map((report) => <article className="moderation-item" key={report.id}>
         <div className="moderation-item-heading"><strong>{report.target.type === "post" ? "内容举报" : "评论举报"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
-        <div className="moderation-target"><b>{report.target.title}</b><p>{report.target.body}</p>{report.target.images.map((url) => <img key={url} src={url} alt="被举报内容图片" loading="lazy" />)}</div>
+        <div className="moderation-target"><b>{report.target.title}</b><CollapsibleMarkdown source={report.target.body} label="展开查看正文"/>{report.target.images.map((url) => <img key={url} src={url} alt="被举报内容图片" loading="lazy" />)}</div>
         <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
         {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
         {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录处理依据，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
       </article>)}</div> : <p className="moderation-empty">当前没有符合条件的举报。</p>
     ) : submissions.length ? <div className="moderation-list">{submissions.map((post) => <article className="moderation-item" key={post.id}>
       <div className="moderation-item-heading"><strong><ShieldCheck size={16} /> 待人工审核</strong><time>{new Date(post.created_at).toLocaleString("zh-CN")}</time></div>
-      <h2>{post.title}</h2><p className="moderation-author">作者：{post.author}</p><p className="moderation-copy">{post.body}</p>
+      <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文"/>
       <div className="moderation-images">{post.images.map((url) => <img key={url} src={url} alt="待审核内容图片" loading="lazy" />)}</div>
       <label className="moderation-note">审核说明<textarea value={notes[post.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [post.id]: event.target.value }))} placeholder="记录审核依据，至少 3 个字" /></label>
-      <div className="moderation-actions"><button disabled={saving === post.id} onClick={() => void processSubmission(post, "published")}><Check size={15} /> 审核通过并公开</button><button disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden")}><X size={15} /> 驳回并保持隐藏</button></div>
+      <div className="moderation-actions"><button disabled={saving === post.id} onClick={() => void processSubmission(post, "published")}><Check size={15} /> {post.kind === "revision" ? "通过并替换公开版" : "审核通过并公开"}</button><button disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden")}><X size={15} /> {post.kind === "revision" ? "驳回修改，保留原版" : "驳回并保持隐藏"}</button></div>
     </article>)}</div> : <p className="moderation-empty">目前没有待审核的新内容。</p>}
   </section>;
 }

@@ -86,7 +86,7 @@ async function replaceTopics(db: SupabaseClient, postId: string, value: unknown)
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
-    const [profile, details, prefs, bookmarks, interactions, interests, own] =
+    const [profile, details, prefs, bookmarks, interactions, interests, own, revisions] =
       await Promise.all([
         db
           .from("profiles")
@@ -109,9 +109,24 @@ export async function GET(req: NextRequest) {
           .select("interest_tags(name)")
           .eq("user_id", user!.id),
         db.from("posts").select(libraryFields).eq("author_id", user!.id),
+        db.from("post_revisions").select("post_id,payload,status,review_note").eq("author_id", user!.id),
       ]);
-    for (const r of [profile, details, prefs, bookmarks, interactions, interests, own])
+    for (const r of [profile, details, prefs, bookmarks, interactions, interests, own, revisions])
       dbError(r.error);
+    const ownPosts = await presentMany(db, own.data as unknown as LibraryRow[]);
+    const revisionRows = (revisions.data || []) as { post_id: string; payload: Record<string, unknown>; status: "pending" | "approved" | "rejected"; review_note: string | null }[];
+    const revisionPaths = [...new Set(revisionRows.flatMap((revision) => Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.filter((path): path is string => typeof path === "string") : []))];
+    const revisionSigned = revisionPaths.length ? await db.storage.from("post-covers").createSignedUrls(revisionPaths, 3600) : { data: [], error: null };
+    dbError(revisionSigned.error);
+    const revisionUrls = new Map((revisionSigned.data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
+    const revisionsByPost = new Map(revisionRows.map((revision) => [revision.post_id, {
+      status: revision.status,
+      reviewNote: revision.review_note,
+      payload: { ...revision.payload, images: [
+        ...(typeof revision.payload.coverUrl === "string" ? [revision.payload.coverUrl] : []),
+        ...(Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.flatMap((path) => typeof path === "string" && revisionUrls.has(path) ? [revisionUrls.get(path)!] : []) : []),
+      ] },
+    }]));
     return {
       profile: profile.data,
       profileDetails: details.data,
@@ -119,7 +134,7 @@ export async function GET(req: NextRequest) {
       bookmarks: bookmarks.data,
       interactions: interactions.data,
       interests: interests.data,
-      own: await presentMany(db, own.data as unknown as LibraryRow[]),
+      own: ownPosts.map((post) => ({ ...post, pendingRevision: post.cloudId ? revisionsByPost.get(post.cloudId) : undefined })),
     };
   });
 }
@@ -241,6 +256,50 @@ export async function POST(req: NextRequest) {
         const owned = await db.from("post_series").select("id").eq("id", seriesId).eq("creator_id", user!.id).maybeSingle();
         dbError(owned.error);
         if (!owned.data) throw new ApiError(400, "请选择自己的作品系列");
+      }
+      if (existingPost?.data?.status === "published") {
+        const title = textField(b.title, "标题", 1, 80);
+        const body = textField(b.body, "正文", 1, 5000);
+        const { data: officialTopics, error: topicsError } = await db.from("interest_tags").select("name").eq("active", true);
+        dbError(topicsError);
+        const checkedTopics = validateTopicNames(b.topics, (officialTopics || []).map((topic) => topic.name));
+        if (checkedTopics.error) throw new ApiError(400, checkedTopics.error);
+        const pollInput = b.poll && typeof b.poll === "object" ? b.poll as Record<string, unknown> : null;
+        let poll: { question: string; options: string[] } | null = null;
+        if (pollInput) {
+          const question = typeof pollInput.question === "string" ? pollInput.question.trim() : "";
+          const options = Array.isArray(pollInput.options) ? [...new Set(pollInput.options.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))] : [];
+          if (!question || question.length > 180 || options.length < 2 || options.length > 4 || options.some((item) => item.length > 80)) throw new ApiError(400, "投票需要填写问题，并设置 2–4 个不重复选项");
+          poll = { question, options };
+        }
+        const oldMedia = await db.from("post_media").select("storage_path").eq("post_id", existingPost.data.id).order("sort_order");
+        dbError(oldMedia.error);
+        const mediaPaths = Array.isArray(b.mediaPaths) ? [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))] : (oldMedia.data || []).map((item) => item.storage_path);
+        if (mediaPaths.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300)) throw new ApiError(400, "图片无效");
+        if (mediaPaths.length) {
+          const storedImages = await db.storage.from("post-covers").createSignedUrls(mediaPaths, 60);
+          dbError(storedImages.error);
+          if ((storedImages.data || []).length !== mediaPaths.length || storedImages.data?.some((item) => !item.signedUrl)) throw new ApiError(400, "有图片尚未同步完成，请重新上传后再提交");
+        }
+        let coverUrl: string | null = null;
+        if (typeof b.coverUrl === "string") {
+          try { const url = new URL(b.coverUrl); if (["https:", "http:"].includes(url.protocol)) coverUrl = url.toString(); }
+          catch { throw new ApiError(400, "封面图片地址无效"); }
+        }
+        const payload = { title, body, tag: String(b.tag), topics: checkedTopics.names, seriesId, poll, mediaPaths, coverUrl };
+        const revision = await db.from("post_revisions").upsert({
+          post_id: existingPost.data.id, author_id: user!.id, payload, status: "pending", review_note: null,
+          reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString(),
+        }, { onConflict: "post_id" }).select("status,review_note").single();
+        dbError(revision.error);
+        if (!revision.data) throw new ApiError(500, "待审核修改未能保存");
+        const current = await db.from("posts").select(libraryFields).eq("id", existingPost.data.id).single();
+        dbError(current.error);
+        const presented = (await presentMany(db, [current.data as unknown as LibraryRow]))[0];
+        const signed = mediaPaths.length ? await db.storage.from("post-covers").createSignedUrls(mediaPaths, 3600) : { data: [], error: null };
+        dbError(signed.error);
+        const signedByPath = new Map((signed.data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
+        return { ...presented, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload: { ...payload, images: [...(coverUrl ? [coverUrl] : []), ...mediaPaths.flatMap((path) => signedByPath.has(path) ? [signedByPath.get(path)!] : [])] } } };
       }
       const values = {
         author_id: user!.id,

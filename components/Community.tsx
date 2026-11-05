@@ -42,7 +42,8 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
   loading: () => <div className="empty">正在加载审核队列…</div>,
 });
 import EditorialArticle from "./EditorialArticle";
-import { FollowedTopics, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
+import { MarkdownContent, markdownToText } from "./MarkdownContent";
+import { FollowedTopicsSettings, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
 const PublicProfile = dynamic(() => import("./PublicProfile"), { loading: () => <div className="empty">正在加载…</div> });
@@ -496,6 +497,10 @@ export default function Community() {
     [aiWorkbenchMode, setAiWorkbenchMode] = useState<"title" | "outline" | "polish" | "topics">("outline"),
     [aiWorkbenchOutput, setAiWorkbenchOutput] = useState(""),
     [aiWorkbenchBusy, setAiWorkbenchBusy] = useState(false),
+    [aiPreviousBody, setAiPreviousBody] = useState<string | null>(null),
+    [aiPreviousTitle, setAiPreviousTitle] = useState<string | null>(null),
+    [aiPreviousTopics, setAiPreviousTopics] = useState<string[] | null>(null),
+    [aiResultApplied, setAiResultApplied] = useState(false),
     [writeTag, setWriteTag] = useState<string>(tags[0]),
     [writeTopics, setWriteTopics] = useState<string[]>([]),
     [writeSeriesId, setWriteSeriesId] = useState(""),
@@ -507,6 +512,7 @@ export default function Community() {
     [coverIndex, setCoverIndex] = useState(0),
     [draftSaved, setDraftSaved] = useState(false),
     [composerEditingPublished, setComposerEditingPublished] = useState(false),
+    [composerRevisionMode, setComposerRevisionMode] = useState(false),
     [draftSaving, setDraftSaving] = useState(false),
     [topicSummary, setTopicSummary] = useState<TopicSummary | null>(null),
     [topicPosts, setTopicPosts] = useState<Post[]>([]),
@@ -1968,13 +1974,14 @@ export default function Community() {
   const uploadImageToPost = async (image: ComposerImage, postId: string, sortOrder: number): Promise<ComposerImage> => {
     if (image.external) return image;
     if (image.path) {
+      if (composerRevisionMode) return { ...image, sortOrder };
       await cloudRequest(`/api/v1/posts/${postId}/media`, { path: image.path, sort_order: sortOrder });
       return { ...image, sortOrder };
     }
     if (!image.file || !accountId) throw new Error("登录后可同步草稿图片");
     const db = await browserDb(); const { data: session } = await db.auth.getSession();
     if (!session.session) throw new Error("登录状态已失效，请重新登录");
-    const form = new FormData(); form.set("file", image.file); form.set("post_id", postId); form.set("sort_order", String(sortOrder)); form.set("upload_id", image.id);
+    const form = new FormData(); form.set("file", image.file); form.set(composerRevisionMode ? "revision_post_id" : "post_id", postId); form.set("sort_order", String(sortOrder)); form.set("upload_id", image.id);
     const response = await fetch("/api/v1/media", { method: "POST", headers: { Authorization: `Bearer ${session.session.access_token}` }, body: form });
     const result = await response.json(); if (!response.ok) throw new Error(result.error || "图片上传失败");
     return { ...image, path: result.data.path, status: "ready", sortOrder };
@@ -2038,11 +2045,12 @@ export default function Community() {
       setCoverIndex(0);
       setEditing(null);
       setComposerEditingPublished(false);
+      setComposerRevisionMode(false);
       const owner = accountId || "guest";
       localStorage.removeItem(`heika-compose-${owner}`);
       await clearDraftFiles(owner).catch(() => {});
       if (accountId) { localStorage.removeItem("heika-compose-guest"); await clearDraftFiles("guest").catch(() => {}); }
-      toast("内容已提交人工审核，通过后将公开展示");
+      toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : "内容已提交人工审核，通过后将公开展示");
     } catch (e) {
       setUploadingImages(false);
       toast(e instanceof Error ? e.message : "发布失败，请重试");
@@ -2051,15 +2059,17 @@ export default function Community() {
   const openComposer = async (post?: Post) => {
     const stored = !post ? state.own.find((item) => item.status === "draft") : undefined;
     const initialPost = post || stored;
+    const revisionPayload = initialPost?.pendingRevision?.payload;
     setEditing(initialPost?.id ?? null);
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
-    setTitle(initialPost?.title || "");
-    setBody(initialPost?.body || "");
+    setComposerRevisionMode(Boolean(post && (post.status === "published" || post.pendingRevision)));
+    setTitle(revisionPayload?.title || initialPost?.title || "");
+    setBody(revisionPayload?.body || initialPost?.body || "");
     setPollQuestion("");
     setPollOptions(["", ""]);
-    setWriteTag(initialPost?.tag || tags[0]);
-    setWriteTopics(initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [tags[0]]);
-    setWriteSeriesId(initialPost?.seriesId || "");
+    setWriteTag(revisionPayload?.tag || initialPost?.tag || tags[0]);
+    setWriteTopics(revisionPayload?.topics?.length ? revisionPayload.topics : initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [tags[0]]);
+    setWriteSeriesId(revisionPayload?.seriesId || initialPost?.seriesId || "");
     setTopicSearch("");
     setComposerImages([]);
     setCoverIndex(0);
@@ -2068,20 +2078,26 @@ export default function Community() {
       try {
         const data = await cloudRequest(`/api/v1/posts/${initialPost.cloudId}`) as { post_media?: { storage_path: string; sort_order: number }[] } | null;
         const pollResponse = await cloudFetch(`/api/v1/posts/${initialPost.cloudId}/poll`, { cache: "no-store" });
-        if (pollResponse.ok) {
+        if (revisionPayload) {
+          setPollQuestion(revisionPayload.poll?.question || "");
+          setPollOptions(revisionPayload.poll ? [...revisionPayload.poll.options, "", ""].slice(0, 4) : ["", ""]);
+        } else if (pollResponse.ok) {
           const pollResult = await pollResponse.json();
           if (pollResult.data?.poll) {
             setPollQuestion(pollResult.data.poll.question || "");
             setPollOptions((pollResult.data.poll.options || []).map((option: { label: string }) => option.label).concat(["", ""]).slice(0, 4));
           }
         }
-        if (data?.post_media?.length) {
+        const revisionMedia = revisionPayload?.mediaPaths?.map((storage_path, sort_order) => ({ storage_path, sort_order }));
+        const mediaToLoad = revisionMedia || data?.post_media || [];
+        if (mediaToLoad.length || revisionPayload?.coverUrl) {
           const db = await browserDb();
-          const images = await Promise.all(data.post_media.sort((a,b) => a.sort_order-b.sort_order).map(async (item, index) => {
+          const images = await Promise.all(mediaToLoad.sort((a,b) => a.sort_order-b.sort_order).map(async (item, index) => {
             const signed = await db.storage.from("post-covers").createSignedUrl(item.storage_path, 3600);
             return signed.data?.signedUrl ? { id: `saved-${index}-${item.storage_path}`, path: item.storage_path, url: signed.data.signedUrl, status: "ready" as const, sortOrder: index } : null;
           }));
-          const external = initialPost.image ? [{ id: "legacy-cover", url: initialPost.image, status: "ready" as const, external: true }] : [];
+          const externalCover = revisionPayload ? revisionPayload.coverUrl : initialPost.image;
+          const external = externalCover ? [{ id: "legacy-cover", url: externalCover, status: "ready" as const, external: true }] : [];
           setComposerImages([...external, ...images.filter((image): image is NonNullable<typeof image> => Boolean(image))]);
         }
       } catch { toast("已恢复草稿文字，图片列表暂时无法读取"); }
@@ -2207,7 +2223,7 @@ export default function Community() {
   const removeComposerImage = async (index: number) => {
     const image = composerImages[index];
     const old = state.own.find((item) => item.id === editing);
-    if (image.path && old?.cloudId) {
+    if (image.path && old?.cloudId && !composerRevisionMode) {
       try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: image.path }, "DELETE"); }
       catch (error) { toast(error instanceof Error ? error.message : "图片移除失败"); return; }
     } else if (image.file && accountId && old?.cloudId) {
@@ -2327,7 +2343,7 @@ export default function Community() {
   };
   const generateAiWorkbench = async () => {
     if (!accountId) { toast("登录后可以使用 AI 创作工作台"); return; }
-    setAiWorkbenchBusy(true); setAiWorkbenchOutput("");
+    setAiWorkbenchBusy(true); setAiWorkbenchOutput(""); setAiResultApplied(false);
     try {
       setAiWorkbenchOutput("");
       const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag }) as { output?: unknown } | null;
@@ -2335,6 +2351,35 @@ export default function Community() {
       setAiWorkbenchOutput(result.output);
     } catch (error) { toast(error instanceof Error ? error.message : "AI 生成失败，请稍后重试"); }
     finally { setAiWorkbenchBusy(false); }
+  };
+  const applyAiWorkbenchResult = () => {
+    if (!aiWorkbenchOutput.trim()) return;
+    setAiPreviousBody(body);
+    setAiPreviousTitle(title);
+    setAiPreviousTopics(writeTopics);
+    if (aiWorkbenchMode === "title") {
+      const suggestion = aiWorkbenchOutput.split("\n").map((line) => line.replace(/^\s*(?:#{1,6}\s*|\d+[.、)）]\s*|[-*+]\s*)/, "").trim()).find(Boolean);
+      if (suggestion) setTitle(suggestion.slice(0, 80));
+    } else if (aiWorkbenchMode === "polish") setBody(aiWorkbenchOutput.trim());
+    else if (aiWorkbenchMode === "topics") {
+      const knownTopics = new Set(topicChoices.map((item) => item.name));
+      const candidates = [...aiWorkbenchOutput.matchAll(/#([\u4e00-\u9fa5A-Za-z0-9_-]{2,20})/g)].map((match) => match[1]).filter((name) => knownTopics.has(name));
+      if (!candidates.length) { toast("建议中的话题不在社区话题列表中，可手动搜索添加"); return; }
+      setWriteTopics((current) => [...new Set([...current, ...candidates])].slice(0, 5));
+    } else setBody((current) => current.trim() ? `${current.trim()}\n\n${aiWorkbenchOutput.trim()}` : aiWorkbenchOutput.trim());
+    setAiResultApplied(true);
+    toast("建议已放入编辑区，可以继续修改");
+  };
+  const undoAiWorkbenchResult = () => {
+    if (aiPreviousBody !== null) setBody(aiPreviousBody);
+    if (aiPreviousTitle !== null) setTitle(aiPreviousTitle);
+    if (aiPreviousTopics !== null) setWriteTopics(aiPreviousTopics);
+    setAiPreviousBody(null); setAiPreviousTitle(null); setAiPreviousTopics(null); setAiResultApplied(false);
+    toast("已撤回 AI 建议");
+  };
+  const copyAiWorkbenchResult = async () => {
+    try { await navigator.clipboard.writeText(aiWorkbenchOutput); toast("AI 建议已复制"); }
+    catch { toast("复制失败，请检查剪贴板权限"); }
   };
   const secondaryTitle = modal === "write"
     ? "取消"
@@ -2651,7 +2696,7 @@ export default function Community() {
         </> : <>
         <small>{p.tag}</small>
         <b>{p.title}</b>
-        <p className="post-summary">{p.body.slice(0, 100)}</p>
+        <p className="post-summary">{markdownToText(p.body).slice(0, 100)}</p>
         {communityRatings[p.id]?.count ? <span className={`post-card-rarity rarity-${cardRarity(communityRatings[p.id].average, communityRatings[p.id].count).replaceAll(" ", "")}`}><Star size={11} fill="currentColor"/> {cardRarity(communityRatings[p.id].average, communityRatings[p.id].count)} · {communityRatings[p.id].average.toFixed(1)}</span> : null}
         <div className="post-card-footer">
           <span>{p.author}</span>
@@ -3254,7 +3299,7 @@ export default function Community() {
             {searchKind === "content" ? <div className="search-post-results" role="tabpanel">
               {searchPosts.map((item) => <button className="search-post-result" key={item.id} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
                 <span className="search-post-thumbnail">{item.image && <img src={item.image} alt="" loading="lazy" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}/>}<small>{item.tag}</small></span>
-                <span className="search-post-copy"><strong>{item.title}</strong><span>{item.body.slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
+                <span className="search-post-copy"><strong>{item.title}</strong><span>{markdownToText(item.body).slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
                 <ChevronRight size={17}/>
               </button>)}
               {!searchLoading && !searchError && !searchPosts.length && <div className="search-state">没有找到相关内容，试试更短的关键词。</div>}
@@ -3283,7 +3328,6 @@ export default function Community() {
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
-          <FollowedTopics accountId={accountId} onOpen={(name) => void openTopic(name)} />
           <RecommendationControls accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
           <div className="filters editorial-filters">
             {["全部", ...tags].map((t) => (
@@ -3412,7 +3456,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.33.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.34.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3506,6 +3550,7 @@ export default function Community() {
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
               {tags.map((tag,index)=>{const InterestIcon=[Compass,Heart,Star,Sparkles][index%4];const selected=state.interests.includes(tag);return <button key={tag} className={`account-interest-option${selected?" selected":""}`} aria-pressed={selected} onClick={()=>update(current=>({...current,interests:current.interests.includes(tag)?current.interests.filter(item=>item!==tag):[...current.interests,tag]}))}><span><InterestIcon size={17}/></span><strong>{tag}</strong><i>{selected?<Check size={14}/>:null}</i></button>})}
             </div>
+            <FollowedTopicsSettings accountId={accountId} onOpen={(name) => { closeSettingsDetail(); void openTopic(name); }} onNotice={toast}/>
           </div>}
           {settingsDetail === "theme" && (
             <div className="preference-options" role="radiogroup" aria-label="外观主题">
@@ -3568,8 +3613,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.33.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.33.0</strong><small>2026.11.05</small></div><ul><li>压缩个人资料与数据栏的间距，让头像、等级、签名和 ID 更集中。</li><li>将今日探索任务与探索中心收进一张紧凑卡片，降低主页功能区的占位。</li><li>精简作品、收藏与点赞 Tab 内的重复标题，保留双列作品网格与封面评级。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.34.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.34.0</strong><small>2026.11.05</small></div><ul><li>卡片接龙起始卡片改为可搜索的作品选择器，只展示已发布内容。</li><li>关注话题并入个人设置，与兴趣偏好集中管理。</li><li>已发布作品修改进入独立审核；审核通过后才替换公开版本，驳回时保留原内容。</li><li>编辑器、AI 建议、详情正文和管理审核统一 Markdown 显示，AI 建议可复制、应用及撤回。</li><li>管理审核长正文默认折叠，发布通知改为顶部液态玻璃展开动画。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.32.0</strong><small>2026.11.04</small></div><ul><li>修复发现页双列间距没有实际生效的问题，调整卡片列宽和纵向节奏。</li><li>作者、点赞和阅读信息行增加浅底色与克制圆角，和封面形成清楚层级。</li><li>私人笔记改为选中正文后自动显示；已保存摘录收进默认折叠的入口。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.31.0</strong><small>2026.11.04</small></div><ul><li>发现页卡片改为图片主导：标签与评级置于封面上方，标题在图片内最多显示两行。</li><li>封面下方收敛为作者、点赞数和“阅读 ↗”，移除重复标题与摘要。</li><li>加大页面边距和双列间距，统一卡片圆角，并让底栏更轻盈，保留醒目的金色发布按钮。</li><li>保持瀑布流加载和既有图片进入动画，统一悬停、焦点与图片反馈的衔接。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.30.0</strong><small>2026.11.04</small></div><ul><li>重构个人主页，优先展示个人资料、等级与双列作品。</li><li>将好友探索、探索月报、卡片接龙、探索日历和最近发现集中到探索中心。</li><li>每日任务改为紧凑可展开入口；作品系列和状态管理移入作品管理页。</li><li>调整个人主页深浅主题、移动端间距与桌面端作品网格。</li></ul></div>
@@ -3889,7 +3934,7 @@ export default function Community() {
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
                 {visibleOwnPosts.length ? <div className="masonry mine-works-masonry">{visibleOwnPosts.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
-                  <div className="mine-work-actions"><span>{post.status === "draft" ? "草稿" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>编辑</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
+                  <div className="mine-work-actions"><span>{post.pendingRevision?.status === "pending" ? "修改审核中 · 当前版本正常展示" : post.pendingRevision?.status === "rejected" ? "修改未通过 · 当前版本正常展示" : post.status === "draft" ? "草稿" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>{post.pendingRevision?.status === "pending" ? "编辑待审修改" : "编辑"}</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
                 </article>)}</div> : <div className="empty">{selectedSeriesId ? "这个系列还没有内容，发布时可以从系列菜单加入。" : "你发布的内容会以瀑布流卡片显示在这里。"}</div>}
               </div>
             )}
@@ -4347,7 +4392,7 @@ export default function Community() {
           <section className="recent-preview-card" role="dialog" aria-modal="true" aria-labelledby="recent-preview-title">
             <button type="button" className="recent-preview-close" aria-label="关闭预览" onClick={() => setRecentPreview(null)}><X size={19}/></button>
             {recentPreview.post.image || recentPreview.post.images?.[0] ? <img className="recent-preview-image" src={recentPreview.post.image || recentPreview.post.images?.[0]} alt="" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /> : <div className="recent-preview-image recent-preview-placeholder" style={{ background: coverColor(recentPreview.post.tag) }} aria-hidden="true"><span>{recentPreview.post.tag}</span></div>}
-            <div className="recent-preview-copy"><small>{recentPreview.post.tag} · {recentPreview.post.author}</small><h2 id="recent-preview-title">{recentPreview.post.title}</h2><p>{recentPreview.post.body}</p><button type="button" className="recent-preview-open" onClick={() => { const item = recentPreview; setRecentPreview(null); requestAnimationFrame(() => openPost(item.post.id, item.source)); }}>查看内容 <ArrowRight size={17}/></button></div>
+            <div className="recent-preview-copy"><small>{recentPreview.post.tag} · {recentPreview.post.author}</small><h2 id="recent-preview-title">{recentPreview.post.title}</h2><p>{markdownToText(recentPreview.post.body)}</p><button type="button" className="recent-preview-open" onClick={() => { const item = recentPreview; setRecentPreview(null); requestAnimationFrame(() => openPost(item.post.id, item.source)); }}>查看内容 <ArrowRight size={17}/></button></div>
           </section>
         </div>
       )}
@@ -4600,7 +4645,7 @@ export default function Community() {
                 </section>
                 <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
                   <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
-                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); }}>{label}</button>)}</div><p className="ai-workbench-guidance">AI 只提供可编辑的创作建议，不会自动发布内容。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><p>{aiWorkbenchOutput}</p></div><button type="button" className="ai-workbench-apply" onClick={() => { if (aiWorkbenchMode === "title") setTitle(aiWorkbenchOutput.split("\n").filter(Boolean)[0]?.replace(/^\d+[.、)）]\s*/, "") || aiWorkbenchOutput); else if (aiWorkbenchMode === "polish") setBody(aiWorkbenchOutput); else if (aiWorkbenchMode === "topics") setWriteTopics((items) => [...new Set([...items, ...[...aiWorkbenchOutput.matchAll(/#?([\u4e00-\u9fa5A-Za-z0-9_-]{2,20})/g)].map((match) => match[1])])].slice(0, 5)); else setBody((current) => current.trim() ? `${current.trim()}\n\n${aiWorkbenchOutput}` : aiWorkbenchOutput); toast("建议已放入编辑区，可以继续修改"); }}>{aiWorkbenchMode === "title" ? "使用第一个标题" : aiWorkbenchMode === "topics" ? "添加推荐话题" : aiWorkbenchMode === "polish" ? "使用润色建议" : "插入写作提纲"}</button></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
+                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
                 </section>
                 <section className="composer-media-section" aria-label="内容图片">
                   <div className="composer-section-heading"><span><strong>图片</strong><small>最多 9 张 · 上传时自动压缩，每张不超过 4 MB</small></span><span>{composerImages.length}/9</span></div>
@@ -4662,7 +4707,7 @@ export default function Community() {
                   <div className="composer-preview-copy">
                     <div className="composer-preview-topics"><span>#{writeTag}</span>{writeTopics.slice(0, 2).map((topic) => <span key={topic}>#{topic}</span>)}</div>
                     <h2>{title.trim() || "你的帖子标题"}</h2>
-                    <p>{body.trim() || "写下你的观察、经验或想法，正文会在这里呈现。"}</p>
+                    {body.trim() ? <MarkdownContent source={body} className="composer-preview-markdown"/> : <p>写下你的观察、经验或想法，正文会在这里呈现。</p>}
                     <div className="composer-preview-author"><span>{state.name.trim().slice(0, 1) || "探"}{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/>}</span><strong>{state.name.trim() || "探索者"}</strong><small>{composerImages.length ? `${composerImages.length} 张图片` : "刚刚发布"}</small></div>
                   </div>
                 </article>
@@ -4676,7 +4721,9 @@ export default function Community() {
       )}
       {notice && (
         <div key={noticeId} role="status" className={`toast${noticeLeaving ? " is-leaving" : ""}`}>
-          {notice}
+          <span className={`toast-icon${/(失败|错误|无效|不能|暂不可用|未保存)/.test(notice) ? " is-error" : ""}`} aria-hidden="true">{/(失败|错误|无效|不能|暂不可用|未保存)/.test(notice) ? <X size={17}/> : <Check size={17}/>}</span>
+          <span className="toast-copy">{notice}</span>
+          <button type="button" className="toast-dismiss" aria-label="关闭通知" onClick={() => { if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current); if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current); setNotice(""); setNoticeLeaving(false); }}>×</button>
         </div>
       )}
     </main>
