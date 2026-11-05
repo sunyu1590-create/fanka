@@ -56,7 +56,7 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
   await page.goto("/");
   const skip = page.getByRole("button", { name: /先随便看看/ });
   const navigation = page.getByRole("navigation", { name: "主导航" });
-  await expect.poll(async () => (await skip.isVisible().catch(() => false)) || await navigation.isVisible().catch(() => false)).toBeTruthy();
+  await expect.poll(async () => (await skip.isVisible().catch(() => false)) || await navigation.isVisible().catch(() => false), { timeout: 15_000 }).toBeTruthy();
   if (await skip.isVisible().catch(() => false)) await skip.click();
   await expect(navigation).toBeVisible();
 }
@@ -84,14 +84,27 @@ function fixturePost(id: number) {
 }
 
 test("warm and dark theme tokens render without horizontal overflow from 320px to wide desktop", async ({ page }) => {
-  for (const width of [320, 360, 375, 430, 768, 1280]) {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await enterApp(page);
+  for (const width of [320, 360, 375, 430, 768, 1024, 1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 844 });
-    await enterApp(page);
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       content: document.documentElement.scrollWidth,
     }));
     expect(dimensions.content, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport + 1);
+    const navigation = await page.locator(".bottom-nav").boundingBox();
+    expect(navigation, `missing navigation at ${width}px`).not.toBeNull();
+    if (width >= 1200) {
+      expect(navigation!.x, `desktop rail should start at the left edge at ${width}px`).toBe(0);
+      expect(navigation!.width, `desktop rail width at ${width}px`).toBeCloseTo(220, 0);
+      expect(navigation!.height, `desktop rail should fill the screen at ${width}px`).toBeGreaterThanOrEqual(844);
+      expect((await page.locator(".app").boundingBox())!.x, `desktop content should clear the rail at ${width}px`).toBeGreaterThanOrEqual(220);
+    } else {
+      expect(navigation!.y, `tablet and phone navigation should stay at the bottom at ${width}px`).toBeGreaterThan(700);
+      expect(navigation!.width, `tablet and phone navigation should span the viewport at ${width}px`).toBeGreaterThanOrEqual(width - 1);
+    }
   }
 
   await page.evaluate(() => localStorage.setItem("heika-theme", "light"));
@@ -115,6 +128,40 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("dark");
+});
+
+test("discovery columns, desktop detail and settings adapt at every requested breakpoint", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await enterApp(page);
+  await page.getByRole("button", { name: "发现" }).click();
+  await expect(page.locator(".stable-editorial-feed .post-card").first()).toBeVisible();
+
+  for (const [width, expectedColumns] of [[375, 2], [430, 2], [768, 3], [1024, 3], [1280, 4], [1440, 4], [1920, 5]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.locator(".stable-editorial-feed").evaluate((feed) => getComputedStyle(feed).gridTemplateColumns.trim().split(/\s+/).length)).toBe(expectedColumns);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `horizontal overflow on discovery at ${width}px`).toBeLessThanOrEqual(1);
+  }
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail")).toBeVisible();
+  await expect.poll(() => page.locator(".detail-body").evaluate((body) => getComputedStyle(body).gridTemplateColumns.trim().split(/\s+/).length)).toBe(2);
+  await expect.poll(() => page.locator(".detail-comments").evaluate((comments) => getComputedStyle(comments).overflowY)).toBe("auto");
+  await page.getByRole("button", { name: "返回" }).click();
+
+  await page.getByRole("button", { name: "我的" }).click();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: /个人设置/ }).click();
+  await expect(page.locator(".settings-desktop-nav")).toBeVisible();
+  await expect(page.locator(".settings-desktop-nav a")).toHaveCount(4);
+  await page.locator(".settings-desktop-nav a[href='#settings-reading']").click();
+  await expect(page.locator("#settings-reading")).toBeInViewport();
+
+  await page.getByRole("button", { name: "发布内容", exact: true }).click();
+  await expect(page.locator(".composer-preview-pane")).toBeVisible();
+  await expect.poll(() => page.locator(".composer-workspace").evaluate((workspace) => getComputedStyle(workspace).display)).toBe("grid");
 });
 
 test("today waterfall hides content before reveal, keeps card geometry, and enforces five reveals", async ({ page }) => {
@@ -217,7 +264,7 @@ test("report sheet and admin queue use the same theme tokens for signed-in accou
 
   await page.evaluate(() => localStorage.setItem("heika-theme", "light"));
   await page.reload();
-  await enterApp(page, { role: "admin" });
+  await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   await page.getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: "打开设置" }).click();

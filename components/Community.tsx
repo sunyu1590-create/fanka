@@ -887,7 +887,7 @@ export default function Community() {
     }
   }, [category, sort, state.interests, state.ratings, communityRatings]);
   useEffect(() => {
-    const updateColumns = () => setDiscoverColumnCount(window.innerWidth >= 1640 ? 5 : window.innerWidth >= 700 ? 3 : 2);
+    const updateColumns = () => setDiscoverColumnCount(window.innerWidth >= 1600 ? 5 : window.innerWidth >= 1280 ? 4 : window.innerWidth >= 768 ? 3 : 2);
     updateColumns();
     window.addEventListener("resize", updateColumns, { passive: true });
     return () => window.removeEventListener("resize", updateColumns);
@@ -3188,7 +3188,7 @@ export default function Community() {
   const currentExperience = experienceProgress(experienceSummary.total);
   const visibleOwnPosts = selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own;
   return (
-    <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}`}>
+    <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
       <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}`}>
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand">黑卡 <i>HEIKA</i></span>}
         {tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : <span className="demo-pill">{accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}</span>}
@@ -3408,7 +3408,7 @@ export default function Community() {
         </div>
       )}
       {tab === "settings" && settingsDetail === null && (
-        <section className="page settings-page">
+        <section className={`page settings-page${settingsPersonalOpen ? " settings-personal-layout" : ""}`}>
           <button className="back settings-back" onClick={() => {
             if (settingsPersonalOpen) { setSettingsPersonalOpen(false); return; }
             setSettingsPersonalOpen(false);
@@ -3426,7 +3426,8 @@ export default function Community() {
           </div>}
           {settingsPersonalOpen && <button type="button" className="back settings-back settings-category-back" onClick={() => setSettingsPersonalOpen(false)}><ArrowLeft size={18}/> 设置分类</button>}
           {settingsPersonalOpen && <>
-          <div className="settings-module">
+          <nav className="settings-desktop-nav" aria-label="个人设置分类"><a href="#settings-appearance">外观</a><a href="#settings-reading">浏览与阅读</a><a href="#settings-notifications">消息</a><a href="#settings-account">账号</a></nav>
+          <div className="settings-module" id="settings-appearance">
             <div className="settings-module-heading"><strong>外观</strong></div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("theme")}><span>外观主题</span><small>{{dark:"深色",light:"浅色",system:"跟随系统"}[theme]}</small><ChevronRight size={16}/></button>
@@ -3434,7 +3435,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("bottomNav")}><span>底部导航</span><small>{bottomNavStyle === "glass" ? "悬浮玻璃" : "固定底栏"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
-          <div className="settings-module">
+          <div className="settings-module" id="settings-reading">
             <div className="settings-module-heading"><strong>浏览与阅读</strong></div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("homeMode")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
@@ -3444,19 +3445,19 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profileLayout")}><span>他人主页布局</span><small>{profileLayout === "masonry" ? "大图瀑布流" : "列表"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
-          <div className="settings-module">
+          <div className="settings-module" id="settings-notifications">
             <div className="settings-module-heading"><strong>消息</strong></div>
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
-          <div className="settings-module">
+          <div className="settings-module" id="settings-account">
             <div className="settings-module-heading"><strong>账号</strong></div>
             <div className="settings-list account-settings-list">
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.34.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3613,8 +3614,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.34.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.34.0</strong><small>2026.11.05</small></div><ul><li>卡片接龙起始卡片改为可搜索的作品选择器，只展示已发布内容。</li><li>关注话题并入个人设置，与兴趣偏好集中管理。</li><li>已发布作品修改进入独立审核；审核通过后才替换公开版本，驳回时保留原内容。</li><li>编辑器、AI 建议、详情正文和管理审核统一 Markdown 显示，AI 建议可复制、应用及撤回。</li><li>管理审核长正文默认折叠，发布通知改为顶部液态玻璃展开动画。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.35.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.0</strong><small>2026.11.05</small></div><ul><li>统一适配手机、平板、桌面与超宽屏，桌面导航固定在侧栏。</li><li>发现与个人作品网格根据屏幕宽度扩展列数，详情、消息与编辑器布局同步适配大屏。</li><li>保留现有翻卡、内容、认证和互动逻辑，并修整窄屏与平板导航切换。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.32.0</strong><small>2026.11.04</small></div><ul><li>修复发现页双列间距没有实际生效的问题，调整卡片列宽和纵向节奏。</li><li>作者、点赞和阅读信息行增加浅底色与克制圆角，和封面形成清楚层级。</li><li>私人笔记改为选中正文后自动显示；已保存摘录收进默认折叠的入口。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.31.0</strong><small>2026.11.04</small></div><ul><li>发现页卡片改为图片主导：标签与评级置于封面上方，标题在图片内最多显示两行。</li><li>封面下方收敛为作者、点赞数和“阅读 ↗”，移除重复标题与摘要。</li><li>加大页面边距和双列间距，统一卡片圆角，并让底栏更轻盈，保留醒目的金色发布按钮。</li><li>保持瀑布流加载和既有图片进入动画，统一悬停、焦点与图片反馈的衔接。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.30.0</strong><small>2026.11.04</small></div><ul><li>重构个人主页，优先展示个人资料、等级与双列作品。</li><li>将好友探索、探索月报、卡片接龙、探索日历和最近发现集中到探索中心。</li><li>每日任务改为紧凑可展开入口；作品系列和状态管理移入作品管理页。</li><li>调整个人主页深浅主题、移动端间距与桌面端作品网格。</li></ul></div>
@@ -4062,11 +4063,11 @@ export default function Community() {
           </span>
         </div>
       )}
-      {tab !== "search" && !(tab === "settings" && settingsDetail !== null) && <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
+      <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
         {nav.slice(0, 2).map(renderNavButton)}
         <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><Plus size={22} /></button>
         {nav.slice(2).map(renderNavButton)}
-      </nav>}
+      </nav>
       {viewerId !== null && (
         <div
           className="flip-overlay"

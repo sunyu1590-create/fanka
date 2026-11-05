@@ -80,6 +80,6 @@ test("profile keeps its compact layout, discovery tools, and theme controls", as
     columns: getComputedStyle(document.querySelector(".mine-works-masonry")!).gridTemplateColumns.split(" ").length,
     overflows: document.documentElement.scrollWidth > window.innerWidth,
   }));
-  expect(desktopLayout.columns).toBe(2);
+  expect(desktopLayout.columns).toBe(3);
   expect(desktopLayout.overflows).toBe(false);
 });
