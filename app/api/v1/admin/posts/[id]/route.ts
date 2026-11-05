@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
+import { signPostMedia } from "@/lib/server/media";
 import { recordModerationAudit } from "@/lib/server/moderation-audit";
 
 function applyError(error: { code?: string; message?: string }) {
@@ -29,9 +30,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (body.status === "published") {
         const paths = Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.filter((path: unknown): path is string => typeof path === "string") : [];
         if (paths.length) {
-          const storedImages = await db.storage.from("post-covers").createSignedUrls(paths, 60);
-          if (storedImages.error || (storedImages.data || []).length !== paths.length || storedImages.data?.some((item) => !item.signedUrl)) {
-            throw new ApiError(409, "待审核修改中的图片无法读取，请作者重新上传图片后再提交");
+          const storedMedia = await signPostMedia(db, paths, 60);
+          if (storedMedia.error || (storedMedia.data || []).length !== paths.length || storedMedia.data?.some((item) => !item.signedUrl)) {
+            throw new ApiError(409, "待审核修改中的图片或视频无法读取，请作者重新上传媒体后再提交");
           }
         }
         const { data, error } = await db.rpc("apply_post_revision", { p_post_id: postId, p_review_note: reviewNote });

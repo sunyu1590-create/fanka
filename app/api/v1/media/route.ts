@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { context, respond, ApiError, dbError, uuid } from "@/lib/server/api";
+import { mediaBucketForPath } from "@/lib/media-path";
 
 const validImage = async (file: File) => {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024 || !file.size) throw new ApiError(400, "仅支持不超过 4 MB 的 JPG、PNG、WebP 图片");
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
       const { data: media, error: mediaError } = await db.from("post_media").select("post_id,posts!inner(status)").eq("storage_path", path).single();
       dbError(mediaError);
       if (!media) throw new ApiError(404, "图片不存在");
-      const { data, error } = await db.storage.from("post-covers").createSignedUrl(path, 600);
+      const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 600);
       dbError(error);
       if (!data?.signedUrl) throw new ApiError(404, "图片不存在");
       return NextResponse.redirect(data.signedUrl, 302);
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     const { data: media, error: mediaError } = await db.from("post_media").select("post_id,posts!inner(status)").eq("storage_path", path).single();
     dbError(mediaError);
     if (!media) throw new ApiError(404, "图片不存在");
-    const { data, error } = await db.storage.from("post-covers").createSignedUrl(path, 600);
+    const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 600);
     dbError(error);
     return { url: data?.signedUrl, expires_in: 600 };
   });
@@ -96,9 +97,12 @@ export async function DELETE(req: NextRequest) {
     try { body = await req.json(); } catch { throw new ApiError(400, "请求内容无效"); }
     const uploadId = uuid(body.upload_id, "上传编号");
     const type = String(body.file_type || "");
-    const ext = type === "image/jpeg" ? "jpg" : type === "image/png" ? "png" : type === "image/webp" ? "webp" : null;
-    if (!ext) throw new ApiError(400, "图片格式无效");
+    const imageExt = type === "image/jpeg" ? "jpg" : type === "image/png" ? "png" : type === "image/webp" ? "webp" : null;
+    const videoExt = type === "video/mp4" ? "mp4" : type === "video/webm" ? "webm" : null;
+    const ext = imageExt || videoExt;
+    if (!ext) throw new ApiError(400, "媒体格式无效");
     const path = `${user!.id}/${uploadId}.${ext}`;
+    const bucket = mediaBucketForPath(path);
     const postId = body.post_id ? uuid(body.post_id, "草稿") : null;
     const { data: linked, error: linkedError } = await db.from("post_media").select("post_id").eq("storage_path", path).maybeSingle();
     dbError(linkedError);
@@ -108,7 +112,7 @@ export async function DELETE(req: NextRequest) {
       dbError(error);
       if (!post) throw new ApiError(403, "无权清理此草稿图片");
     }
-    const { error: storageError } = await db.storage.from("post-covers").remove([path]);
+    const { error: storageError } = await db.storage.from(bucket).remove([path]);
     dbError(storageError);
     if (linked) {
       const { error } = await db.from("post_media").delete().eq("post_id", linked.post_id).eq("storage_path", path);

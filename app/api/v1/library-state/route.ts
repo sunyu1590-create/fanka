@@ -11,6 +11,8 @@ import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/librar
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateTopicNames } from "@/lib/topic-validation";
 import { cardRarityTier } from "@/lib/progression";
+import { splitPostMediaPaths } from "@/lib/media-path";
+import { signPostMedia } from "@/lib/server/media";
 async function replacePoll(db: SupabaseClient, postId: string, value: unknown) {
   if (value === undefined) return;
   const input = value && typeof value === "object" ? value as Record<string, unknown> : null;
@@ -116,16 +118,20 @@ export async function GET(req: NextRequest) {
     const ownPosts = await presentMany(db, own.data as unknown as LibraryRow[]);
     const revisionRows = (revisions.data || []) as { post_id: string; payload: Record<string, unknown>; status: "pending" | "approved" | "rejected"; review_note: string | null }[];
     const revisionPaths = [...new Set(revisionRows.flatMap((revision) => Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.filter((path): path is string => typeof path === "string") : []))];
-    const revisionSigned = revisionPaths.length ? await db.storage.from("post-covers").createSignedUrls(revisionPaths, 3600) : { data: [], error: null };
+    const revisionSigned = revisionPaths.length ? await signPostMedia(db, revisionPaths, 3600) : { data: [], error: null };
     dbError(revisionSigned.error);
     const revisionUrls = new Map((revisionSigned.data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
     const revisionsByPost = new Map(revisionRows.map((revision) => [revision.post_id, {
       status: revision.status,
       reviewNote: revision.review_note,
-      payload: { ...revision.payload, images: [
-        ...(typeof revision.payload.coverUrl === "string" ? [revision.payload.coverUrl] : []),
-        ...(Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.flatMap((path) => typeof path === "string" && revisionUrls.has(path) ? [revisionUrls.get(path)!] : []) : []),
-      ] },
+      payload: {
+        ...revision.payload,
+        images: [
+          ...(typeof revision.payload.coverUrl === "string" ? [revision.payload.coverUrl] : []),
+          ...(Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.flatMap((path) => typeof path === "string" && !/\.(?:mp4|webm)$/i.test(path) && revisionUrls.has(path) ? [revisionUrls.get(path)!] : []) : []),
+        ],
+        videos: Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.flatMap((path) => typeof path === "string" && /\.(?:mp4|webm)$/i.test(path) && revisionUrls.has(path) ? [revisionUrls.get(path)!] : []) : [],
+      },
     }]));
     return {
       profile: profile.data,
@@ -275,11 +281,13 @@ export async function POST(req: NextRequest) {
         const oldMedia = await db.from("post_media").select("storage_path").eq("post_id", existingPost.data.id).order("sort_order");
         dbError(oldMedia.error);
         const mediaPaths = Array.isArray(b.mediaPaths) ? [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))] : (oldMedia.data || []).map((item) => item.storage_path);
-        if (mediaPaths.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300)) throw new ApiError(400, "图片无效");
+        const splitMedia = splitPostMediaPaths(mediaPaths);
+        if (splitMedia.videos.length && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
+        if (splitMedia.images.length > 9 || splitMedia.videos.length > 1 || (splitMedia.videos.length && splitMedia.images.length) || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes(".."))) throw new ApiError(400, "投稿媒体无效；最多 9 张图片，或单独 1 个视频");
         if (mediaPaths.length) {
-          const storedImages = await db.storage.from("post-covers").createSignedUrls(mediaPaths, 60);
-          dbError(storedImages.error);
-          if ((storedImages.data || []).length !== mediaPaths.length || storedImages.data?.some((item) => !item.signedUrl)) throw new ApiError(400, "有图片尚未同步完成，请重新上传后再提交");
+          const storedMedia = await signPostMedia(db, mediaPaths, 60);
+          dbError(storedMedia.error);
+          if ((storedMedia.data || []).length !== mediaPaths.length || storedMedia.data?.some((item) => !item.signedUrl)) throw new ApiError(400, "有媒体尚未同步完成，请重新上传后再提交");
         }
         let coverUrl: string | null = null;
         if (typeof b.coverUrl === "string") {
@@ -296,10 +304,10 @@ export async function POST(req: NextRequest) {
         const current = await db.from("posts").select(libraryFields).eq("id", existingPost.data.id).single();
         dbError(current.error);
         const presented = (await presentMany(db, [current.data as unknown as LibraryRow]))[0];
-        const signed = mediaPaths.length ? await db.storage.from("post-covers").createSignedUrls(mediaPaths, 3600) : { data: [], error: null };
+        const signed = mediaPaths.length ? await signPostMedia(db, mediaPaths, 3600) : { data: [], error: null };
         dbError(signed.error);
         const signedByPath = new Map((signed.data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
-        return { ...presented, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload: { ...payload, images: [...(coverUrl ? [coverUrl] : []), ...mediaPaths.flatMap((path) => signedByPath.has(path) ? [signedByPath.get(path)!] : [])] } } };
+        return { ...presented, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload: { ...payload, images: [...(coverUrl ? [coverUrl] : []), ...mediaPaths.flatMap((path) => !/\.(?:mp4|webm)$/i.test(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : [])], videos: mediaPaths.flatMap((path) => /\.(?:mp4|webm)$/i.test(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : []) } } };
       }
       const values = {
         author_id: user!.id,
@@ -325,8 +333,10 @@ export async function POST(req: NextRequest) {
       await replacePoll(db, postId, b.poll);
       if (Array.isArray(b.mediaPaths)) {
         const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];
-        if (mediaPaths.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300))
-          throw new ApiError(400, "图片无效");
+        const splitMedia = splitPostMediaPaths(mediaPaths);
+        if (splitMedia.videos.length && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
+        if (splitMedia.images.length > 9 || splitMedia.videos.length > 1 || (splitMedia.videos.length && splitMedia.images.length) || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes("..")))
+          throw new ApiError(400, "投稿媒体无效；最多 9 张图片，或单独 1 个视频");
         const { error: clearMedia } = await db.from("post_media").delete().eq("post_id", postId);
         dbError(clearMedia);
         if (mediaPaths.length) {
@@ -351,10 +361,17 @@ export async function POST(req: NextRequest) {
     if (action === "delete") {
       const media = await db.from("post_media").select("storage_path").eq("post_id", post!.id);
       dbError(media.error);
-      if (media.data?.length) {
-        const { error: storageError } = await db.storage.from("post-covers").remove(media.data.map((item) => item.storage_path));
-        dbError(storageError);
+      const revision = await db.from("post_revisions").select("payload").eq("post_id", post!.id).maybeSingle();
+      dbError(revision.error);
+      const revisionPaths = Array.isArray(revision.data?.payload?.mediaPaths) ? revision.data.payload.mediaPaths.filter((path: unknown): path is string => typeof path === "string" && path.startsWith(`${user!.id}/`)) : [];
+      const paths = [...new Set([...(media.data || []).map((item) => item.storage_path), ...revisionPaths])];
+      const grouped = new Map<string, string[]>();
+      for (const path of paths) {
+        const bucket = /\.(?:mp4|webm)$/i.test(path) ? "post-videos" : "post-covers";
+        grouped.set(bucket, [...(grouped.get(bucket) || []), path]);
       }
+      const removed = await Promise.all([...grouped].map(([bucket, bucketPaths]) => db.storage.from(bucket).remove(bucketPaths)));
+      dbError(removed.find((result) => result.error)?.error ?? null);
       const { error } = await db
         .from("posts")
         .delete()
