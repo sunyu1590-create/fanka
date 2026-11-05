@@ -571,8 +571,8 @@ export default function Community() {
     const body = userMessage(msg).trim();
     if (!body) return;
     const error = /(失败|错误|无效|不能|暂不可用|未保存|未能)/.test(body);
-    const kind: NoticeKind = options.kind || (error ? "error" : /(评论|回复|消息|关注|收藏|点赞)/.test(body) ? "message" : /(奖励|经验|等级|会员)/.test(body) ? "reward" : /(图片|视频|作品|草稿|发布|上传)/.test(body) ? "content" : /(账号|登录|安全|密码)/.test(body) ? "account" : /(成功|已保存|已发布|已领取|完成)/.test(body) ? "success" : "general");
-    const title = options.title || (error ? "操作未完成" : kind === "message" ? "社区动态" : kind === "reward" ? "探索进度" : kind === "content" ? "内容提醒" : kind === "account" ? "账号提醒" : kind === "success" ? "操作完成" : "HEIKA 提醒");
+    const kind: NoticeKind = options.kind || (error ? "error" : /(点赞|赞了|赞同)/.test(body) ? "like" : /(评论|回复)/.test(body) ? "comment" : /(收藏|书签)/.test(body) ? "bookmark" : /(关注|粉丝)/.test(body) ? "follow" : /(评分|评级|星级)/.test(body) ? "rating" : /(私信|新消息|消息)/.test(body) ? "message" : /(奖励|经验|等级|会员)/.test(body) ? "reward" : /(图片|视频|作品|草稿|发布|上传)/.test(body) ? "content" : /(账号|登录|安全|密码)/.test(body) ? "account" : /(成功|已保存|已发布|已领取|完成)/.test(body) ? "success" : "general");
+    const title = options.title || (error ? "操作未完成" : kind === "like" ? "点赞提醒" : kind === "comment" ? "评论提醒" : kind === "bookmark" ? "收藏提醒" : kind === "follow" ? "关注动态" : kind === "rating" ? "评分提醒" : kind === "message" ? "社区动态" : kind === "reward" ? "探索进度" : kind === "content" ? "内容提醒" : kind === "account" ? "账号提醒" : kind === "success" ? "操作完成" : "HEIKA 提醒");
     if ((noticeRef.current?.title === title && noticeRef.current.body === body) || noticeQueue.current.some((queued) => queued.title === title && queued.body === body)) return;
     const item: NoticeBannerItem = { ...options, id: ++noticeSequence.current, title, body, createdAt: Date.now(), kind };
     if (!noticeRef.current) presentNotice(item);
@@ -675,6 +675,7 @@ export default function Community() {
   const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
   const commentLikeBusy = useRef(new Set<number>());
   const [likeBusy, setLikeBusy] = useState(false);
+  const [detailLikeCounts, setDetailLikeCounts] = useState<Record<number, number>>({});
   const [previewImage, setPreviewImage] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [displayedImageIndex, setDisplayedImageIndex] = useState(0);
@@ -3603,7 +3604,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.3</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.4</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3761,7 +3762,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.35.3</p>
+          <p className="lead">HEIKA · 版本 2.35.4</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.4</strong><small>2026.11.05</small></div><ul><li>通知横幅按场景显示爱心、评论、收藏、关注等对应图标，并下移 4px。</li><li>详情页点赞按钮显示作品获赞数，成功点赞或取消后同步更新数字。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.3</strong><small>2026.11.05</small></div><ul><li>通知恢复紧凑旧版样式，保留新版顶部入场、退场动画及滑动交互。</li><li>管理员后台改为分组工作台，点击模块即可进入对应审核或管理界面。</li><li>修复带图片或视频的已发布作品修改审核失败问题，媒体路径长度校验不再触发 PostgreSQL 正则错误。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.2</strong><small>2026.11.05</small></div><ul><li>顶部通知改为克制的品牌横幅，支持消息头像、场景图标、时间、展开与上滑关闭。</li><li>连续提醒排队展示，私聊新消息可点击横幅直接回到对应会话。</li><li>启用视频发布 Beta：支持 MP4/WebM、单个视频 50 MiB 上限和断点续传。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.1</strong><small>2026.11.05</small></div><ul><li>修正平板底栏消息与“我的”入口的网格位置，确保五个入口始终各就其位。</li></ul></div>
@@ -4492,12 +4494,17 @@ export default function Community() {
                 {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
                 {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><Send size={17} /></button>}
               </div>
-              <button type="button" className={`bar-icon${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={state.liked?.includes(post.id) ? "取消点赞" : "点赞"} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
+              <button type="button" className={`bar-icon like-action${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
                 if (likeBusy) return;
                 const next = !state.liked?.includes(post.id);
                 setLikeBusy(true);
-                void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }))).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
-              }}><Heart size={21} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /></button>
+                void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => {
+                  const nextCount = Math.max(0, (detailLikeCounts[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1));
+                  setDetailLikeCounts((current) => ({ ...current, [post.id]: Math.max(0, (current[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1)) }));
+                  setPublicFeed((current) => current.map((item) => item.id === post.id ? { ...item, likeCount: nextCount } : item));
+                  update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }));
+                }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
+              }}><Heart size={19} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span className="detail-like-count">{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span></button>
               <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
               <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => {
                 const shareData = { title: post.title, text: post.body, url: `${location.origin}/?post=${post.id}` };

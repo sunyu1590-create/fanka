@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef } from "react";
-import { Bell, CircleAlert, CircleCheck, Image as ImageIcon, MessageCircle, ShieldCheck, Star, X } from "lucide-react";
+import { Bell, Bookmark, CircleAlert, CircleCheck, Heart, Image as ImageIcon, MessageCircle, MessageSquare, ShieldCheck, Star, UserPlus, X } from "lucide-react";
 
-export type NoticeKind = "general" | "success" | "error" | "message" | "content" | "reward" | "account";
+export type NoticeKind = "general" | "success" | "error" | "message" | "content" | "reward" | "account" | "like" | "comment" | "bookmark" | "follow" | "rating";
 
 export type NoticeOptions = {
   title?: string;
@@ -23,6 +23,11 @@ export type NoticeBannerItem = NoticeOptions & {
 function BadgeIcon({ kind }: { kind: NoticeKind }) {
   if (kind === "error") return <CircleAlert size={16} />;
   if (kind === "success") return <CircleCheck size={16} />;
+  if (kind === "like") return <Heart size={16} fill="currentColor" />;
+  if (kind === "comment") return <MessageSquare size={16} />;
+  if (kind === "bookmark") return <Bookmark size={16} />;
+  if (kind === "follow") return <UserPlus size={16} />;
+  if (kind === "rating") return <Star size={16} />;
   if (kind === "message") return <MessageCircle size={16} />;
   if (kind === "content") return <ImageIcon size={16} />;
   if (kind === "reward") return <Star size={16} />;
