@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, respond } from "@/lib/server/api";
+import { signPostMedia } from "@/lib/server/media";
+import { isVideoMediaPath } from "@/lib/media-path";
 
 const reportFields = "id,post_id,comment_id,reason,status,created_at,review_note,reviewed_at";
 type MediaRow = { storage_path: string; sort_order: number };
@@ -36,7 +38,7 @@ export async function GET(req: NextRequest) {
     dbError(comments.error);
     const postMap = new Map((posts.data as unknown as PostRow[]).map((post) => [post.id, post]));
     const mediaPaths = [...new Set((posts.data as unknown as PostRow[]).flatMap((post) => (post.post_media || []).map((item) => item.storage_path)))];
-    const signed = mediaPaths.length ? await db.storage.from("post-covers").createSignedUrls(mediaPaths, 600) : { data: [], error: null };
+    const signed = mediaPaths.length ? await signPostMedia(db, mediaPaths, 600) : { data: [], error: null };
     dbError(signed.error);
     const signedByPath = new Map((signed.data || []).map((item) => [item.path, item.signedUrl]));
     const commentRows = (comments.data || []) as unknown as { id: string; body: string; status: string; posts: { title: string } | { title: string }[] | null }[];
@@ -48,9 +50,13 @@ export async function GET(req: NextRequest) {
           ...(post.image_url ? [post.image_url] : []),
           ...(post.post_media || []).sort((a, b) => a.sort_order - b.sort_order).flatMap((media) => {
             const url = signedByPath.get(media.storage_path);
-            return url ? [url] : [];
+            return url && !isVideoMediaPath(media.storage_path) ? [url] : [];
           }),
         ] : [];
+        const videos = post ? (post.post_media || []).flatMap((media) => {
+          const url = signedByPath.get(media.storage_path);
+          return url && isVideoMediaPath(media.storage_path) ? [url] : [];
+        }) : [];
         const comment = commentMap.get(row.comment_id || "");
         const commentPost = Array.isArray(comment?.posts) ? comment.posts[0] : comment?.posts;
         return {
@@ -60,8 +66,8 @@ export async function GET(req: NextRequest) {
           created_at: row.created_at,
           review_note: row.review_note,
           reviewed_at: row.reviewed_at,
-          target: post ? { type: "post", title: post.title, body: post.body, status: post.status, images }
-            : { type: "comment", title: commentPost?.title || "评论", body: comment?.body || "评论内容已删除", status: comment?.status || "deleted", images: [] },
+          target: post ? { type: "post", title: post.title, body: post.body, status: post.status, images, videos }
+            : { type: "comment", title: commentPost?.title || "评论", body: comment?.body || "评论内容已删除", status: comment?.status || "deleted", images: [], videos: [] },
         };
       }),
       total: count || 0,

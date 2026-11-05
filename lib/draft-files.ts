@@ -22,8 +22,15 @@ export async function saveDraftFiles(owner: string, files: Array<{ id: string; f
     const store = tx.objectStore("files");
     const request = store.getAllKeys();
     request.onsuccess = () => {
-      for (const key of request.result) if (String(key).startsWith(`${owner}:`)) store.delete(key);
-      for (const item of files) if (item.file) store.put({ key: `${owner}:${item.id}`, owner, id: item.id, file: item.file } satisfies StoredDraftFile);
+      const existing = new Set(request.result.map(String));
+      const desired = new Set(files.filter((item) => item.file).map((item) => `${owner}:${item.id}`));
+      for (const key of existing) if (key.startsWith(`${owner}:`) && !desired.has(key)) store.delete(key);
+      for (const item of files) {
+        const key = `${owner}:${item.id}`;
+        // File IDs are immutable within a draft, so keep the existing IndexedDB value.
+        // This avoids rewriting a large video for every autosave while the user types.
+        if (item.file && !existing.has(key)) store.put({ key, owner, id: item.id, file: item.file } satisfies StoredDraftFile);
+      }
     };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);

@@ -14,9 +14,9 @@ type Report = {
   created_at: string;
   review_note: string | null;
   reviewed_at: string | null;
-  target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[] };
+  target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[]; videos?: string[] };
 };
-type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; kind?: "new" | "revision"; originalTitle?: string | null };
+type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; videos?: string[]; kind?: "new" | "revision"; originalTitle?: string | null };
 type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null };
 type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string };
 type TopicTag = { id: number; name: string };
@@ -298,7 +298,7 @@ export default function AdminModeration({ onBack }: Props) {
     ) : section === "reports" ? (
       reports.length ? <div className="moderation-list">{reports.map((report) => <article className="moderation-item" key={report.id}>
         <div className="moderation-item-heading"><strong>{report.target.type === "post" ? "内容举报" : "评论举报"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
-        <div className="moderation-target"><b>{report.target.title}</b><CollapsibleMarkdown source={report.target.body} label="展开查看正文"/>{report.target.images.map((url) => <img key={url} src={url} alt="被举报内容图片" loading="lazy" />)}</div>
+        <div className="moderation-target"><b>{report.target.title}</b><CollapsibleMarkdown source={report.target.body} label="展开查看正文"/>{report.target.images.map((url) => <img key={url} src={url} alt="被举报内容图片" loading="lazy" />)}{report.target.videos?.map((url) => <video key={url} src={url} controls preload="metadata" aria-label="被举报内容视频" />)}</div>
         <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
         {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
         {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录处理依据，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
@@ -306,7 +306,7 @@ export default function AdminModeration({ onBack }: Props) {
     ) : submissions.length ? <div className="moderation-list">{submissions.map((post) => <article className="moderation-item" key={post.id}>
       <div className="moderation-item-heading"><strong><ShieldCheck size={16} /> 待人工审核</strong><time>{new Date(post.created_at).toLocaleString("zh-CN")}</time></div>
       <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文"/>
-      <div className="moderation-images">{post.images.map((url) => <img key={url} src={url} alt="待审核内容图片" loading="lazy" />)}</div>
+      <div className="moderation-images">{post.images.map((url) => <img key={url} src={url} alt="待审核内容图片" loading="lazy" />)}{post.videos?.map((url) => <video key={url} src={url} controls preload="metadata" aria-label="待审核视频" />)}</div>
       <label className="moderation-note">审核说明<textarea value={notes[post.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [post.id]: event.target.value }))} placeholder="记录审核依据，至少 3 个字" /></label>
       <div className="moderation-actions"><button disabled={saving === post.id} onClick={() => void processSubmission(post, "published")}><Check size={15} /> {post.kind === "revision" ? "通过并替换公开版" : "审核通过并公开"}</button><button disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden")}><X size={15} /> {post.kind === "revision" ? "驳回修改，保留原版" : "驳回并保持隐藏"}</button></div>
     </article>)}</div> : <p className="moderation-empty">目前没有待审核的新内容。</p>}

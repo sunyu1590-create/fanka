@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   Search,
   Plus,
-  ImagePlus,
   Heart,
   Star,
   RefreshCw,
@@ -57,7 +56,7 @@ const CardChainPanel = dynamic(() => import("./ExplorationFeatures").then((modul
 const ExplorationRecap = dynamic(() => import("./ExplorationFeatures").then((module) => module.ExplorationRecap));
 import type { User } from "@supabase/supabase-js";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
-import { browserDb } from "@/lib/browser-db";
+import { browserDb, browserDbConfig } from "@/lib/browser-db";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
 import { validateComposerFiles } from "@/lib/composer-validation";
 import { compressUploadImage } from "@/lib/image-compression";
@@ -68,6 +67,8 @@ import { rankRecommendations, type CommunityRating } from "@/lib/recommendations
 import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
 import { userMessage } from "@/lib/user-message";
+import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
+import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -99,6 +100,8 @@ type Comment = {
   liked?: boolean;
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
+type ComposerVideo = { id: string; file?: File; path?: string; url: string; name: string; size: number; type: string; status: "ready" | "uploading" | "failed"; progress: number; existing?: boolean };
+const VIDEO_UPLOAD_BETA_ENABLED = process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA === "1";
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
 type BookmarkCollection = { id: string; name: string; created_at?: string; role?: "owner" | "collaborator"; is_public?: boolean; allow_collaboration?: boolean; share_code?: string | null; user_id?: string };
@@ -511,6 +514,8 @@ export default function Community() {
     [topicChoices, setTopicChoices] = useState<TopicSummary[]>([]),
     [creatingTopic, setCreatingTopic] = useState(false),
     [composerImages, setComposerImages] = useState<ComposerImage[]>([]),
+    [composerVideo, setComposerVideo] = useState<ComposerVideo | null>(null),
+    [composerValidation, setComposerValidation] = useState<"" | "title" | "body">(""),
     [uploadingImages, setUploadingImages] = useState(false),
     [coverIndex, setCoverIndex] = useState(0),
     [draftSaved, setDraftSaved] = useState(false),
@@ -1991,12 +1996,73 @@ export default function Community() {
     const result = await response.json(); if (!response.ok) throw new Error(result.error || "图片上传失败");
     return { ...image, path: result.data.path, status: "ready", sortOrder };
   };
+  const uploadVideoToPost = async (video: ComposerVideo, postId: string, sortOrder: number): Promise<ComposerVideo> => {
+    if (!VIDEO_UPLOAD_BETA_ENABLED) throw new Error("视频上传目前仅在 Beta 预览版开放");
+    if (!accountId) throw new Error("登录后可上传视频");
+    const file = video.file;
+    let path = video.path;
+    if (!path) {
+      if (!file) throw new Error("视频草稿文件已丢失，请重新选择视频");
+      const extension = videoExtension(file.type);
+      if (!extension) throw new Error("视频测试版仅支持 MP4、WebM 格式");
+      if (!file.size || file.size > POST_VIDEO_MAX_BYTES) throw new Error("视频大小不能超过 50 MB");
+      path = `${accountId}/${video.id}.${extension}`;
+      const db = await browserDb();
+      const clientConfig = await browserDbConfig();
+      const { data } = await db.auth.getSession();
+      if (!data.session) throw new Error("登录状态已失效，请重新登录");
+      await uploadVideoResumable({
+        file,
+        path,
+        supabaseUrl: clientConfig.url,
+        publishableKey: clientConfig.key,
+        accessToken: data.session.access_token,
+        onProgress: (progress) => setComposerVideo((current) => current?.id === video.id ? { ...current, progress, status: "uploading" } : current),
+      });
+      video = { ...video, path, status: "ready", progress: 100 };
+      setComposerVideo((current) => current?.id === video.id ? video : current);
+    }
+    if (!composerRevisionMode || !video.existing) {
+      await cloudRequest(`/api/v1/posts/${postId}/media`, {
+        path,
+        sort_order: sortOrder,
+        media_type: "video",
+        ...(composerRevisionMode ? { revision: true } : {}),
+      });
+    }
+    return { ...video, path, status: "ready", progress: 100 };
+  };
+  const chooseComposerVideo = (file: File | null) => {
+    if (!file) return;
+    if (composerImages.length) return toast("视频 Beta 暂不与图片混发，请先移除已选图片");
+    if (!POST_VIDEO_TYPES.includes(file.type as (typeof POST_VIDEO_TYPES)[number])) return toast("视频测试版仅支持 MP4、WebM 格式");
+    if (!file.size || file.size > POST_VIDEO_MAX_BYTES) return toast("视频大小需在 1 B 到 50 MB 之间");
+    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    setComposerVideo({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file), name: file.name, size: file.size, type: file.type, status: "ready", progress: 0 });
+  };
+  const removeComposerVideo = async () => {
+    if (!composerVideo) return;
+    const old = state.own.find((item) => item.id === editing);
+    if (composerVideo.path && old?.cloudId && composerVideo.existing && !composerRevisionMode) {
+      try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: composerVideo.path }, "DELETE"); }
+      catch (error) { toast(error instanceof Error ? error.message : "视频移除失败"); return; }
+    } else if (composerVideo.path && accountId && old?.cloudId) {
+      try { await cloudRequest("/api/v1/media", { upload_id: composerVideo.id, file_type: composerVideo.type, post_id: old.cloudId }, "DELETE"); }
+      catch (error) { toast(error instanceof Error ? error.message : "视频移除失败"); return; }
+    }
+    if (composerVideo.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    setComposerVideo(null);
+  };
   const publish = async () => {
-    if (!title.trim() || !body.trim()) return toast("请填写标题和正文");
+    if (!title.trim()) { setComposerValidation("title"); toast("请先填写标题"); document.querySelector<HTMLInputElement>(".composer-title-field input")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    if (!body.trim()) { setComposerValidation("body"); toast("请先填写正文"); document.querySelector<HTMLTextAreaElement>(".composer-body-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    setComposerValidation("");
     const pollDraft = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
     if ((pollDraft.question || pollDraft.options.length) && (!pollDraft.question || pollDraft.options.length < 2 || pollDraft.options.length > 4)) return toast("投票需要填写问题，并设置 2–4 个选项");
     if (!accountId) return toast("请先在消息页面登录，当前输入会保留");
     if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
+    if (composerVideo?.status === "uploading") return toast("视频正在上传，请稍后发布");
+    if (composerVideo && composerImages.length) return toast("视频 Beta 暂不与图片混发，请移除其中一种媒体");
     try {
       const old = state.own.find((p) => p.id === editing);
       const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
@@ -2018,6 +2084,17 @@ export default function Community() {
           throw error;
         } finally { draftMediaBusy.current.delete(image.id); }
       }
+      let uploadedVideo: ComposerVideo | null = null;
+      if (composerVideo) {
+        setComposerVideo((current) => current ? { ...current, status: "uploading", progress: current.path ? 100 : 0 } : current);
+        try {
+          uploadedVideo = await uploadVideoToPost({ ...composerVideo, status: "uploading" }, draft.cloudId, uploaded.length);
+          setComposerVideo(uploadedVideo);
+        } catch (error) {
+          setComposerVideo((current) => current ? { ...current, status: "failed" } : current);
+          throw error;
+        }
+      }
       setUploadingImages(false);
       const item = await cloudRequest("/api/v1/library-state", {
         action: "publish",
@@ -2028,7 +2105,7 @@ export default function Community() {
         topics: writeTopics,
         seriesId: writeSeriesId || null,
         poll: pollDraft.question ? pollDraft : null,
-        mediaPaths: uploaded.map((image) => image.path!),
+        mediaPaths: [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])],
         coverUrl: cover?.external ? cover.url : null,
       });
       if (!item) return;
@@ -2047,10 +2124,13 @@ export default function Community() {
       setPollOptions(["", ""]);
       composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
       setComposerImages([]);
+      if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+      setComposerVideo(null);
       setCoverIndex(0);
       setEditing(null);
       setComposerEditingPublished(false);
       setComposerRevisionMode(false);
+      setComposerValidation("");
       const owner = accountId || "guest";
       localStorage.removeItem(`heika-compose-${owner}`);
       await clearDraftFiles(owner).catch(() => {});
@@ -2077,6 +2157,8 @@ export default function Community() {
     setWriteSeriesId(revisionPayload?.seriesId || initialPost?.seriesId || "");
     setTopicSearch("");
     setComposerImages([]);
+    setComposerVideo(null);
+    setComposerValidation("");
     setCoverIndex(0);
     lastDraftPayload.current = "";
     if (initialPost?.cloudId) {
@@ -2097,10 +2179,20 @@ export default function Community() {
         const mediaToLoad = revisionMedia || data?.post_media || [];
         if (mediaToLoad.length || revisionPayload?.coverUrl) {
           const db = await browserDb();
-          const images = await Promise.all(mediaToLoad.sort((a,b) => a.sort_order-b.sort_order).map(async (item, index) => {
-            const signed = await db.storage.from("post-covers").createSignedUrl(item.storage_path, 3600);
+          const orderedMedia = mediaToLoad.slice().sort((a,b) => a.sort_order-b.sort_order);
+          const imageMedia = orderedMedia.filter((item) => !isVideoMediaPath(item.storage_path));
+          const videoMedia = orderedMedia.find((item) => isVideoMediaPath(item.storage_path));
+          const images = await Promise.all(imageMedia.map(async (item, index) => {
+            const signed = await db.storage.from(mediaBucketForPath(item.storage_path)).createSignedUrl(item.storage_path, 3600);
             return signed.data?.signedUrl ? { id: `saved-${index}-${item.storage_path}`, path: item.storage_path, url: signed.data.signedUrl, status: "ready" as const, sortOrder: index } : null;
           }));
+          if (videoMedia) {
+            const signed = await db.storage.from(mediaBucketForPath(videoMedia.storage_path)).createSignedUrl(videoMedia.storage_path, 3600);
+            if (signed.data?.signedUrl) {
+              const extension = videoMedia.storage_path.toLowerCase().split(".").pop();
+              setComposerVideo({ id: videoMedia.storage_path.split("/").pop()!.replace(/\.(?:mp4|webm)$/i, ""), path: videoMedia.storage_path, url: signed.data.signedUrl, name: `已上传视频.${extension}`, size: 0, type: extension === "webm" ? "video/webm" : "video/mp4", status: "ready", progress: 100, existing: true });
+            }
+          }
           const externalCover = revisionPayload ? revisionPayload.coverUrl : initialPost.image;
           const external = externalCover ? [{ id: "legacy-cover", url: externalCover, status: "ready" as const, external: true }] : [];
           setComposerImages([...external, ...images.filter((image): image is NonNullable<typeof image> => Boolean(image))]);
@@ -2114,7 +2206,7 @@ export default function Community() {
         const raw = ownRaw || (accountId ? localStorage.getItem("heika-compose-guest") : null);
         const fileOwner = ownRaw || !accountId ? owner : "guest";
         if (raw) {
-          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[] };
+          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
           setTitle(saved.title || "");
           setBody(saved.body || "");
           setWriteTag(saved.tag || tags[0]);
@@ -2122,12 +2214,21 @@ export default function Community() {
           setWriteSeriesId(saved.seriesId || "");
           setPollQuestion(saved.poll?.question || "");
           setPollOptions(saved.poll?.options?.length ? [...saved.poll.options, "", ""].slice(0, 4) : ["", ""]);
-          if (saved.images?.length) {
+          if (saved.images?.length || saved.video) {
             const db = await browserDb();
             const files = await loadDraftFiles(fileOwner);
+            if (saved.video) {
+              const videoFile = files.find((item) => item.id === saved.video!.id)?.file;
+              if (saved.video.path) {
+                const { data } = await db.storage.from(mediaBucketForPath(saved.video.path)).createSignedUrl(saved.video.path, 3600);
+                if (data?.signedUrl) setComposerVideo({ id: saved.video.id, path: saved.video.path, url: data.signedUrl, name: saved.video.name || "已上传视频", size: saved.video.size || videoFile?.size || 0, type: saved.video.type || videoFile?.type || "video/mp4", status: "ready", progress: 100, existing: saved.video.existing });
+                else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
+              } else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
+            }
+            if (saved.images?.length) {
               const restored = await Promise.all(saved.images.map(async (image, index) => {
               if (image.path) {
-                const { data } = await db.storage.from("post-covers").createSignedUrl(image.path, 3600);
+                const { data } = await db.storage.from(mediaBucketForPath(image.path)).createSignedUrl(image.path, 3600);
                 if (data?.signedUrl) return { id: image.id, path: image.path, url: data.signedUrl, status: "ready" as const, sortOrder: index };
                 const file = files.find((item) => item.id === image.id)?.file;
                 return file ? { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const, sortOrder: index } : null;
@@ -2138,6 +2239,7 @@ export default function Community() {
               return null;
             }));
             setComposerImages(restored.filter((image): image is NonNullable<typeof image> => Boolean(image?.url)));
+            }
           }
           setCoverIndex(Math.min(saved.coverIndex || 0, Math.max(0, (saved.images?.length || 1) - 1)));
           toast("已恢复上次保存的草稿");
@@ -2150,12 +2252,12 @@ export default function Community() {
   useEffect(() => {
     if (modal !== "write") return;
     const timer = window.setTimeout(() => {
-      if (!title && !body && !composerImages.length && !pollQuestion && !pollOptions.some(Boolean)) return;
+      if (!title && !body && !composerImages.length && !composerVideo && !pollQuestion && !pollOptions.some(Boolean)) return;
       const persist = async () => {
         const owner = accountId || "guest";
-        await saveDraftFiles(owner, composerImages.map(({ id, file }) => ({ id, file })));
+        await saveDraftFiles(owner, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
         const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
-        const draftData = { title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), savedAt: Date.now() };
+        const draftData = { title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
         localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData)); setDraftSaved(true);
         if (accountId && !composerEditingPublished) {
           const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex });
@@ -2196,9 +2298,10 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   // Including state.own and the per-render upload helper would restart cloud autosave after each synchronized draft update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerEditingPublished]);
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished]);
   const chooseComposerImages = async (files: FileList | null) => {
     if (!files?.length) return;
+    if (composerVideo) return toast("视频 Beta 暂不与图片混发，请先移除视频");
     const validation = validateComposerFiles(Array.from(files), composerImages.length);
     if (validation.error) toast(validation.error);
     if (!validation.accepted.length) return;
@@ -2256,7 +2359,7 @@ export default function Community() {
     finally { setUploadingImages(false); }
   };
   const discardComposerDraft = async () => {
-    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id))) return toast("草稿正在同步，请稍后再删除");
+    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id)) || composerVideo?.status === "uploading") return toast("草稿正在同步，请稍后再删除");
     if (!confirm("删除这份草稿及其图片？此操作无法撤销。")) return;
     let old = state.own.find((item) => item.id === editing);
     if (accountId && !composerEditingPublished) {
@@ -2265,6 +2368,7 @@ export default function Community() {
         if (draft?.cloudId) {
           old = draft;
           for (const image of composerImages) if (image.file && !image.path) await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: draft.cloudId }, "DELETE");
+          if (composerVideo?.path && !composerVideo.existing) await cloudRequest("/api/v1/media", { upload_id: composerVideo.id, file_type: composerVideo.type, post_id: draft.cloudId }, "DELETE");
           await cloudRequest("/api/v1/library-state", { action: "delete", id: draft.id });
           update((current) => ({ ...current, own: current.own.filter((item) => item.id !== draft.id) }));
         }
@@ -2273,7 +2377,8 @@ export default function Community() {
     const owner = accountId || "guest";
     localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(owner).catch(() => {});
     composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
-    setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
+    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    setComposerVideo(null); setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
   };
   const openTopic = async (name: string) => {
     setTopicLoading(true);
@@ -2597,11 +2702,11 @@ export default function Community() {
     };
   }, [detailReady, detail]);
   const isImmersive = (tab === "messages" && (chatConversationOpen || messagePeer !== null)) || detail !== null || transitionPhase !== null;
-  const composerPreviewImage = composerImages[coverIndex] || composerImages[0];
   const post = detail === null ? null : all.find((p) => p.id === detail);
   const detailImages = useMemo(() => post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
     : [], [post]);
+  const detailVideo = post?.video || post?.videos?.[0];
   const preloadDetailImage = useCallback((src: string, priority: "low" | "high" = "low") => {
     const cached = preloadedDetailImages.current.get(src);
     if (cached) {
@@ -2688,15 +2793,16 @@ export default function Community() {
     const rarityTier = p.rarityTier || (rating ? cardRarityTier(rating.average, rating.count) : "pending");
     const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier;
     const coverImage = p.image || p.images?.find(Boolean);
+    const coverVideo = p.video || p.videos?.[0];
     return <button
       className={`post-card editorial-post${discoveryFeed ? " discover-content-card" : ""}`}
       key={p.id}
       data-discover-id={p.id}
       onClick={(event) => own && p.status === "draft" ? void openComposer(p) : openPost(p.id, source, event.currentTarget)}
     >
-      {(coverImage || discoveryFeed) && <div
-        className={`post-cover editorial-cover${discoveryFeed ? ` discover-post-cover${coverImage ? "" : " is-placeholder"}` : ""}`}
-        style={{ background: discoveryFeed && !coverImage ? "linear-gradient(145deg,#30383d,#13171a)" : coverColor(p.tag), ...(own ? { aspectRatio: "3 / 4" } : source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
+      {(coverImage || coverVideo || discoveryFeed) && <div
+        className={`post-cover editorial-cover${discoveryFeed ? ` discover-post-cover${coverImage || coverVideo ? "" : " is-placeholder"}` : ""}`}
+        style={{ background: discoveryFeed && !coverImage && !coverVideo ? "linear-gradient(145deg,#30383d,#13171a)" : coverColor(p.tag), ...(own ? { aspectRatio: "3 / 4" } : source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
       >
         {coverImage && <img
             src={coverImage}
@@ -2706,6 +2812,7 @@ export default function Community() {
               if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
             }}
           />}
+        {!coverImage && coverVideo && <video src={coverVideo} muted playsInline preload="metadata" aria-label="视频作品封面" />}
         {discoveryFeed ? <>
           <span className="post-cover-tag">{p.tag}</span>
           <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`评级：${rarityLabel}`}>{rarityLabel}</i>
@@ -4302,6 +4409,7 @@ export default function Community() {
                   </div>}
                   </div>
                 )}
+                {detailImages.length === 0 && detailVideo && <div className="detail-video"><video src={detailVideo} controls playsInline preload="metadata" aria-label={`${post.title} 视频`} /></div>}
                 <h1>{post.title}</h1>
                 <p className="byline">
                   {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}>{post.author} ↗</button> : post.author}
@@ -4426,7 +4534,8 @@ export default function Community() {
         <div className="recent-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setRecentPreview(null); }}>
           <section className="recent-preview-card" role="dialog" aria-modal="true" aria-labelledby="recent-preview-title">
             <button type="button" className="recent-preview-close" aria-label="关闭预览" onClick={() => setRecentPreview(null)}><X size={19}/></button>
-            {recentPreview.post.image || recentPreview.post.images?.[0] ? <img className="recent-preview-image" src={recentPreview.post.image || recentPreview.post.images?.[0]} alt="" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /> : <div className="recent-preview-image recent-preview-placeholder" style={{ background: coverColor(recentPreview.post.tag) }} aria-hidden="true"><span>{recentPreview.post.tag}</span></div>}
+            {recentPreview.post.image || recentPreview.post.images?.[0] ? <img className="recent-preview-image" src={recentPreview.post.image || recentPreview.post.images?.[0]} alt="" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /> : recentPreview.post.video && <video className="recent-preview-image" src={recentPreview.post.video} controls playsInline preload="metadata" aria-label="最近发现的视频" />}
+            {!recentPreview.post.image && !recentPreview.post.images?.[0] && !recentPreview.post.video && <div className="recent-preview-image recent-preview-placeholder" style={{ background: coverColor(recentPreview.post.tag) }} aria-hidden="true"><span>{recentPreview.post.tag}</span></div>}
             <div className="recent-preview-copy"><small>{recentPreview.post.tag} · {recentPreview.post.author}</small><h2 id="recent-preview-title">{recentPreview.post.title}</h2><p>{markdownToText(recentPreview.post.body)}</p><button type="button" className="recent-preview-open" onClick={() => { const item = recentPreview; setRecentPreview(null); requestAnimationFrame(() => openPost(item.post.id, item.source)); }}>查看内容 <ArrowRight size={17}/></button></div>
           </section>
         </div>
@@ -4653,25 +4762,42 @@ export default function Community() {
               <div className="composer-workspace">
               <div className="composer-scroll">
                 <div className="eyebrow">CREATE / STORY</div>
+                <section className="composer-guidance" aria-label="发布说明">
+                  <strong>把一次发现，写成值得保存的内容</strong>
+                  <p>先写标题和正文，再选择图片、分类和话题。图片可以跳过，纯文字内容也能直接发布。</p>
+                  <span>提交后进入人工审核；审核通过后会出现在发现页。</span>
+                </section>
                 <label className="composer-title-field">
                   标题
                   <input
                     value={title}
                     maxLength={80}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="给你的发现一个标题"
+                    aria-invalid={composerValidation === "title"}
+                    aria-describedby={composerValidation === "title" ? "composer-title-error" : undefined}
+                    onChange={(e) => { setTitle(e.target.value); if (e.target.value.trim()) setComposerValidation(""); }}
+                    placeholder="用一句话概括这次发现（最多 80 字）"
                   />
+                  <small className="composer-field-count">{title.length}/80</small>
                 </label>
+                {composerValidation === "title" && <p id="composer-title-error" className="composer-field-error composer-title-error" role="alert">标题不能为空，先给这次发现一个名字。</p>}
                 <label className="composer-body-field">
                   正文
                   <textarea
                     value={body}
                     maxLength={5000}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder="写下你的观察、经验或想法"
+                    aria-invalid={composerValidation === "body"}
+                    aria-describedby={composerValidation === "body" ? "composer-body-error" : undefined}
+                    onChange={(e) => { setBody(e.target.value); if (e.target.value.trim()) setComposerValidation(""); }}
+                    placeholder="写清楚你看到了什么、哪些细节值得分享，以及它带给你的想法。支持 Markdown。"
                     rows={7}
                   />
+                  <small className="composer-field-count">{body.length}/5000</small>
                 </label>
+                {composerValidation === "body" && <p id="composer-body-error" className="composer-field-error composer-body-error" role="alert">正文不能为空。写下观察、经验或想法后再发布。</p>}
+                <p className="composer-writing-hint"><strong>写作提示</strong><span>主题是什么？你发现了哪些细节？这件事为什么值得分享？</span></p>
+                <details className="composer-advanced">
+                  <summary><span><strong>更多设置</strong><small>互动投票、AI 辅助{VIDEO_UPLOAD_BETA_ENABLED ? "、视频 Beta" : ""}</small></span><ChevronDown size={17}/></summary>
+                  <div className="composer-advanced-content">
                 <section className="composer-poll-editor" aria-label="添加投票">
                   <div className="composer-section-heading"><span><strong>互动投票</strong><small>给帖子增加一个单选问题，读者可查看实时结果</small></span><span>{pollQuestion.trim() ? "已添加" : "可选"}</span></div>
                   <input className="composer-poll-question" value={pollQuestion} maxLength={180} onChange={(event) => setPollQuestion(event.target.value)} placeholder="输入投票问题" aria-label="投票问题" />
@@ -4682,8 +4808,20 @@ export default function Community() {
                   <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
                   {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
                 </section>
+                {VIDEO_UPLOAD_BETA_ENABLED && <section className="composer-video-section" aria-label="视频上传 Beta">
+                  <div className="composer-section-heading"><span><strong>视频上传 Beta</strong><small>预览测试 · 单条视频，MP4 / WebM，最大 50 MB</small></span><span>{composerVideo ? "1/1" : "可选"}</span></div>
+                  <p className="composer-video-guidance">视频与图片暂不能混发。分片续传可在网络中断后恢复；此 Beta 内容仅用于预览验证。</p>
+                  {composerVideo ? <div className="composer-video-card">
+                    <video src={composerVideo.url} controls playsInline preload="metadata" aria-label="视频预览" />
+                    <div className="composer-video-info"><strong>{composerVideo.name}</strong><small>{composerVideo.size ? `${(composerVideo.size / 1024 / 1024).toFixed(1)} MB` : "已上传"} · {composerVideo.status === "failed" ? "上传失败，重新发布可重试" : composerVideo.status === "uploading" ? `正在上传 ${composerVideo.progress}%` : composerVideo.path ? "已同步到草稿" : "等待上传"}</small></div>
+                    <button type="button" className="composer-video-remove" onClick={() => void removeComposerVideo()}>移除</button>
+                    {composerVideo.status === "uploading" && <progress max={100} value={composerVideo.progress} aria-label={`视频上传 ${composerVideo.progress}%`} />}
+                  </div> : <label className="composer-video-add"><input type="file" accept="video/mp4,video/webm" onChange={(event) => { chooseComposerVideo(event.target.files?.[0] || null); event.currentTarget.value = ""; }}/><Plus size={18}/><span>选择一个视频</span></label>}
+                </section>}
+                  </div>
+                </details>
                 <section className="composer-media-section" aria-label="内容图片">
-                  <div className="composer-section-heading"><span><strong>图片</strong><small>最多 9 张 · 上传时自动压缩，每张不超过 4 MB</small></span><span>{composerImages.length}/9</span></div>
+                  <div className="composer-section-heading"><span><strong>图片</strong><small>可跳过；最多 9 张 · 支持 JPG、PNG、WebP · 自动压缩</small></span><span>{composerImages.length}/9</span></div>
                   <div className="composer-image-grid">
                     {composerImages.map((image, index) => (
                       <figure className={`composer-image${coverIndex === index ? " is-cover" : ""}`} key={image.id}>
@@ -4735,22 +4873,9 @@ export default function Community() {
                   {accountId ? "草稿会自动同步到当前账号，发布后图片与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
                 </p>
               </div>
-              <aside className="composer-preview-pane" aria-label="帖子效果预览">
-                <div className="composer-preview-heading"><span><strong>帖子预览</strong><small>发布后展示效果</small></span><span>实时</span></div>
-                <article className="composer-preview-card">
-                  {composerPreviewImage ? <img className="composer-preview-cover" src={composerPreviewImage.url} alt="帖子封面预览" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /> : <div className="composer-preview-cover composer-preview-cover-empty" style={{ background: coverColor(writeTag) }}><ImagePlus size={22}/><span>添加图片后，这里会显示帖子封面</span></div>}
-                  <div className="composer-preview-copy">
-                    <div className="composer-preview-topics"><span>#{writeTag}</span>{writeTopics.slice(0, 2).map((topic) => <span key={topic}>#{topic}</span>)}</div>
-                    <h2>{title.trim() || "你的帖子标题"}</h2>
-                    {body.trim() ? <MarkdownContent source={body} className="composer-preview-markdown"/> : <p>写下你的观察、经验或想法，正文会在这里呈现。</p>}
-                    <div className="composer-preview-author"><span>{state.name.trim().slice(0, 1) || "探"}{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.hidden = true; }}/>}</span><strong>{state.name.trim() || "探索者"}</strong><small>{composerImages.length ? `${composerImages.length} 张图片` : "刚刚发布"}</small></div>
-                  </div>
-                </article>
-                <p className="composer-preview-note">图片封面、标题和话题会随你的编辑即时更新。</p>
-              </aside>
               </div>
             )}
-            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={publish}>{uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading"} onClick={publish}>{uploadingImages || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" ? composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}

@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, respond } from "@/lib/server/api";
+import { signPostMedia } from "@/lib/server/media";
+import { isVideoMediaPath } from "@/lib/media-path";
 
 type MediaRow = { storage_path: string; sort_order: number };
 const first = <T,>(value: T | T[] | null | undefined): T | null => Array.isArray(value) ? value[0] || null : value || null;
@@ -30,11 +32,11 @@ export async function GET(req: NextRequest) {
       }),
     ].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(from, from + limit);
     const allPaths = [...new Set(submissions.flatMap((submission) => submission.paths))];
-    const signed = allPaths.length ? await db.storage.from("post-covers").createSignedUrls(allPaths, 600) : { data: [], error: null };
+    const signed = allPaths.length ? await signPostMedia(db, allPaths, 600) : { data: [], error: null };
     dbError(signed.error);
     const signedByPath = new Map((signed.data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
     return {
-      items: submissions.map((submission) => ({ id: submission.id, title: submission.title, body: submission.body, status: submission.status, created_at: submission.created_at, author: submission.author, originalTitle: submission.originalTitle, kind: submission.kind, images: [...(submission.coverUrl ? [submission.coverUrl] : []), ...submission.paths.flatMap((path) => signedByPath.has(path) ? [signedByPath.get(path)!] : [])] })),
+      items: submissions.map((submission) => ({ id: submission.id, title: submission.title, body: submission.body, status: submission.status, created_at: submission.created_at, author: submission.author, originalTitle: submission.originalTitle, kind: submission.kind, images: [...(submission.coverUrl ? [submission.coverUrl] : []), ...submission.paths.flatMap((path) => !isVideoMediaPath(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : [])], videos: submission.paths.flatMap((path) => isVideoMediaPath(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : []) })),
       total: (newPosts.count || 0) + (revisions.count || 0),
       page,
       limit,

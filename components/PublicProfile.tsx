@@ -6,21 +6,35 @@ import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { markdownToText } from "./MarkdownContent";
+import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 
 type PublicInfo = { nickname: string; bio: string; avatar_url: string | null; show_bookmarks: boolean };
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
-type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; created_at?: string; post_media?: { storage_path: string; sort_order: number }[] };
+type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; video_url?: string | null; created_at?: string; post_media?: { storage_path: string; sort_order: number }[] };
 
 async function withSignedPostImages(db: Awaited<ReturnType<typeof browserDb>>, posts: ProfilePost[]) {
   const paths = [...new Set(posts.flatMap((post) => (post.post_media || []).map((media) => media.storage_path)))];
   if (!paths.length) return posts;
-  const batches = Array.from({ length: Math.ceil(paths.length / 100) }, (_, index) => paths.slice(index * 100, (index + 1) * 100));
-  const results = await Promise.all(batches.map((batch) => db.storage.from("post-covers").createSignedUrls(batch, 3600)));
-  const signed = new Map(results.flatMap(({ data }) => (data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
-  return posts.map((post) => ({
-    ...post,
-    image_url: post.image_url || (post.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order).map((item) => signed.get(item.storage_path)).find(Boolean) || null,
+  const buckets = new Map<string, string[]>();
+  for (const path of paths) {
+    const bucket = mediaBucketForPath(path);
+    buckets.set(bucket, [...(buckets.get(bucket) || []), path]);
+  }
+  const results = await Promise.all([...buckets].flatMap(([bucket, bucketPaths]) => {
+    const batches = Array.from({ length: Math.ceil(bucketPaths.length / 100) }, (_, index) => bucketPaths.slice(index * 100, (index + 1) * 100));
+    return batches.map((batch) => db.storage.from(bucket).createSignedUrls(batch, 3600));
   }));
+  const signed = new Map(results.flatMap(({ data }) => (data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
+  return posts.map((post) => {
+    const paths = (post.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order).map((item) => item.storage_path);
+    const image = paths.find((path) => !isVideoMediaPath(path));
+    const video = paths.find(isVideoMediaPath);
+    return {
+      ...post,
+      image_url: post.image_url || (image ? signed.get(image) : null) || null,
+      video_url: video ? signed.get(video) || null : null,
+    };
+  });
 }
 
 function displayAttributeValue(item: PublicAttribute) {
@@ -136,8 +150,9 @@ export default function PublicProfile({
               <div className="public-profile-private"><LockKeyhole size={21}/><strong>收藏暂未公开</strong><span>对方选择了仅自己查看收藏内容。</span></div>
             ) : displayedPosts.length ? (
               <div className={`public-profile-grid profile-layout-${layout}`}>
-                {displayedPosts.map((post) => <button type="button" className={`public-profile-post${post.image_url ? " has-image" : " is-text-only"}`} key={`${section}-${post.client_id}`} onClick={() => onSelectPost(post.client_id)}>
+                {displayedPosts.map((post) => <button type="button" className={`public-profile-post${post.image_url || post.video_url ? " has-image" : " is-text-only"}`} key={`${section}-${post.client_id}`} onClick={() => onSelectPost(post.client_id)}>
                   {post.image_url && <img src={post.image_url} alt="" loading="lazy" decoding="async"/>}
+                  {!post.image_url && post.video_url && <video src={post.video_url} muted playsInline preload="metadata" aria-label="视频作品封面"/>}
                   <span className="public-profile-post-copy">
                     <span className="public-profile-post-title">{post.title || "未命名内容"}</span>
                     {layout === "masonry" && post.body && <span className="public-profile-post-excerpt">{markdownToText(post.body)}</span>}
