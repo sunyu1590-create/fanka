@@ -6,6 +6,7 @@ import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { userMessage } from "@/lib/user-message";
 import { MarkdownContent } from "./MarkdownContent";
+import AdminGovernance from "./AdminGovernance";
 
 type Report = {
   id: string;
@@ -17,7 +18,7 @@ type Report = {
   target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[] };
 };
 type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; kind?: "new" | "revision"; originalTitle?: string | null };
-type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null };
+type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null; community_restriction: { active: boolean; restricted_until: string | null; reason: string } | null };
 type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string };
 type TopicTag = { id: number; name: string };
 type TopicEventAdmin = { id: string; topic_id: number; title: string; description: string; starts_at: string; ends_at: string; is_active: boolean; interest_tags?: { name: string } | { name: string }[] | null };
@@ -33,8 +34,13 @@ function CollapsibleMarkdown({ source, label }: { source: string; label: string 
   return <details className="moderation-longtext" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}><summary>{open ? "收起" : label} · {source.length} 字</summary>{open && <MarkdownContent source={source} className="moderation-markdown"/>}</details>;
 }
 
+function CollapsibleImages({ images, label }: { images: string[]; label: string }) {
+  if (!images.length) return null;
+  return <details className="moderation-image-details"><summary>{label} · {images.length} 张</summary><div className="moderation-images">{images.map((url, index) => <img key={`${index}-${url}`} src={url} alt={`${label}，第 ${index + 1} 张`} loading="lazy" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />)}</div></details>;
+}
+
 export default function AdminModeration({ onBack }: Props) {
-  const [section, setSection] = useState<"reports" | "messages" | "content" | "users" | "topic-events" | "ai-settings">("reports");
+  const [section, setSection] = useState<"reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings">("reports");
   const [status, setStatus] = useState<(typeof filters)[number][0]>("open");
   const [reports, setReports] = useState<Report[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -64,6 +70,9 @@ export default function AdminModeration({ onBack }: Props) {
   const [aiConfigured, setAiConfigured] = useState(false);
   const [aiMasked, setAiMasked] = useState("");
   const [aiSettingsBusy, setAiSettingsBusy] = useState(false);
+  const [restrictionTarget, setRestrictionTarget] = useState<string | null>(null);
+  const [restrictionReason, setRestrictionReason] = useState("");
+  const [restrictionDuration, setRestrictionDuration] = useState<"1h" | "24h" | "7d" | "30d" | "permanent">("24h");
 
   const loadTopicEvents = useCallback(async () => {
     setTopicEventBusy(true); setError("");
@@ -189,6 +198,19 @@ export default function AdminModeration({ onBack }: Props) {
     finally { setSaving(null); }
   };
 
+  const changeCommunityRestriction = async (account: AdminUser, active: boolean) => {
+    if (active && restrictionReason.trim().length < 3) { setError("请填写至少 3 个字的限制原因"); return; }
+    const durations: Record<Exclude<typeof restrictionDuration, "permanent">, number> = { "1h": 60 * 60_000, "24h": 24 * 60 * 60_000, "7d": 7 * 24 * 60 * 60_000, "30d": 30 * 24 * 60 * 60_000 };
+    const restricted_until = !active || restrictionDuration === "permanent" ? null : new Date(Date.now() + durations[restrictionDuration]).toISOString();
+    setSaving(account.id); setError(""); setNotice("");
+    try {
+      const result = await cloudRequest(`/api/v1/admin/users/${account.id}`, { community_restriction: active ? { active: true, restricted_until, reason: restrictionReason.trim() } : { active: false } }, "PATCH") as { community_restriction?: AdminUser["community_restriction"] };
+      setUsers((current) => current.map((item) => item.id === account.id ? { ...item, community_restriction: result.community_restriction ?? null } : item));
+      setRestrictionTarget(null); setRestrictionReason(""); setNotice(active ? `${account.nickname || "账号"}已限制发布、评论和私信。` : `${account.nickname || "账号"}的社区限制已解除。`);
+    } catch (e) { setError(userMessage(e, "账号限制更新失败")); }
+    finally { setSaving(null); }
+  };
+
   const processMessageReport = async (report: DmReport, next: "resolved" | "dismissed") => {
     setSaving(report.id); setError(""); setNotice("");
     try {
@@ -241,6 +263,9 @@ export default function AdminModeration({ onBack }: Props) {
       <button role="tab" aria-selected={section === "reports"} className={section === "reports" ? "selected" : ""} onClick={() => setSection("reports")}>举报队列 <small>{reportTotal}</small></button>
       <button role="tab" aria-selected={section === "messages"} className={section === "messages" ? "selected" : ""} onClick={() => setSection("messages")}>私信举报 <small>{messageReports.filter((item) => item.status === "open").length}</small></button>
       <button role="tab" aria-selected={section === "content"} className={section === "content" ? "selected" : ""} onClick={() => setSection("content")}>待审核内容 <small>{submissionTotal}</small></button>
+      <button role="tab" aria-selected={section === "comments"} className={section === "comments" ? "selected" : ""} onClick={() => setSection("comments")}>评论管理</button>
+      <button role="tab" aria-selected={section === "keywords"} className={section === "keywords" ? "selected" : ""} onClick={() => setSection("keywords")}>关键词</button>
+      <button role="tab" aria-selected={section === "audit"} className={section === "audit" ? "selected" : ""} onClick={() => setSection("audit")}>操作记录</button>
       <button role="tab" aria-selected={section === "users"} className={section === "users" ? "selected" : ""} onClick={() => setSection("users")}>账号管理 <small>{userTotal}</small></button>
       <button role="tab" aria-selected={section === "topic-events"} className={section === "topic-events" ? "selected" : ""} onClick={() => setSection("topic-events")}>话题共创</button>
       <button role="tab" aria-selected={section === "ai-settings"} className={section === "ai-settings" ? "selected" : ""} onClick={() => setSection("ai-settings")}>AI 工作台</button>
@@ -251,7 +276,7 @@ export default function AdminModeration({ onBack }: Props) {
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "ai-settings" ? <>
+    {section === "keywords" ? <AdminGovernance mode="keywords" /> : section === "comments" ? <AdminGovernance mode="comments" /> : section === "audit" ? <AdminGovernance mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
         <div className="admin-topic-event-form-heading"><div><small>AI / PROVIDER</small><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}
@@ -281,12 +306,18 @@ export default function AdminModeration({ onBack }: Props) {
         <input aria-label="搜索账号昵称" placeholder="按昵称搜索账号" value={userQuery} onChange={(event) => setUserQuery(event.target.value)} />
         <button className="soft-button" type="submit">搜索</button>
       </form>
-      {usersLoading ? <p className="moderation-empty">正在加载账号…</p> : users.length ? <div className="admin-user-list">{users.map((account) => <article className="admin-user-row" key={account.id}>
-        <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
-        <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{account.role === "admin" && <span className="admin-role-badge">管理员</span>}</strong><small>{account.bio || "还没有填写个人简介"}</small><time>加入于 {new Date(account.created_at).toLocaleDateString("zh-CN")}</time></div>
-        <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{value:"free",label:"普通"},{value:"plus",label:"Plus"},{value:"pro",label:"Pro"}]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])}/></div>
-        <button className="admin-role-action" disabled={saving === account.id} onClick={() => void changeUserRole(account)}>{account.role === "admin" ? "设为成员" : "设为管理员"}</button>
-      </article>)}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}
+      {usersLoading ? <p className="moderation-empty">正在加载账号…</p> : users.length ? <div className="admin-user-list">{users.map((account) => {
+        const restriction = account.community_restriction;
+        const restrictionActive = Boolean(restriction?.active && (!restriction.restricted_until || Date.parse(restriction.restricted_until) > Date.now()));
+        return <article className="admin-user-row" key={account.id}>
+          <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
+          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{account.role === "admin" && <span className="admin-role-badge">管理员</span>}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><small>{account.bio || "还没有填写个人简介"}</small><time>加入于 {new Date(account.created_at).toLocaleDateString("zh-CN")}{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
+          <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{value:"free",label:"普通"},{value:"plus",label:"Plus"},{value:"pro",label:"Pro"}]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])}/></div>
+          <button className="admin-role-action" disabled={saving === account.id} onClick={() => void changeUserRole(account)}>{account.role === "admin" ? "设为成员" : "设为管理员"}</button>
+          {account.role !== "admin" && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
+          {restrictionTarget === account.id && account.role !== "admin" && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<select value={restrictionDuration} onChange={(event) => setRestrictionDuration(event.target.value as typeof restrictionDuration)}><option value="1h">1 小时</option><option value="24h">24 小时</option><option value="7d">7 天</option><option value="30d">30 天</option><option value="permanent">永久</option></select></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
+        </article>;
+      })}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}
       {userTotal > users.length && !appliedUserQuery && <p className="admin-user-limit">当前显示最近 {users.length} 个账号，共 {userTotal} 个。</p>}
     </> : loading ? <p className="moderation-empty">正在加载管理数据…</p> : section === "messages" ? (
       messageReports.length ? <div className="moderation-list">{messageReports.map((report) => <article className="moderation-item" key={report.id}>
@@ -298,7 +329,7 @@ export default function AdminModeration({ onBack }: Props) {
     ) : section === "reports" ? (
       reports.length ? <div className="moderation-list">{reports.map((report) => <article className="moderation-item" key={report.id}>
         <div className="moderation-item-heading"><strong>{report.target.type === "post" ? "内容举报" : "评论举报"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
-        <div className="moderation-target"><b>{report.target.title}</b><CollapsibleMarkdown source={report.target.body} label="展开查看正文"/>{report.target.images.map((url) => <img key={url} src={url} alt="被举报内容图片" loading="lazy" />)}</div>
+        <div className="moderation-target"><b>{report.target.title}</b><CollapsibleMarkdown source={report.target.body} label="展开查看正文"/><CollapsibleImages images={report.target.images} label="查看图片"/></div>
         <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
         {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
         {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录处理依据，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
@@ -306,7 +337,7 @@ export default function AdminModeration({ onBack }: Props) {
     ) : submissions.length ? <div className="moderation-list">{submissions.map((post) => <article className="moderation-item" key={post.id}>
       <div className="moderation-item-heading"><strong><ShieldCheck size={16} /> 待人工审核</strong><time>{new Date(post.created_at).toLocaleString("zh-CN")}</time></div>
       <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文"/>
-      <div className="moderation-images">{post.images.map((url) => <img key={url} src={url} alt="待审核内容图片" loading="lazy" />)}</div>
+      <CollapsibleImages images={post.images} label="查看图片"/>
       <label className="moderation-note">审核说明<textarea value={notes[post.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [post.id]: event.target.value }))} placeholder="记录审核依据，至少 3 个字" /></label>
       <div className="moderation-actions"><button disabled={saving === post.id} onClick={() => void processSubmission(post, "published")}><Check size={15} /> {post.kind === "revision" ? "通过并替换公开版" : "审核通过并公开"}</button><button disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden")}><X size={15} /> {post.kind === "revision" ? "驳回修改，保留原版" : "驳回并保持隐藏"}</button></div>
     </article>)}</div> : <p className="moderation-empty">目前没有待审核的新内容。</p>}

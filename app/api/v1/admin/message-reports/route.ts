@@ -7,6 +7,7 @@ import {
   ApiError,
   uuid,
 } from "@/lib/server/api";
+import { recordModerationAudit } from "@/lib/server/moderation-audit";
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db } = await context(req);
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
 }
 export async function PATCH(req: NextRequest) {
   return respond(async () => {
-    const { db } = await context(req);
+    const { db, user } = await context(req);
     const { data: admin, error } = await db.rpc("is_admin");
     dbError(error);
     if (!admin) throw new ApiError(403, "需要管理员权限");
@@ -38,6 +39,7 @@ export async function PATCH(req: NextRequest) {
       .select()
       .single();
     dbError(write);
+    await recordModerationAudit(db, { actorId: user!.id, action: b.status === "resolved" ? "dm_report_resolved" : "dm_report_dismissed", targetType: "report", targetId: data.id, reason: "私信举报处置" });
     return data;
   });
 }

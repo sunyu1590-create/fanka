@@ -14,6 +14,12 @@ export async function GET(req: NextRequest) {
     if (query) request = request.ilike("nickname", `%${query}%`);
     const { data, error, count } = await request;
     dbError(error);
-    return { items: data || [], total: count || 0, limit };
+    const rows = data || [];
+    const restrictions = rows.length ? await db.from("community_restrictions")
+      .select("user_id,active,restricted_until,reason,updated_at")
+      .in("user_id", rows.map((row) => row.id)) : { data: [], error: null };
+    dbError(restrictions.error);
+    const byUser = new Map((restrictions.data || []).map((item) => [item.user_id, item]));
+    return { items: rows.map((row) => ({ ...row, community_restriction: byUser.get(row.id) || null })), total: count || 0, limit };
   });
 }

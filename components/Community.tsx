@@ -342,9 +342,6 @@ export default function Community() {
     if (!detailTransitionLoaded) return;
     localStorage.setItem("heika-detail-transition", detailTransition);
   }, [detailTransition, detailTransitionLoaded]);
-  useEffect(() => () => {
-    if (detailImageGhostTimer.current !== null) window.clearTimeout(detailImageGhostTimer.current);
-  }, []);
   useEffect(() => {
     if (!profileLayoutLoaded) return;
     localStorage.setItem("heika-public-profile-layout", profileLayout);
@@ -629,10 +626,8 @@ export default function Community() {
   const [displayedImageIndex, setDisplayedImageIndex] = useState(0);
   const [imageLoading, setImageLoading] = useState(false);
   const [detailImageDirection, setDetailImageDirection] = useState<"next" | "previous">("next");
-  const [detailImageGhost, setDetailImageGhost] = useState<{ src: string; sequence: number } | null>(null);
   const preloadedDetailImages = useRef(new Map<string, { image: HTMLImageElement; promise: Promise<HTMLImageElement> }>());
   const imageSwitchSequence = useRef(0);
-  const detailImageGhostTimer = useRef<number | null>(null);
   const imageTouchStart = useRef<{ x: number; y: number } | null>(null);
   const imageSwipeTriggered = useRef(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
@@ -2423,14 +2418,9 @@ export default function Community() {
   };
   useEffect(() => {
     if (detail === null) return;
-    if (detailImageGhostTimer.current !== null) {
-      window.clearTimeout(detailImageGhostTimer.current);
-      detailImageGhostTimer.current = null;
-    }
     setActiveImageIndex(0);
     setDisplayedImageIndex(0);
     setImageLoading(false);
-    setDetailImageGhost(null);
     setDetailImageDirection("next");
     setPreviewImage(false);
     setCommentsLoading(true);
@@ -2463,14 +2453,6 @@ export default function Community() {
       alive = false;
     };
   }, [detail, detailSort]);
-  useEffect(() => {
-    if (detail !== null) return;
-    if (detailImageGhostTimer.current !== null) {
-      window.clearTimeout(detailImageGhostTimer.current);
-      detailImageGhostTimer.current = null;
-    }
-    setDetailImageGhost(null);
-  }, [detail]);
   const loadMoreComments = async () => {
     if (detail === null || commentsLoading || !commentHasMore) return;
     setCommentsLoading(true);
@@ -2654,6 +2636,8 @@ export default function Community() {
     const sequence = ++imageSwitchSequence.current;
     setActiveImageIndex(normalized);
     setDetailImageDirection(direction);
+    // Gallery navigation always uses the directional horizontal blur-slide.
+    // Card-to-detail transitions are controlled separately by detailTransition.
     if (normalized === displayedImageIndex) {
       setImageLoading(false);
       return;
@@ -2661,17 +2645,6 @@ export default function Community() {
     setImageLoading(true);
     void preloadDetailImage(detailImages[normalized], "high").then(() => {
       if (sequence === imageSwitchSequence.current && detail !== null) {
-        if (detailImageGhostTimer.current !== null) window.clearTimeout(detailImageGhostTimer.current);
-        const outgoingImage = detailImages[displayedImageIndex];
-        if (detailTransition === "ghost-handoff" && outgoingImage && outgoingImage !== detailImages[normalized]) {
-          setDetailImageGhost({ src: outgoingImage, sequence });
-          detailImageGhostTimer.current = window.setTimeout(() => {
-            setDetailImageGhost((current) => current?.sequence === sequence ? null : current);
-            detailImageGhostTimer.current = null;
-          }, 250);
-        } else {
-          setDetailImageGhost(null);
-        }
         setDisplayedImageIndex(normalized);
         setImageLoading(false);
       }
@@ -4291,7 +4264,6 @@ export default function Community() {
                     setPreviewImage(true);
                   }} aria-label="查看大图">
                     <img key={detailImages[displayedImageIndex]} src={detailImages[displayedImageIndex]} alt={`${post.title}，第 ${displayedImageIndex + 1} 张`} loading="eager" fetchPriority="high" onLoad={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }} onError={(event) => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
-                    {detailTransition === "ghost-handoff" && detailImageGhost && <img key={detailImageGhost.sequence} className="detail-image-ghost" src={detailImageGhost.src} alt="" aria-hidden="true" />}
                     <span>查看大图</span>
                   </button>
                   {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
