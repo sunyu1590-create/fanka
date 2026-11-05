@@ -1,23 +1,16 @@
 import { NextRequest } from "next/server";
-import { ApiError, context, dbError, respond } from "@/lib/server/api";
+import { ApiError, dbError, respond } from "@/lib/server/api";
 import { signPostMedia } from "@/lib/server/media";
 import { isVideoMediaPath } from "@/lib/media-path";
+import { requirePermission } from "@/lib/server/require-permission";
 
 const reportFields = "id,post_id,comment_id,reason,status,created_at,review_note,reviewed_at";
 type MediaRow = { storage_path: string; sort_order: number };
 type PostRow = { id: string; title: string; body: string; status: string; image_url: string | null; post_media?: MediaRow[] };
 
-async function requireAdmin(req: NextRequest) {
-  const { db, user } = await context(req);
-  const { data, error } = await db.from("profiles").select("role").eq("id", user!.id).single();
-  dbError(error);
-  if (!data || data.role !== "admin") throw new ApiError(403, "需要管理员权限");
-  return { db, user: user! };
-}
-
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await requireAdmin(req);
+    const { db } = await requirePermission(req, "reports.manage");
     const params = req.nextUrl.searchParams;
     const status = params.get("status") || "open";
     if (!["open", "resolved", "dismissed", "all"].includes(status)) throw new ApiError(400, "筛选状态无效");

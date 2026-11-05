@@ -1,23 +1,21 @@
 import { NextRequest } from "next/server";
-import { ApiError, context, dbError, respond } from "@/lib/server/api";
+import { dbError, respond } from "@/lib/server/api";
 import { signPostMedia } from "@/lib/server/media";
 import { isVideoMediaPath } from "@/lib/media-path";
+import { requirePermission } from "@/lib/server/require-permission";
 
 type MediaRow = { storage_path: string; sort_order: number };
 const first = <T,>(value: T | T[] | null | undefined): T | null => Array.isArray(value) ? value[0] || null : value || null;
 
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db, user } = await context(req);
-    const { data: profile, error: profileError } = await db.from("profiles").select("role").eq("id", user!.id).single();
-    dbError(profileError);
-    if (!profile || profile.role !== "admin") throw new ApiError(403, "需要管理员权限");
+    const { db } = await requirePermission(req, "content.read");
     const page = Math.max(1, Math.min(10000, Number(req.nextUrl.searchParams.get("page")) || 1));
     const limit = Math.max(1, Math.min(30, Number(req.nextUrl.searchParams.get("limit")) || 20));
     const from = (page - 1) * limit;
     const [newPosts, revisions] = await Promise.all([
-      db.from("posts").select("id,title,body,status,created_at,image_url,profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order)", { count: "exact" }).eq("status", "pending_review").order("created_at", { ascending: true }).range(0, from + limit - 1),
-      db.from("post_revisions").select("post_id,payload,created_at,posts!inner(id,title,body,status,author_id,profiles!posts_author_id_fkey(nickname))", { count: "exact" }).eq("status", "pending").order("created_at", { ascending: true }).range(0, from + limit - 1),
+      db.from("posts").select("id,title,body,status,created_at,image_url,profiles!posts_author_id_fkey(nickname),post_media(storage_path,sort_order)", { count: "exact" }).eq("channel", "community").eq("status", "pending_review").order("created_at", { ascending: true }).range(0, from + limit - 1),
+      db.from("post_revisions").select("post_id,payload,created_at,posts!inner(id,title,body,status,author_id,channel,profiles!posts_author_id_fkey(nickname))", { count: "exact" }).eq("status", "pending").eq("posts.channel", "community").order("created_at", { ascending: true }).range(0, from + limit - 1),
     ]);
     dbError(newPosts.error); dbError(revisions.error);
     const newRows = (newPosts.data || []) as unknown as { id: string; title: string; body: string; status: string; created_at: string; image_url: string | null; profiles: { nickname: string } | { nickname: string }[] | null; post_media?: MediaRow[] }[];

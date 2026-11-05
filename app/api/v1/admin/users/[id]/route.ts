@@ -10,9 +10,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const id = uuid((await params).id);
     const values: Record<string, string | null> = {};
     if (body.role !== undefined) {
-      if (body.role !== "member" && body.role !== "admin") throw new ApiError(400, "账号角色无效");
-      if (id === user.id && body.role === "member") throw new ApiError(400, "不能移除自己的管理员权限");
-      values.role = body.role;
+      if (!["member", "admin", "content_manager", "reviewer"].includes(String(body.role))) throw new ApiError(400, "账号角色无效");
+      if (id === user.id && body.role !== "admin") throw new ApiError(400, "不能移除自己的管理员权限");
+      values.role = String(body.role);
     }
     if (body.membership_tier !== undefined && !["free", "plus", "pro"].includes(String(body.membership_tier))) {
       throw new ApiError(400, "会员等级无效");
@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (result.error?.message.includes("last administrator")) throw new ApiError(409, "系统至少需要保留一位管理员");
       dbError(result.error);
       resultProfile = result.data;
-      await recordModerationAudit(db, { actorId: user.id, action: body.role === "admin" ? "admin_role_granted" : "admin_role_removed", targetType: "user", targetId: id, reason: "管理员角色变更" });
+      await recordModerationAudit(db, { actorId: user.id, action: body.role === "member" ? "staff_role_removed" : "staff_role_assigned", targetType: "user", targetId: id, reason: `管理角色设为 ${String(body.role)}` });
     }
 
     if (body.membership_tier !== undefined) {

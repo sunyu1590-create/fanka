@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
         .from("posts")
         .select("client_id")
         .eq("status", "published")
+        .eq("channel", "community")
         .order("client_id")
         .limit(1000);
       dbError(error);
@@ -75,6 +76,7 @@ export async function GET(req: NextRequest) {
         .from("posts")
         .select(libraryFields, { count: cursorCreatedAt ? undefined : "exact" })
         .eq("status", "published")
+        .eq("channel", "community")
         .order("created_at", { ascending: false })
         .order("id", { ascending: false });
       if (tagId !== undefined) query = query.eq("tag_id", tagId);
@@ -135,6 +137,7 @@ export async function POST(req: NextRequest) {
         .from("posts")
         .select(libraryFields)
         .eq("status", "published")
+        .eq("channel", "community")
         .in("client_id", ids);
       dbError(error);
       const rows = (data || []) as unknown as LibraryRow[];
@@ -173,6 +176,7 @@ export async function POST(req: NextRequest) {
       .from("posts")
       .select(libraryFields)
       .eq("client_id", id)
+      .eq("channel", "community")
       .single();
     dbError(error);
     const post = data as unknown as LibraryRow;

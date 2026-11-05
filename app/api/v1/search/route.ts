@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       .from("posts")
       .select(libraryFields, { count: "exact" })
       .eq("status", "published")
+      .eq("channel", "community")
       .or(`title.ilike.%${query}%,body.ilike.%${query}%`)
       .order("created_at", { ascending: false })
       .order("client_id", { ascending: false })

@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, ChevronRight, FileCheck, Flag, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, FileCheck, Flag, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { userMessage } from "@/lib/user-message";
 import { MarkdownContent } from "./MarkdownContent";
+import AdminAIWorkspace from "./AdminAIWorkspace";
 import AdminGovernance from "./AdminGovernance";
+import AdminAppeals from "./AdminAppeals";
 
 type Report = {
   id: string;
@@ -18,14 +20,14 @@ type Report = {
   target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[]; videos?: string[] };
 };
 type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; videos?: string[]; kind?: "new" | "revision"; originalTitle?: string | null };
-type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null; community_restriction: { active: boolean; restricted_until: string | null; reason: string } | null };
-type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string };
+type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin" | "content_manager" | "reviewer"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null; community_restriction: { active: boolean; restricted_until: string | null; reason: string } | null };
+type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string; review_note?: string | null; reviewed_at?: string | null };
 type TopicTag = { id: number; name: string };
 type TopicEventAdmin = { id: string; topic_id: number; title: string; description: string; starts_at: string; ends_at: string; is_active: boolean; interest_tags?: { name: string } | { name: string }[] | null };
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
-type Props = { onBack: () => void };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings";
+type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
@@ -35,6 +37,7 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
     { id: "content", title: "作品审核", description: "新投稿与已发布作品的修改", icon: FileCheck },
     { id: "reports", title: "内容举报", description: "查看并处理作品与评论举报", icon: Flag },
     { id: "messages", title: "私信举报", description: "处理用户提交的私信举报", icon: MessageCircle },
+    { id: "appeals", title: "申诉处理", description: "复核内容、账号与举报申诉", icon: ShieldAlert },
   ] },
   { title: "社区治理", modules: [
     { id: "comments", title: "评论管理", description: "搜索、隐藏或恢复评论", icon: MessageSquare },
@@ -45,6 +48,9 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
   { title: "账号与工具", modules: [
     { id: "users", title: "账号管理", description: "角色、会员与社区发言限制", icon: Users },
     { id: "ai-settings", title: "AI 工作台", description: "配置创作工作台服务密钥", icon: ShieldCheck },
+  ] },
+  { title: "AI 内容运营", modules: [
+    { id: "ai-space", title: "AI 专区管理", description: "审核资源、管理精选与分类标签", icon: Sparkles },
   ] },
 ];
 const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
@@ -57,6 +63,8 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   users: "账号管理",
   "topic-events": "话题共创",
   "ai-settings": "AI 工作台",
+  "ai-space": "AI 专区管理",
+  appeals: "申诉处理",
 };
 
 function CollapsibleMarkdown({ source, label }: { source: string; label: string }) {
@@ -74,7 +82,7 @@ function CollapsibleVideos({ videos, label }: { videos: string[]; label: string 
   return <details className="moderation-image-details"><summary>{label} · {videos.length} 段</summary><div className="moderation-images">{videos.map((url) => <video key={url} src={url} controls preload="metadata" aria-label={label} />)}</div></details>;
 }
 
-export default function AdminModeration({ onBack }: Props) {
+export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const [section, setSection] = useState<AdminSection>("overview");
   const [status, setStatus] = useState<(typeof filters)[number][0]>("open");
   const [reports, setReports] = useState<Report[]>([]);
@@ -82,6 +90,7 @@ export default function AdminModeration({ onBack }: Props) {
   const [pendingReportTotal, setPendingReportTotal] = useState(0);
   const [submissionTotal, setSubmissionTotal] = useState(0);
   const [userTotal, setUserTotal] = useState(0);
+  const [overview, setOverview] = useState<{ usersToday: number; postsToday: number; pending: number; pendingReports: number; aiResources: number; views: number; likes: number; saves: number; comments: number; recent: { id: string; action: string; target_type: string; target_id: string; reason: string; created_at: string; nickname: string | null }[] } | null>(null);
   const [messageReports, setMessageReports] = useState<DmReport[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [userQuery, setUserQuery] = useState("");
@@ -181,11 +190,12 @@ export default function AdminModeration({ onBack }: Props) {
     setLoading(true);
     setError("");
     try {
-      const [reportData, contentData, accountSummary, dmReportData] = await Promise.all([
+      const [reportData, contentData, accountSummary, dmReportData, overviewData] = await Promise.all([
         cloudRequest(`/api/v1/admin/reports?status=${status}&limit=20`) as Promise<Queue>,
         cloudRequest("/api/v1/admin/posts?limit=20") as Promise<Submissions>,
-        cloudRequest("/api/v1/admin/users?limit=1") as Promise<{ total: number }>,
+        role === "admin" ? cloudRequest("/api/v1/admin/users?limit=1") as Promise<{ total: number }> : Promise.resolve({ total: 0 }),
         cloudRequest("/api/v1/admin/message-reports") as Promise<DmReport[]>,
+        cloudRequest("/api/v1/admin/overview") as Promise<NonNullable<typeof overview>>,
       ]);
       setReports(reportData.items || []);
       if (status === "open") setPendingReportTotal(reportData.total || 0);
@@ -193,12 +203,13 @@ export default function AdminModeration({ onBack }: Props) {
       setSubmissionTotal(contentData.total || 0);
       setUserTotal(accountSummary.total || 0);
       setMessageReports(dmReportData || []);
+      setOverview(overviewData || null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "审核队列加载失败");
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, role]);
 
   const loadUsers = useCallback(async () => {
     setUsersLoading(true); setError("");
@@ -211,10 +222,10 @@ export default function AdminModeration({ onBack }: Props) {
 
   useEffect(() => { if (section === "users") void loadUsers(); }, [section, loadUsers]);
 
-  const changeUserRole = async (account: AdminUser) => {
-    const role = account.role === "admin" ? "member" : "admin";
-    const action = role === "admin" ? "授予管理员权限" : "移除管理员权限";
-    if (!window.confirm(`确定要${action}给「${account.nickname || "探索者"}」吗？`)) return;
+  const changeUserRole = async (account: AdminUser, role: AdminUser["role"]) => {
+    const roleLabels: Record<AdminUser["role"], string> = { member: "普通用户", admin: "超级管理员", content_manager: "内容管理员", reviewer: "审核员" };
+    if (role === account.role) return;
+    if (!window.confirm(`确定将「${account.nickname || "探索者"}」设置为${roleLabels[role]}吗？`)) return;
     setSaving(account.id); setError(""); setNotice("");
     try {
       await cloudRequest(`/api/v1/admin/users/${account.id}`, { role }, "PATCH");
@@ -248,9 +259,11 @@ export default function AdminModeration({ onBack }: Props) {
   };
 
   const processMessageReport = async (report: DmReport, next: "resolved" | "dismissed") => {
+    const note = notes[report.id]?.trim() || "";
+    if (note.length < 3) { setError("请填写至少 3 个字的处理说明"); return; }
     setSaving(report.id); setError(""); setNotice("");
     try {
-      await cloudRequest("/api/v1/admin/message-reports", { id: report.id, status: next }, "PATCH");
+      await cloudRequest("/api/v1/admin/message-reports", { id: report.id, status: next, review_note: note }, "PATCH");
       setNotice(next === "resolved" ? "私信举报已处理。" : "私信举报已驳回。");
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "处理失败"); }
@@ -296,6 +309,8 @@ export default function AdminModeration({ onBack }: Props) {
     if (section === "users") void loadUsers();
     else if (section === "topic-events") void loadTopicEvents();
     else if (section === "ai-settings") void loadAiSettings();
+    else if (section === "appeals") setGovernanceRefreshKey((value) => value + 1);
+    else if (section === "ai-space") setGovernanceRefreshKey((value) => value + 1);
     else if (section === "comments" || section === "keywords" || section === "audit") setGovernanceRefreshKey((value) => value + 1);
     else void load();
   };
@@ -306,16 +321,32 @@ export default function AdminModeration({ onBack }: Props) {
     <h1>{section === "overview" ? "管理后台" : adminSectionTitles[section]}<span className="red-dot">.</span></h1>
     <p className="lead">{section === "overview" ? "按工作模块进入审核与管理，待处理事项优先显示。" : `管理后台 / ${adminSectionTitles[section]}`}</p>
     {section === "overview" ? <>
-      <div className="admin-overview" aria-label="后台概览">
-        <div><strong>{userTotal}</strong><span>账号总数</span></div>
-        <div><strong>{submissionTotal}</strong><span>待审核作品</span></div>
-        <div><strong>{pendingReportTotal + pendingMessageReports}</strong><span>待处理举报</span></div>
+      <div className="admin-overview admin-overview-expanded" aria-label="后台概览">
+        <div><strong>{overview?.usersToday ?? "—"}</strong><span>今日新增用户</span></div>
+        <div><strong>{role === "admin" ? userTotal : "—"}</strong><span>账号总数</span></div>
+        <div><strong>{overview?.postsToday ?? "—"}</strong><span>今日发布作品</span></div>
+        <div><strong>{overview?.pending ?? submissionTotal}</strong><span>待审核内容</span></div>
+        <div><strong>{overview?.pendingReports ?? pendingReportTotal + pendingMessageReports}</strong><span>待处理举报</span></div>
+        <div><strong>{overview?.aiResources ?? "—"}</strong><span>已发布 AI 资源</span></div>
+        <div><strong>{overview?.views?.toLocaleString("zh-CN") ?? "—"}</strong><span>累计阅读量</span></div>
+        <div><strong>{overview?.likes?.toLocaleString("zh-CN") ?? "—"}</strong><span>累计点赞</span></div>
+        <div><strong>{overview?.saves?.toLocaleString("zh-CN") ?? "—"}</strong><span>累计收藏</span></div>
+        <div><strong>{overview?.comments?.toLocaleString("zh-CN") ?? "—"}</strong><span>可见评论</span></div>
       </div>
+      {overview?.recent?.length ? <section className="admin-recent-operations"><h2>最近管理员操作</h2>{overview.recent.map((item) => <p key={item.id}><strong>{item.nickname || "管理员"}</strong><span>{item.reason || item.action}</span><time>{new Date(item.created_at).toLocaleString("zh-CN")}</time></p>)}</section> : null}
       <div className="admin-module-groups">
         <div className="admin-module-heading"><div><small>WORKSPACE</small><strong>管理模块</strong></div><button type="button" className="soft-button" onClick={refreshCurrent} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
-        {adminModuleGroups.map((group) => <section className="admin-module-group" key={group.title} aria-label={group.title}>
+        {adminModuleGroups.map((group) => {
+          const modules = group.modules.filter((module) => {
+            if (role === "admin") return true;
+            if (["users", "ai-settings", "topic-events"].includes(module.id)) return false;
+            if (module.id === "keywords" && role !== "content_manager") return false;
+            return true;
+          });
+          if (!modules.length) return null;
+          return <section className="admin-module-group" key={group.title} aria-label={group.title}>
           <h2>{group.title}</h2>
-          <div className="admin-module-grid">{group.modules.map((module) => {
+          <div className="admin-module-grid">{modules.map((module) => {
             const Icon = module.icon;
             const count = module.id === "content" ? submissionTotal : module.id === "reports" ? pendingReportTotal : module.id === "messages" ? pendingMessageReports : null;
             return <button type="button" className="admin-module-card" key={module.id} onClick={() => navigateAdminSection(module.id)}>
@@ -324,7 +355,7 @@ export default function AdminModeration({ onBack }: Props) {
               <ChevronRight size={17}/>
             </button>;
           })}</div>
-        </section>)}
+        </section>; })}
       </div>
     </> : <div className="admin-workspace-nav">
       <button type="button" onClick={() => navigateAdminSection("overview")}><ArrowLeft size={16}/> 管理台</button>
@@ -336,7 +367,7 @@ export default function AdminModeration({ onBack }: Props) {
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "overview" ? null : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
+    {section === "overview" ? null : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
         <div className="admin-topic-event-form-heading"><div><small>AI / PROVIDER</small><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}
@@ -371,11 +402,11 @@ export default function AdminModeration({ onBack }: Props) {
         const restrictionActive = Boolean(restriction?.active && (!restriction.restricted_until || Date.parse(restriction.restricted_until) > Date.now()));
         return <article className="admin-user-row" key={account.id}>
           <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
-          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{account.role === "admin" && <span className="admin-role-badge">管理员</span>}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><small>{account.bio || "还没有填写个人简介"}</small><time>加入于 {new Date(account.created_at).toLocaleDateString("zh-CN")}{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
+          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{(["admin", "content_manager", "reviewer"].includes(account.role) && <span className="admin-role-badge">{account.role === "admin" ? "超级管理员" : account.role === "content_manager" ? "内容管理员" : "审核员"}</span>)}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><small>{account.bio || "还没有填写个人简介"}</small><time>加入于 {new Date(account.created_at).toLocaleDateString("zh-CN")}{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
           <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{value:"free",label:"普通"},{value:"plus",label:"Plus"},{value:"pro",label:"Pro"}]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])}/></div>
-          <button className="admin-role-action" disabled={saving === account.id} onClick={() => void changeUserRole(account)}>{account.role === "admin" ? "设为成员" : "设为管理员"}</button>
-          {account.role !== "admin" && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
-          {restrictionTarget === account.id && account.role !== "admin" && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<select value={restrictionDuration} onChange={(event) => setRestrictionDuration(event.target.value as typeof restrictionDuration)}><option value="1h">1 小时</option><option value="24h">24 小时</option><option value="7d">7 天</option><option value="30d">30 天</option><option value="permanent">永久</option></select></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
+          <div className="admin-user-role-select"><span>权限角色</span><ChoiceSelect label={`${account.nickname || "探索者"}的管理角色`} value={account.role} disabled={saving === account.id} options={[{value:"member",label:"普通用户"},{value:"reviewer",label:"审核员"},{value:"content_manager",label:"内容管理员"},{value:"admin",label:"超级管理员"}]} onChange={(role) => void changeUserRole(account, role as AdminUser["role"])}/></div>
+          {!(["admin", "content_manager", "reviewer"].includes(account.role)) && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
+          {restrictionTarget === account.id && !(["admin", "content_manager", "reviewer"].includes(account.role)) && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<select value={restrictionDuration} onChange={(event) => setRestrictionDuration(event.target.value as typeof restrictionDuration)}><option value="1h">1 小时</option><option value="24h">24 小时</option><option value="7d">7 天</option><option value="30d">30 天</option><option value="permanent">永久</option></select></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
         </article>;
       })}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}
       {userTotal > users.length && !appliedUserQuery && <p className="admin-user-limit">当前显示最近 {users.length} 个账号，共 {userTotal} 个。</p>}
@@ -384,7 +415,8 @@ export default function AdminModeration({ onBack }: Props) {
         <div className="moderation-item-heading"><strong>私信举报 · {report.status === "open" ? "待处理" : report.status === "resolved" ? "已处理" : "已驳回"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
         <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
         <p className="moderation-author">被举报账号：{report.user_id ? report.user_id.slice(0, 8) : "未指定"} · 举报账号：{report.reporter_id.slice(0, 8)}</p>
-        {report.status === "open" && <div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div>}
+        {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
+        {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录核查结论，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
       </article>)}</div> : <p className="moderation-empty">当前没有私信举报。</p>
     ) : section === "reports" ? (
       reports.length ? <div className="moderation-list">{reports.map((report) => <article className="moderation-item" key={report.id}>

@@ -73,6 +73,10 @@ import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
 import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
+import AISpace from "./AISpace";
+import AIResourceDetails from "./AIResourceDetails";
+import AppealCenter from "./AppealCenter";
+import type { AiContentType } from "@/lib/ai-resources";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -82,6 +86,49 @@ const FLIP_RAIN_STAGGER_WINDOW_MS = 900;
 const FLIP_RAIN_JITTER_MS = 90;
 const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
 const RATING_COLORS = ["#ff5d78", "#ff9452", "#edbd36", "#65b95e", "#34aeb5"];
+const AI_EDITOR_FIELDS: Record<AiContentType, { key: string; label: string; hint: string; multiline?: boolean; required?: boolean }[]> = {
+  knowledge_article: [],
+  agent: [
+    { key: "functionality", label: "主要功能", hint: "这个 Agent 能解决什么问题", multiline: true, required: true },
+    { key: "platforms", label: "兼容平台", hint: "例如：OpenAI API、Claude、Dify", required: true },
+    { key: "run_mode", label: "运行方式", hint: "云端 / 本地 / 工作流", required: true },
+    { key: "source_url", label: "项目来源", hint: "公开的 HTTPS 项目地址", required: true },
+    { key: "use_cases", label: "适用场景", hint: "补充推荐使用场景", multiline: true },
+    { key: "tutorial", label: "使用教程", hint: "安装和使用步骤", multiline: true },
+    { key: "version", label: "版本", hint: "例如：1.0.0", required: true },
+    { key: "changelog", label: "更新记录", hint: "本次版本变更", multiline: true },
+  ],
+  skill: [
+    { key: "functionality", label: "功能说明", hint: "这个 Skill 扩展了什么能力", multiline: true, required: true },
+    { key: "environments", label: "兼容环境", hint: "例如：Claude Code、Cursor", required: true },
+    { key: "installation", label: "安装步骤", hint: "安装命令或配置步骤", multiline: true, required: true },
+    { key: "configuration", label: "配置内容", hint: "可选配置或环境变量", multiline: true },
+    { key: "example", label: "使用示例", hint: "展示典型调用方式", multiline: true },
+    { key: "version", label: "版本", hint: "例如：1.0.0", required: true },
+    { key: "changelog", label: "更新记录", hint: "本次版本变更", multiline: true },
+    { key: "source_url", label: "来源地址", hint: "公开的 HTTPS 项目地址", required: true },
+  ],
+  prompt: [
+    { key: "model", label: "适用模型", hint: "例如：GPT-5、Claude、通用模型", required: true },
+    { key: "scenario", label: "应用场景", hint: "说明适用任务", required: true },
+    { key: "prompt", label: "完整提示词", hint: "请粘贴可直接使用的提示词", multiline: true, required: true },
+    { key: "variables", label: "可替换变量", hint: "例如：主题、语气、受众", multiline: true },
+    { key: "example", label: "使用示例", hint: "补充输入和输出示例", multiline: true },
+  ],
+  ai_tool: [
+    { key: "functionality", label: "功能说明", hint: "工具核心能力", multiline: true, required: true },
+    { key: "platforms", label: "支持平台", hint: "Web、iOS、Android、桌面端等", required: true },
+    { key: "source_url", label: "工具地址", hint: "公开的网站或项目地址", required: true },
+    { key: "pricing", label: "价格信息", hint: "免费方案或订阅价格" },
+    { key: "experience", label: "使用体验", hint: "优缺点与适合人群", multiline: true },
+  ],
+  tutorial: [
+    { key: "difficulty", label: "难度", hint: "入门 / 进阶 / 高级", required: true },
+    { key: "requirements", label: "准备条件", hint: "账号、模型、软件或素材", required: true },
+    { key: "steps", label: "实战步骤", hint: "按顺序说明如何完成任务", multiline: true, required: true },
+    { key: "source_url", label: "参考来源", hint: "可选公开资料地址" },
+  ],
+};
 
 function discoverCoverRatio(postId: number) {
   const shape = Math.abs(postId) % 8;
@@ -358,6 +405,7 @@ export default function Community() {
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
+  const discoverScrollPositions = useRef<Record<"community" | "ai", number>>({ community: 0, ai: 0 });
   const sharedPostHandled = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [publicBookmarks, setPublicBookmarks] = useState(false);
@@ -367,7 +415,8 @@ export default function Community() {
   const [chatConversationOpen, setChatConversationOpen] = useState(false);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
+  const [adminRole, setAdminRole] = useState<"member" | "admin" | "content_manager" | "reviewer">("member");
   const adminEntryPending = useRef(false);
   const [reportPostId, setReportPostId] = useState<string | null>(null);
   const [reportCommentId, setReportCommentId] = useState<string | null>(null);
@@ -475,6 +524,7 @@ export default function Community() {
     >(null),
     [justFlippedId, setJustFlippedId] = useState<number | null>(null),
     [category, setCategory] = useState("全部"),
+    [discoverChannel, setDiscoverChannel] = useState<"community" | "ai">("community"),
     [searchDraft, setSearchDraft] = useState(""),
     [searchTerm, setSearchTerm] = useState(""),
     [searchKind, setSearchKind] = useState<"content" | "people">("content"),
@@ -514,6 +564,11 @@ export default function Community() {
     [aiPreviousTopics, setAiPreviousTopics] = useState<string[] | null>(null),
     [aiResultApplied, setAiResultApplied] = useState(false),
     [writeTag, setWriteTag] = useState<string>(tags[0]),
+    [communityCategories, setCommunityCategories] = useState<string[]>([...tags]),
+    [aiCategories, setAiCategories] = useState<{id:number;name:string;description?:string;kind?:string;moderation_status?:string}[]>([]),
+    [writeChannel, setWriteChannel] = useState<"community" | "ai">("community"),
+    [writeContentType, setWriteContentType] = useState<AiContentType>("knowledge_article"),
+    [aiResourceFields, setAiResourceFields] = useState<Record<string, string>>({}),
     [writeTopics, setWriteTopics] = useState<string[]>([]),
     [writeSeriesId, setWriteSeriesId] = useState(""),
     [topicSearch, setTopicSearch] = useState(""),
@@ -949,25 +1004,40 @@ export default function Community() {
     }
   }, [category, sort, state.interests, state.ratings, communityRatings]);
   useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    void Promise.all([
+      cloudFetch("/api/v1/categories?channel=community&kind=category", { cache: "no-store" }).then((response) => response.json()),
+      cloudFetch("/api/v1/categories?channel=ai&kind=category", { cache: "no-store" }).then((response) => response.json()),
+    ]).then(([communityResult, aiResult]) => {
+      if (!active) return;
+      const communityItems = Array.isArray(communityResult.data?.items) ? communityResult.data.items : [];
+      const aiItems = Array.isArray(aiResult.data?.items) ? aiResult.data.items : [];
+      if (communityItems.length) setCommunityCategories(communityItems.filter((item: { kind?: string }) => item.kind === "category").map((item: { name: string }) => item.name));
+      if (aiItems.length) setAiCategories(aiItems.filter((item: { kind?: string }) => item.kind === "category"));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [ready]);
+  useEffect(() => {
     const updateColumns = () => setDiscoverColumnCount(window.innerWidth >= 1600 ? 5 : window.innerWidth >= 1280 ? 4 : window.innerWidth >= 768 ? 3 : 2);
     updateColumns();
     window.addEventListener("resize", updateColumns, { passive: true });
     return () => window.removeEventListener("resize", updateColumns);
   }, []);
   useEffect(() => {
-    if (!ready || tab !== "discover") return;
+    if (!ready || tab !== "discover" || discoverChannel !== "community") return;
     const wantedTag = category;
     if (feedLoadedTag === wantedTag && feedLoadedSort === sort && (publicFeed.length || feedPage > 0)) return;
     void loadPublicFeed(1, true, wantedTag);
-  }, [ready, tab, category, sort, feedLoadedTag, feedLoadedSort, publicFeed.length, feedPage, loadPublicFeed]);
+  }, [ready, tab, discoverChannel, category, sort, feedLoadedTag, feedLoadedSort, publicFeed.length, feedPage, loadPublicFeed]);
   useEffect(() => {
-    if (tab !== "discover") return;
+    if (tab !== "discover" || discoverChannel !== "community") return;
     let active = true;
     void cloudFetch("/api/v1/topic-events", { cache: "no-store" }).then((response) => response.json()).then((result) => {
       if (active && Array.isArray(result.data?.items)) setTopicEvents(result.data.items as TopicEvent[]);
     }).catch(() => {});
     return () => { active = false; };
-  }, [tab]);
+  }, [tab, discoverChannel]);
   useEffect(() => {
     if (!accountId) { setCreatorSeries([]); return; }
     let active = true;
@@ -2138,7 +2208,10 @@ export default function Community() {
     if (composerVideo && composerImages.length) return toast("视频 Beta 暂不与图片混发，请移除其中一种媒体");
     try {
       const old = state.own.find((p) => p.id === editing);
-      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
+      const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
+      const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai"
+        ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
+        : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
@@ -2169,18 +2242,10 @@ export default function Community() {
         }
       }
       setUploadingImages(false);
-      const item = await cloudRequest("/api/v1/library-state", {
-        action: "publish",
-        id: draft.id,
-        title,
-        body,
-        tag: writeTag,
-        topics: writeTopics,
-        seriesId: writeSeriesId || null,
-        poll: pollDraft.question ? pollDraft : null,
-        mediaPaths: [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])],
-        coverUrl: cover?.external ? cover.url : null,
-      });
+      const mediaPaths = [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])];
+      const item = writeChannel === "ai"
+        ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData, mediaPaths, coverUrl: cover?.external ? cover.url : null })
+        : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null });
       if (!item) return;
       update((s) => ({
         ...s,
@@ -2203,6 +2268,9 @@ export default function Community() {
       setEditing(null);
       setComposerEditingPublished(false);
       setComposerRevisionMode(false);
+      setWriteChannel("community");
+      setWriteContentType("knowledge_article");
+      setAiResourceFields({});
       setComposerValidation("");
       const owner = accountId || "guest";
       localStorage.removeItem(`heika-compose-${owner}`);
@@ -2214,14 +2282,19 @@ export default function Community() {
       toast(e instanceof Error ? e.message : "发布失败，请重试");
     }
   };
-  const openComposer = async (post?: Post) => {
+  const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community") => {
     videoCompressionAbort.current?.abort();
     videoCompressionAbort.current = null;
     videoCompressionSequence.current += 1;
     if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
-    const stored = !post ? state.own.find((item) => item.status === "draft") : undefined;
+    const stored = !post ? state.own.find((item) => item.status === "draft" && (item.channel || "community") === requestedChannel) : undefined;
     const initialPost = post || stored;
     const revisionPayload = initialPost?.pendingRevision?.payload;
+    const channel = initialPost?.channel === "ai" ? "ai" : initialPost ? "community" : requestedChannel;
+    const initialResourceData = revisionPayload?.resourceData || initialPost?.resourceData || {};
+    setWriteChannel(channel);
+    setWriteContentType(channel === "ai" && initialPost?.contentType && initialPost.contentType !== "community_post" ? initialPost.contentType : "knowledge_article");
+    setAiResourceFields(Object.fromEntries(Object.entries(initialResourceData).map(([key, value]) => [key, Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : ""]).filter(([, value]) => Boolean(value))));
     setEditing(initialPost?.id ?? null);
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
     setComposerRevisionMode(Boolean(post && (post.status === "published" || post.pendingRevision)));
@@ -2229,8 +2302,10 @@ export default function Community() {
     setBody(revisionPayload?.body || initialPost?.body || "");
     setPollQuestion("");
     setPollOptions(["", ""]);
-    setWriteTag(revisionPayload?.tag || initialPost?.tag || tags[0]);
-    setWriteTopics(revisionPayload?.topics?.length ? revisionPayload.topics : initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [tags[0]]);
+    setWriteTag(revisionPayload?.tag || initialPost?.tag || (channel === "ai" ? aiCategories[0]?.name || "AI 知识" : communityCategories[0] || tags[0]));
+    setWriteTopics(channel === "ai"
+      ? revisionPayload?.topics || initialPost?.topics || []
+      : revisionPayload?.topics?.length ? revisionPayload.topics : initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [communityCategories[0] || tags[0]]);
     setWriteSeriesId(revisionPayload?.seriesId || initialPost?.seriesId || "");
     setTopicSearch("");
     setComposerImages([]);
@@ -2279,15 +2354,18 @@ export default function Community() {
     const owner = accountId || "guest";
     if (!initialPost || initialPost.status === "draft") {
       try {
-        const ownRaw = localStorage.getItem(`heika-compose-${owner}`);
-        const raw = ownRaw || (accountId ? localStorage.getItem("heika-compose-guest") : null);
+        const ownRaw = localStorage.getItem(`heika-compose-${channel}-${owner}`);
+        const legacyRaw = channel === "community" ? localStorage.getItem(`heika-compose-${owner}`) : null;
+        const raw = ownRaw || legacyRaw || (accountId && channel === "community" ? localStorage.getItem("heika-compose-guest") : null);
         const fileOwner = ownRaw || !accountId ? owner : "guest";
         if (raw) {
-          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
+          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; channel?: "community" | "ai"; contentType?: AiContentType; resourceData?: Record<string,string>; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
           setTitle(saved.title || "");
           setBody(saved.body || "");
-          setWriteTag(saved.tag || tags[0]);
-          setWriteTopics(saved.topics || [saved.tag || tags[0]]);
+          setWriteTag(saved.tag || (channel === "ai" ? aiCategories[0]?.name || "AI 知识" : communityCategories[0] || tags[0]));
+          setWriteTopics(saved.topics || []);
+          setWriteContentType(saved.contentType || "knowledge_article");
+          setAiResourceFields(saved.resourceData || {});
           setWriteSeriesId(saved.seriesId || "");
           setPollQuestion(saved.poll?.question || "");
           setPollOptions(saved.poll?.options?.length ? [...saved.poll.options, "", ""].slice(0, 4) : ["", ""]);
@@ -2334,16 +2412,20 @@ export default function Community() {
         const owner = accountId || "guest";
         await saveDraftFiles(owner, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
         const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
-        const draftData = { title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
-        localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData)); setDraftSaved(true);
+        const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
+        localStorage.setItem(`heika-compose-${writeChannel}-${owner}`, JSON.stringify(draftData));
+        if (writeChannel === "community") localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData));
+        setDraftSaved(true);
         if (accountId && !composerEditingPublished) {
-          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex });
-          let cloudDraft = state.own.find((item) => item.id === editing && item.status === "draft");
+          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex, writeChannel, writeContentType, aiResourceFields });
+          let cloudDraft = state.own.find((item) => item.id === editing && item.status === "draft" && (item.channel || "community") === writeChannel);
           if (lastDraftPayload.current !== signature || !cloudDraft) {
             lastDraftPayload.current = signature; setDraftSaving(true);
             try {
               const cover = composerImages[coverIndex];
-              const saved = await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
+              const saved = writeChannel === "ai"
+                ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: cloudDraft?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields, coverUrl: cover?.external ? cover.url : null }) as Post | null
+                : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
               if (saved) { cloudDraft = saved; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] })); }
             } catch { setDraftSaved(false); toast("云端草稿保存失败，已保留本机草稿"); }
             finally { setDraftSaving(false); }
@@ -2375,7 +2457,7 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   // Including state.own and the per-render upload helper would restart cloud autosave after each synchronized draft update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished]);
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished, writeChannel, writeContentType, aiResourceFields]);
   const chooseComposerImages = async (files: FileList | null) => {
     if (!files?.length) return;
     if (composerVideo) return toast("视频 Beta 暂不与图片混发，请先移除视频");
@@ -2501,20 +2583,33 @@ export default function Community() {
       setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
     }
   };
+  const switchDiscoverChannel = (next: "community" | "ai") => {
+    if (next === discoverChannel) return;
+    discoverScrollPositions.current[discoverChannel] = window.scrollY;
+    setDiscoverChannel(next);
+    requestAnimationFrame(() => window.scrollTo({ top: discoverScrollPositions.current[next], behavior: "instant" }));
+  };
+  const openAiPost = (item: Post, source: Element | null) => {
+    setPublicFeed((current) => current.some((post) => post.id === item.id) ? current : [...current, item]);
+    setFeedPostIds((current) => current.includes(item.id) ? current : [...current, item.id]);
+    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source)));
+  };
   useEffect(() => {
-    const isDiscover = tab === "discover" && modal !== "write";
+    const isDiscover = tab === "discover" && discoverChannel === "community" && modal !== "write";
     if (!isDiscover && modal !== "write") return;
     let alive = true;
-    const suffix = isDiscover ? "?featured=1" : topicSearch.trim() ? `?q=${encodeURIComponent(topicSearch.trim())}` : "";
-    void cloudFetch(`/api/v1/topics${suffix}`).then(async (response) => {
+    const url = modal === "write" && writeChannel === "ai"
+      ? `/api/v1/categories?channel=ai&kind=tag${topicSearch.trim() ? `&q=${encodeURIComponent(topicSearch.trim())}` : ""}`
+      : `/api/v1/topics${isDiscover ? "?featured=1" : topicSearch.trim() ? `?q=${encodeURIComponent(topicSearch.trim())}` : ""}`;
+    void cloudFetch(url).then(async (response) => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题读取失败");
-      if (alive && Array.isArray(result.data)) setTopicChoices(result.data as TopicSummary[]);
+      if (alive && Array.isArray(result.data)) setTopicChoices((Array.isArray(result.data.items) ? result.data.items : result.data) as TopicSummary[]);
     }).catch(() => {
       if (alive) setTopicChoices(tags.map((name, index) => ({ id: index + 1, name, description: "", postCount: 0, participantCount: 0 })));
     });
     return () => { alive = false; };
-  }, [tab, modal, topicSearch]);
+  }, [tab, modal, topicSearch, discoverChannel, writeChannel]);
   const createTopic = async () => {
     const name = topicSearch.trim().replace(/^#+/, "");
     if (!name) return;
@@ -2522,6 +2617,12 @@ export default function Community() {
     if (writeTopics.length >= 5) return toast("最多选择 5 个话题");
     setCreatingTopic(true);
     try {
+      if (writeChannel === "ai") {
+        await cloudRequest("/api/v1/categories/tags", { name, channel: "ai" });
+        setTopicSearch("");
+        toast("AI 标签已提交审核，通过后即可使用");
+        return;
+      }
       const created = await cloudRequest("/api/v1/topics", { name }) as TopicSummary;
       if (!created?.name) throw new Error("话题创建失败");
       setTopicChoices((items) => [created, ...items.filter((item) => item.name.toLocaleLowerCase("zh-CN") !== created.name.toLocaleLowerCase("zh-CN"))]);
@@ -3038,7 +3139,8 @@ export default function Community() {
           setPublicBookmarksLoaded(false);
           setAccountId(user?.id || null);
           if (!user) {
-            setIsAdmin(false);
+            setIsStaff(false);
+            setAdminRole("member");
             setPublicBookmarks(false);
             setPublicBookmarksLoaded(true);
             setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
@@ -3053,7 +3155,8 @@ export default function Community() {
             } catch { setState((s) => ({ ...initial, cardIds: s.cardIds })); }
             return;
           }
-          setIsAdmin(false);
+          setIsStaff(false);
+          setAdminRole("member");
           setPublicBookmarks(false);
           setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
           restoredUserId = user.id;
@@ -3074,11 +3177,12 @@ export default function Community() {
             }
             setPublicBookmarks(Boolean(data.profile?.show_bookmarks));
             setPublicBookmarksLoaded(true);
-            const hasAdminAccess = data.profile?.role === "admin";
-            setIsAdmin(hasAdminAccess);
+            const role = data.profile?.role === "admin" || data.profile?.role === "content_manager" || data.profile?.role === "reviewer" ? data.profile.role : "member";
+            setAdminRole(role);
+            setIsStaff(role !== "member");
             if (adminEntryPending.current) {
               adminEntryPending.current = false;
-              if (hasAdminAccess) setTab("moderation");
+              if (role !== "member") setTab("moderation");
               else toast("当前账号没有管理员权限。");
             }
             setStorageKey(`heika-user-${user.id}`);
@@ -3519,13 +3623,18 @@ export default function Community() {
       )}
       {tab === "discover" && (
         <section className="page editorial-home discover-page">
+          <div className="discover-channel-tabs" role="tablist" aria-label="发现频道">
+            <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>社区</span><small>创作与灵感</small></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected" : ""} onClick={() => switchDiscoverChannel("ai")}><span>AI 空间</span><small>知识与资源</small></button>
+          </div>
+          <div className="discover-community-channel" hidden={discoverChannel !== "community"}>
           <button className="search search-launch" onClick={openSearch}><Search size={18}/><span>搜索内容或用户</span><kbd>⌕</kbd></button>
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
           <RecommendationControls accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
           <div className="filters editorial-filters">
-            {["全部", ...tags].map((t) => (
+            {["全部", ...(communityCategories.length ? communityCategories : tags)].map((t) => (
               <button
                 key={t}
                 className={category === t ? "selected" : ""}
@@ -3564,6 +3673,8 @@ export default function Community() {
             <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
           </div>
           {feed(list)}
+          </div>
+          <AISpace hidden={discoverChannel !== "ai"} accountId={accountId} onOpen={openAiPost} onCreate={() => void openComposer(undefined, "ai")} onLogin={() => setTab("messages")} onNotice={toast}/>
         </section>
       )}
       {tab === "co-explore" && <CoExplore accountId={accountId} posts={publicFeed.length ? publicFeed : all} onLogin={() => setTab("messages")} onNotice={toast}/>}
@@ -3620,7 +3731,7 @@ export default function Community() {
             <button className="settings-category-card" onClick={() => setSettingsPersonalOpen(true)}><span className="settings-category-icon"><Settings size={19}/></span><span><strong>个人设置</strong><small>外观、浏览、阅读与通知偏好</small></span><ChevronRight size={18}/></button>
             <button className="settings-category-card" onClick={() => { setDebugReturnTab("settings"); setTab("debug"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="settings-category-icon"><RefreshCw size={18}/></span><span><strong>调试模式</strong><small>开发工具与重置体验</small></span><ChevronRight size={18}/></button>
             <button className="settings-category-card" onClick={() => openCreatorCenter("settings")}><span className="settings-category-icon"><Sparkles size={19}/></span><span><strong>创作者中心</strong><small>创作数据与成长任务</small></span><ChevronRight size={18}/></button>
-            {isAdmin && <button className="settings-category-card" onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="settings-category-icon"><ShieldCheck size={18}/></span><span><strong>安全管理</strong><small>举报与内容审核</small></span><ChevronRight size={18}/></button>}
+            {isStaff && <button className="settings-category-card" onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="settings-category-icon"><ShieldCheck size={18}/></span><span><strong>管理后台</strong><small>内容审核、社区治理与 AI 专区</small></span><ChevronRight size={18}/></button>}
           </div>}
           {settingsPersonalOpen && <button type="button" className="back settings-back settings-category-back" onClick={() => setSettingsPersonalOpen(false)}><ArrowLeft size={18}/> 设置分类</button>}
           {settingsPersonalOpen && <>
@@ -3655,7 +3766,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.5</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.36.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3692,7 +3803,7 @@ export default function Community() {
             </div>;
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
-          {settingsDetail === "security" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility}/ >}
+          {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
           {settingsDetail === "membership" && <div className="membership-center-page">
             <div className="membership-center-summary">
               <span className="membership-center-mark"><Crown size={19}/></span>
@@ -3807,13 +3918,14 @@ export default function Community() {
           )}
         </section>
       )}
-      {tab === "moderation" && isAdmin && <AdminModeration onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
+      {tab === "moderation" && isStaff && <AdminModeration role={adminRole as "admin" | "content_manager" | "reviewer"} onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
       {tab === "about" && (
         <section className="page about-page">
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.35.5</p>
+          <p className="lead">HEIKA · 版本 2.36.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.36.0</strong><small>2026.11.05</small></div><ul><li>发现页新增独立的 AI 空间频道，支持 Agent、Skills、Prompt、AI 知识、AI 工具与实战教程。</li><li>AI 内容使用结构化发布、收藏、评论、资源版本记录与失效反馈，并经审核后公开。</li><li>管理后台增加真实运营概览、AI 审核与精选、分类标签治理、申诉处理和分级管理员角色。</li><li>原有社区分类和翻卡数据保留；社区推荐与每日翻卡继续沿用既有交互规则。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.5</strong><small>2026.11.05</small></div><ul><li>发布页移除顶部说明块与独立写作提示，标题和正文直接进入编辑。</li><li>图片和视频 Beta 改为并列常驻入口，上传、审核和草稿提示就近展示。</li><li>大视频在浏览器支持时使用本地编码降至 720p 级别并压缩码率，保留音轨、原画质回退及现有分片续传。</li><li>发布操作栏和媒体选择加入轻量玻璃质感，并优化窄屏可读性与安全区间距。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.4</strong><small>2026.11.05</small></div><ul><li>通知横幅按场景显示爱心、评论、收藏、关注等对应图标，并下移 4px。</li><li>详情页点赞按钮显示作品获赞数，成功点赞或取消后同步更新数字。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.3</strong><small>2026.11.05</small></div><ul><li>通知恢复紧凑旧版样式，保留新版顶部入场、退场动画及滑动交互。</li><li>管理员后台改为分组工作台，点击模块即可进入对应审核或管理界面。</li><li>修复带图片或视频的已发布作品修改审核失败问题，媒体路径长度校验不再触发 PostgreSQL 正则错误。</li></ul></div>
@@ -4073,7 +4185,7 @@ export default function Community() {
           <p className="lead">一键清空个人偏好、翻卡与收藏状态，重新开始新人引导。</p>
           <button className="debug-admin-entry" onClick={() => {
             if (accountId) {
-              if (isAdmin) { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }
+              if (isStaff) { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }
               else toast("当前账号没有管理员权限。");
               return;
             }
@@ -4082,7 +4194,7 @@ export default function Community() {
             requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
           }}>
             <span><ShieldCheck size={19}/></span>
-            <span><strong>{isAdmin ? "进入管理后台" : "管理员后台登录"}</strong><small>{isAdmin ? "账号、内容与社区举报管理" : "使用管理员账号登录后进入后台"}</small></span>
+            <span><strong>{isStaff ? "进入管理后台" : "管理员后台登录"}</strong><small>{isStaff ? "账号、内容与社区举报管理" : "使用管理员账号登录后进入后台"}</small></span>
             <ChevronRight size={17}/>
           </button>
           <button className="primary-button full debug-reset-button" disabled={resetBusy} onClick={() => void resetToFreshStart()}>
@@ -4486,6 +4598,7 @@ export default function Community() {
                 {post.seriesTitle && <div className="detail-series-badge"><span>系列</span><strong>{post.seriesTitle}</strong>{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
                 {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}><EditorialArticle post={post} /></PrivateHighlights> : <EditorialArticle post={post} />}
+                {post.channel === "ai" && post.cloudId && <AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}/>}
                 {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <span>给这篇内容评分</span>
@@ -4831,6 +4944,8 @@ export default function Community() {
             ) : (
               <div className="composer-workspace">
               <div className="composer-scroll">
+                {editing === null && <section className="composer-channel-picker" role="group" aria-label="发布内容类型"><strong>发布到</strong><div>{([["community", "社区作品"], ["ai", "AI 空间"]] as const).map(([value, label]) => <button type="button" key={value} className={writeChannel === value ? "selected" : ""} aria-pressed={writeChannel === value} onClick={() => { setWriteChannel(value); setWriteTag(value === "ai" ? aiCategories.find((item) => item.kind === "category")?.name || "AI 知识" : communityCategories[0] || tags[0]); setWriteTopics([]); setWriteContentType("knowledge_article"); setAiResourceFields({}); }}>{label}</button>)}</div></section>}
+                {writeChannel === "ai" && <section className="composer-ai-type"><label>AI 内容类型<select value={writeContentType} onChange={(event) => setWriteContentType(event.target.value as AiContentType)}>{([["knowledge_article", "AI 知识文章"], ["agent", "Agent 智能体"], ["skill", "Skills 技能"], ["prompt", "Prompt 提示词"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"]] as const).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><small>{writeContentType === "knowledge_article" ? "使用标准图文文章格式，支持 Markdown。" : "按类型填写结构化字段；发布后由管理员审核，并保留已发布版本。"}</small></section>}
                 <label className="composer-title-field">
                   标题
                   <input
@@ -4860,6 +4975,7 @@ export default function Community() {
                   <small id="composer-body-help" className="composer-field-note">支持 Markdown · 最多 5000 字</small>
                 </label>
                 {composerValidation === "body" && <p id="composer-body-error" className="composer-field-error composer-body-error" role="alert">请填写正文。</p>}
+                {writeChannel === "ai" && AI_EDITOR_FIELDS[writeContentType].length > 0 && <section className="composer-ai-resource-fields" aria-label="AI 资源信息"><div className="composer-section-heading"><span><strong>资源信息</strong><small>代码、安装命令和 Prompt 仅展示与复制，不会在服务器执行</small></span><span>{AI_EDITOR_FIELDS[writeContentType].filter((field) => field.required).length} 项必填</span></div>{AI_EDITOR_FIELDS[writeContentType].map((field) => <label key={field.key}>{field.label}{field.required && <i>必填</i>}{field.multiline ? <textarea value={aiResourceFields[field.key] || ""} maxLength={12000} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint} rows={field.key === "prompt" || field.key === "installation" || field.key === "steps" ? 6 : 3}/> : <input type={field.key.endsWith("_url") ? "url" : "text"} value={aiResourceFields[field.key] || ""} maxLength={1200} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint}/>}</label>)}</section>}
                 <section className="composer-media-picker" aria-label="选择图片或视频">
                   <div className="composer-media-choices" role="group" aria-label="媒体类型">
                     <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerVideo || composerImages.length >= 9 ? " disabled" : ""}`}>
@@ -4888,12 +5004,12 @@ export default function Community() {
                 <details className="composer-advanced">
                     <summary><span><strong>更多选项</strong><small>互动投票与 AI 辅助</small></span><ChevronDown size={17}/></summary>
                   <div className="composer-advanced-content">
-                <section className="composer-poll-editor" aria-label="添加投票">
+                {writeChannel === "community" && <section className="composer-poll-editor" aria-label="添加投票">
                   <div className="composer-section-heading"><span><strong>互动投票</strong><small>给帖子增加一个单选问题，读者可查看实时结果</small></span><span>{pollQuestion.trim() ? "已添加" : "可选"}</span></div>
                   <input className="composer-poll-question" value={pollQuestion} maxLength={180} onChange={(event) => setPollQuestion(event.target.value)} placeholder="输入投票问题" aria-label="投票问题" />
                   <div className="composer-poll-options">{pollOptions.map((option, index) => <div key={index}><span>{index + 1}</span><input value={option} maxLength={80} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`选项 ${index + 1}`} aria-label={`投票选项 ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label={`删除选项 ${index + 1}`} onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15}/></button>}</div>)}</div>
                   {pollOptions.length < 4 && <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ""])}><Plus size={14}/>添加选项</button>}
-                </section>
+                </section>}
                 <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
                   <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
                   {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
@@ -4920,12 +5036,12 @@ export default function Community() {
                   </div>
                 </section>}
                 <label className="composer-category-field">
-                  分类
+                  {writeChannel === "ai" ? "AI 分类" : "分类"}
                   <select value={writeTag} onChange={(event) => setWriteTag(event.target.value)}>
-                    {tags.map((tag) => <option key={tag}>{tag}</option>)}
+                    {(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => <option key={tag}>{tag}</option>)}
                   </select>
                 </label>
-                {accountId && <label className="composer-series-field">加入作品系列<select value={writeSeriesId} onChange={(event) => setWriteSeriesId(event.target.value)}><option value="">暂不加入系列</option>{creatorSeries.map((series) => <option key={series.id} value={series.id}>{series.title}</option>)}</select><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
+                {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<select value={writeSeriesId} onChange={(event) => setWriteSeriesId(event.target.value)}><option value="">暂不加入系列</option>{creatorSeries.map((series) => <option key={series.id} value={series.id}>{series.title}</option>)}</select><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
                 <section className="composer-topic-section" aria-label="选择话题">
                   <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
                   {writeTopics.length > 0 && <div className="composer-selected-topics" aria-label="已选话题">{writeTopics.map((topic) => <button type="button" key={topic} onClick={() => setWriteTopics((current) => current.filter((item) => item !== topic))}>#{topic}<span aria-hidden="true">×</span></button>)}</div>}

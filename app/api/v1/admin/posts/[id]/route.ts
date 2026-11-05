@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
 import { signPostMedia } from "@/lib/server/media";
 import { recordModerationAudit } from "@/lib/server/moderation-audit";
+import { requirePermission } from "@/lib/server/require-permission";
 
 function applyError(error: { code?: string; message?: string }) {
   const message = error.message || "";
@@ -15,14 +16,14 @@ function applyError(error: { code?: string; message?: string }) {
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return respond(async () => {
-    const { db, user } = await context(req);
-    const { data: profile, error: profileError } = await db.from("profiles").select("role").eq("id", user!.id).single();
-    dbError(profileError);
-    if (profile?.role !== "admin") throw new ApiError(403, "需要管理员权限");
+    const { db, user } = await requirePermission(req, "content.review");
     const body = await jsonBody(req);
     if (body.status !== "published" && body.status !== "hidden") throw new ApiError(400, "审核状态无效");
     const reviewNote = textField(body.review_note, "审核说明", 3, 500);
     const postId = uuid((await params).id);
+    const channel = await db.from("posts").select("channel").eq("id", postId).maybeSingle();
+    dbError(channel.error);
+    if (channel.data?.channel === "ai") throw new ApiError(409, "AI 内容请在 AI 专区审核模块处理");
     const { data: revision, error: revisionError } = await db.from("post_revisions")
       .select("id,payload").eq("post_id", postId).eq("status", "pending").maybeSingle();
     dbError(revisionError);

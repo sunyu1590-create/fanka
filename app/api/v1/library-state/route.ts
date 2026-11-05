@@ -397,7 +397,11 @@ export async function POST(req: NextRequest) {
       user_id: user!.id,
       post_id: post!.id,
     };
-    if (action === "view") fields.viewed_at = new Date().toISOString();
+    if (action === "view") {
+      const { data: viewCount, error: viewError } = await db.rpc("record_post_view", { p_post_id: post!.id });
+      dbError(viewError);
+      return { saved: true, viewCount: Number(viewCount) || 0 };
+    }
     else if (action === "open") {
       fields.opened_at = new Date().toISOString();
       const { data: stats, error: statsError } = await db
