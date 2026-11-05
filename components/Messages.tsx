@@ -4,6 +4,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ArrowLeft, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Send, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
+import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
 type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
@@ -22,6 +23,9 @@ export default function Messages({
   onConversationChange,
   onOpenProfile,
   onOpenNotifications,
+  onNotice,
+  onOpenConversationPeer,
+  messageNotificationsEnabled = false,
   isActive = true,
 }: {
   initialPeer?: string | null;
@@ -29,6 +33,9 @@ export default function Messages({
   onConversationChange?: (isOpen: boolean) => void;
   onOpenProfile?: (id: string) => void;
   onOpenNotifications?: () => void;
+  onNotice?: (message: string, options?: NoticeOptions) => void;
+  onOpenConversationPeer?: (id: string) => void;
+  messageNotificationsEnabled?: boolean;
   isActive?: boolean;
 }) {
   const [db, setDb] = useState<SupabaseClient>(),
@@ -104,10 +111,20 @@ export default function Messages({
   }, [db, messages, media]);
   const list = useRef<HTMLDivElement>(null),
     nearBottom = useRef(true),
-    activeRef = useRef<Room | null>(null);
+    activeRef = useRef<Room | null>(null),
+    roomsRef = useRef<Room[]>([]),
+    namesRef = useRef<Record<string, Profile>>({}),
+    noticeRef = useRef(onNotice),
+    openPeerRef = useRef(onOpenConversationPeer),
+    messageNoticesEnabledRef = useRef(messageNotificationsEnabled);
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = user?.id ?? null;
   activeRef.current = active;
+  roomsRef.current = rooms;
+  namesRef.current = names;
+  noticeRef.current = onNotice;
+  openPeerRef.current = onOpenConversationPeer;
+  messageNoticesEnabledRef.current = messageNotificationsEnabled;
   useEffect(() => {
     let alive = true;
     let cleanup = () => {};
@@ -283,7 +300,20 @@ export default function Messages({
                 }),
               );
             else setNewBelow(true);
-          } else void refresh();
+          } else {
+            void refresh();
+            const room = roomsRef.current.find((item) => item.id === row.conversation_id);
+            const peerId = room ? (room.user_a === user.id ? room.user_b : room.user_a) : "";
+            const peer = peerId ? namesRef.current[peerId] : null;
+            if (row.sender_id !== user.id && messageNoticesEnabledRef.current && document.visibilityState === "visible") {
+              noticeRef.current?.(row.media_path ? "向你发送了一张图片" : row.body, {
+                title: peer?.nickname || "新消息",
+                avatarUrl: peer?.avatar_url,
+                kind: "message",
+                onActivate: () => { if (peerId) openPeerRef.current?.(peerId); },
+              });
+            }
+          }
         },
       )
       .subscribe((status) => {

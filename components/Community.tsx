@@ -69,6 +69,7 @@ import { REPORT_REASONS } from "@/lib/report-validation";
 import { userMessage } from "@/lib/user-message";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
+import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -411,6 +412,11 @@ export default function Community() {
   const flipRainTimer = useRef<number | null>(null);
   const noticeTimer = useRef<number | null>(null);
   const noticeExitTimer = useRef<number | null>(null);
+  const noticeRef = useRef<NoticeBannerItem | null>(null);
+  const noticeQueue = useRef<NoticeBannerItem[]>([]);
+  const noticeSequence = useRef(0);
+  const noticeLeavingRef = useRef(false);
+  const dismissNoticeRef = useRef<() => void>(() => {});
   const [flipRainId, setFlipRainId] = useState<number | null>(null);
   const [dayTick, setDayTick] = useState(0),
     [viewerId, setViewerId] = useState<number | null>(null),
@@ -527,11 +533,54 @@ export default function Community() {
     [topicReturnPostId, setTopicReturnPostId] = useState<number | null>(null),
     [topicReturnTab, setTopicReturnTab] = useState("discover"),
     [editing, setEditing] = useState<number | null>(null),
-    [notice, setNotice] = useState(""),
-    [noticeId, setNoticeId] = useState(0),
-    [noticeLeaving, setNoticeLeaving] = useState(false);
+    [notice, setNotice] = useState<NoticeBannerItem | null>(null),
+    [noticeLeaving, setNoticeLeaving] = useState(false),
+    [noticeExpanded, setNoticeExpanded] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
   const modalCloseTimer = useRef<number | null>(null);
+  const presentNotice = useCallback((item: NoticeBannerItem) => {
+    noticeRef.current = item;
+    noticeLeavingRef.current = false;
+    setNotice(item);
+    setNoticeLeaving(false);
+    setNoticeExpanded(false);
+    noticeTimer.current = window.setTimeout(() => dismissNoticeRef.current(), item.kind === "message" ? 5000 : 3800);
+  }, []);
+  const dismissNotice = useCallback(() => {
+    if (!noticeRef.current || noticeLeavingRef.current) return;
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = null;
+    noticeLeavingRef.current = true;
+    setNoticeLeaving(true);
+    noticeExitTimer.current = window.setTimeout(() => {
+      noticeExitTimer.current = null;
+      noticeLeavingRef.current = false;
+      const next = noticeQueue.current.shift() || null;
+      noticeRef.current = null;
+      if (next) presentNotice(next);
+      else { setNotice(null); setNoticeLeaving(false); setNoticeExpanded(false); }
+    }, 220);
+  }, [presentNotice]);
+  dismissNoticeRef.current = dismissNotice;
+  const expandNotice = useCallback(() => {
+    setNoticeExpanded((expanded) => !expanded);
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => dismissNoticeRef.current(), 6500);
+  }, []);
+  const toast = useCallback((msg: string, options: NoticeOptions = {}) => {
+    const body = userMessage(msg).trim();
+    if (!body) return;
+    const error = /(失败|错误|无效|不能|暂不可用|未保存|未能)/.test(body);
+    const kind: NoticeKind = options.kind || (error ? "error" : /(评论|回复|消息|关注|收藏|点赞)/.test(body) ? "message" : /(奖励|经验|等级|会员)/.test(body) ? "reward" : /(图片|视频|作品|草稿|发布|上传)/.test(body) ? "content" : /(账号|登录|安全|密码)/.test(body) ? "account" : /(成功|已保存|已发布|已领取|完成)/.test(body) ? "success" : "general");
+    const title = options.title || (error ? "操作未完成" : kind === "message" ? "社区动态" : kind === "reward" ? "探索进度" : kind === "content" ? "内容提醒" : kind === "account" ? "账号提醒" : kind === "success" ? "操作完成" : "HEIKA 提醒");
+    if ((noticeRef.current?.title === title && noticeRef.current.body === body) || noticeQueue.current.some((queued) => queued.title === title && queued.body === body)) return;
+    const item: NoticeBannerItem = { ...options, id: ++noticeSequence.current, title, body, createdAt: Date.now(), kind };
+    if (!noticeRef.current) presentNotice(item);
+    else if (noticeQueue.current.length < 12) noticeQueue.current.push(item);
+    else if (!noticeQueue.current.some((queued) => queued.title === "更多提醒")) {
+      noticeQueue.current[noticeQueue.current.length - 1] = { id: ++noticeSequence.current, title: "更多提醒", body: "还有新的提醒，请前往消息中心查看。", createdAt: Date.now(), kind: "general" };
+    }
+  }, [presentNotice]);
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
   }, []);
@@ -818,6 +867,8 @@ export default function Community() {
     if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
+    noticeQueue.current = [];
+    noticeRef.current = null;
   }, []);
   useEffect(() => {
     if (!("Notification" in window)) {
@@ -1161,7 +1212,7 @@ export default function Community() {
       if (active) toast(error instanceof Error ? error.message : "创作者数据加载失败");
     }).finally(() => { if (active) setCreatorCenterLoading(false); });
     return () => { active = false; };
-  }, [tab, accountId]);
+  }, [tab, accountId, toast]);
   const claimCreatorMission = async (missionKey: CreatorMission["key"]) => {
     try {
       const claimed = await cloudRequest("/api/v1/creator-center", { missionKey });
@@ -1238,24 +1289,6 @@ export default function Community() {
     } finally {
       setRewardClaimBusyLevel(null);
     }
-  };
-  const toast = (msg: string) => {
-    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
-    if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
-    noticeTimer.current = null;
-    noticeExitTimer.current = null;
-    setNoticeLeaving(false);
-    setNoticeId((id) => id + 1);
-    setNotice(userMessage(msg));
-    noticeTimer.current = window.setTimeout(() => {
-      setNoticeLeaving(true);
-      noticeExitTimer.current = window.setTimeout(() => {
-        setNotice("");
-        setNoticeLeaving(false);
-        noticeExitTimer.current = null;
-        noticeTimer.current = null;
-      }, 330);
-    }, 2700);
   };
   const submitContentReport = async () => {
     if (reportSubmitting) return;
@@ -2863,7 +2896,7 @@ export default function Community() {
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
     >
-      {id === "messages" && <><span className="sr-only">私聊</span><InboxBadge enabled={state.notifications.messages} /></>}
+      {id === "messages" && <><span className="sr-only">私聊</span><InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} /></>}
       <Icon size={21} strokeWidth={1.8} />
       <span>{label}</span>
     </button>
@@ -3134,7 +3167,7 @@ export default function Community() {
       alive = false;
       cleanup();
     };
-  }, [ready]);
+  }, [ready, toast]);
   useEffect(() => {
     if (!accountId) return;
     let alive = true;
@@ -3183,6 +3216,7 @@ export default function Community() {
     state.readingMode,
     state.notifications,
     state.interests,
+    toast,
   ]);
   if (!ready)
     return (
@@ -3513,6 +3547,9 @@ export default function Community() {
             onConversationChange={setChatConversationOpen}
             onOpenProfile={(id) => setAuthorProfile(id)}
             onOpenNotifications={openNotifications}
+            onNotice={toast}
+            onOpenConversationPeer={(id) => { setMessagePeer(id); setTab("messages"); }}
+            messageNotificationsEnabled={state.notifications.messages}
           />
         </div>
       )}
@@ -3566,7 +3603,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.1</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.2</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3724,7 +3761,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.35.1</p>
+          <p className="lead">HEIKA · 版本 2.35.2</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.2</strong><small>2026.11.05</small></div><ul><li>顶部通知改为克制的品牌横幅，支持消息头像、场景图标、时间、展开与上滑关闭。</li><li>连续提醒排队展示，私聊新消息可点击横幅直接回到对应会话。</li><li>启用视频发布 Beta：支持 MP4/WebM、单个视频 50 MiB 上限和断点续传。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.1</strong><small>2026.11.05</small></div><ul><li>修正平板底栏消息与“我的”入口的网格位置，确保五个入口始终各就其位。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.0</strong><small>2026.11.05</small></div><ul><li>统一适配手机、平板、桌面与超宽屏，桌面导航固定在侧栏。</li><li>发现与个人作品网格根据屏幕宽度扩展列数，详情、消息与编辑器布局同步适配大屏。</li><li>保留现有翻卡、内容、认证和互动逻辑，并修整窄屏与平板导航切换。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.32.0</strong><small>2026.11.04</small></div><ul><li>修复发现页双列间距没有实际生效的问题，调整卡片列宽和纵向节奏。</li><li>作者、点赞和阅读信息行增加浅底色与克制圆角，和封面形成清楚层级。</li><li>私人笔记改为选中正文后自动显示；已保存摘录收进默认折叠的入口。</li></ul></div>
@@ -4851,13 +4889,7 @@ export default function Community() {
           </div>
         </div>
       )}
-      {notice && (
-        <div key={noticeId} role="status" className={`toast${noticeLeaving ? " is-leaving" : ""}`}>
-          <span className={`toast-icon${/(失败|错误|无效|不能|暂不可用|未保存)/.test(notice) ? " is-error" : ""}`} aria-hidden="true">{/(失败|错误|无效|不能|暂不可用|未保存)/.test(notice) ? <X size={17}/> : <Check size={17}/>}</span>
-          <span className="toast-copy">{notice}</span>
-          <button type="button" className="toast-dismiss" aria-label="关闭通知" onClick={() => { if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current); if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current); setNotice(""); setNoticeLeaving(false); }}>×</button>
-        </div>
-      )}
+      {notice && <NoticeBanner key={notice.id} notice={notice} leaving={noticeLeaving} expanded={noticeExpanded} onExpand={expandNotice} onDismiss={dismissNotice} />}
     </main>
   );
 }
