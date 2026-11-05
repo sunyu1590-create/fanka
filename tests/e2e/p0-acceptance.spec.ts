@@ -52,6 +52,7 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
     await page.route("**/api/v1/admin/posts**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/users**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/message-reports**", (route) => route.fulfill({ json: { data: [] } }));
+    await page.route("**/api/v1/admin/overview**", (route) => route.fulfill({ json: { data: { usersToday: 0, postsToday: 0, pending: 0, pendingReports: 0, aiResources: 0, views: 0, likes: 0, saves: 0, comments: 0 } } }));
   }
   await page.goto("/");
   const skip = page.getByRole("button", { name: /先随便看看/ });
@@ -213,8 +214,8 @@ test("discovery columns, desktop detail and settings adapt at every requested br
   await expect(page.locator("#settings-reading")).toBeInViewport();
 
   await page.getByRole("button", { name: "发布内容", exact: true }).click();
-  await expect(page.locator(".composer-preview-pane")).toBeVisible();
-  await expect.poll(() => page.locator(".composer-workspace").evaluate((workspace) => getComputedStyle(workspace).display)).toBe("grid");
+  await expect(page.locator(".composer-modal")).toBeVisible();
+  await expect.poll(() => page.locator(".composer-workspace").evaluate((workspace) => getComputedStyle(workspace).display)).toBe("block");
 });
 
 test("today waterfall hides content before reveal, keeps card geometry, and enforces five reveals", async ({ page }) => {
@@ -295,7 +296,7 @@ test("discovery, image detail, and publish composer remain responsive with soft 
 
   await page.getByRole("button", { name: "返回" }).click();
   await page.getByRole("button", { name: "发布内容" }).click();
-  await expect(page.getByText("分享一篇内容", { exact: true })).toBeVisible();
+  await expect(page.locator(".composer-modal")).toBeVisible();
   await page.getByRole("textbox", { name: "标题" }).fill("浏览器验收草稿");
   await page.getByRole("textbox", { name: "正文" }).focus();
   await expect(page.getByRole("textbox", { name: "正文" })).toBeFocused();
@@ -312,10 +313,9 @@ test("detail transition choices persist and animate image changes without blocki
   await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-blur-rise/);
   await page.getByRole("button", { name: "下一张图片" }).click();
-  const image = page.locator(".detail-image-frame > img").first();
+  const image = page.locator(".detail-image-frame img.progressive-image-low").first();
   await expect.poll(() => image.getAttribute("src")).toContain("5c4d68");
-  await expect.poll(() => image.evaluate((node) => getComputedStyle(node).animationName)).toBe("detail-image-rise");
-  await expect(page.locator(".detail-image-ghost")).toHaveCount(0);
+  await expect.poll(() => image.evaluate((node) => getComputedStyle(node).animationName)).toBe("detail-image-enter-next");
   await page.getByRole("button", { name: "返回" }).click();
 
   await chooseDetailTransition(page, "留影接力");
@@ -323,12 +323,11 @@ test("detail transition choices persist and animate image changes without blocki
   await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-ghost-handoff/);
   await page.getByRole("button", { name: "下一张图片" }).click();
-  await expect(page.locator(".detail-image-frame > img").first()).toHaveAttribute("src", /5c4d68/);
-  await expect(page.locator(".detail-image-ghost")).toBeVisible();
+  await expect(page.locator(".detail-image-frame img.progressive-image-low").first()).toHaveAttribute("src", /5c4d68/);
+  await expect.poll(() => page.locator(".detail-image-frame img.progressive-image-low").first().evaluate((node) => getComputedStyle(node).animationName)).toBe("detail-image-enter-next");
   await page.getByRole("button", { name: "上一张图片" }).click();
-  await expect.poll(() => page.locator(".detail-image-frame > img").first().getAttribute("src")).toContain("3a4a50");
+  await expect.poll(() => page.locator(".detail-image-frame img.progressive-image-low").first().getAttribute("src")).toContain("3a4a50");
   await expect(page.locator(".detail-gallery-controls")).toContainText("1 / 2");
-  await expect(page.locator(".detail-image-ghost")).toHaveCount(0, { timeout: 2_000 });
   await page.getByRole("button", { name: "返回" }).click();
 
   await chooseDetailTransition(page, "图片连续展开");
@@ -357,8 +356,10 @@ test("report sheet and admin queue use the same theme tokens for signed-in accou
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   await page.getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: "打开设置" }).click();
-  await page.getByRole("button", { name: /举报与内容审核/ }).click();
+  await page.getByRole("button", { name: /管理后台/ }).click();
   await expect(page.getByRole("heading", { name: "管理后台" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /内容举报/ }).click();
+  await expect(page.getByRole("heading", { name: "内容举报" })).toBeVisible();
   await expect(page.getByText("当前没有符合条件的举报。" )).toBeVisible();
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#f6f5f1");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

@@ -13,6 +13,10 @@ import { validateTopicNames } from "@/lib/topic-validation";
 import { cardRarityTier } from "@/lib/progression";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
+const mediaVariants = (path: string) => {
+  const match = path.match(/^(.*\/)([^/]+)\.(?:jpg|png|webp)$/i);
+  return match ? [`${match[1]}${match[2]}-480.webp`, `${match[1]}${match[2]}-960.webp`] : [];
+};
 async function replacePoll(db: SupabaseClient, postId: string, value: unknown) {
   if (value === undefined) return;
   const input = value && typeof value === "object" ? value as Record<string, unknown> : null;
@@ -337,10 +341,24 @@ export async function POST(req: NextRequest) {
         if (splitMedia.videos.length && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
         if (splitMedia.images.length > 9 || splitMedia.videos.length > 1 || (splitMedia.videos.length && splitMedia.images.length) || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes("..")))
           throw new ApiError(400, "投稿媒体无效；最多 9 张图片，或单独 1 个视频");
+        const previousMedia = await db.from("post_media").select("storage_path,thumbnail_path,retina_thumbnail_path").eq("post_id", postId);
+        dbError(previousMedia.error);
+        const previousByPath = new Map((previousMedia.data || []).map((item) => [item.storage_path, item]));
         const { error: clearMedia } = await db.from("post_media").delete().eq("post_id", postId);
         dbError(clearMedia);
         if (mediaPaths.length) {
-          const { error: insertMedia } = await db.from("post_media").insert(mediaPaths.map((storage_path, sort_order) => ({ post_id: postId, storage_path, sort_order })));
+          const { error: insertMedia } = await db.from("post_media").insert(mediaPaths.map((storage_path, sort_order) => {
+            const previous = previousByPath.get(storage_path);
+            return {
+              post_id: postId,
+              storage_path,
+              sort_order,
+              ...(!/\.(?:mp4|webm)$/i.test(storage_path) ? {
+                thumbnail_path: previous?.thumbnail_path || null,
+                retina_thumbnail_path: previous?.retina_thumbnail_path || null,
+              } : {}),
+            };
+          }));
           dbError(insertMedia);
         }
       }
@@ -359,12 +377,15 @@ export async function POST(req: NextRequest) {
     const { data: post, error } = await postQuery.single();
     dbError(error);
     if (action === "delete") {
-      const media = await db.from("post_media").select("storage_path").eq("post_id", post!.id);
+      const media = await db.from("post_media").select("storage_path,thumbnail_path,retina_thumbnail_path").eq("post_id", post!.id);
       dbError(media.error);
       const revision = await db.from("post_revisions").select("payload").eq("post_id", post!.id).maybeSingle();
       dbError(revision.error);
-      const revisionPaths = Array.isArray(revision.data?.payload?.mediaPaths) ? revision.data.payload.mediaPaths.filter((path: unknown): path is string => typeof path === "string" && path.startsWith(`${user!.id}/`)) : [];
-      const paths = [...new Set([...(media.data || []).map((item) => item.storage_path), ...revisionPaths])];
+      const revisionPaths: string[] = Array.isArray(revision.data?.payload?.mediaPaths) ? revision.data.payload.mediaPaths.filter((path: unknown): path is string => typeof path === "string" && path.startsWith(`${user!.id}/`)) : [];
+      const paths = [...new Set([
+        ...(media.data || []).flatMap((item) => [item.storage_path, item.thumbnail_path, item.retina_thumbnail_path].filter((path): path is string => Boolean(path))),
+        ...revisionPaths.flatMap((path) => [path, ...mediaVariants(path)]),
+      ])];
       const grouped = new Map<string, string[]>();
       for (const path of paths) {
         const bucket = /\.(?:mp4|webm)$/i.test(path) ? "post-videos" : "post-covers";

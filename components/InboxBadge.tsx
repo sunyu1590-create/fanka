@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { browserDb } from "@/lib/browser-db";
+import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
 import type { NoticeOptions } from "./NoticeBanner";
 export default function InboxBadge({ enabled = false, inAppEnabled = true, onNotice, onOpenConversationPeer }: { enabled?: boolean; inAppEnabled?: boolean; onNotice?: (message: string, options?: NoticeOptions) => void; onOpenConversationPeer?: (id: string) => void }) {
   const notify = useRef(enabled);
@@ -23,18 +24,15 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
         const refresh = async () => {
           const { data: session } = await db.auth.getSession();
           if (!session.session) {
+            if (signedInUserId) clearInboxSummary(signedInUserId);
             signedInUserId = null;
             if (alive) setCount(0);
             return;
           }
           signedInUserId = session.session.user.id;
-          const { data } = await db.rpc("dm_unread_counts");
-          if (alive && data) {
-            const total = data.reduce(
-              (sum: number, row: { unread: number }) =>
-                sum + Number(row.unread),
-              0,
-            );
+          const rows = await readInboxSummary(db, signedInUserId).catch(() => null);
+          if (alive && rows) {
+            const total = rows.reduce((sum, row) => sum + Number(row.unread), 0);
             if (
               previous.current !== null &&
               total > previous.current &&
@@ -78,7 +76,12 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
           )
           .subscribe();
         const { data } = db.auth.onAuthStateChange((_event, session) => {
-          signedInUserId = session?.user.id || null;
+          const nextUserId = session?.user.id || null;
+          if (signedInUserId && signedInUserId !== nextUserId) {
+            clearInboxSummary(signedInUserId);
+            previous.current = null;
+          }
+          signedInUserId = nextUserId;
           // Supabase emits auth events while holding its session lock. A
           // microtask can run before that lock is released and stall getSession.
           setTimeout(() => void refresh(), 0);

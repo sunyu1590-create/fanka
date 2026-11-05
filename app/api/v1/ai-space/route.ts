@@ -136,7 +136,10 @@ export async function POST(req: NextRequest) {
     const postId = (saved.data as unknown as LibraryRow).id;
     if (action === "submit") {
       const cleared = await db.from("post_media").delete().eq("post_id", postId); dbError(cleared.error);
-      if (mediaPaths.length) { const inserted = await db.from("post_media").insert(mediaPaths.map((storage_path, sort_order) => ({ post_id: postId, storage_path, sort_order }))); dbError(inserted.error); }
+      if (mediaPaths.length) {
+        const inserted = await db.from("post_media").insert(mediaPaths.map((storage_path, sort_order) => ({ post_id: postId, storage_path, sort_order })));
+        dbError(inserted.error);
+      }
       if (topicNames.length) {
         const topicRows = await db.from("interest_tags").select("id").in("name", topicNames).eq("channel", "ai").eq("kind", "tag").eq("active", true);
         dbError(topicRows.error);

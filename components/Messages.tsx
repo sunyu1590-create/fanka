@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ArrowLeft, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Send, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
+import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
 import AnimatedNotice from "./AnimatedNotice";
 import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
@@ -76,6 +77,8 @@ export default function Messages({
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaRequests = useRef(new Set<string>());
+  const refreshing = useRef(false);
+  const refreshQueued = useRef(false);
   const [media, setMedia] = useState<Record<string, string>>({});
   useEffect(() => {
     if (authView !== "forgot" && authView !== "verify-otp") return;
@@ -141,6 +144,7 @@ export default function Messages({
             if (event === "PASSWORD_RECOVERY") setAuthView("reset");
             if (event === "SIGNED_OUT" ||
                 (userIdRef.current && userIdRef.current !== session?.user?.id)) {
+              if (userIdRef.current) clearInboxSummary(userIdRef.current);
               updateActiveConversation(null);
               setMessages([]);
               setRooms([]);
@@ -179,48 +183,39 @@ export default function Messages({
   };
   const refresh = async () => {
     if (!db || !user) return;
-    const { data, error } = await db
-      .from("dm_conversations")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) {
-      setError(error.message);
-      return;
+    if (refreshing.current) { refreshQueued.current = true; return; }
+    refreshing.current = true;
+    try {
+      const summary = await readInboxSummary(db, user.id);
+      if (userIdRef.current !== user.id) return;
+      const rows: Room[] = summary.map((row) => ({ id: row.conversation_id, user_a: row.user_a, user_b: row.user_b, created_at: row.created_at }));
+      setRooms(rows);
+      const peers = [...new Set(rows.map((room) => room.user_a === user.id ? room.user_b : room.user_a))];
+      if (peers.length) {
+        const { data: profiles, error } = await db.from("profiles").select("id,nickname,bio,avatar_url").in("id", peers);
+        if (error) setError(error.message);
+        if (userIdRef.current === user.id) setNames(Object.fromEntries((profiles || []).map((profile) => [profile.id, profile])));
+      } else setNames({});
+      setPreview(Object.fromEntries(summary.flatMap((row) => row.latest_message_id && row.latest_created_at
+        ? [[row.conversation_id, {
+            id: row.latest_message_id,
+            conversation_id: row.conversation_id,
+            sender_id: row.latest_sender_id || "",
+            body: row.latest_body || "",
+            created_at: row.latest_created_at,
+            media_path: row.latest_media_path || undefined,
+          } satisfies Message]]
+        : [])));
+      setUnread(Object.fromEntries(summary.map((row) => [row.conversation_id, Number(row.unread)])));
+    } catch (cause) {
+      if (userIdRef.current === user.id) setError(cause instanceof Error ? cause.message : "消息加载失败");
+    } finally {
+      refreshing.current = false;
+      if (refreshQueued.current) {
+        refreshQueued.current = false;
+        window.setTimeout(() => void refresh(), 0);
+      }
     }
-    const rows = (data || []) as Room[];
-    setRooms(rows);
-    const peers = rows.map((r) => (r.user_a === user.id ? r.user_b : r.user_a));
-    if (peers.length) {
-      const { data: profiles } = await db
-        .from("profiles")
-        .select("id,nickname,bio,avatar_url")
-        .in("id", peers);
-      setNames(Object.fromEntries((profiles || []).map((p) => [p.id, p])));
-    }
-    const { data: reads } = await db.from("dm_reads").select("*").eq("user_id", user.id);
-    const latest = await Promise.all(
-      rows.map(async (r) => {
-        const { data } = await db
-          .from("dm_messages")
-          .select("*")
-          .eq("conversation_id", r.id)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        return [r.id, data?.[0]] as const;
-      }),
-    );
-    setPreview(Object.fromEntries(latest.filter(([, m]) => m)));
-    const { data: counts } = await db.rpc("dm_unread_counts");
-    setUnread(
-      Object.fromEntries(
-        (counts || []).map(
-          (row: { conversation_id: string; unread: number }) => [
-            row.conversation_id,
-            Number(row.unread),
-          ],
-        ),
-      ),
-    );
   };
   const read = async (room: string) => {
     if (db && user)

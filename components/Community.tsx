@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Home,
   Compass,
@@ -36,20 +36,21 @@ import {
   Video as VideoIcon,
 } from "lucide-react";
 import dynamic from "next/dynamic";
+import ProgressiveImage from "./ProgressiveImage";
 const Messages = dynamic(() => import("./Messages"), {
   loading: () => <div className="empty">正在加载消息…</div>,
 });
 const AdminModeration = dynamic(() => import("./AdminModeration"), {
   loading: () => <div className="empty">正在加载审核队列…</div>,
 });
-import EditorialArticle from "./EditorialArticle";
+const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
 import { FollowedTopicsSettings, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
 const PublicProfile = dynamic(() => import("./PublicProfile"), { loading: () => <div className="empty">正在加载…</div> });
 const MessagingPreferences = dynamic(() => import("./MessagingPreferences"), { loading: () => <div className="empty">正在加载…</div> });
-import InboxBadge from "./InboxBadge";
+const InboxBadge = dynamic(() => import("./InboxBadge"));
 const DailyMissions = dynamic(() => import("./DailyMissions"), { loading: () => <div className="daily-missions-loading" aria-hidden="true" /> });
 const NotificationCenter = dynamic(() => import("./NotificationCenter"), { loading: () => <div className="empty">正在加载…</div> });
 const CoExplore = dynamic(() => import("./CoExplore"), { loading: () => <div className="empty">正在加载…</div> });
@@ -73,9 +74,9 @@ import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
 import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
-import AISpace from "./AISpace";
-import AIResourceDetails from "./AIResourceDetails";
-import AppealCenter from "./AppealCenter";
+const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div className="empty">正在加载 AI 空间…</div> });
+const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
+const AppealCenter = dynamic(() => import("./AppealCenter"));
 import type { AiContentType } from "@/lib/ai-resources";
 
 const FLIP_RAIN_PARTICLES = 112;
@@ -152,6 +153,7 @@ type Comment = {
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
 type ComposerVideo = { id: string; file?: File; path?: string; url: string; name: string; size: number; type: string; status: "ready" | "compressing" | "uploading" | "failed"; progress: number; compressionProgress?: number; originalSize?: number; compressionNote?: string; existing?: boolean };
+type PageTransitionHandle = { finished: Promise<unknown> };
 const VIDEO_UPLOAD_BETA_ENABLED = process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA === "1";
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
@@ -402,11 +404,14 @@ export default function Community() {
   }, [profileLayout, profileLayoutLoaded]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
+    pageTransition = useRef<PageTransitionHandle | null>(null),
+    pageTransitionQueue = useRef<Array<() => void>>([]),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
   const discoverScrollPositions = useRef<Record<"community" | "ai", number>>({ community: 0, ai: 0 });
   const sharedPostHandled = useRef<string | null>(null);
+  const searchCursorRef = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [publicBookmarks, setPublicBookmarks] = useState(false);
   const [publicBookmarksLoaded, setPublicBookmarksLoaded] = useState(false);
@@ -491,6 +496,7 @@ export default function Community() {
     feedController = useRef<AbortController | null>(null),
     feedCursor = useRef<{ createdAt: string; postId: string } | null>(null),
     loadedRatingIds = useRef(new Set<number>()),
+    detailPostCache = useRef(new Map<number, { post: Post; at: number }>()),
     detailSource = useRef<"today" | "discover">("today");
   const [feedLoadedSort, setFeedLoadedSort] = useState<string | null>(null);
   const [discoverColumnCount, setDiscoverColumnCount] = useState(2);
@@ -518,6 +524,7 @@ export default function Community() {
     [ready, setReady] = useState(false),
     [tab, setTabState] = useState("today"),
     [detail, setDetail] = useState<number | null>(null),
+    [detailPostOverride, setDetailPostOverride] = useState<Post | null>(null),
     [detailReady, setDetailReady] = useState(false),
     [transitionPhase, setTransitionPhase] = useState<
       "opening" | "closing" | null
@@ -531,6 +538,7 @@ export default function Community() {
     [searchPeople, setSearchPeople] = useState<SearchPerson[]>([]),
     [searchPosts, setSearchPosts] = useState<Post[]>([]),
     [searchTotal, setSearchTotal] = useState(0),
+    [searchHasMore, setSearchHasMore] = useState(false),
     [searchPage, setSearchPage] = useState(1),
     [searchLoading, setSearchLoading] = useState(false),
     [searchError, setSearchError] = useState(""),
@@ -657,10 +665,24 @@ export default function Community() {
       return;
     }
     const transitionDocument = document as Document & {
-      startViewTransition?: (callback: () => void) => unknown;
+      startViewTransition?: (callback: () => void) => PageTransitionHandle;
     };
-    if (transitionDocument.startViewTransition) transitionDocument.startViewTransition(updatePage);
-    else updatePage();
+    if (!transitionDocument.startViewTransition) {
+      updatePage();
+      return;
+    }
+    if (pageTransition.current) {
+      pageTransitionQueue.current.push(updatePage);
+      return;
+    }
+    const transition = transitionDocument.startViewTransition(updatePage);
+    pageTransition.current = transition;
+    void transition.finished.catch(() => {}).then(() => {
+      if (pageTransition.current !== transition) return;
+      pageTransition.current = null;
+      const next = pageTransitionQueue.current.shift();
+      if (next) startPageTransition(next);
+    });
   };
   const setTab = (next: string) => {
     if (next === tab) return;
@@ -696,9 +718,11 @@ export default function Community() {
     setSearchDraft(normalized);
     setSearchTerm(normalized);
     setSearchPage(1);
+    searchCursorRef.current = null;
     setSearchPosts([]);
     setSearchPeople([]);
     setSearchTotal(0);
+    setSearchHasMore(false);
     setSearchError("");
     setSearchRetry((n) => n + 1);
     if (normalized) {
@@ -955,7 +979,10 @@ export default function Community() {
       params.set("cursorPostId", feedCursor.current.postId);
     }
     try {
-      const response = await cloudFetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
+      const requestUrl = `/api/demo/cards?${params}`;
+      const response = sort === "关注"
+        ? await cloudFetch(requestUrl, { cache: "no-store", signal: controller.signal })
+        : await fetch(requestUrl, { cache: "default", signal: controller.signal });
       const result = await response.json();
       if (!response.ok) throw new Error("内容加载失败");
       const payload = result.data;
@@ -972,7 +999,7 @@ export default function Community() {
         ? items
         : sort === "高分"
           ? [...items].sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0) || (b.ratingCount || 0) - (a.ratingCount || 0) || b.date.localeCompare(a.date) || b.id - a.id)
-          : rankRecommendations(items, state.interests, [], state.ratings, pageRatings);
+          : rankRecommendations(items, state.interests, state.viewed, state.ratings, pageRatings);
       setPublicFeed((current) => {
         if (reset) return orderedItems;
         const seen = new Set(current.map((item) => item.id));
@@ -1002,7 +1029,7 @@ export default function Community() {
         setFeedLoading(false);
       }
     }
-  }, [category, sort, state.interests, state.ratings, communityRatings]);
+  }, [category, sort, state.interests, state.viewed, state.ratings, communityRatings]);
   useEffect(() => {
     if (!ready) return;
     let active = true;
@@ -1112,16 +1139,22 @@ export default function Community() {
     const controller = new AbortController();
     setSearchLoading(true);
     setSearchError("");
-    const url = `/api/v1/search?q=${encodeURIComponent(searchTerm)}&kind=${searchKind}&page=${searchPage}&limit=12`;
-    void fetch(url, { signal: controller.signal, cache: "no-store" })
+    const cursor = searchKind === "content" && searchPage > 1 && searchCursorRef.current
+      ? `&cursor=${encodeURIComponent(searchCursorRef.current)}`
+      : "";
+    const url = `/api/v1/search?q=${encodeURIComponent(searchTerm)}&kind=${searchKind}&page=${searchPage}&limit=12${cursor}`;
+    void fetch(url, { signal: controller.signal, cache: "default" })
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok || !Array.isArray(result.data?.items)) throw new Error(result.error || "搜索失败，请重试");
         const items = result.data.items as (Post | SearchPerson)[];
-        setSearchTotal(result.data.total || 0);
         if (searchKind === "content") {
+          searchCursorRef.current = result.data.next_cursor || null;
+          setSearchHasMore(Boolean(result.data.has_more));
           setSearchPosts((current) => searchPage === 1 ? items as Post[] : [...current, ...(items as Post[])]);
         } else {
+          setSearchTotal(result.data.total || 0);
+          setSearchHasMore(false);
           setSearchPeople((current) => searchPage === 1 ? items as SearchPerson[] : [...current, ...(items as SearchPerson[])]);
         }
       })
@@ -1442,6 +1475,15 @@ export default function Community() {
       !all.some((p) => p.id === id)
     )
       return;
+    if (pageTransition.current) {
+      const activeTransition = pageTransition.current;
+      const resume = () => {
+        if (pageTransition.current === activeTransition) pageTransition.current = null;
+        openPost(id, source, sourceElement);
+      };
+      void activeTransition.finished.then(resume, resume);
+      return;
+    }
     const explicitSource = sourceElement?.closest<HTMLElement>(
       `[data-window-card-id="${id}"], [data-card-id="${id}"], [data-discover-id="${id}"]`,
     ) || sourceElement;
@@ -1479,6 +1521,10 @@ export default function Community() {
     setDisplayedImageIndex(0);
     setImageLoading(false);
     setPreviewImage(false);
+    const cachedDetail = detailPostCache.current.get(id);
+    setDetailPostOverride(cachedDetail && Date.now() - cachedDetail.at < 45 * 60 * 1000
+      ? cachedDetail.post
+      : all.find((post) => post.id === id) || null);
     setDetailImageTransition(
       detailTransition === "image-zoom" && sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
         ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
@@ -2875,10 +2921,38 @@ export default function Community() {
     };
   }, [detailReady, detail]);
   const isImmersive = (tab === "messages" && (chatConversationOpen || messagePeer !== null)) || detail !== null || transitionPhase !== null;
-  const post = detail === null ? null : all.find((p) => p.id === detail);
+  const candidatePost = detail === null ? null : all.find((p) => p.id === detail);
+  const post = detail !== null && detailPostOverride?.id === detail ? detailPostOverride : candidatePost;
+  useEffect(() => {
+    if (detail === null || !post?.cloudId || !post.isPartial) return;
+    if (detailPostOverride?.id === detail && !detailPostOverride.isPartial) return;
+    const cached = detailPostCache.current.get(detail);
+    if (cached && Date.now() - cached.at < 45 * 60 * 1000) {
+      setDetailPostOverride(cached.post);
+      return;
+    }
+    const controller = new AbortController();
+    void cloudFetch("/api/demo/cards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: detail, resolve_images: true }),
+      signal: controller.signal,
+    }).then(async (response) => {
+      const result = await response.json();
+      if (!response.ok || !result.data || controller.signal.aborted) return;
+      const loaded = result.data as Post;
+      detailPostCache.current.delete(detail);
+      detailPostCache.current.set(detail, { post: loaded, at: Date.now() });
+      while (detailPostCache.current.size > 8) detailPostCache.current.delete(detailPostCache.current.keys().next().value as number);
+      setDetailPostOverride(loaded);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [detail, post?.cloudId, post?.isPartial, detailPostOverride?.id, detailPostOverride?.isPartial]);
   const detailImages = useMemo(() => post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
     : [], [post]);
+  const detailThumbnails = post?.thumbnailImages?.length ? post.thumbnailImages : detailImages;
+  const detailRetinaImages = post?.retinaImages || [];
   const detailVideo = post?.video || post?.videos?.[0];
   const preloadDetailImage = useCallback((src: string, priority: "low" | "high" = "low") => {
     const cached = preloadedDetailImages.current.get(src);
@@ -2952,7 +3026,7 @@ export default function Community() {
       }
     });
   };
-  const postCard = (p: Post, source: "today" | "discover" = "discover", own = false, discoveryFeed = false) => {
+  const postCard = (p: Post, source: "today" | "discover" = "discover", own = false, discoveryFeed = false, priority = false) => {
     const rating = communityRatings[p.id];
     const rarityTier = p.rarityTier || (rating ? cardRarityTier(rating.average, rating.count) : "pending");
     const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier;
@@ -2970,8 +3044,12 @@ export default function Community() {
       >
         {coverImage && <img
             src={coverImage}
+            srcSet={coverImage === p.image && p.imageRetina ? `${coverImage} 480w, ${p.imageRetina} 960w` : undefined}
+            sizes={state.discoverLayout === "single" ? "100vw" : "(min-width: 1600px) 20vw, (min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"}
             alt={discoveryFeed ? p.title : ""}
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
+            fetchPriority={priority ? "high" : "low"}
+            decoding="async"
             onError={(e) => {
               if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
             }}
@@ -3025,7 +3103,7 @@ export default function Community() {
       {items.length ? (
         <div className={`stable-editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`} style={{ "--masonry-columns": state.discoverLayout === "single" ? 1 : discoverColumnCount } as CSSProperties}>
           {discoverColumns.map((column, index) => <div className="stable-editorial-column" key={`discover-column-${index}`}>
-            {column.map((item) => postCard(item, "discover", false, true))}
+            {column.map((item, itemIndex) => postCard(item, "discover", false, true, itemIndex === 0))}
           </div>)}
         </div>
       ) : (
@@ -3049,8 +3127,13 @@ export default function Community() {
         setTab(id);
         imageSwitchSequence.current += 1;
         setImageLoading(false);
-        setDetail(null);
-        setDetailReady(false);
+        if (detail !== null) {
+          setDetail(null);
+          setDetailReady(false);
+          setTransitionPhase(null);
+          setDetailImageTransition(null);
+          transitionBusy.current = false;
+        }
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
     >
@@ -3491,6 +3574,11 @@ export default function Community() {
     );
   const currentExperience = experienceProgress(experienceSummary.total);
   const visibleOwnPosts = selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own;
+  const detailArticleContent = post ? (
+    <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载正文…</div>}>
+      <EditorialArticle post={post} />
+    </Suspense>
+  ) : null;
   return (
     <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
       <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}`}>
@@ -3588,27 +3676,27 @@ export default function Community() {
             <label className="search-page-field">
               <Search size={18} aria-hidden="true" />
               <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜内容、昵称或兴趣" aria-label="搜索内容或用户" maxLength={60} autoComplete="off" />
-              {searchDraft && <button type="button" aria-label="清除搜索词" onClick={() => { setSearchDraft(""); setSearchTerm(""); setSearchPosts([]); setSearchPeople([]); setSearchTotal(0); }}><X size={16}/></button>}
+              {searchDraft && <button type="button" aria-label="清除搜索词" onClick={() => { setSearchDraft(""); setSearchTerm(""); setSearchPosts([]); setSearchPeople([]); setSearchTotal(0); setSearchHasMore(false); searchCursorRef.current = null; }}><X size={16}/></button>}
             </label>
             <button className="search-page-submit" type="submit" disabled={!searchDraft.trim()}>搜索</button>
           </form>
           {searchTerm ? <>
             <div className="search-result-toolbar">
               <div className="search-result-tabs" role="tablist" aria-label="搜索范围">
-                {([ ["content", "内容"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); setSearchTotal(0); setSearchPosts([]); setSearchPeople([]); setSearchError(""); }}>{label}</button>)}
+                {([ ["content", "内容"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); searchCursorRef.current = null; setSearchTotal(0); setSearchHasMore(false); setSearchPosts([]); setSearchPeople([]); setSearchError(""); }}>{label}</button>)}
               </div>
-              <small>{searchLoading && searchPage === 1 ? "正在搜索" : `${searchTotal} 条结果`}</small>
+              <small>{searchLoading && searchPage === 1 ? "正在搜索" : searchKind === "content" ? `已加载 ${searchPosts.length} 条${searchHasMore ? "" : "结果"}` : `${searchTotal} 条结果`}</small>
             </div>
             {searchError && <div className="search-state search-error"><span>{searchError}</span><button onClick={() => setSearchRetry((n) => n + 1)}>重试</button></div>}
             {searchKind === "content" ? <div className="search-post-results" role="tabpanel">
               {searchPosts.map((item) => <button className="search-post-result" key={item.id} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
-                <span className="search-post-thumbnail">{item.image && <img src={item.image} alt="" loading="lazy" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}/>}<small>{item.tag}</small></span>
+                <span className="search-post-thumbnail">{item.image && <img src={item.image} srcSet={item.imageRetina ? `${item.image} 480w, ${item.imageRetina} 960w` : undefined} sizes="72px" alt="" loading="lazy" decoding="async" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}/>}<small>{item.tag}</small></span>
                 <span className="search-post-copy"><strong>{item.title}</strong><span>{markdownToText(item.body).slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
                 <ChevronRight size={17}/>
               </button>)}
               {!searchLoading && !searchError && !searchPosts.length && <div className="search-state">没有找到相关内容，试试更短的关键词。</div>}
               {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
-              {searchPosts.length < searchTotal && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多内容"}</button>}
+              {searchHasMore && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多内容"}</button>}
             </div> : <div className="search-people-results" role="tabpanel">
               {searchPeople.map((person) => <button className="search-person-result" key={person.id} onClick={() => setAuthorProfile(person.id)}>
                 <span className="search-person-avatar"><span>{(person.nickname || "探").slice(0, 1)}</span>{person.avatar_url && <img src={person.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}</span>
@@ -3771,7 +3859,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.36.2</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.37.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3929,8 +4017,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.36.2</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.36.2</strong><small>2026.11.05</small></div><ul><li>AI 空间入口加入克制的炫彩光效，发布继续使用底栏中央入口。</li><li>AI 搜索页增加热门内容词与分类快捷搜索，并展示真实热门资源。</li><li>发布页图片和视频选择改为小圆角矩形；自定义话题即时可用，不再等待审核。</li></ul></div>
+          <p className="lead">HEIKA · 版本 2.37.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.37.0</strong><small>2026.11.05</small></div><ul><li>发现与搜索改用游标分页和按需字段，首屏优先传输适配显示尺寸的 WebP 缩略图。</li><li>详情页先展示已加载的缩略图，再渐进替换为高清原图；重复打开时复用短期详情缓存。</li><li>收件箱用一次聚合查询加载最近消息与未读数，避免逐会话重复请求。</li><li>优化推荐的时效、已读过滤与主题多样性，并保留现有卡片、翻转和页面过渡动画。</li><li>AI 空间入口、AI 搜索与发布体验继续沿用上一版本改进。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.5</strong><small>2026.11.05</small></div><ul><li>发布页移除顶部说明块与独立写作提示，标题和正文直接进入编辑。</li><li>图片和视频 Beta 改为并列常驻入口，上传、审核和草稿提示就近展示。</li><li>大视频在浏览器支持时使用本地编码降至 720p 级别并压缩码率，保留音轨、原画质回退及现有分片续传。</li><li>发布操作栏和媒体选择加入轻量玻璃质感，并优化窄屏可读性与安全区间距。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.4</strong><small>2026.11.05</small></div><ul><li>通知横幅按场景显示爱心、评论、收藏、关注等对应图标，并下移 4px。</li><li>详情页点赞按钮显示作品获赞数，成功点赞或取消后同步更新数字。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.3</strong><small>2026.11.05</small></div><ul><li>通知恢复紧凑旧版样式，保留新版顶部入场、退场动画及滑动交互。</li><li>管理员后台改为分组工作台，点击模块即可进入对应审核或管理界面。</li><li>修复带图片或视频的已发布作品修改审核失败问题，媒体路径长度校验不再触发 PostgreSQL 正则错误。</li></ul></div>
@@ -4580,7 +4668,19 @@ export default function Community() {
                     if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
                     setPreviewImage(true);
                   }} aria-label="查看大图">
-                    <img key={detailImages[displayedImageIndex]} src={detailImages[displayedImageIndex]} alt={`${post.title}，第 ${displayedImageIndex + 1} 张`} loading="eager" fetchPriority="high" onLoad={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }} onError={(event) => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
+                    {(() => {
+                      const index = displayedImageIndex;
+                      const lowSrc = detailThumbnails[index] || detailImages[index];
+                      const highSrc = post.isPartial ? detailRetinaImages[index] || lowSrc : detailImages[index];
+                      return <ProgressiveImage
+                        key={`${lowSrc}:${highSrc}`}
+                        lowSrc={lowSrc}
+                        src={highSrc}
+                        alt={`${post.title}，第 ${index + 1} 张`}
+                        onHighReady={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
+                        onHighError={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
+                      />;
+                    })()}
                     <span>查看大图</span>
                   </button>
                   {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
@@ -4602,8 +4702,8 @@ export default function Community() {
                 </button>
                 {post.seriesTitle && <div className="detail-series-badge"><span>系列</span><strong>{post.seriesTitle}</strong>{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
-                {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}><EditorialArticle post={post} /></PrivateHighlights> : <EditorialArticle post={post} />}
-                {post.channel === "ai" && post.cloudId && <AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}/>}
+                {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
+                {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}/></Suspense>}
                 {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <span>给这篇内容评分</span>

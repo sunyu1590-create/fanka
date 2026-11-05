@@ -6,10 +6,10 @@ import {
   respond,
   ApiError,
 } from "@/lib/server/api";
-import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
+import { libraryFields, libraryFeedFields, presentMany, presentFeedMany, type LibraryRow } from "@/lib/server/library";
 import { cardRarityTier } from "@/lib/progression";
 export async function GET(req: NextRequest) {
-  return respond(async () => {
+  const response = await respond(async () => {
     const { db, user } = await context(req, false);
     if (req.nextUrl.searchParams.get("mode") !== "discover") {
       const { data, error } = await db
@@ -67,14 +67,14 @@ export async function GET(req: NextRequest) {
       total = payload?.total == null ? null : Number(payload.total) || 0;
       hasMore = Boolean(payload?.has_more);
       if (!ids.length) return { items: [], total, hasMore: false, cursor: null, limit };
-      const { data, error } = await db.from("posts").select(libraryFields).in("id", ids).eq("status", "published");
+      const { data, error } = await db.from("posts").select(libraryFeedFields).in("id", ids).eq("status", "published");
       dbError(error);
       const byId = new Map(((data || []) as unknown as LibraryRow[]).map((row) => [row.id, row]));
       rows = ids.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
     } else {
       let query = db
         .from("posts")
-        .select(libraryFields, { count: cursorCreatedAt ? undefined : "exact" })
+        .select(libraryFeedFields, { count: cursorCreatedAt ? undefined : "exact" })
         .eq("status", "published")
         .eq("channel", "community")
         .order("created_at", { ascending: false })
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
     const likes = likesResult.data || [];
     const byPost = new Map((stats || []).map((stat) => [stat.post_id, stat]));
     const likesByPost = new Map((likes || []).map((stat) => [stat.post_id, stat.like_count]));
-    const presentations = await presentMany(db, rows);
+    const presentations = await presentFeedMany(db, rows);
     return {
       items: rows.map((row, index) => {
         const stat = byPost.get(row.id);
@@ -125,6 +125,10 @@ export async function GET(req: NextRequest) {
       limit,
     };
   });
+  if (response.ok && req.nextUrl.searchParams.get("mode") === "discover" && req.nextUrl.searchParams.get("following") !== "1") {
+    response.headers.set("Cache-Control", "public, max-age=0, s-maxage=30, stale-while-revalidate=120");
+  }
+  return response;
 }
 export async function POST(req: NextRequest) {
   return respond(async () => {
