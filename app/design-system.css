@@ -3691,3 +3691,50 @@ img, video, canvas, iframe { max-width:100%; }
 @media (prefers-reduced-motion:reduce) {
   .bottom-nav button,.settings-desktop-nav a,.discover-content-card,.mine-work-card { transition:none!important; }
 }
+
+/* Keep the article and discussion as two stable surfaces on larger screens. */
+.detail-article-column { width:100%; min-width:0; }
+.detail-article-column .detail-image-button img { max-height:62vh; }
+.detail-image-frame { overflow:hidden; }
+.detail-image-frame>img:not(.detail-image-ghost) { position:relative; z-index:1; will-change:opacity,transform,filter; }
+.detail-image-frame.transition-blur-rise>img:not(.detail-image-ghost) { animation:detail-image-rise 230ms cubic-bezier(.2,.78,.18,1) both; }
+.detail-image-frame.transition-ghost-handoff>img:not(.detail-image-ghost) { animation:detail-image-handoff-in 230ms cubic-bezier(.2,.78,.18,1) both; }
+.detail-image-frame>.detail-image-ghost { position:absolute; z-index:2; inset:0; width:100%; height:100%; margin:0; object-fit:contain; pointer-events:none; animation:detail-image-handoff-out 230ms cubic-bezier(.2,.78,.18,1) both; }
+.detail-image-button>span { z-index:3; }
+@keyframes detail-image-rise { from { opacity:.68; filter:blur(5px); transform:translate3d(0,10px,0); } to { opacity:1; filter:blur(0); transform:translate3d(0,0,0); } }
+@keyframes detail-image-handoff-in { from { opacity:.72; filter:blur(3px); transform:translate3d(0,8px,0); } to { opacity:1; filter:blur(0); transform:translate3d(0,0,0); } }
+@keyframes detail-image-handoff-out { from { opacity:1; filter:blur(0); transform:translate3d(0,0,0); } to { opacity:0; filter:blur(5px); transform:translate3d(0,-8px,0); } }
+
+@media (min-width:768px) and (max-width:1199px) {
+  .overlay.detail-ready { inset:16px 20px; z-index:30; overflow:hidden; border:1px solid var(--line); border-radius:var(--radius-panel); box-shadow:0 24px 90px #0005; }
+  .detail { width:100%; height:100%; max-height:100%; border-inline:0; grid-template-rows:58px minmax(0,1fr) auto; }
+  .detail-article-column>.detail-gallery,.detail-article-column>.detail-image-button { width:100%; margin:0 0 20px; }
+}
+
+@media (min-width:768px) and (max-width:959px) {
+  .detail-body { display:block; width:100%; max-width:760px; padding:0 clamp(22px,4vw,36px) 28px; }
+  .detail-article-column { max-width:640px; margin-inline:auto; }
+  .detail-body>.detail-comments { position:static; max-height:none; overflow:visible; padding-top:18px; border-top:1px solid var(--line); }
+  .detail-article-column .detail-image-button img { max-height:56vh; }
+}
+
+@media (min-width:960px) and (max-width:1199px) {
+  .detail-body { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.9fr); column-gap:clamp(22px,3vw,36px); align-content:start; width:100%; max-width:1120px; padding:24px clamp(22px,3vw,38px) 32px; }
+  .detail-article-column { grid-column:1; min-width:0; width:100%; max-width:680px; }
+  .detail-article-column>.detail-gallery,.detail-article-column>.detail-image-button { width:100%; margin:0 0 20px; }
+  .detail-body>.detail-comments { position:sticky; top:0; grid-column:2; grid-row:1; align-self:start; max-height:calc(100dvh - 172px); overflow-y:auto; padding:4px 2px 18px; scrollbar-width:thin; }
+  .detail-article-column .detail-image-button img { max-height:50vh; }
+}
+
+@media (min-width:1200px) {
+  .detail-body { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(300px,min(38%,420px)); column-gap:clamp(28px,3vw,52px); align-content:start; align-items:start; width:100%; max-width:1500px; padding:clamp(24px,2.5vw,40px) clamp(28px,3vw,56px) 40px; }
+  .detail-article-column { grid-column:1; min-width:0; width:100%; max-width:960px; margin-inline:auto; }
+  .detail-article-column>.detail-gallery,.detail-article-column>.detail-image-button { width:100%; margin:0 0 20px; }
+  .detail-body>.detail-comments { position:sticky; top:0; grid-column:2; grid-row:1; align-self:start; max-height:calc(100dvh - 180px); overflow-y:auto; padding:4px 2px 20px; scrollbar-width:thin; }
+  .detail-article-column .detail-image-button img { max-height:min(58vh,760px); }
+  .detail-article-column .detail-rating { margin-top:30px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .detail-image-frame>img,.detail-image-frame>.detail-image-ghost { animation:none!important; filter:none!important; transform:none!important; }
+}

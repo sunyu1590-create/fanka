@@ -72,13 +72,30 @@ async function setDiscoverLayout(page: import("@playwright/test").Page, layout: 
   await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
 }
 
+async function chooseDetailTransition(page: import("@playwright/test").Page, option: "图片连续展开" | "轻柔焦上浮" | "留影接力") {
+  await page.getByRole("button", { name: "我的" }).click();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: /个人设置/ }).click();
+  await page.getByRole("button", { name: /详情过渡动画/ }).click();
+  await expect(page.getByRole("radiogroup", { name: "详情过渡动画" }).getByRole("radio")).toHaveCount(3);
+  await page.getByRole("radio", { name: new RegExp(option) }).click();
+  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("heika-detail-transition"))).toBe(
+    option === "图片连续展开" ? "image-zoom" : option === "轻柔焦上浮" ? "blur-rise" : "ghost-handoff",
+  );
+}
+
 function fixturePost(id: number) {
+  const images = [
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E",
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%235c4d68'/%3E%3C/svg%3E",
+  ];
   return {
     id, cloudId: `cloud-post-${id}`, status: "published", tag: "生活", topics: ["生活"], title: `浏览器验收内容 ${id}`,
     body: "用于本地浏览器验收的内容正文。", cover: "安静观察日常",
     author: "验收账号", date: "2026-11-01",
-    image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E",
-    images: ["data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E"],
+    image: images[0],
+    images,
     isDemo: true,
   };
 }
@@ -143,7 +160,7 @@ test("discovery columns, desktop detail and settings adapt at every requested br
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 375, height: 812 });
   await enterApp(page);
-  await page.getByRole("button", { name: "发现" }).click();
+  await page.getByRole("button", { name: "发现", exact: true }).click();
   await expect(page.locator(".stable-editorial-feed .post-card").first()).toBeVisible();
 
   for (const [width, expectedColumns] of [[375, 2], [430, 2], [768, 3], [1024, 3], [1280, 4], [1440, 4], [1920, 5]] as const) {
@@ -153,11 +170,38 @@ test("discovery columns, desktop detail and settings adapt at every requested br
     expect(overflow, `horizontal overflow on discovery at ${width}px`).toBeLessThanOrEqual(1);
   }
 
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 375, height: 812 });
   await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail")).toBeVisible();
-  await expect.poll(() => page.locator(".detail-body").evaluate((body) => getComputedStyle(body).gridTemplateColumns.trim().split(/\s+/).length)).toBe(2);
-  await expect.poll(() => page.locator(".detail-comments").evaluate((comments) => getComputedStyle(comments).overflowY)).toBe("auto");
+  for (const [width, expectedColumns] of [[375, 1], [430, 1], [768, 1], [1024, 2], [1280, 2], [1440, 2], [1920, 2]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    const body = page.locator(".detail-body");
+    const display = await body.evaluate((element) => getComputedStyle(element).display);
+    const actualColumns = display === "grid"
+      ? await body.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)
+      : 1;
+    expect(actualColumns, `detail columns at ${width}px`).toBe(expectedColumns);
+    if (expectedColumns === 2) {
+      await expect.poll(() => page.locator(".detail-comments").evaluate((comments) => getComputedStyle(comments).overflowY)).toBe("auto");
+      const [articleBox, commentsBox] = await Promise.all([
+        page.locator(".detail-article-column").boundingBox(),
+        page.locator(".detail-comments").boundingBox(),
+      ]);
+      expect(articleBox, `article column missing at ${width}px`).not.toBeNull();
+      expect(commentsBox, `comments column missing at ${width}px`).not.toBeNull();
+      expect(articleBox!.x + articleBox!.width, `article and comments overlap at ${width}px`).toBeLessThanOrEqual(commentsBox!.x + 1);
+    } else {
+      const [articleBox, commentsBox] = await Promise.all([
+        page.locator(".detail-article-column").boundingBox(),
+        page.locator(".detail-comments").boundingBox(),
+      ]);
+      expect(articleBox, `article column missing at ${width}px`).not.toBeNull();
+      expect(commentsBox, `comments column missing at ${width}px`).not.toBeNull();
+      expect(commentsBox!.y, `comments should follow the article at ${width}px`).toBeGreaterThanOrEqual(articleBox!.y + articleBox!.height);
+    }
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `horizontal overflow in detail at ${width}px`).toBeLessThanOrEqual(1);
+  }
   await page.getByRole("button", { name: "返回" }).click();
 
   await page.getByRole("button", { name: "我的" }).click();
@@ -256,6 +300,42 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   await page.getByRole("textbox", { name: "正文" }).focus();
   await expect(page.getByRole("textbox", { name: "正文" })).toBeFocused();
   await expect(page.getByRole("region", { name: "选择话题" })).toBeVisible();
+});
+
+test("detail transition choices persist and animate image changes without blocking rapid navigation", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enterApp(page);
+
+  await chooseDetailTransition(page, "轻柔焦上浮");
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-blur-rise/);
+  await page.getByRole("button", { name: "下一张图片" }).click();
+  const image = page.locator(".detail-image-frame > img").first();
+  await expect.poll(() => image.getAttribute("src")).toContain("5c4d68");
+  await expect.poll(() => image.evaluate((node) => getComputedStyle(node).animationName)).toBe("detail-image-rise");
+  await expect(page.locator(".detail-image-ghost")).toHaveCount(0);
+  await page.getByRole("button", { name: "返回" }).click();
+
+  await chooseDetailTransition(page, "留影接力");
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-ghost-handoff/);
+  await page.getByRole("button", { name: "下一张图片" }).click();
+  await expect(page.locator(".detail-image-frame > img").first()).toHaveAttribute("src", /5c4d68/);
+  await expect(page.locator(".detail-image-ghost")).toBeVisible();
+  await page.getByRole("button", { name: "上一张图片" }).click();
+  await expect.poll(() => page.locator(".detail-image-frame > img").first().getAttribute("src")).toContain("3a4a50");
+  await expect(page.locator(".detail-gallery-controls")).toContainText("1 / 2");
+  await expect(page.locator(".detail-image-ghost")).toHaveCount(0, { timeout: 2_000 });
+  await page.getByRole("button", { name: "返回" }).click();
+
+  await chooseDetailTransition(page, "图片连续展开");
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-image-zoom/);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("heika-detail-transition"))).toBe("image-zoom");
 });
 
 test("report sheet and admin queue use the same theme tokens for signed-in accounts", async ({ page }) => {

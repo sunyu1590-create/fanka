@@ -291,7 +291,7 @@ export default function Community() {
   const [themeReady, setThemeReady] = useState(false);
   const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("fixed");
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
-  const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise">("image-zoom");
+  const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("image-zoom");
   const [detailTransitionLoaded, setDetailTransitionLoaded] = useState(false);
   const [profileLayout, setProfileLayout] = useState<"masonry" | "list">("masonry");
   const [profileLayoutLoaded, setProfileLayoutLoaded] = useState(false);
@@ -310,7 +310,7 @@ export default function Community() {
       setBottomNavStyle(savedBottomNavStyle);
     setBottomNavStyleReady(true);
     const savedDetailTransition = localStorage.getItem("heika-detail-transition");
-    if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise")
+    if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise" || savedDetailTransition === "ghost-handoff")
       setDetailTransition(savedDetailTransition);
     setDetailTransitionLoaded(true);
     const savedProfileLayout = localStorage.getItem("heika-public-profile-layout");
@@ -342,6 +342,9 @@ export default function Community() {
     if (!detailTransitionLoaded) return;
     localStorage.setItem("heika-detail-transition", detailTransition);
   }, [detailTransition, detailTransitionLoaded]);
+  useEffect(() => () => {
+    if (detailImageGhostTimer.current !== null) window.clearTimeout(detailImageGhostTimer.current);
+  }, []);
   useEffect(() => {
     if (!profileLayoutLoaded) return;
     localStorage.setItem("heika-public-profile-layout", profileLayout);
@@ -626,8 +629,10 @@ export default function Community() {
   const [displayedImageIndex, setDisplayedImageIndex] = useState(0);
   const [imageLoading, setImageLoading] = useState(false);
   const [detailImageDirection, setDetailImageDirection] = useState<"next" | "previous">("next");
+  const [detailImageGhost, setDetailImageGhost] = useState<{ src: string; sequence: number } | null>(null);
   const preloadedDetailImages = useRef(new Map<string, { image: HTMLImageElement; promise: Promise<HTMLImageElement> }>());
   const imageSwitchSequence = useRef(0);
+  const detailImageGhostTimer = useRef<number | null>(null);
   const imageTouchStart = useRef<{ x: number; y: number } | null>(null);
   const imageSwipeTriggered = useRef(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
@@ -1565,7 +1570,7 @@ export default function Community() {
       finish();
       return;
     }
-    const duration = usesImageZoom ? (opening ? 320 : 240) : (opening ? 240 : 190);
+    const duration = usesImageZoom ? (opening ? 320 : 240) : (opening ? 220 : 180);
     const animation = detailNode.animate(
       usesImageZoom
         ? opening
@@ -1579,12 +1584,12 @@ export default function Community() {
             ]
         : opening
           ? [
-              { opacity: .84, filter: "blur(3px)", transform: "translate3d(0,8px,0)" },
-              { opacity: 1, filter: "blur(0)", transform: "translate3d(0,0,0)" },
+              { opacity: .82, transform: "translate3d(0,9px,0)" },
+              { opacity: 1, transform: "translate3d(0,0,0)" },
             ]
           : [
-              { opacity: 1, filter: "blur(0)", transform: "translate3d(0,0,0)" },
-              { opacity: .84, filter: "blur(2px)", transform: "translate3d(0,6px,0)" },
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+              { opacity: .82, transform: "translate3d(0,7px,0)" },
             ],
       { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
     );
@@ -2418,9 +2423,14 @@ export default function Community() {
   };
   useEffect(() => {
     if (detail === null) return;
+    if (detailImageGhostTimer.current !== null) {
+      window.clearTimeout(detailImageGhostTimer.current);
+      detailImageGhostTimer.current = null;
+    }
     setActiveImageIndex(0);
     setDisplayedImageIndex(0);
     setImageLoading(false);
+    setDetailImageGhost(null);
     setDetailImageDirection("next");
     setPreviewImage(false);
     setCommentsLoading(true);
@@ -2453,6 +2463,14 @@ export default function Community() {
       alive = false;
     };
   }, [detail, detailSort]);
+  useEffect(() => {
+    if (detail !== null) return;
+    if (detailImageGhostTimer.current !== null) {
+      window.clearTimeout(detailImageGhostTimer.current);
+      detailImageGhostTimer.current = null;
+    }
+    setDetailImageGhost(null);
+  }, [detail]);
   const loadMoreComments = async () => {
     if (detail === null || commentsLoading || !commentHasMore) return;
     setCommentsLoading(true);
@@ -2643,6 +2661,17 @@ export default function Community() {
     setImageLoading(true);
     void preloadDetailImage(detailImages[normalized], "high").then(() => {
       if (sequence === imageSwitchSequence.current && detail !== null) {
+        if (detailImageGhostTimer.current !== null) window.clearTimeout(detailImageGhostTimer.current);
+        const outgoingImage = detailImages[displayedImageIndex];
+        if (detailTransition === "ghost-handoff" && outgoingImage && outgoingImage !== detailImages[normalized]) {
+          setDetailImageGhost({ src: outgoingImage, sequence });
+          detailImageGhostTimer.current = window.setTimeout(() => {
+            setDetailImageGhost((current) => current?.sequence === sequence ? null : current);
+            detailImageGhostTimer.current = null;
+          }, 250);
+        } else {
+          setDetailImageGhost(null);
+        }
         setDisplayedImageIndex(normalized);
         setImageLoading(false);
       }
@@ -3440,7 +3469,7 @@ export default function Community() {
             <div className="settings-list">
               <button onClick={() => openSettingsDetail("homeMode")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("detailTransition")}><span>详情过渡动画</span><small>{detailTransition === "image-zoom" ? "图片展开" : "轻微模糊上浮"}</small><ChevronRight size={16}/></button>
+              <button onClick={() => openSettingsDetail("detailTransition")}><span>详情过渡动画</span><small>{detailTransition === "image-zoom" ? "图片连续展开" : detailTransition === "blur-rise" ? "轻柔焦上浮" : "留影接力"}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("profileLayout")}><span>他人主页布局</span><small>{profileLayout === "masonry" ? "大图瀑布流" : "列表"}</small><ChevronRight size={16}/></button>
             </div>
@@ -3591,8 +3620,9 @@ export default function Community() {
           {settingsDetail === "detailTransition" && (
             <div className="preference-options" role="radiogroup" aria-label="详情过渡动画">
               {([
-                ["image-zoom", "图片展开", "图片从卡片位置放大进入详情页，保持连贯过渡"],
-                ["blur-rise", "轻微模糊上浮", "详情内容轻微模糊并上浮切入，不连贯放大图片"],
+                ["image-zoom", "图片连续展开", "保留封面放大进入详情、返回原卡片的连贯转场"],
+                ["blur-rise", "轻柔焦上浮", "新图片从轻微柔焦与短距离上浮中清晰出现"],
+                ["ghost-handoff", "留影接力", "上一张短暂留影，新图轻柔上浮；快速切换可立即接续"],
               ] as const).map(([value, label, description]) => <button key={value} role="radio" aria-checked={detailTransition === value} className={`preference-option${detailTransition === value ? " selected" : ""}`} onClick={() => setDetailTransition(value)}>
                 <span className={`preference-preview preview-transition preview-transition-${value}`} aria-hidden="true"><i/><b/></span><span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{detailTransition === value ? "✓" : ""}</i>
               </button>)}
@@ -4238,6 +4268,7 @@ export default function Community() {
             </header>
             <div className="detail-scroll" key={post.id}>
               <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
+                <div className="detail-article-column">
                 {detailImages.length > 0 && (
                   <div className="detail-gallery" aria-busy={imageLoading} onPointerDown={(event) => {
                     imageSwipeTriggered.current = false;
@@ -4255,11 +4286,12 @@ export default function Community() {
                     selectDetailImage(activeImageIndex + (deltaX < 0 ? 1 : -1));
                     window.setTimeout(() => { imageSwipeTriggered.current = false; }, 0);
                   }} onPointerCancel={() => { imageTouchStart.current = null; imageSwipeTriggered.current = false; }}>
-                  <button className={`detail-image-button detail-image-frame is-${detailImageDirection}`} onClick={(event) => {
+                  <button className={`detail-image-button detail-image-frame transition-${detailTransition} is-${detailImageDirection}`} onClick={(event) => {
                     if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
                     setPreviewImage(true);
                   }} aria-label="查看大图">
                     <img key={detailImages[displayedImageIndex]} src={detailImages[displayedImageIndex]} alt={`${post.title}，第 ${displayedImageIndex + 1} 张`} loading="eager" fetchPriority="high" onLoad={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }} onError={(event) => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
+                    {detailTransition === "ghost-handoff" && detailImageGhost && <img key={detailImageGhost.sequence} className="detail-image-ghost" src={detailImageGhost.src} alt="" aria-hidden="true" />}
                     <span>查看大图</span>
                   </button>
                   {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
@@ -4296,6 +4328,7 @@ export default function Community() {
                   ) : null)}
                   {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
                 </section>
+                </div>
                 <section id="detail-comments" className="detail-comments">
                   <div className="comments-heading">
                     <h2>评论 <span>· {commentTotal}</span></h2>
