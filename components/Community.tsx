@@ -3603,7 +3603,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.2</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.3</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3761,7 +3761,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.35.2</p>
+          <p className="lead">HEIKA · 版本 2.35.3</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.3</strong><small>2026.11.05</small></div><ul><li>通知恢复紧凑旧版样式，保留新版顶部入场、退场动画及滑动交互。</li><li>管理员后台改为分组工作台，点击模块即可进入对应审核或管理界面。</li><li>修复带图片或视频的已发布作品修改审核失败问题，媒体路径长度校验不再触发 PostgreSQL 正则错误。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.2</strong><small>2026.11.05</small></div><ul><li>顶部通知改为克制的品牌横幅，支持消息头像、场景图标、时间、展开与上滑关闭。</li><li>连续提醒排队展示，私聊新消息可点击横幅直接回到对应会话。</li><li>启用视频发布 Beta：支持 MP4/WebM、单个视频 50 MiB 上限和断点续传。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.1</strong><small>2026.11.05</small></div><ul><li>修正平板底栏消息与“我的”入口的网格位置，确保五个入口始终各就其位。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.0</strong><small>2026.11.05</small></div><ul><li>统一适配手机、平板、桌面与超宽屏，桌面导航固定在侧栏。</li><li>发现与个人作品网格根据屏幕宽度扩展列数，详情、消息与编辑器布局同步适配大屏。</li><li>保留现有翻卡、内容、认证和互动逻辑，并修整窄屏与平板导航切换。</li></ul></div>

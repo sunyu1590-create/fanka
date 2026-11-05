@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, FileCheck, Flag, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { userMessage } from "@/lib/user-message";
@@ -25,9 +25,39 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void };
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings";
+type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
+const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
+  { title: "审核与举报", modules: [
+    { id: "content", title: "作品审核", description: "新投稿与已发布作品的修改", icon: FileCheck },
+    { id: "reports", title: "内容举报", description: "查看并处理作品与评论举报", icon: Flag },
+    { id: "messages", title: "私信举报", description: "处理用户提交的私信举报", icon: MessageCircle },
+  ] },
+  { title: "社区治理", modules: [
+    { id: "comments", title: "评论管理", description: "搜索、隐藏或恢复评论", icon: MessageSquare },
+    { id: "keywords", title: "关键词规则", description: "管理发布与互动拦截规则", icon: Tags },
+    { id: "topic-events", title: "话题共创", description: "创建和管理社区共创活动", icon: Sparkles },
+    { id: "audit", title: "操作记录", description: "查看管理员处理历史", icon: ScrollText },
+  ] },
+  { title: "账号与工具", modules: [
+    { id: "users", title: "账号管理", description: "角色、会员与社区发言限制", icon: Users },
+    { id: "ai-settings", title: "AI 工作台", description: "配置创作工作台服务密钥", icon: ShieldCheck },
+  ] },
+];
+const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
+  reports: "内容举报",
+  messages: "私信举报",
+  content: "作品审核",
+  comments: "评论管理",
+  keywords: "关键词规则",
+  audit: "操作记录",
+  users: "账号管理",
+  "topic-events": "话题共创",
+  "ai-settings": "AI 工作台",
+};
 
 function CollapsibleMarkdown({ source, label }: { source: string; label: string }) {
   const [open, setOpen] = useState(false);
@@ -45,11 +75,11 @@ function CollapsibleVideos({ videos, label }: { videos: string[]; label: string 
 }
 
 export default function AdminModeration({ onBack }: Props) {
-  const [section, setSection] = useState<"reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings">("reports");
+  const [section, setSection] = useState<AdminSection>("overview");
   const [status, setStatus] = useState<(typeof filters)[number][0]>("open");
   const [reports, setReports] = useState<Report[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [reportTotal, setReportTotal] = useState(0);
+  const [pendingReportTotal, setPendingReportTotal] = useState(0);
   const [submissionTotal, setSubmissionTotal] = useState(0);
   const [userTotal, setUserTotal] = useState(0);
   const [messageReports, setMessageReports] = useState<DmReport[]>([]);
@@ -78,6 +108,7 @@ export default function AdminModeration({ onBack }: Props) {
   const [restrictionTarget, setRestrictionTarget] = useState<string | null>(null);
   const [restrictionReason, setRestrictionReason] = useState("");
   const [restrictionDuration, setRestrictionDuration] = useState<"1h" | "24h" | "7d" | "30d" | "permanent">("24h");
+  const [governanceRefreshKey, setGovernanceRefreshKey] = useState(0);
 
   const loadTopicEvents = useCallback(async () => {
     setTopicEventBusy(true); setError("");
@@ -157,7 +188,7 @@ export default function AdminModeration({ onBack }: Props) {
         cloudRequest("/api/v1/admin/message-reports") as Promise<DmReport[]>,
       ]);
       setReports(reportData.items || []);
-      setReportTotal(reportData.total || 0);
+      if (status === "open") setPendingReportTotal(reportData.total || 0);
       setSubmissions(contentData.items || []);
       setSubmissionTotal(contentData.total || 0);
       setUserTotal(accountSummary.total || 0);
@@ -254,34 +285,58 @@ export default function AdminModeration({ onBack }: Props) {
     finally { setSaving(null); }
   };
 
+  const pendingMessageReports = messageReports.filter((item) => item.status === "open").length;
+  const navigateAdminSection = (next: AdminSection) => {
+    setSection(next);
+    setError("");
+    setNotice("");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+  const refreshCurrent = () => {
+    if (section === "users") void loadUsers();
+    else if (section === "topic-events") void loadTopicEvents();
+    else if (section === "ai-settings") void loadAiSettings();
+    else if (section === "comments" || section === "keywords" || section === "audit") setGovernanceRefreshKey((value) => value + 1);
+    else void load();
+  };
+
   return <section className="page moderation-page">
     <button className="back settings-back" onClick={onBack}><ArrowLeft size={18} /> 设置</button>
     <div className="eyebrow">HEIKA / ADMINISTRATION</div>
-    <h1>管理后台<span className="red-dot">.</span></h1>
-    <p className="lead">账号、内容与社区举报的运营管理。</p>
-    <div className="admin-overview" aria-label="后台概览">
-      <div><strong>{userTotal}</strong><span>账号</span></div>
-      <div><strong>{submissionTotal}</strong><span>待审核内容</span></div>
-      <div><strong>{reportTotal + messageReports.filter((item) => item.status === "open").length}</strong><span>待处理举报</span></div>
-    </div>
-    <div className="moderation-tabs" role="tablist" aria-label="审核类型">
-      <button role="tab" aria-selected={section === "reports"} className={section === "reports" ? "selected" : ""} onClick={() => setSection("reports")}>举报队列 <small>{reportTotal}</small></button>
-      <button role="tab" aria-selected={section === "messages"} className={section === "messages" ? "selected" : ""} onClick={() => setSection("messages")}>私信举报 <small>{messageReports.filter((item) => item.status === "open").length}</small></button>
-      <button role="tab" aria-selected={section === "content"} className={section === "content" ? "selected" : ""} onClick={() => setSection("content")}>待审核内容 <small>{submissionTotal}</small></button>
-      <button role="tab" aria-selected={section === "comments"} className={section === "comments" ? "selected" : ""} onClick={() => setSection("comments")}>评论管理</button>
-      <button role="tab" aria-selected={section === "keywords"} className={section === "keywords" ? "selected" : ""} onClick={() => setSection("keywords")}>关键词</button>
-      <button role="tab" aria-selected={section === "audit"} className={section === "audit" ? "selected" : ""} onClick={() => setSection("audit")}>操作记录</button>
-      <button role="tab" aria-selected={section === "users"} className={section === "users" ? "selected" : ""} onClick={() => setSection("users")}>账号管理 <small>{userTotal}</small></button>
-      <button role="tab" aria-selected={section === "topic-events"} className={section === "topic-events" ? "selected" : ""} onClick={() => setSection("topic-events")}>话题共创</button>
-      <button role="tab" aria-selected={section === "ai-settings"} className={section === "ai-settings" ? "selected" : ""} onClick={() => setSection("ai-settings")}>AI 工作台</button>
-      <button className="moderation-refresh" aria-label="刷新队列" onClick={() => section === "users" ? void loadUsers() : section === "topic-events" ? void loadTopicEvents() : section === "ai-settings" ? void loadAiSettings() : void load()} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy}><RefreshCw size={16} /></button>
-    </div>
+    <h1>{section === "overview" ? "管理后台" : adminSectionTitles[section]}<span className="red-dot">.</span></h1>
+    <p className="lead">{section === "overview" ? "按工作模块进入审核与管理，待处理事项优先显示。" : `管理后台 / ${adminSectionTitles[section]}`}</p>
+    {section === "overview" ? <>
+      <div className="admin-overview" aria-label="后台概览">
+        <div><strong>{userTotal}</strong><span>账号总数</span></div>
+        <div><strong>{submissionTotal}</strong><span>待审核作品</span></div>
+        <div><strong>{pendingReportTotal + pendingMessageReports}</strong><span>待处理举报</span></div>
+      </div>
+      <div className="admin-module-groups">
+        <div className="admin-module-heading"><div><small>WORKSPACE</small><strong>管理模块</strong></div><button type="button" className="soft-button" onClick={refreshCurrent} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
+        {adminModuleGroups.map((group) => <section className="admin-module-group" key={group.title} aria-label={group.title}>
+          <h2>{group.title}</h2>
+          <div className="admin-module-grid">{group.modules.map((module) => {
+            const Icon = module.icon;
+            const count = module.id === "content" ? submissionTotal : module.id === "reports" ? pendingReportTotal : module.id === "messages" ? pendingMessageReports : null;
+            return <button type="button" className="admin-module-card" key={module.id} onClick={() => navigateAdminSection(module.id)}>
+              <span className="admin-module-icon"><Icon size={19}/></span>
+              <span className="admin-module-copy"><strong>{module.title}</strong><small>{module.description}</small>{count !== null && <em>{count ? `${count} 项待处理` : "暂无待处理"}</em>}</span>
+              <ChevronRight size={17}/>
+            </button>;
+          })}</div>
+        </section>)}
+      </div>
+    </> : <div className="admin-workspace-nav">
+      <button type="button" onClick={() => navigateAdminSection("overview")}><ArrowLeft size={16}/> 管理台</button>
+      <span>{adminSectionTitles[section]}</span>
+      <button type="button" className="admin-workspace-refresh" aria-label={`刷新${adminSectionTitles[section]}`} onClick={refreshCurrent} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy}><RefreshCw size={15}/> 刷新</button>
+    </div>}
     {section === "reports" && <div className="moderation-filters" role="group" aria-label="举报状态">
       {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "keywords" ? <AdminGovernance mode="keywords" /> : section === "comments" ? <AdminGovernance mode="comments" /> : section === "audit" ? <AdminGovernance mode="audit" /> : section === "ai-settings" ? <>
+    {section === "overview" ? null : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
         <div className="admin-topic-event-form-heading"><div><small>AI / PROVIDER</small><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}

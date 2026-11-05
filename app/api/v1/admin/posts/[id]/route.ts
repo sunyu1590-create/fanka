@@ -7,6 +7,7 @@ function applyError(error: { code?: string; message?: string }) {
   const message = error.message || "";
   if (/[\u4e00-\u9fff]/.test(message)) return new ApiError(409, message);
   console.error("[admin-post-review] Revision apply failed", error.code || "unknown");
+  if (error.code === "2201B") return new ApiError(409, "作品媒体地址校验失败，原公开作品保持不变；请重试，若仍失败请联系管理员");
   if (error.code === "42501") return new ApiError(403, "管理员审核权限校验失败，请重新登录后重试");
   if (error.code === "23503") return new ApiError(409, "作品关联的分类、系列或图片已失效，请检查后让作者重新提交");
   return new ApiError(409, "修改没有应用成功，请刷新审核项后重试；原公开作品仍保持不变");

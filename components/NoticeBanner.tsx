@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Bell, ChevronDown, ChevronUp, CircleAlert, CircleCheck, Image as ImageIcon, MessageCircle, ShieldCheck, Star, X } from "lucide-react";
+import { Bell, CircleAlert, CircleCheck, Image as ImageIcon, MessageCircle, ShieldCheck, Star, X } from "lucide-react";
 
 export type NoticeKind = "general" | "success" | "error" | "message" | "content" | "reward" | "account";
 
@@ -20,27 +20,14 @@ export type NoticeBannerItem = NoticeOptions & {
   kind: NoticeKind;
 };
 
-function noticeTime(timestamp: number) {
-  const now = new Date();
-  const date = new Date(timestamp);
-  const time = date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  const age = now.getTime() - date.getTime();
-  if (age < 60_000) return "现在";
-  if (date.toDateString() === now.toDateString()) return time;
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return `昨天 ${time}`;
-  return `${date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })} ${time}`;
-}
-
 function BadgeIcon({ kind }: { kind: NoticeKind }) {
-  if (kind === "error") return <CircleAlert size={12} />;
-  if (kind === "success") return <CircleCheck size={12} />;
-  if (kind === "message") return <MessageCircle size={12} />;
-  if (kind === "content") return <ImageIcon size={12} />;
-  if (kind === "reward") return <Star size={12} />;
-  if (kind === "account") return <ShieldCheck size={12} />;
-  return <Bell size={12} />;
+  if (kind === "error") return <CircleAlert size={16} />;
+  if (kind === "success") return <CircleCheck size={16} />;
+  if (kind === "message") return <MessageCircle size={16} />;
+  if (kind === "content") return <ImageIcon size={16} />;
+  if (kind === "reward") return <Star size={16} />;
+  if (kind === "account") return <ShieldCheck size={16} />;
+  return <Bell size={16} />;
 }
 
 export default function NoticeBanner({
@@ -58,8 +45,6 @@ export default function NoticeBanner({
 }) {
   const pointerStart = useRef<{ id: number; y: number } | null>(null);
   const suppressClick = useRef(false);
-  const avatar = notice.avatarUrl || "/icons/heika-192.png";
-
   const activate = () => {
     if (suppressClick.current) {
       suppressClick.current = false;
@@ -99,28 +84,13 @@ export default function NoticeBanner({
         event.stopPropagation();
         suppressClick.current = false;
       }}
+      aria-label={`${notice.title}：${notice.body}`}
     >
-      <span
-        className="toast-avatar"
-        aria-hidden="true"
-        style={{ backgroundImage: `url(${JSON.stringify(avatar)})` }}
-      >
-        <i className={`toast-kind-icon is-${notice.kind}`}><BadgeIcon kind={notice.kind} /></i>
-      </span>
-      <div className="toast-content">
-        <div className="toast-heading">
-          <strong>{notice.title}</strong>
-          <time dateTime={new Date(notice.createdAt).toISOString()}>{noticeTime(notice.createdAt)}</time>
-        </div>
-        <button className="toast-message" type="button" onClick={activate} aria-label={notice.onActivate ? `打开${notice.title}` : `关闭提示：${notice.body}`}>
-          <span>{notice.body}</span>
-        </button>
-        <div className="toast-footer">
-          {notice.body.length > 52 && <button type="button" className="toast-expand-button" aria-expanded={expanded} onClick={onExpand}>{expanded ? "收起" : "展开"}{expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}</button>}
-          {notice.onActivate && <span className="toast-open-hint">点击查看</span>}
-        </div>
-      </div>
-      <button type="button" className="toast-dismiss" aria-label="关闭通知" onClick={(event) => { event.stopPropagation(); onDismiss(); }}><X size={17} /></button>
+      <span className={`toast-icon is-${notice.kind}`} aria-hidden="true"><BadgeIcon kind={notice.kind} /></span>
+      <button className="toast-copy" type="button" onClick={activate} aria-label={notice.onActivate ? `打开${notice.title}` : `查看提示：${notice.body}`}>
+        {notice.body}
+      </button>
+      <button type="button" className="toast-dismiss" aria-label="关闭通知" onClick={(event) => { event.stopPropagation(); onDismiss(); }}><X size={16} /></button>
     </div>
   );
 }
