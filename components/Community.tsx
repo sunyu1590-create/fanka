@@ -32,6 +32,8 @@ import {
   GitBranch,
   CalendarDays,
   History,
+  ImagePlus,
+  Video as VideoIcon,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -69,6 +71,7 @@ import { REPORT_REASONS } from "@/lib/report-validation";
 import { userMessage } from "@/lib/user-message";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
+import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 
 const FLIP_RAIN_PARTICLES = 112;
@@ -101,7 +104,7 @@ type Comment = {
   liked?: boolean;
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
-type ComposerVideo = { id: string; file?: File; path?: string; url: string; name: string; size: number; type: string; status: "ready" | "uploading" | "failed"; progress: number; existing?: boolean };
+type ComposerVideo = { id: string; file?: File; path?: string; url: string; name: string; size: number; type: string; status: "ready" | "compressing" | "uploading" | "failed"; progress: number; compressionProgress?: number; originalSize?: number; compressionNote?: string; existing?: boolean };
 const VIDEO_UPLOAD_BETA_ENABLED = process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA === "1";
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
@@ -689,6 +692,8 @@ export default function Community() {
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastDraftPayload = useRef("");
+  const videoCompressionSequence = useRef(0);
+  const videoCompressionAbort = useRef<AbortController | null>(null);
   const draftMediaBusy = useRef(new Set<string>());
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
@@ -2066,11 +2071,49 @@ export default function Community() {
     if (composerImages.length) return toast("视频 Beta 暂不与图片混发，请先移除已选图片");
     if (!POST_VIDEO_TYPES.includes(file.type as (typeof POST_VIDEO_TYPES)[number])) return toast("视频测试版仅支持 MP4、WebM 格式");
     if (!file.size || file.size > POST_VIDEO_MAX_BYTES) return toast("视频大小需在 1 B 到 50 MB 之间");
+    videoCompressionAbort.current?.abort();
+    const controller = new AbortController();
+    videoCompressionAbort.current = controller;
+    const sequence = ++videoCompressionSequence.current;
+    const id = crypto.randomUUID();
     if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
-    setComposerVideo({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file), name: file.name, size: file.size, type: file.type, status: "ready", progress: 0 });
+    const url = URL.createObjectURL(file);
+    const wantsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
+    const canCompress = wantsCompression && supportsVideoCompression();
+    setComposerVideo({ id, file, url, name: file.name, size: file.size, type: file.type, status: canCompress ? "compressing" : "ready", progress: 0, compressionProgress: 0, originalSize: file.size, compressionNote: wantsCompression && !canCompress ? "此浏览器暂不支持本地压缩，将保留原视频" : undefined });
+    if (!canCompress) return;
+    void compressVideoForUpload(file, (compressionProgress) => {
+      if (videoCompressionSequence.current !== sequence || controller.signal.aborted) return;
+      setComposerVideo((current) => current?.id === id ? { ...current, compressionProgress } : current);
+    }, controller.signal).then((result) => {
+      if (videoCompressionSequence.current !== sequence || controller.signal.aborted) return;
+      const nextUrl = result.file === file ? url : URL.createObjectURL(result.file);
+      if (nextUrl !== url) URL.revokeObjectURL(url);
+      setComposerVideo((current) => current?.id === id ? {
+        ...current,
+        file: result.file,
+        url: nextUrl,
+        name: result.file.name,
+        size: result.file.size,
+        type: result.file.type,
+        status: "ready",
+        compressionProgress: 100,
+        compressionNote: result.compressed
+          ? `已优化 ${(file.size / 1024 / 1024).toFixed(1)} MB → ${(result.file.size / 1024 / 1024).toFixed(1)} MB`
+          : result.reason === "unsupported" ? "此浏览器暂不支持本地压缩，将保留原视频" : "原视频画质已保留",
+      } : current);
+      videoCompressionAbort.current = null;
+    }).catch(() => {
+      if (controller.signal.aborted || videoCompressionSequence.current !== sequence) return;
+      setComposerVideo((current) => current?.id === id ? { ...current, status: "ready", compressionProgress: 100, compressionNote: "压缩未完成，已保留原视频" } : current);
+      videoCompressionAbort.current = null;
+    });
   };
   const removeComposerVideo = async () => {
     if (!composerVideo) return;
+    videoCompressionAbort.current?.abort();
+    videoCompressionAbort.current = null;
+    videoCompressionSequence.current += 1;
     const old = state.own.find((item) => item.id === editing);
     if (composerVideo.path && old?.cloudId && composerVideo.existing && !composerRevisionMode) {
       try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: composerVideo.path }, "DELETE"); }
@@ -2090,6 +2133,7 @@ export default function Community() {
     if ((pollDraft.question || pollDraft.options.length) && (!pollDraft.question || pollDraft.options.length < 2 || pollDraft.options.length > 4)) return toast("投票需要填写问题，并设置 2–4 个选项");
     if (!accountId) return toast("请先在消息页面登录，当前输入会保留");
     if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
+    if (composerVideo?.status === "compressing") return toast("视频正在优化，请稍后发布");
     if (composerVideo?.status === "uploading") return toast("视频正在上传，请稍后发布");
     if (composerVideo && composerImages.length) return toast("视频 Beta 暂不与图片混发，请移除其中一种媒体");
     try {
@@ -2171,6 +2215,10 @@ export default function Community() {
     }
   };
   const openComposer = async (post?: Post) => {
+    videoCompressionAbort.current?.abort();
+    videoCompressionAbort.current = null;
+    videoCompressionSequence.current += 1;
+    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
     const stored = !post ? state.own.find((item) => item.status === "draft") : undefined;
     const initialPost = post || stored;
     const revisionPayload = initialPost?.pendingRevision?.payload;
@@ -2388,7 +2436,7 @@ export default function Community() {
     finally { setUploadingImages(false); }
   };
   const discardComposerDraft = async () => {
-    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id)) || composerVideo?.status === "uploading") return toast("草稿正在同步，请稍后再删除");
+    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id)) || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在处理，请稍后再删除");
     if (!confirm("删除这份草稿及其图片？此操作无法撤销。")) return;
     let old = state.own.find((item) => item.id === editing);
     if (accountId && !composerEditingPublished) {
@@ -2407,6 +2455,9 @@ export default function Community() {
     localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(owner).catch(() => {});
     composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
     if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    videoCompressionAbort.current?.abort();
+    videoCompressionAbort.current = null;
+    videoCompressionSequence.current += 1;
     setComposerVideo(null); setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
   };
   const openTopic = async (name: string) => {
@@ -3604,7 +3655,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.4</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.35.5</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3762,7 +3813,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.35.4</p>
+          <p className="lead">HEIKA · 版本 2.35.5</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.5</strong><small>2026.11.05</small></div><ul><li>发布页移除顶部说明块与独立写作提示，标题和正文直接进入编辑。</li><li>图片和视频 Beta 改为并列常驻入口，上传、审核和草稿提示就近展示。</li><li>大视频在浏览器支持时使用本地编码降至 720p 级别并压缩码率，保留音轨、原画质回退及现有分片续传。</li><li>发布操作栏和媒体选择加入轻量玻璃质感，并优化窄屏可读性与安全区间距。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.4</strong><small>2026.11.05</small></div><ul><li>通知横幅按场景显示爱心、评论、收藏、关注等对应图标，并下移 4px。</li><li>详情页点赞按钮显示作品获赞数，成功点赞或取消后同步更新数字。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.3</strong><small>2026.11.05</small></div><ul><li>通知恢复紧凑旧版样式，保留新版顶部入场、退场动画及滑动交互。</li><li>管理员后台改为分组工作台，点击模块即可进入对应审核或管理界面。</li><li>修复带图片或视频的已发布作品修改审核失败问题，媒体路径长度校验不再触发 PostgreSQL 正则错误。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.2</strong><small>2026.11.05</small></div><ul><li>顶部通知改为克制的品牌横幅，支持消息头像、场景图标、时间、展开与上滑关闭。</li><li>连续提醒排队展示，私聊新消息可点击横幅直接回到对应会话。</li><li>启用视频发布 Beta：支持 MP4/WebM、单个视频 50 MiB 上限和断点续传。</li></ul></div>
@@ -4565,7 +4617,7 @@ export default function Community() {
           >
             {modal === "write" ? <header className="composer-topbar">
               <button type="button" className="composer-back" onClick={() => setModal(null)} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
-              <strong>{editing ? "编辑内容" : "分享一篇内容"}</strong>
+              <strong>{editing ? "编辑内容" : "发布内容"}</strong>
               <span className="composer-topbar-status">{draftSaving ? "保存中" : draftSaved ? "已保存" : "草稿"}</span>
             </header> : <button
               className="close"
@@ -4779,42 +4831,62 @@ export default function Community() {
             ) : (
               <div className="composer-workspace">
               <div className="composer-scroll">
-                <div className="eyebrow">CREATE / STORY</div>
-                <section className="composer-guidance" aria-label="发布说明">
-                  <strong>把一次发现，写成值得保存的内容</strong>
-                  <p>先写标题和正文，再选择图片、分类和话题。图片可以跳过，纯文字内容也能直接发布。</p>
-                  <span>提交后进入人工审核；审核通过后会出现在发现页。</span>
-                </section>
                 <label className="composer-title-field">
                   标题
                   <input
                     value={title}
                     maxLength={80}
                     aria-invalid={composerValidation === "title"}
-                    aria-describedby={composerValidation === "title" ? "composer-title-error" : undefined}
+                    aria-describedby={composerValidation === "title" ? "composer-title-error composer-title-help" : "composer-title-help"}
                     onChange={(e) => { setTitle(e.target.value); if (e.target.value.trim()) setComposerValidation(""); }}
-                    placeholder="用一句话概括这次发现（最多 80 字）"
+                    placeholder="为内容写一个标题"
                   />
                   <small className="composer-field-count">{title.length}/80</small>
+                  <small id="composer-title-help" className="composer-field-note">最多 80 字 · 发布后进入人工审核</small>
                 </label>
-                {composerValidation === "title" && <p id="composer-title-error" className="composer-field-error composer-title-error" role="alert">标题不能为空，先给这次发现一个名字。</p>}
+                {composerValidation === "title" && <p id="composer-title-error" className="composer-field-error composer-title-error" role="alert">请填写标题。</p>}
                 <label className="composer-body-field">
                   正文
                   <textarea
                     value={body}
                     maxLength={5000}
                     aria-invalid={composerValidation === "body"}
-                    aria-describedby={composerValidation === "body" ? "composer-body-error" : undefined}
+                    aria-describedby={composerValidation === "body" ? "composer-body-error composer-body-help" : "composer-body-help"}
                     onChange={(e) => { setBody(e.target.value); if (e.target.value.trim()) setComposerValidation(""); }}
-                    placeholder="写清楚你看到了什么、哪些细节值得分享，以及它带给你的想法。支持 Markdown。"
+                    placeholder="写下你想分享的内容…"
                     rows={7}
                   />
                   <small className="composer-field-count">{body.length}/5000</small>
+                  <small id="composer-body-help" className="composer-field-note">支持 Markdown · 最多 5000 字</small>
                 </label>
-                {composerValidation === "body" && <p id="composer-body-error" className="composer-field-error composer-body-error" role="alert">正文不能为空。写下观察、经验或想法后再发布。</p>}
-                <p className="composer-writing-hint"><strong>写作提示</strong><span>主题是什么？你发现了哪些细节？这件事为什么值得分享？</span></p>
+                {composerValidation === "body" && <p id="composer-body-error" className="composer-field-error composer-body-error" role="alert">请填写正文。</p>}
+                <section className="composer-media-picker" aria-label="选择图片或视频">
+                  <div className="composer-media-choices" role="group" aria-label="媒体类型">
+                    <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerVideo || composerImages.length >= 9 ? " disabled" : ""}`}>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={Boolean(composerVideo) || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
+                      <span className="composer-media-choice-icon"><ImagePlus size={20}/></span>
+                      <span className="composer-media-choice-copy"><strong>图片</strong><small>{composerImages.length >= 9 ? "已达最多 9 张" : composerImages.length ? `已选 ${composerImages.length}/9 张 · 点此继续添加` : "JPG、PNG、WebP · 最多 9 张"}</small></span>
+                      <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
+                    </label>
+                    {VIDEO_UPLOAD_BETA_ENABLED && <label className={`composer-media-choice video${composerVideo ? " selected" : ""}${composerImages.length ? " disabled" : ""}`}>
+                      <input type="file" accept="video/mp4,video/webm" disabled={Boolean(composerImages.length)} onChange={(event) => { chooseComposerVideo(event.target.files?.[0] || null); event.currentTarget.value = ""; }}/>
+                      <span className="composer-media-choice-icon"><VideoIcon size={20}/></span>
+                      <span className="composer-media-choice-copy"><strong>视频 <i>Beta</i></strong><small>MP4、WebM · 最大 50 MB</small></span>
+                      <span className="composer-media-choice-mark">{composerVideo ? "已选" : "选择"}</span>
+                    </label>}
+                  </div>
+                  <p className="composer-media-hint">图片或视频可选其一，暂不支持同篇混发。视频会在设备支持时自动优化；压缩效果不明显时保留原画质。</p>
+                  {composerVideo && <section className="composer-video-section" aria-label="视频 Beta" aria-busy={composerVideo.status === "compressing" || composerVideo.status === "uploading"}>
+                    <div className="composer-video-card">
+                      <video src={composerVideo.url} controls playsInline preload="metadata" aria-label="视频预览" />
+                      <div className="composer-video-info"><strong>{composerVideo.name}</strong><small>{composerVideo.status === "compressing" ? `正在优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo.status === "failed" ? "上传失败，重新发布可重试" : composerVideo.status === "uploading" ? `正在上传 ${composerVideo.progress}%` : composerVideo.size ? `${(composerVideo.size / 1024 / 1024).toFixed(1)} MB · ${composerVideo.compressionNote || (composerVideo.path ? "已同步到草稿" : "等待上传")}` : "已同步到草稿"}</small></div>
+                      <button type="button" className="composer-video-remove" onClick={() => void removeComposerVideo()}>{composerVideo.status === "compressing" ? "取消" : "移除"}</button>
+                      {(composerVideo.status === "compressing" || composerVideo.status === "uploading") && <progress max={100} value={composerVideo.status === "compressing" ? composerVideo.compressionProgress || 0 : composerVideo.progress} aria-label={composerVideo.status === "compressing" ? `视频优化 ${composerVideo.compressionProgress || 0}%` : `视频上传 ${composerVideo.progress}%`} />}
+                    </div>
+                  </section>}
+                </section>
                 <details className="composer-advanced">
-                  <summary><span><strong>更多设置</strong><small>互动投票、AI 辅助{VIDEO_UPLOAD_BETA_ENABLED ? "、视频 Beta" : ""}</small></span><ChevronDown size={17}/></summary>
+                    <summary><span><strong>更多选项</strong><small>互动投票与 AI 辅助</small></span><ChevronDown size={17}/></summary>
                   <div className="composer-advanced-content">
                 <section className="composer-poll-editor" aria-label="添加投票">
                   <div className="composer-section-heading"><span><strong>互动投票</strong><small>给帖子增加一个单选问题，读者可查看实时结果</small></span><span>{pollQuestion.trim() ? "已添加" : "可选"}</span></div>
@@ -4826,20 +4898,10 @@ export default function Community() {
                   <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
                   {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
                 </section>
-                {VIDEO_UPLOAD_BETA_ENABLED && <section className="composer-video-section" aria-label="视频上传 Beta">
-                  <div className="composer-section-heading"><span><strong>视频上传 Beta</strong><small>预览测试 · 单条视频，MP4 / WebM，最大 50 MB</small></span><span>{composerVideo ? "1/1" : "可选"}</span></div>
-                  <p className="composer-video-guidance">视频与图片暂不能混发。分片续传可在网络中断后恢复；此 Beta 内容仅用于预览验证。</p>
-                  {composerVideo ? <div className="composer-video-card">
-                    <video src={composerVideo.url} controls playsInline preload="metadata" aria-label="视频预览" />
-                    <div className="composer-video-info"><strong>{composerVideo.name}</strong><small>{composerVideo.size ? `${(composerVideo.size / 1024 / 1024).toFixed(1)} MB` : "已上传"} · {composerVideo.status === "failed" ? "上传失败，重新发布可重试" : composerVideo.status === "uploading" ? `正在上传 ${composerVideo.progress}%` : composerVideo.path ? "已同步到草稿" : "等待上传"}</small></div>
-                    <button type="button" className="composer-video-remove" onClick={() => void removeComposerVideo()}>移除</button>
-                    {composerVideo.status === "uploading" && <progress max={100} value={composerVideo.progress} aria-label={`视频上传 ${composerVideo.progress}%`} />}
-                  </div> : <label className="composer-video-add"><input type="file" accept="video/mp4,video/webm" onChange={(event) => { chooseComposerVideo(event.target.files?.[0] || null); event.currentTarget.value = ""; }}/><Plus size={18}/><span>选择一个视频</span></label>}
-                </section>}
                   </div>
                 </details>
-                <section className="composer-media-section" aria-label="内容图片">
-                  <div className="composer-section-heading"><span><strong>图片</strong><small>可跳过；最多 9 张 · 支持 JPG、PNG、WebP · 自动压缩</small></span><span>{composerImages.length}/9</span></div>
+                {composerImages.length > 0 && <section className="composer-media-section" aria-label="内容图片">
+                  <div className="composer-section-heading"><span><strong>图片内容</strong><small>最多 9 张 · JPG、PNG、WebP · 自动优化</small></span><span>{composerImages.length}/9</span></div>
                   <div className="composer-image-grid">
                     {composerImages.map((image, index) => (
                       <figure className={`composer-image${coverIndex === index ? " is-cover" : ""}`} key={image.id}>
@@ -4855,13 +4917,8 @@ export default function Community() {
                         </div>
                       </figure>
                     ))}
-                    {composerImages.length < 9 && <label className="composer-image-add">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
-                      <Plus size={22} /><span>添加图片</span>
-                    </label>}
                   </div>
-                  <p className="composer-draft-status" role="status">{draftSaving ? "正在同步草稿…" : draftSaved ? "草稿已自动保存" : "输入内容后自动保存草稿"}</p>
-                </section>
+                </section>}
                 <label className="composer-category-field">
                   分类
                   <select value={writeTag} onChange={(event) => setWriteTag(event.target.value)}>
@@ -4888,12 +4945,12 @@ export default function Community() {
                 </section>
                 {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
                 <p className="fineprint">
-                  {accountId ? "草稿会自动同步到当前账号，发布后图片与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
+                  {accountId ? "草稿会自动同步到当前账号，发布后媒体与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
                 </p>
               </div>
               </div>
             )}
-            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading"} onClick={publish}>{uploadingImages || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" ? composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small><small>发布后进入人工审核</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}
