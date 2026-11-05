@@ -3412,7 +3412,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.32.0</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.33.0</small><ChevronRight size={16}/></button>
             </div>
           </div>
           </>}
@@ -3568,7 +3568,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.32.0</p>
+          <p className="lead">HEIKA · 版本 2.33.0</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.33.0</strong><small>2026.11.05</small></div><ul><li>压缩个人资料与数据栏的间距，让头像、等级、签名和 ID 更集中。</li><li>将今日探索任务与探索中心收进一张紧凑卡片，降低主页功能区的占位。</li><li>精简作品、收藏与点赞 Tab 内的重复标题，保留双列作品网格与封面评级。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.32.0</strong><small>2026.11.04</small></div><ul><li>修复发现页双列间距没有实际生效的问题，调整卡片列宽和纵向节奏。</li><li>作者、点赞和阅读信息行增加浅底色与克制圆角，和封面形成清楚层级。</li><li>私人笔记改为选中正文后自动显示；已保存摘录收进默认折叠的入口。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.31.0</strong><small>2026.11.04</small></div><ul><li>发现页卡片改为图片主导：标签与评级置于封面上方，标题在图片内最多显示两行。</li><li>封面下方收敛为作者、点赞数和“阅读 ↗”，移除重复标题与摘要。</li><li>加大页面边距和双列间距，统一卡片圆角，并让底栏更轻盈，保留醒目的金色发布按钮。</li><li>保持瀑布流加载和既有图片进入动画，统一悬停、焦点与图片反馈的衔接。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.30.0</strong><small>2026.11.04</small></div><ul><li>重构个人主页，优先展示个人资料、等级与双列作品。</li><li>将好友探索、探索月报、卡片接龙、探索日历和最近发现集中到探索中心。</li><li>每日任务改为紧凑可展开入口；作品系列和状态管理移入作品管理页。</li><li>调整个人主页深浅主题、移动端间距与桌面端作品网格。</li></ul></div>
@@ -3849,12 +3850,14 @@ export default function Community() {
             </div>
             <div className="stats exploration-stats mine-profile-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>
           </section>
-          <DailyMissions accountId={accountId} onNotice={toast}/>
-          <button type="button" className="mine-exploration-entry" onClick={openExplorationCenter}>
-            <span className="mine-exploration-entry-icon"><Compass size={18}/></span>
-            <span><strong>探索中心</strong><small>好友探索 · 月报 · 接龙 · 日历 · 最近发现</small></span>
-            <ChevronRight size={18}/>
-          </button>
+          <section className="mine-exploration-hub" aria-label="探索功能">
+            <DailyMissions accountId={accountId} onNotice={toast}/>
+            <button type="button" className="mine-exploration-entry" onClick={openExplorationCenter}>
+              <span className="mine-exploration-entry-icon"><Compass size={18}/></span>
+              <span><strong>探索中心</strong><small>好友探索 · 月报 · 接龙 · 日历 · 最近发现</small></span>
+              <ChevronRight size={18}/>
+            </button>
+          </section>
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
               {([
@@ -3882,7 +3885,7 @@ export default function Community() {
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
             {mineSection === "works" && (
               <div className="mine-tab-content">
-                <div className="mine-works-heading"><div><h2>我的作品</h2><span>{state.own.filter((post) => post.status === "published" || !post.status).length} 篇</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
+                <div className="mine-works-heading"><div><span>共 {state.own.filter((post) => post.status === "published" || !post.status).length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
                 {visibleOwnPosts.length ? <div className="masonry mine-works-masonry">{visibleOwnPosts.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
@@ -3892,7 +3895,7 @@ export default function Community() {
             )}
             {mineSection === "favorites" && (
               <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>我的收藏</h2><span>{favoritePostsForView.length} 篇</span></div>
+                <div className="mine-works-heading mine-panel-heading"><div><span>共 {favoritePostsForView.length} 篇收藏</span></div></div>
                 <div className="filters favorite-filters" role="group" aria-label="收藏来源">
                   {["全部", "今日翻卡", "发现"].map((source) => (
                     <button key={source} className={favoriteSource === source ? "selected" : ""} aria-pressed={favoriteSource === source} onClick={() => setFavoriteSource(source)}>{source}</button>
@@ -3913,7 +3916,7 @@ export default function Community() {
             )}
             {mineSection === "liked" && (
               <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>我的点赞</h2><span>{likedPosts.length} 篇</span></div>
+                <div className="mine-works-heading mine-panel-heading"><div><span>共 {likedPosts.length} 篇点赞</span></div></div>
                 {likedPosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{likedPosts.map((post) => postCard(post, state.revealed[post.id] ? "today" : "discover"))}</div> : <div className="empty">点过赞的内容会显示在这里。</div>}
               </div>
             )}

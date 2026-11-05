@@ -3191,25 +3191,26 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
 .mine-topline .mine-membership-button { min-height:34px; padding:0 9px; border:0; color:var(--ink); font-size:11px; }
 .mine-topline .mine-membership-button svg { color:#c5a94e; }
 .mine-topline .mine-settings-button { width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; background:transparent; color:var(--ink); }
-.mine-page { display:block; max-width:900px; margin-inline:auto; padding:17px 16px 64px; }
+.mine-page { display:block; max-width:900px; margin-inline:auto; padding:14px 16px 64px; }
 .mine-profile-hero { margin:0; padding:0; overflow:visible; background:transparent; }
-.mine-profile-hero .mine-profile-card { min-height:78px; gap:12px; margin:0; padding:2px 0 12px; border:0; background:transparent; }
+.mine-profile-hero .mine-profile-card { min-height:72px; gap:11px; margin:0; padding:2px 0 8px; border:0; background:transparent; }
 .mine-profile-card::before,.mine-profile-card::after { display:none; }
-.mine-profile-hero .mine-profile-card .avatar { width:68px; height:68px; flex:0 0 68px; border:1px solid var(--line); border-radius:50%; background:var(--surface); color:var(--ink); }
+.mine-profile-hero .mine-profile-card .avatar { width:64px; height:64px; flex:0 0 64px; border:1px solid var(--line); border-radius:50%; background:var(--surface); color:var(--ink); }
 .mine-profile-copy { min-width:0; flex:1; }
 .mine-profile-name-row { display:flex; align-items:center; gap:8px; min-width:0; }
-.mine-profile-name-row h2 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mine-profile-name-row h2 { min-width:0; overflow:hidden; margin:0; font-size:17px; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
 .mine-profile-name-row .mine-level-tag { flex:none; min-height:22px; padding:0 7px; border:1px solid color-mix(in srgb,#c5a94e 48%,var(--line)); border-radius:999px; background:color-mix(in srgb,#c5a94e 10%,transparent); color:#c5a94e; font-size:10px; font-weight:650; }
-.mine-profile-hero .mine-profile-card p { margin:3px 0 0; overflow:hidden; color:var(--muted); text-overflow:ellipsis; white-space:nowrap; }
+.mine-profile-hero .mine-profile-card p { margin:3px 0 0; overflow:hidden; color:var(--muted); font-size:11px; line-height:1.4; text-overflow:ellipsis; white-space:nowrap; }
 .mine-account-id { display:block; margin-top:4px; color:var(--muted); font-size:9px; letter-spacing:.06em; }
-.mine-profile-hero .mine-profile-card>button { width:34px; height:34px; flex:none; display:grid; place-items:center; border:0; background:transparent; color:var(--muted); }
-.mine-profile-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:2px 0 5px; padding:8px 0 10px; border:0; }
-.mine-profile-stats div { display:grid; gap:3px; justify-items:start; padding:0 10px 0 0; border:0; text-align:left; }
-.mine-profile-stats strong { font-family:inherit; font-size:17px; font-weight:640; }
+.mine-profile-hero .mine-profile-card>button { width:32px; height:32px; flex:none; display:grid; place-items:center; border:0; background:transparent; color:var(--muted); }
+.mine-profile-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:0 0 9px; padding:8px 0 10px; border:0; }
+.mine-profile-stats div { display:grid; gap:3px; justify-items:center; padding:0 4px; border:0; text-align:center; }
+.mine-profile-stats strong { font-family:inherit; font-size:18px; font-weight:640; line-height:1.2; }
 .mine-profile-stats span { color:var(--muted); font-size:10px; }
-.daily-missions-panel { margin:6px 0 3px; padding:0; border:0; }
+.mine-exploration-hub { margin:3px 0 10px; padding:4px 12px; overflow:hidden; border:1px solid color-mix(in srgb,var(--line) 75%,transparent); border-radius:10px; background:color-mix(in srgb,var(--surface) 76%,transparent); }
+.daily-missions-panel { margin:0; padding:0; border:0; border-bottom:1px solid color-mix(in srgb,var(--line) 75%,transparent); }
 .daily-missions-loading { min-height:43px; margin:6px 0 3px; }
-.daily-missions-toggle { width:100%; min-height:43px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0; border:0; background:transparent; color:var(--ink); text-align:left; }
+.daily-missions-toggle { width:100%; min-height:42px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0; border:0; background:transparent; color:var(--ink); text-align:left; }
 .daily-missions-toggle-label { min-width:0; display:flex; align-items:center; gap:8px; }
 .daily-missions-toggle-label>svg { flex:none; color:var(--action); }
 .daily-missions-toggle-label strong { font-size:12px; font-weight:620; white-space:nowrap; }
@@ -3223,20 +3224,20 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
 .daily-mission-row:first-child { border-top:1px solid var(--line); }
 .daily-missions-login-hint { display:flex; align-items:center; gap:7px; margin:0; padding:11px 0; border-top:1px solid var(--line); color:var(--muted); font-size:11px; }
 .daily-missions-login-hint svg { color:var(--action); }
-.mine-exploration-entry { width:100%; min-height:56px; display:grid; grid-template-columns:34px minmax(0,1fr) 18px; align-items:center; gap:10px; margin:4px 0 12px; padding:4px 0; border:0; border-block:1px solid var(--line); background:transparent; color:var(--ink); text-align:left; }
+.mine-exploration-entry { width:100%; min-height:50px; display:grid; grid-template-columns:30px minmax(0,1fr) 18px; align-items:center; gap:9px; margin:0; padding:3px 0; border:0; background:transparent; color:var(--ink); text-align:left; }
 .mine-exploration-entry-icon { display:grid; width:30px; height:30px; place-items:center; color:var(--action); }
 .mine-exploration-entry>span:nth-child(2) { min-width:0; display:grid; gap:3px; }
 .mine-exploration-entry strong { font-size:12px; font-weight:620; }
 .mine-exploration-entry small { overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
 .mine-exploration-entry>svg { color:var(--muted); }
-.mine-tabs-shell { top:58px; margin:0 -16px; padding:0 16px; border-bottom:1px solid var(--line); }
+.mine-tabs-shell { top:58px; margin:8px -16px 0; padding:0 16px; border-bottom:1px solid var(--line); }
 .mine-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); min-height:44px; }
 .mine-tab-indicator { width:33.3333%; transition:transform .28s var(--ease); }
 .mine-tabs button { font-size:12px; transition:color .2s var(--ease); }
 .mine-category-panel { min-height:180px; scroll-margin-top:112px; }
 .mine-tab-content { padding-top:1px; animation:heika-profile-tab-in .24s var(--ease) both; }
 @keyframes heika-profile-tab-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
-.mine-works-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:13px 0 12px; }
+.mine-works-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0 10px; }
 .mine-works-heading>div { display:flex; align-items:baseline; gap:8px; }
 .mine-works-heading h2 { margin:0; font-size:14px; font-weight:620; }
 .mine-works-heading span { color:var(--muted); font-size:10px; }
@@ -3292,6 +3293,7 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
   .mine-profile-stats div { padding-right:5px; }
   .mine-profile-stats span { font-size:9px; }
   .mine-exploration-entry small { font-size:9px; }
+  .mine-exploration-hub { margin-inline:-2px; padding-inline:10px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .daily-missions-toggle>svg,.daily-missions-details,.mine-tab-indicator,.mine-tabs button,.mine-tab-content { transition:none!important; animation:none!important; }
