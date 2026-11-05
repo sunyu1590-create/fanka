@@ -10,7 +10,6 @@ type FeedResult = { items: Post[]; total: number; page: number; limit: number };
 type Props = {
   accountId: string | null;
   onOpen: (post: Post, source: Element | null) => void;
-  onCreate: () => void;
   onLogin: () => void;
   onNotice: (message: string) => void;
   hidden?: boolean;
@@ -45,7 +44,7 @@ function ResultsSection({ heading, eyebrow, total, error, loading, items, card, 
   </section>;
 }
 
-export default function AISpace({ accountId, onOpen, onCreate, onLogin, onNotice, hidden = false }: Props) {
+export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden = false }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [view, setView] = useState<AISpaceView>("home");
   const [feedReturnView, setFeedReturnView] = useState<"home" | "categories">("home");
@@ -75,6 +74,11 @@ export default function AISpace({ accountId, onOpen, onCreate, onLogin, onNotice
   const categoriesByRoot = useMemo(() => categories.filter((item) => !item.parent_id), [categories]);
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const categoryChildren = useMemo(() => selectedCategory ? categories.filter((item) => item.parent_id === selectedCategory.id) : [], [categories, selectedCategory]);
+  const searchSuggestions = useMemo(() => {
+    const posts = [...popular, ...featured, ...tutorials];
+    const terms = [...new Set(posts.flatMap((post) => [...(post.topics || []), post.tag]).map((term) => term.trim()).filter(Boolean))];
+    return terms.length ? terms.slice(0, 8) : categoriesByRoot.map((item) => item.name).slice(0, 8);
+  }, [categoriesByRoot, featured, popular, tutorials]);
 
   const fetchSection = useCallback(async (sort: string, type?: string) => {
     const params = new URLSearchParams({ sort, limit: "8" });
@@ -152,6 +156,13 @@ export default function AISpace({ accountId, onOpen, onCreate, onLogin, onNotice
     setSearchTerm(searchDraft.trim());
     setView("search");
   };
+  const searchFor = (term: string) => {
+    setSearchDraft(term);
+    setCategoryId(null);
+    setContentType("");
+    setSearchTerm(term);
+    setView("search");
+  };
   const openTypeFeed = (type: string) => {
     setCategoryId(null);
     setSearchTerm("");
@@ -184,7 +195,7 @@ export default function AISpace({ accountId, onOpen, onCreate, onLogin, onNotice
   };
 
   return <section className="ai-space" hidden={hidden} aria-label="AI 空间">
-    <header className="ai-space-heading"><div><span>HEIKA / AI</span><h1>AI 空间</h1><p>智能体、工具与实战经验，汇集成可复用的知识。</p></div><button type="button" className="ai-space-create" onClick={accountId ? onCreate : onLogin}>发布 AI 内容</button></header>
+    <header className="ai-space-heading"><div><span>HEIKA / AI</span><h1>AI 空间</h1><p>智能体、工具与实战经验，汇集成可复用的知识。</p></div></header>
 
     {view === "home" && <>
       <div className="ai-space-home-actions"><button type="button" onClick={() => setView("search")}><Search size={15}/>搜索 AI 内容</button><button type="button" onClick={() => setView("categories")}><Compass size={15}/>浏览分类</button></div>
@@ -216,7 +227,13 @@ export default function AISpace({ accountId, onOpen, onCreate, onLogin, onNotice
     {view === "search" && <section className="ai-space-secondary ai-space-search-view" aria-labelledby="ai-space-search-title">
       <div className="ai-space-secondary-heading"><button type="button" className="ai-space-back" onClick={() => setView("home")}><ArrowLeft size={16}/>返回 AI 空间</button><div><small>AI SEARCH</small><h2 id="ai-space-search-title">搜索 AI 内容</h2><p>搜索 Agent、Skills、Prompt、工具和教程。</p></div></div>
       <form className="ai-space-search" role="search" onSubmit={submitSearch}><Search size={17}/><input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="输入关键词" maxLength={60}/>{searchDraft && <button type="button" onClick={() => { setSearchDraft(""); setSearchTerm(""); }}>清除</button>}<button type="submit" aria-label="搜索"><Search size={16}/></button></form>
-      {searchTerm ? <ResultsSection heading={`“${searchTerm}”的结果`} eyebrow="SEARCH RESULTS" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} /> : <p className="ai-space-search-hint">输入关键词后可查找知识文章、结构化资源与实战教程。</p>}
+      {searchTerm ? <ResultsSection heading={`“${searchTerm}”的结果`} eyebrow="SEARCH RESULTS" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} /> : <>
+        <section className="ai-search-suggestions" aria-label="AI 内容搜索推荐">
+          <div className="ai-search-suggestions-head"><strong>{popular.length ? "热门搜索" : "分类快捷搜索"}</strong><span>{popular.length ? "来自近期热门内容" : "从 AI 分类开始探索"}</span></div>
+          {searchSuggestions.length ? <div className="ai-search-suggestion-list">{searchSuggestions.map((term) => <button type="button" key={term} onClick={() => searchFor(term)}><Search size={13}/>{term}</button>)}</div> : <p className="ai-space-search-hint">输入关键词后可查找知识文章、结构化资源与实战教程。</p>}
+        </section>
+        {popular.length > 0 && <section className="ai-search-recommended"><div className="ai-space-section-head"><div><small>POPULAR</small><h2>大家正在关注</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}
+      </>}
     </section>}
   </section>;
 }
