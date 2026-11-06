@@ -12,6 +12,17 @@ React Native Android client for HEIKA. It renders native React Native screens an
 - Text and image publishing with client-side image compression
 - Android APK build profiles in `eas.json`
 
+## Included in stage two
+
+- Expo Router navigation for native secondary pages
+- Private message inbox, user search, direct chats and Supabase Realtime updates
+- In-app activity notifications backed by the existing notifications API
+- Creator analytics, weekly missions and reward claiming
+- AI writing assistant using the server-side DeepSeek workbench API
+- Admin overview, pending post review and keyword-rule controls using server permission checks
+
+The app version is `1.1.0` (Android version code `2`) so it installs over the stage-one APK. Background push delivery is not enabled yet: it requires linking the Expo project and configuring Android FCM credentials. The in-app notification center works without those credentials.
+
 ## API configuration
 
 The default API endpoint is `https://moonclean.shop`. Override it at build time with `EXPO_PUBLIC_API_BASE_URL` if the production domain changes. The app reads the public Supabase Auth configuration from `/api/client-config`; no service-role key is included in the app.
@@ -29,9 +40,9 @@ The `preview` and `production` EAS profiles are configured to produce an APK:
 npx eas-cli build --platform android --profile preview
 ```
 
-A local Android build can be generated after installing Android SDK/Gradle prerequisites:
+A standalone local Android APK can be generated after installing Android SDK/Gradle prerequisites:
 
 ```sh
-npx expo prebuild --platform android
-cd android && ./gradlew assembleDebug
+npx expo prebuild --platform android --non-interactive
+cd android && ./gradlew assembleRelease
 ```
