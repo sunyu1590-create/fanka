@@ -8,11 +8,13 @@ import { AppState } from "react-native";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDb, MobileSessionProvider, useMobileSession } from "../lib/mobile-api";
 import { ThemeProvider, useTheme } from "../lib/theme";
+import { NavigationPreferencesProvider } from "../lib/navigation-preferences";
+import { NativeBlurProvider } from "../lib/native-blur";
 import { prepareNativeNotifications, showIncomingMessageNotification } from "../lib/native-notifications";
 
 function RootStack() {
   const { colors, isDark } = useTheme();
-  return <><StatusBar style={isDark ? "light" : "dark"} /><NativeNotificationBridge /><Stack screenOptions={{ headerShown: false, animation: "slide_from_right", contentStyle: { backgroundColor: colors.bg }, gestureEnabled: true, fullScreenGestureEnabled: true }} /></>;
+  return <><StatusBar style={isDark ? "light" : "dark"} /><NativeNotificationBridge /><Stack screenOptions={{ headerShown: false, animation: "fade_from_bottom", contentStyle: { backgroundColor: colors.bg }, gestureEnabled: true, fullScreenGestureEnabled: true }} /></>;
 }
 
 function NativeNotificationBridge() {
@@ -71,5 +73,5 @@ function NativeNotificationBridge() {
 }
 
 export default function RootLayout() {
-  return <GestureHandlerRootView style={{ flex: 1 }}><SafeAreaProvider><ThemeProvider><MobileSessionProvider><RootStack /></MobileSessionProvider></ThemeProvider></SafeAreaProvider></GestureHandlerRootView>;
+  return <GestureHandlerRootView style={{ flex: 1 }}><SafeAreaProvider><NativeBlurProvider><ThemeProvider><NavigationPreferencesProvider><MobileSessionProvider><RootStack /></MobileSessionProvider></NavigationPreferencesProvider></ThemeProvider></NativeBlurProvider></SafeAreaProvider></GestureHandlerRootView>;
 }
