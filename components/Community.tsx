@@ -153,6 +153,7 @@ type Comment = {
   post: number;
   body: string;
   parent?: number;
+  replyToName?: string;
   time: number;
   likes: number;
   liked?: boolean;
@@ -756,6 +757,7 @@ export default function Community() {
   };
   const [detailSort, setDetailSort] = useState<"热度" | "最新">("最新");
   const [commentSending, setCommentSending] = useState(false);
+  const [commentInputExpanded, setCommentInputExpanded] = useState(false);
   const [commentTotal, setCommentTotal] = useState(0);
   const [commentOffset, setCommentOffset] = useState(0);
   const [commentHasMore, setCommentHasMore] = useState(false);
@@ -775,6 +777,7 @@ export default function Community() {
   const imageTouchStart = useRef<{ x: number; y: number } | null>(null);
   const imageSwipeTriggered = useRef(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
+  const [replyTargetName, setReplyTargetName] = useState<string | undefined>();
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastDraftPayload = useRef("");
@@ -2106,11 +2109,14 @@ export default function Community() {
       if (!comment) return;
       update((s) => ({ ...s, comments: [...s.comments, comment] }));
       setCommentTotal((count) => count + 1);
-      if (reply) setExpandedReplies((current) => ({ ...current, [reply]: true }));
+      const replyRoot = comment.parent || (reply ? state.comments.find((item) => item.id === reply)?.parent || reply : undefined);
+      if (replyRoot) setExpandedReplies((current) => ({ ...current, [replyRoot]: true }));
       setDraft("");
       setReply(undefined);
+      setReplyTargetName(undefined);
+      setCommentInputExpanded(false);
       toast("评论已发布");
-      if (reply) requestAnimationFrame(() => document.getElementById(`comment-${reply}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+      if (replyRoot) requestAnimationFrame(() => document.getElementById(`comment-${replyRoot}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     } catch (e) {
       toast(e instanceof Error ? e.message : "评论保存失败");
     } finally {
@@ -2150,6 +2156,21 @@ export default function Community() {
     } catch (e) {
       toast(e instanceof Error ? e.message : "删除失败");
     }
+  };
+  const copyComment = async (comment: Comment) => {
+    try {
+      if (!navigator.clipboard) throw new Error("当前浏览器不支持复制");
+      await navigator.clipboard.writeText(comment.body);
+      toast("评论已复制");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "复制失败");
+    }
+  };
+  const focusReply = (parentId: number, name?: string) => {
+    setReply(parentId);
+    setReplyTargetName(name || "评论");
+    setCommentInputExpanded(true);
+    requestAnimationFrame(() => commentInputRef.current?.focus());
   };
   const toggleCommentLike = async (comment: Comment) => {
     if (!accountId) { toast("登录后可点赞"); return; }
@@ -4475,12 +4496,12 @@ export default function Community() {
                 {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}/></Suspense>}
                 {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
-                  <span>给这篇内容评分</span>
-                  <div>{[1, 2, 3, 4, 5].map((n) => (
+                  <div className="detail-rating-main"><span>内容评分</span>
+                  <div className="detail-rating-stars" role="radiogroup" aria-label="选择内容星级">{[1, 2, 3, 4, 5].map((n) => (
                     <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms`, "--star-delay": `${(n - 1) * 58}ms`, "--rating-color": RATING_COLORS[n - 1] } as CSSProperties} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
                       <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
                     </button>
-                  ))}</div>
+                  ))}</div><span className="detail-rating-current">{state.ratings[post.id] ? `${state.ratings[post.id]} 星` : "未评分"}</span></div>
                   {(state.ratings[post.id] || ratingPulse?.postId === post.id) && (communityRatings[post.id]?.count ? (
                     <small className="community-rating" aria-live="polite">
                       <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人 <i className={`rarity-badge rarity-${cardRarity(communityRatings[post.id].average, communityRatings[post.id].count).replaceAll(" ", "")}`}>{cardRarity(communityRatings[post.id].average, communityRatings[post.id].count)}</i>
@@ -4504,20 +4525,22 @@ export default function Community() {
                     const roots = comments.filter((c) => !c.parent).sort((a, b) => detailSort === "最新" ? b.time - a.time : b.likes - a.likes || b.time - a.time);
                     return roots.length ? roots.map((c) => {
                       const children = comments.filter((item) => item.parent === c.id).sort((a, b) => a.time - b.time);
-                      const visibleChildren = expandedReplies[c.id] ? children : children.slice(0, 2);
                       const displayBody = expandedComments[c.id] || c.body.length <= 280 ? c.body : `${c.body.slice(0, 280)}…`;
+                      const renderReply = (child: Comment) => <div className="comment-reply" key={child.id}>
+                        <div className="comment-avatar small" aria-hidden="true"><span>{(child.name || "探").slice(0, 1)}</span>{child.avatar && <img src={child.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
+                        <div className="comment-reply-content"><div className="comment-reply-heading"><strong title={child.name || "探索者"}>{child.name || "探索者"}</strong><span>回复</span><strong title={child.replyToName || c.name || "探索者"}>{child.replyToName || c.name || "探索者"}</strong></div><p>{child.body}</p><div className="comment-meta comment-reply-meta"><time>{relativeTime(child.time)}</time><button className="comment-reply-action" onClick={() => focusReply(child.id, child.name)}>回复</button><button type="button" className={`comment-reply-like${child.liked ? " selected" : ""}`} aria-label={`${child.liked ? "取消点赞" : "点赞回复"}，${child.likes}`} aria-pressed={!!child.liked} onClick={() => void toggleCommentLike(child)}><Heart size={14} fill={child.liked ? "currentColor" : "none"}/><span>{child.likes}</span></button><details className="comment-actions-menu"><summary aria-label="回复操作"><MoreHorizontal size={16}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(child)}>复制</button>{(!child.cloudId || child.authorId === accountId) && <button onClick={() => void deleteComment(child)}>删除回复</button>}{child.cloudId && accountId && child.authorId !== accountId && <button onClick={() => { setReportCommentId(child.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报回复</button>}</div></details></div></div>
+                      </div>;
                       return <article className="comment" id={`comment-${c.id}`} data-comment-id={c.id} key={c.id}>
                         <div className="comment-avatar" aria-hidden="true"><span>{(c.name || "探").slice(0, 1)}</span>{c.avatar && <img src={c.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
                         <div className="comment-content">
-                          <div className="comment-heading"><strong className="comment-author" title={c.name || "探索者"}>{c.name || "探索者"}</strong>{post.authorId && c.authorId === post.authorId && <span className="comment-author-badge">作者</span>}<button className={`comment-like${c.liked ? " selected" : ""}`} aria-label={`${c.liked ? "取消点赞" : "点赞评论"}，${c.likes}`} aria-pressed={!!c.liked} onClick={() => void toggleCommentLike(c)}><Heart size={17} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button></div>
+                          <div className="comment-heading"><strong className="comment-author" title={c.name || "探索者"}>{c.name || "探索者"}</strong>{post.authorId && c.authorId === post.authorId && <span className="comment-author-badge">作者</span>}</div>
                           <p className={expandedComments[c.id] ? "comment-body expanded" : "comment-body"}>{displayBody}</p>
                           {c.body.length > 280 && <button className="comment-expand" onClick={() => setExpandedComments((current) => ({ ...current, [c.id]: !current[c.id] }))}>{expandedComments[c.id] ? "收起" : "展开全文"}</button>}
-                          <div className="comment-meta"><time dateTime={new Date(c.time).toISOString()}>{relativeTime(c.time)}</time><button className="comment-reply-action" onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={18}/></summary><div className="comment-actions-panel"><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
-                          {visibleChildren.length > 0 && <div className="comment-replies">{visibleChildren.map((child) => <div className="comment-reply" key={child.id}>
-                            <div className="comment-avatar small" aria-hidden="true"><span>{(child.name || "探").slice(0, 1)}</span>{child.avatar && <img src={child.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div><div><strong>{child.name || "探索者"}</strong>{child.parent ? <span> 回复 </span> : null}<p>{child.body}</p><div className="comment-meta"><time>{relativeTime(child.time)}</time><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button></div></div>
-                          </div>)}</div>}
-                          {children.length > visibleChildren.length && <button className="expand-replies" onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: true }))}>展开更多回复（{children.length - visibleChildren.length}）</button>}
+                          <div className="comment-meta"><time dateTime={new Date(c.time).toISOString()}>{relativeTime(c.time)}</time><button className="comment-reply-action" onClick={() => focusReply(c.id, c.name)}>回复</button><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={18}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(c)}>复制</button><button onClick={() => focusReply(c.id, c.name)}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
+                          {children.length > 0 && <div className="comment-replies">{children.slice(0, 2).map(renderReply)}<div className={`comment-replies-extra${expandedReplies[c.id] ? " is-expanded" : ""}`} aria-hidden={!expandedReplies[c.id]} inert={!expandedReplies[c.id]}><div>{children.slice(2).map(renderReply)}</div></div></div>}
+                          {children.length > 2 && <button className="expand-replies" aria-expanded={!!expandedReplies[c.id]} onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: !s[c.id] }))}>{expandedReplies[c.id] ? "收起回复" : `展开 ${children.length - 2} 条回复`}</button>}
                         </div>
+                        <button className={`comment-like${c.liked ? " selected" : ""}`} aria-label={`${c.liked ? "取消点赞" : "点赞评论"}，${c.likes}`} aria-pressed={!!c.liked} onClick={() => void toggleCommentLike(c)}><Heart size={18} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button>
                       </article>;
                     }) : !commentsLoading && !commentsError && <p className="comments-empty">还没有评论，来聊聊你的想法。</p>;
                   })()}
@@ -4526,10 +4549,10 @@ export default function Community() {
               </div>
             </div>
             <form className="detail-action-bar" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
-              <div className={`detail-comment-input${reply ? " replying" : ""}`}>
+              <div className={`detail-comment-input${reply ? " replying" : ""}${commentInputExpanded || draft ? " expanded" : ""}`}>
                 <span className="comment-compose-avatar" aria-hidden="true"><span>{(state.name || "探").slice(0, 1)}</span>{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-                {reply && <span className="reply-label">回复 {state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => setReply(undefined)}><X size={13} /></button></span>}
-                <textarea ref={commentInputRef} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={1} maxLength={1000} aria-label="评论内容" />
+                {reply && <span className="reply-label">回复 @{replyTargetName || state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => { setReply(undefined); setReplyTargetName(undefined); }}><X size={13} /></button></span>}
+                <textarea ref={commentInputRef} value={draft} onFocus={() => setCommentInputExpanded(true)} onBlur={(event) => { if (!draft.trim() && !reply && !event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setCommentInputExpanded(false); }} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={commentInputExpanded || draft ? 3 : 1} maxLength={1000} aria-label="评论内容" />
                 {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
                 {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><Send size={17} /></button>}
               </div>
