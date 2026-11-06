@@ -60,12 +60,10 @@ test("profile keeps its compact layout, discovery tools, and theme controls", as
   await page.getByRole("button", { name: "返回，当前页面：探索中心" }).click();
 
   await page.getByRole("button", { name: "打开设置" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.getByRole("button", { name: /外观主题/ }).click();
+  await page.getByRole("button", { name: /主题外观/ }).click();
   await page.getByRole("radio", { name: /浅色/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(page.locator(".mine-page")).toHaveCount(0);
-  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
   await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
   await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
   await expect(page.locator(".mine-page")).toBeVisible();

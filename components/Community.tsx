@@ -74,6 +74,12 @@ import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
 import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
+import SettingsHome, { type SettingsDetail } from "./SettingsHome";
+const AboutHeika = dynamic(() => import("./AboutHeika"));
+const CacheManager = dynamic(() => import("./CacheManager"));
+const FeedbackForm = dynamic(() => import("./FeedbackForm"));
+const FeedbackAdmin = dynamic(() => import("./FeedbackAdmin"));
+const NotificationSettings = dynamic(() => import("./NotificationSettings"));
 const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div className="empty">正在加载 AI 空间…</div> });
 const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
 const AppealCenter = dynamic(() => import("./AppealCenter"));
@@ -502,7 +508,7 @@ export default function Community() {
   const [discoverColumnCount, setDiscoverColumnCount] = useState(2);
   const [favoriteSource, setFavoriteSource] = useState("全部"),
     [mineSection, setMineSection] = useState<"works" | "favorites" | "liked">("works"),
-    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | null>(null),
+    [settingsDetail, setSettingsDetailState] = useState<SettingsDetail | "feedbackAdmin" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [debugReturnTab, setDebugReturnTab] = useState<"settings" | "mine">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
@@ -1165,7 +1171,7 @@ export default function Community() {
     return () => controller.abort();
   }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression", returnTab: "settings" | "mine" = "settings") => {
+  const openSettingsDetail = (detail: SettingsDetail | "feedbackAdmin", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
     startPageTransition(() => {
       setSettingsReturnTab(returnTab);
@@ -1181,6 +1187,23 @@ export default function Community() {
     });
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[settingsReturnTab] || 0, behavior: "instant" }));
   };
+  const openAboutPage = () => {
+    scrollPositions.current.settings = window.scrollY;
+    setTab("about");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
+  const closeAboutPage = () => {
+    setTab("settings");
+    requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" }));
+  };
+  const openFeedbackFromAbout = () => {
+    setSettingsReturnTab("settings");
+    startPageTransition(() => {
+      setSettingsDetailState("feedback");
+      setTabState("settings");
+    });
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
   const updateBookmarkVisibility = (value: boolean) => {
     if (!accountId) {
       toast("登录后可管理收藏公开状态");
@@ -1188,13 +1211,17 @@ export default function Community() {
       return;
     }
     const previous = publicBookmarks;
+    if (!window.confirm(value
+      ? "将收藏设置为公开展示？其他人可以在你的主页浏览收藏。"
+      : "停止展示我的收藏？其他人将无法在你的主页浏览收藏。")) return;
     setPublicBookmarks(value);
     setPublicBookmarksLoaded(true);
     setBookmarkVisibilityBusy(true);
     void cloudRequest("/api/v1/me", { show_bookmarks: value }, "PATCH")
+      .then((result) => { if (!result) throw new Error("会话已失效"); toast("公开范围已更新"); })
       .catch(() => {
         setPublicBookmarks(previous);
-        toast("收藏公开状态保存失败，请重试");
+        toast("同步失败，请重试");
       })
       .finally(() => setBookmarkVisibilityBusy(false));
   };
@@ -1340,7 +1367,7 @@ export default function Community() {
       const { data } = await db.auth.getUser();
       if (data.user) {
         const { error } = await db.from("browsing_preferences").upsert({ user_id: data.user.id, home_mode: mode });
-        if (error) toast("本地已保存，云端同步失败");
+        if (error) toast("同步失败，请重试");
       }
     }).catch(() => {});
   };
@@ -2020,11 +2047,13 @@ export default function Community() {
     ];
   };
   const toggleNotification = async (key: "messages" | "comments" | "daily") => {
+    if (key !== "messages") return toast("该功能正在完善中");
     if (state.notifications[key]) {
       update((s) => ({
         ...s,
         notifications: { ...s.notifications, [key]: false },
       }));
+      toast("已保存至此设备");
       return;
     }
     if (notificationPermission === "unsupported" || !("Notification" in window))
@@ -2045,6 +2074,7 @@ export default function Community() {
       ...s,
       notifications: { ...s.notifications, [key]: !s.notifications[key] },
     }));
+    toast("已保存至此设备");
   };
   const clearTodayFlips = () => {
     if (!opened.length) return toast("今天还没有翻开的卡片");
@@ -3810,67 +3840,36 @@ export default function Community() {
         </div>
       )}
       {tab === "settings" && settingsDetail === null && (
-        <section className={`page settings-page${settingsPersonalOpen ? " settings-personal-layout" : ""}`}>
-          <button className="back settings-back" onClick={() => {
-            if (settingsPersonalOpen) { setSettingsPersonalOpen(false); return; }
+        <SettingsHome
+          theme={theme}
+          fontChoice={fontChoice}
+          bottomNavStyle={bottomNavStyle}
+          homeMode={state.homeMode}
+          readingMode={state.readingMode}
+          detailTransition={detailTransition}
+          discoverLayout={state.discoverLayout}
+          profileLayout={profileLayout}
+          messagesEnabled={state.notifications.messages}
+          accountId={accountId}
+          isStaff={isStaff}
+          onOpenDetail={openSettingsDetail}
+          onOpenAbout={openAboutPage}
+          onOpenContent={() => openMyContent("settings")}
+          onOpenCreator={() => openCreatorCenter("settings")}
+          onOpenFeedbackAdmin={() => openSettingsDetail("feedbackAdmin")}
+          onOpenModeration={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}
+          onBack={() => {
             setSettingsPersonalOpen(false);
             setTab("mine");
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" }));
-          }}><ArrowLeft size={18} /> 我的</button>
-          <h1>{settingsPersonalOpen ? "个人设置" : "设置"}<span className="red-dot">.</span></h1>
-          <p className="lead">{settingsPersonalOpen ? "按你的使用习惯调整黑卡体验。" : "选择要管理的设置模块。"}</p>
-          {!settingsPersonalOpen && <div className="settings-category-list">
-            <button className="settings-category-card" onClick={() => openSettingsDetail("security")}><span className="settings-category-icon"><ShieldCheck size={19}/></span><span><strong>安全中心</strong><small>隐私、私聊范围与账号安全</small></span><ChevronRight size={18}/></button>
-            <button className="settings-category-card" onClick={() => setSettingsPersonalOpen(true)}><span className="settings-category-icon"><Settings size={19}/></span><span><strong>个人设置</strong><small>外观、浏览、阅读与通知偏好</small></span><ChevronRight size={18}/></button>
-            <button className="settings-category-card" onClick={() => { setDebugReturnTab("settings"); setTab("debug"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="settings-category-icon"><RefreshCw size={18}/></span><span><strong>调试模式</strong><small>开发工具与重置体验</small></span><ChevronRight size={18}/></button>
-            <button className="settings-category-card" onClick={() => openCreatorCenter("settings")}><span className="settings-category-icon"><Sparkles size={19}/></span><span><strong>创作者中心</strong><small>创作数据与成长任务</small></span><ChevronRight size={18}/></button>
-            {isStaff && <button className="settings-category-card" onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span className="settings-category-icon"><ShieldCheck size={18}/></span><span><strong>管理后台</strong><small>内容审核、社区治理与 AI 专区</small></span><ChevronRight size={18}/></button>}
-          </div>}
-          {settingsPersonalOpen && <button type="button" className="back settings-back settings-category-back" onClick={() => setSettingsPersonalOpen(false)}><ArrowLeft size={18}/> 设置分类</button>}
-          {settingsPersonalOpen && <>
-          <nav className="settings-desktop-nav" aria-label="个人设置分类"><a href="#settings-appearance">外观</a><a href="#settings-reading">浏览与阅读</a><a href="#settings-notifications">消息</a><a href="#settings-account">账号</a></nav>
-          <div className="settings-module" id="settings-appearance">
-            <div className="settings-module-heading"><strong>外观</strong></div>
-            <div className="settings-list">
-              <button onClick={() => openSettingsDetail("theme")}><span>外观主题</span><small>{{dark:"深色",light:"浅色",system:"跟随系统"}[theme]}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("font")}><span>字体</span><small>{fontChoice === "oppo" ? "OPPO Sans 4.0" : "系统字体"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("bottomNav")}><span>底部导航</span><small>{bottomNavStyle === "glass" ? "悬浮玻璃" : "固定底栏"}</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          <div className="settings-module" id="settings-reading">
-            <div className="settings-module-heading"><strong>浏览与阅读</strong></div>
-            <div className="settings-list">
-              <button onClick={() => openSettingsDetail("homeMode")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("detailTransition")}><span>详情过渡动画</span><small>{detailTransition === "image-zoom" ? "图片连续展开" : detailTransition === "blur-rise" ? "轻柔焦上浮" : "留影接力"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("profileLayout")}><span>他人主页布局</span><small>{profileLayout === "masonry" ? "大图瀑布流" : "列表"}</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          <div className="settings-module" id="settings-notifications">
-            <div className="settings-module-heading"><strong>消息</strong></div>
-            <div className="settings-list">
-              <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          <div className="settings-module" id="settings-account">
-            <div className="settings-module-heading"><strong>账号</strong></div>
-            <div className="settings-list account-settings-list">
-              <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>发布内容与草稿箱</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 2.37.0</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          </>}
-          {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
-        </section>
+          }}
+        />
       )}
       {tab === "settings" && settingsDetail !== null && (
         <section key={settingsDetail} className="page settings-page settings-detail-page">
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
           <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览模式",reading:"阅读模式",detailTransition:"详情过渡动画",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",security:"安全中心",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心"})[settingsDetail]}</h1>
+          <h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理"})[settingsDetail]}</h1>
           <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "membership" ? "查看当前会员等级、每日翻卡额度与可选权益。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
@@ -3896,7 +3895,7 @@ export default function Community() {
             </div>;
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
-          {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
+          {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
           {settingsDetail === "membership" && <div className="membership-center-page">
             <div className="membership-center-summary">
               <span className="membership-center-mark"><Crown size={19}/></span>
@@ -3949,7 +3948,7 @@ export default function Community() {
             </section>
           </div>}
           {settingsDetail === "interests" && <div className="account-interests-page">
-            <div className="interest-page-note"><Sparkles size={16}/><span>偏好会自动保存在你的账号中。</span></div>
+            <div className="interest-page-note"><Sparkles size={16}/><span>兴趣保存在此设备，并按账号分别存储。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
               {tags.map((tag,index)=>{const InterestIcon=[Compass,Heart,Star,Sparkles][index%4];const selected=state.interests.includes(tag);return <button key={tag} className={`account-interest-option${selected?" selected":""}`} aria-pressed={selected} onClick={()=>update(current=>({...current,interests:current.interests.includes(tag)?current.interests.filter(item=>item!==tag):[...current.interests,tag]}))}><span><InterestIcon size={17}/></span><strong>{tag}</strong><i>{selected?<Check size={14}/>:null}</i></button>})}
             </div>
@@ -3962,7 +3961,7 @@ export default function Community() {
           )}
           {settingsDetail === "font" && (
             <div className="preference-options" role="radiogroup" aria-label="字体选择">
-              {([['oppo','OPPO Sans 4.0','利落清晰，中文阅读更舒展'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
+              {([['oppo','OPPO Sans 4.0','未随应用提供字体文件，设备未安装时自动回退系统字体'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "bottomNav" && (
@@ -3981,296 +3980,40 @@ export default function Community() {
             </div>
           )}
           {settingsDetail === "homeMode" && (
-            <div className="preference-options" role="radiogroup" aria-label="首页浏览模式">
+            <div className="preference-options" role="radiogroup" aria-label="首页浏览方式">
               {([['waterfall','瀑布流','未翻开前隐藏内容，每日选 5 张'],['blackcard','黑卡','逐张探索，每日最多翻开 5 张']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.homeMode===value} className={`preference-option${state.homeMode===value?' selected':''}`} onClick={()=>chooseHomeMode(value)}>{renderPreferencePreview('home',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.homeMode===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "reading" && (
             <div className="preference-options" role="radiogroup" aria-label="阅读模式">
-              {([['standard','标准模式','舒展排版与清晰层级'],['focus','专注模式','减少干扰，突出正文'],['night','夜间模式','深色背景，适合暗光阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.readingMode===value} className={`preference-option${state.readingMode===value?' selected':''}`} onClick={()=>chooseReadingMode(value)}>{renderPreferencePreview('reading',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.readingMode===value?'✓':''}</i></button>)}
+              {([['standard','标准','舒展排版与清晰层级'],['focus','专注','减少干扰，突出正文'],['night','夜间','深色背景，适合暗光阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.readingMode===value} className={`preference-option${state.readingMode===value?' selected':''}`} onClick={()=>chooseReadingMode(value)}>{renderPreferencePreview('reading',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.readingMode===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "detailTransition" && (
-            <div className="preference-options" role="radiogroup" aria-label="详情过渡动画">
+            <div className="preference-options" role="radiogroup" aria-label="详情过渡效果">
               {([
-                ["image-zoom", "图片连续展开", "保留封面放大进入详情、返回原卡片的连贯转场"],
-                ["blur-rise", "轻柔焦上浮", "新图片从轻微柔焦与短距离上浮中清晰出现"],
-                ["ghost-handoff", "留影接力", "上一张短暂留影，新图轻柔上浮；快速切换可立即接续"],
+                ["image-zoom", "连续展开", "保留封面放大进入详情、返回原卡片的连贯转场"],
+                ["blur-rise", "柔和上浮", "新图片从轻微柔焦与短距离上浮中清晰出现"],
+                ["ghost-handoff", "留影衔接", "上一张短暂留影，新图轻柔上浮；快速切换可立即接续"],
               ] as const).map(([value, label, description]) => <button key={value} role="radio" aria-checked={detailTransition === value} className={`preference-option${detailTransition === value ? " selected" : ""}`} onClick={() => setDetailTransition(value)}>
                 <span className={`preference-preview preview-transition preview-transition-${value}`} aria-hidden="true"><i/><b/></span><span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{detailTransition === value ? "✓" : ""}</i>
               </button>)}
             </div>
           )}
-          {settingsDetail === "notifications" && (
-            <div className="preference-notifications">
-              <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
-              <p>开启你关心的提醒。浏览器通知仍需系统许可。</p>
-              {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
-              {notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
-            </div>
-          )}
+          {settingsDetail === "notifications" && <NotificationSettings
+            accountId={accountId}
+            messagesEnabled={state.notifications.messages}
+            onMessagesChange={() => void toggleNotification("messages")}
+            onNotice={toast}
+          />}
+          {settingsDetail === "cache" && <CacheManager onNotice={toast} />}
+          {settingsDetail === "feedback" && <FeedbackForm accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
+          {settingsDetail === "feedbackAdmin" && <FeedbackAdmin />}
+
         </section>
       )}
       {tab === "moderation" && isStaff && <AdminModeration role={adminRole as "admin" | "content_manager" | "reviewer"} onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
-      {tab === "about" && (
-        <section className="page about-page">
-          <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
-          <div className="eyebrow">HEIKA / RELEASE NOTES</div>
-          <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">HEIKA · 版本 2.37.0</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.37.0</strong><small>2026.11.05</small></div><ul><li>发现与搜索改用游标分页和按需字段，首屏优先传输适配显示尺寸的 WebP 缩略图。</li><li>详情页先展示已加载的缩略图，再渐进替换为高清原图；重复打开时复用短期详情缓存。</li><li>收件箱用一次聚合查询加载最近消息与未读数，避免逐会话重复请求。</li><li>优化推荐的时效、已读过滤与主题多样性，并保留现有卡片、翻转和页面过渡动画。</li><li>AI 空间入口、AI 搜索与发布体验继续沿用上一版本改进。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.5</strong><small>2026.11.05</small></div><ul><li>发布页移除顶部说明块与独立写作提示，标题和正文直接进入编辑。</li><li>图片和视频 Beta 改为并列常驻入口，上传、审核和草稿提示就近展示。</li><li>大视频在浏览器支持时使用本地编码降至 720p 级别并压缩码率，保留音轨、原画质回退及现有分片续传。</li><li>发布操作栏和媒体选择加入轻量玻璃质感，并优化窄屏可读性与安全区间距。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.4</strong><small>2026.11.05</small></div><ul><li>通知横幅按场景显示爱心、评论、收藏、关注等对应图标，并下移 4px。</li><li>详情页点赞按钮显示作品获赞数，成功点赞或取消后同步更新数字。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.3</strong><small>2026.11.05</small></div><ul><li>通知恢复紧凑旧版样式，保留新版顶部入场、退场动画及滑动交互。</li><li>管理员后台改为分组工作台，点击模块即可进入对应审核或管理界面。</li><li>修复带图片或视频的已发布作品修改审核失败问题，媒体路径长度校验不再触发 PostgreSQL 正则错误。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.2</strong><small>2026.11.05</small></div><ul><li>顶部通知改为克制的品牌横幅，支持消息头像、场景图标、时间、展开与上滑关闭。</li><li>连续提醒排队展示，私聊新消息可点击横幅直接回到对应会话。</li><li>启用视频发布 Beta：支持 MP4/WebM、单个视频 50 MiB 上限和断点续传。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.1</strong><small>2026.11.05</small></div><ul><li>修正平板底栏消息与“我的”入口的网格位置，确保五个入口始终各就其位。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.35.0</strong><small>2026.11.05</small></div><ul><li>统一适配手机、平板、桌面与超宽屏，桌面导航固定在侧栏。</li><li>发现与个人作品网格根据屏幕宽度扩展列数，详情、消息与编辑器布局同步适配大屏。</li><li>保留现有翻卡、内容、认证和互动逻辑，并修整窄屏与平板导航切换。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.32.0</strong><small>2026.11.04</small></div><ul><li>修复发现页双列间距没有实际生效的问题，调整卡片列宽和纵向节奏。</li><li>作者、点赞和阅读信息行增加浅底色与克制圆角，和封面形成清楚层级。</li><li>私人笔记改为选中正文后自动显示；已保存摘录收进默认折叠的入口。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.31.0</strong><small>2026.11.04</small></div><ul><li>发现页卡片改为图片主导：标签与评级置于封面上方，标题在图片内最多显示两行。</li><li>封面下方收敛为作者、点赞数和“阅读 ↗”，移除重复标题与摘要。</li><li>加大页面边距和双列间距，统一卡片圆角，并让底栏更轻盈，保留醒目的金色发布按钮。</li><li>保持瀑布流加载和既有图片进入动画，统一悬停、焦点与图片反馈的衔接。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.30.0</strong><small>2026.11.04</small></div><ul><li>重构个人主页，优先展示个人资料、等级与双列作品。</li><li>将好友探索、探索月报、卡片接龙、探索日历和最近发现集中到探索中心。</li><li>每日任务改为紧凑可展开入口；作品系列和状态管理移入作品管理页。</li><li>调整个人主页深浅主题、移动端间距与桌面端作品网格。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.29.0</strong><small>2026.11.04</small></div><ul><li>阅读正文可摘录并写私人笔记，仅本人可见，也能随时删除。</li><li>可关注话题，关注的话题有新内容时会收到通知；帖子可订阅系列更新。</li><li>推荐菜单支持减少某位创作者或话题，并可在发现页的推荐偏好中恢复。</li><li>发布帖子可添加单选投票，投票结果即时更新并按账号限制重复投票。</li><li>关注、投票与私人摘录均同步账号，数据库权限隔离投票身份和个人笔记。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.27.0</strong><small>2026.11.03</small></div><ul><li>统一页面间距、组件圆角与直角分隔线，减少重复横线。</li><li>顶栏、底栏和消息输入区加入克制的液态玻璃层，保留现有页面和控件动画。</li><li>消息列表支持会话/找人切换、未读筛选、昵称与最近消息搜索，以及本机置顶会话。</li><li>聊天输入支持 Enter 发送、Shift + Enter 换行，并按日期分组消息。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.26.0</strong><small>2026.11.03</small></div><ul><li>统一亮暗主题的色彩、控件、卡片与页面转场，提升桌面端首屏卡片排布与无图兜底纹理。</li><li>修复 AI 工作台额度校验权限错误，按当前登录账号安全扣减调用次数，并明确报告密钥错误和请求超时。</li><li>“我的”页面保留五个内容栏目，移除稀有图鉴；探索日历默认展开热力图。</li><li>新增月度探索回顾和卡片接龙；AI 创作工作台接入 DeepSeek，生成建议后可选用或继续编辑。</li><li>管理员可在管理后台加密配置 DeepSeek 密钥，密钥保存在 Vercel 私有云存储。</li><li>双人探索入口移入“我的”，保持首页与发现页内容聚焦。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.23.1</strong><small>2026.11.03</small></div><ul><li>创作者中心与作品草稿管理拆分，入口与页面标题各自独立。</li><li>修正设置分类页的返回层级与重新进入时的状态恢复。</li><li>最近发现恢复卡片预览，再由“查看内容”进入详情。</li><li>评分后渐进展示社区结果，并加入模糊缩放反馈动效。</li><li>管理员可新增、编辑和上下线发现页的话题共创活动。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.12.0</strong><small>2026.11.03</small></div><ul><li>个人设置、调试模式、安全中心和创作者中心统一收纳在右上角设置入口，并按分类进入。</li><li>移除“我的”页底部重复的设置入口，设置不再被挤到页面末尾。</li><li>可以关注创作者，在发现页切换到关注动态。</li><li>支持创建作品系列，并在发布时将内容归入系列。</li><li>发现页上线限时话题共创，可加入后直接带话题创作。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.11.0</strong><small>2026.11.03</small></div><ul><li>发现页新增个性化精选、最新和高评分排序。</li><li>收藏支持创建、重命名、删除收藏夹，按标题、话题和作者搜索并整理内容。</li><li>新增创作者数据面板，统计公开内容阅读、点赞、收藏与评论表现。</li><li>加入每周探索、发布和收藏任务，完成后可领取 EXP 并计入等级奖励。</li><li>收藏夹和任务奖励改由数据库权限与事务校验保护。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.10.0</strong><small>2026.11.03</small></div><ul><li>修复图片加载状态误覆盖和切图卡住的问题，增强多图切换的柔和模糊动效。</li><li>我的作品改用固定双列网格，会员中心入口放到“我”页面设置旁。</li><li>评分星星加入分色反馈、光晕和逐颗跃动效果。</li><li>等级奖励支持解锁后领取，领取记录同步保存到账号。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.09.0</strong><small>2026.11.03</small></div><ul><li>我的作品固定为双列瀑布流，发布入口由底栏中间按钮统一提供。</li><li>他人主页默认使用大图瀑布流，可在设置中切换为列表。</li><li>多图切换即时反馈，目标图片预加载和解码完成后平滑替换；滑动识别更稳定。</li><li>设置入口移到“我”标题旁，安全中心、会员中心和调试模式收进设置。</li><li>最近翻开的卡片只在发现页的推荐分类显示，详情切换动画更轻、更省性能。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.07.0</strong><small>2026.11.03</small></div><ul><li>聊天会话与内容详情进入沉浸状态时隐藏手机底栏，返回后自动恢复。</li><li>安全中心和会员中心移入“我的”设置入口，整理个人设置菜单。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.06.0</strong><small>2026.11.03</small></div><ul><li>支持将 HEIKA 安装到手机主屏幕，并使用新的黑卡应用图标。</li><li>补充独立应用显示模式、启动图标和基础离线页面缓存。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.05.0</strong><small>2026.11.03</small></div><ul><li>消息列表和私聊改为紧凑排版，私聊支持从对话顶部打开全屏个人主页。</li><li>帖子详情进入时预加载前后图片，减少切换时等待。</li><li>“我的”页新增“我的作品”入口，可直接管理发布内容、审核状态和草稿。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.04.0</strong><small>2026.11.03</small></div><ul><li>瀑布流每天固定展示 50 张黑卡，次日自动生成新卡组并重置当日翻卡次数。</li><li>已翻卡片按日期保留在探索历史，可随时回看。</li><li>瀑布流图片加载时由模糊渐清，详情多图支持按滑动方向平滑切换。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 2.03.0</strong><small>2026.11.02</small></div><ul><li>投稿图片在上传后立即显示，并在刷新和重新打开时获取新的图片链接。</li><li>新增安全中心，可设置笔记仅自己可见，并管理私聊范围、黑名单与账号安全。</li><li>消息时间移到气泡外，复制操作收进长按菜单。</li><li>经验记录、探索日历和探索记录支持折叠，收起时不渲染长列表。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.39</strong><small>2026.11.01</small></div><ul><li>发现页搜索改为独立二级页面，支持搜索内容和公开用户资料。</li><li>内容支持标题、正文搜索；用户支持昵称、简介搜索和分页。</li><li>增加本机最近搜索与精选话题入口，并优化移动端搜索结果布局。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.37</strong><small>2026.11.01</small></div><ul><li>经验进度条改为纯深蓝纯色，修正个人页分隔线圆角。</li><li>翻卡图片区域加大，个人设置、调试等二级页面补齐统一入场动画。</li><li>消息页先恢复本地会话再显示登录入口，并保留已加载页面状态。</li><li>统一主按钮为低反光纯色，适配明暗主题。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.36</strong><small>2026.11.01</small></div><ul><li>切页使用统一模糊缩放过渡，移除旧页面上浮效果。</li><li>翻卡揭晓 S、SS、SSS 稀有等级，并在探索记录保留等级。</li><li>统一等级与订阅界面的圆角，经验进度条改为纯色。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.35</strong><small>2026.11.01</small></div><ul><li>为等级经验、选择菜单和个人资料控件补齐暗色主题样式。</li><li>移除经验等级卡片上多余的圆环装饰。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.34</strong><small>2026.11.01</small></div><ul><li>修复账号设置一级列表文字逐字换行与行高错乱。</li><li>增强等级经验、奖励和选择卡片的色彩层级。</li><li>统一页面、弹层、选项和开关的动效与 iOS 风格控件。</li><li>个人资料和管理后台选择器改为统一的质感菜单。</li></ul></div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.31</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>统一二级页顶栏返回操作，并将发布表单改为全屏编辑界面。</li>
-              <li>个人资料新增性别、MBTI、生日与爱好，可分别设置公开状态。</li>
-              <li>话题支持发布时自定义，发现页只展示热度靠前的话题。</li>
-              <li>私聊接收范围、黑名单和退出账号统一收纳到设置页。</li>
-              <li>个人资料与兴趣偏好改为独立二级页面，账号设置行项增加统一图标与排版。</li>
-              <li>调试模式新增管理员后台登录入口，并统一账号设置分组与列表样式。</li>
-              <li>补齐邮箱注册确认、密码找回与重置流程，注册时可设置昵称。</li>
-              <li>新增账号角色管理、用户检索和私信举报队列。</li>
-              <li>统一偏好设置二级页面，并新增主题、字体、导航与浏览模式的界面预览。</li>
-              <li>“我的”页改为收藏、点赞、探索日历和最近发现四个切换面板。</li>
-              <li>设置选项改为统一的二级选择页，个人发布与草稿单独收纳。</li>
-              <li>标签栏固定在顶部，切换加入柔和的滑动与内容过渡。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.26</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>亮色主题切换为纯白底色与冷灰分层。</li>
-              <li>底栏发布入口融入中央导航位，并统一设置选项样式。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.25</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>发布入口改为独立悬浮圆钮，与底部导航分层显示。</li>
-              <li>统一卡片、控件与弹层的克制圆角层级。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.24</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>发现页顶部保留最近翻开的卡，方便随时回看。</li>
-              <li>设置中可选择悬浮玻璃或固定底栏，选择会保存在本机。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.23</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>统一发布、话题、详情、举报与审核页面的浅色和深色主题变量。</li>
-              <li>新增发现页瀑布流与单列阅读布局，并保留设备上的用户选择。</li>
-              <li>修复内容话题关联查询歧义，补充今日翻卡与主题页面浏览器回归。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.22</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>举报支持固定原因、补充说明与重复提交保护。</li>
-              <li>新增管理员举报与内容人工审核队列，记录处理说明和时间。</li>
-              <li>新发布或编辑的内容先保持待审核状态，通过后才公开；图片未启用自动识别。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.21</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>发布编辑器支持多图预览、排序、封面选择、移除与失败重试。</li>
-              <li>新增本机与账号草稿自动保存、恢复；图片关联草稿后再发布。</li>
-              <li>删除草稿时同步清理已上传图片，保留现有登录与文章权限校验。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.20</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>彩带加入长短形态，并改为单段线性落下，减少中途速度变化造成的顿挫。</li>
-              <li>提示、错误、评分和幸运奖励统一采用模糊渐入渐出反馈。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.19</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>翻卡彩带改为从屏幕顶部多点错落飘下，增加数量并放慢速度。</li>
-              <li>为彩带加入轻微横向漂移、旋转和不同落速，延长自然飘落层次。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.18</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>重整翻卡彩带起点与全屏扇形轨迹，按动画时长准确清理粒子。</li>
-              <li>避免关闭或跳转后彩带重新出现，并减少重复的幸运加成提示。</li>
-              <li>将幸运加成提示上移，降低与卡片内容重叠的情况。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.17</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>修正黑卡弹层与发现页到详情页的图片来源定位。</li>
-              <li>详情返回时固定恢复原页面滚动位置与图片锚点。</li>
-              <li>翻卡彩带从顶部单点扇形绽放至全屏，并微调会员页面圆角。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.16</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>彩带从屏幕上方中心散开，加入多色飘落并移除浅色遮罩。</li>
-              <li>详情页采用图片连续扩展与正文上推动效，返回时按原路径收回。</li>
-              <li>加入全体用户评分汇总，并将个人评分信号用于内容推荐。</li>
-              <li>菱形卡片为已翻开的切面使用独立金属色状态。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.15</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>精简翻卡方案页面，使用紧凑套餐选择与折叠说明。</li>
-              <li>优化浅色和深色主题下的订阅弹窗层级及安全区域适配。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.14</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>翻卡彩带改为从屏幕顶部向下飘落。</li>
-              <li>详情页改为图片淡出、内容从下方自然上推，移除拉伸卡片图的转场。</li>
-              <li>在「我的」增加 Plus / Pro 订阅与额外翻卡包入口。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.13</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>加入每日幸运翻卡加成与 Plus / Pro 方案说明入口。</li>
-              <li>翻卡庆祝扩展为全屏金属绽放，评分改为信号校准动效。</li>
-              <li>支付入口保持关闭，幸运次数和翻卡进度按每日记录保存。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.12</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>调整深色模式下已解锁菱面亮度，恢复金属切面的层次与卡面文字对比度。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.11</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>浅色主题调整为更明亮的冷白底色。</li>
-              <li>详情页移除分类示例标签与正文下方分割线，减少阅读干扰。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.10</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>将冷银金属、细分割线与精密栏目眉题延伸到首页、个人页和详情页。</li>
-              <li>黑卡切面加入银蓝渐变，详情无图内容使用同系列菱面视觉。</li>
-              <li>保留现有翻卡、收藏、消息、设置与主题交互。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.9</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>浅色瀑布流卡面提亮，并提升翻卡内容的文字对比度。</li>
-              <li>黑卡切面铺满卡面，改为不规则碎片拼接，消除上下空条。</li>
-              <li>翻卡背景改用柔和模糊，并加入轻盈彩带动效。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.8</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>增加黑卡主界面的可选菱面数量，展示更多内容入口。</li>
-              <li>统一顶部「黑卡 HEIKA」中英文间距与对齐。</li>
-              <li>精简发现页头部，并恢复用户手动确认翻卡。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.7</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>重构内容详情的阅读层级与底部互动栏。</li>
-              <li>新增图片预览、多图切换、评论排序与分层回复。</li>
-              <li>改进评论头像、点赞状态和可分享的详情链接。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.6</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>放大并重新对齐顶部「黑卡 HEIKA」标识。</li>
-              <li>移除黑卡菱面卡片的上下内描边与条带纹理。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.5</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>调试入口移至个人页，可一键重置个人资料、偏好、收藏与翻卡记录。</li>
-              <li>个人设置新增 OPPO Sans 4.0 与系统字体选项。</li>
-              <li>调整顶部黑卡标识的位置与比例。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.4</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>移除首页顶栏的浏览模式切换，品牌标题简化为「黑卡」。</li>
-              <li>瀑布流明确显示每日翻卡进度，并在额度用完时提示。</li>
-              <li>调试模式独立成页，详情操作改为图标按钮。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.3</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>首页顶部可直接切换瀑布流与黑卡流。</li>
-              <li>菱面选择仅保留在首页卡面，翻开后的黑卡移除菱形结构。</li>
-              <li>设置中新增调试模式，可重置新人开始界面。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.2</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>首次进入即可选择瀑布流或黑卡主页样式。</li>
-              <li>精简个人页信息，并统一设置项状态的右侧对齐。</li>
-              <li>调整浅色模式下的探索日历色阶。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.1</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>首页标题更新为「保存黑卡」。</li>
-              <li>黑卡模式改为由可交互菱形切面组成的固定卡面，点选切面即可自动翻开新内容。</li>
-              <li>保留每日最多翻开 5 张的额度与已解锁记录。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.0</strong><small>初始版本</small></div>
-            <ul><li>黑卡内容探索、瀑布流浏览与每日翻卡。</li><li>收藏、消息、私聊及主题设置。</li></ul>
-          </div>
-        </section>
-      )}
+      {tab === "about" && <AboutHeika onBack={closeAboutPage} onFeedback={openFeedbackFromAbout} />}
       {tab === "debug" && (
         <section className="page debug-page">
           <div className="eyebrow">DEVELOPER TOOLS</div>

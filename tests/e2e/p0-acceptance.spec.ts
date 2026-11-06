@@ -65,25 +65,23 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
 async function setDiscoverLayout(page: import("@playwright/test").Page, layout: "单列阅读" | "瀑布流") {
   await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: "打开设置" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
   await page.getByRole("button", { name: /发现页布局/ }).click();
   await page.getByRole("radio", { name: new RegExp(layout) }).click();
-  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
   await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
   await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
 }
 
-async function chooseDetailTransition(page: import("@playwright/test").Page, option: "图片连续展开" | "轻柔焦上浮" | "留影接力") {
+async function chooseDetailTransition(page: import("@playwright/test").Page, option: "连续展开" | "柔和上浮" | "留影衔接") {
   await page.getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: "打开设置" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.getByRole("button", { name: /详情过渡动画/ }).click();
-  await expect(page.getByRole("radiogroup", { name: "详情过渡动画" }).getByRole("radio")).toHaveCount(3);
+  await page.getByRole("button", { name: /详情过渡效果/ }).click();
+  await expect(page.getByRole("radiogroup", { name: "详情过渡效果" }).getByRole("radio")).toHaveCount(3);
   await page.getByRole("radio", { name: new RegExp(option) }).click();
   await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem("heika-detail-transition"))).toBe(
-    option === "图片连续展开" ? "image-zoom" : option === "轻柔焦上浮" ? "blur-rise" : "ghost-handoff",
+    option === "连续展开" ? "image-zoom" : option === "柔和上浮" ? "blur-rise" : "ghost-handoff",
   );
+  await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
 }
 
 function fixturePost(id: number) {
@@ -207,11 +205,10 @@ test("discovery columns, desktop detail and settings adapt at every requested br
 
   await page.getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: "打开设置" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
   await expect(page.locator(".settings-desktop-nav")).toBeVisible();
-  await expect(page.locator(".settings-desktop-nav a")).toHaveCount(4);
-  await page.locator(".settings-desktop-nav a[href='#settings-reading']").click();
-  await expect(page.locator("#settings-reading")).toBeInViewport();
+  await expect(page.locator(".settings-desktop-nav a")).toHaveCount(5);
+  await page.locator(".settings-desktop-nav a[href='#settings-group-1']").click();
+  await expect(page.locator("#settings-group-1")).toBeInViewport();
 
   await page.getByRole("button", { name: "发布内容", exact: true }).click();
   await expect(page.locator(".composer-modal")).toBeVisible();
@@ -308,7 +305,7 @@ test("detail transition choices persist and animate image changes without blocki
   await page.setViewportSize({ width: 390, height: 844 });
   await enterApp(page);
 
-  await chooseDetailTransition(page, "轻柔焦上浮");
+  await chooseDetailTransition(page, "柔和上浮");
   await page.getByRole("button", { name: "发现", exact: true }).click();
   await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-blur-rise/);
@@ -318,7 +315,7 @@ test("detail transition choices persist and animate image changes without blocki
   await expect.poll(() => image.evaluate((node) => getComputedStyle(node).animationName)).toBe("detail-image-enter-next");
   await page.getByRole("button", { name: "返回" }).click();
 
-  await chooseDetailTransition(page, "留影接力");
+  await chooseDetailTransition(page, "留影衔接");
   await page.getByRole("button", { name: "发现", exact: true }).click();
   await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-ghost-handoff/);
@@ -330,7 +327,7 @@ test("detail transition choices persist and animate image changes without blocki
   await expect(page.locator(".detail-gallery-controls")).toContainText("1 / 2");
   await page.getByRole("button", { name: "返回" }).click();
 
-  await chooseDetailTransition(page, "图片连续展开");
+  await chooseDetailTransition(page, "连续展开");
   await page.getByRole("button", { name: "发现", exact: true }).click();
   await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-image-zoom/);

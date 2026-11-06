@@ -40,7 +40,7 @@ export function FollowedTopics({ accountId, onOpen }: { accountId: string | null
     return () => { alive = false; };
   }, [accountId]);
   if (!accountId || !items.length) return null;
-  return <section className="followed-topics-strip" aria-label="已关注话题"><span>关注的话题</span><div>{items.map((item) => { const topic = relation(item.interest_tags); return topic ? <button type="button" key={item.topic_id} onClick={() => onOpen(topic.name)}>#{topic.name}<ChevronRight size={13}/></button> : null; })}</div></section>;
+  return <section className="followed-topics-strip" aria-label="关注的话题"><span>关注的话题</span><div>{items.map((item) => { const topic = relation(item.interest_tags); return topic ? <button type="button" key={item.topic_id} onClick={() => onOpen(topic.name)}>#{topic.name}<ChevronRight size={13}/></button> : null; })}</div></section>;
 }
 
 export function FollowedTopicsSettings({ accountId, onOpen, onNotice }: { accountId: string | null; onOpen: (name: string) => void; onNotice: (message: string) => void }) {

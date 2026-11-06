@@ -1,8 +1,9 @@
 {
   "name": "fanka",
-  "version": "2.37.0",
+  "version": "2.38.0",
   "private": true,
   "scripts": {
+    "prebuild": "node scripts/sync-service-worker-version.mjs",
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",

@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import ServiceWorkerRegistration from '../components/ServiceWorkerRegistration';
 import './style.css';
 import './design-system.css';
+import './settings.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',
@@ -33,6 +35,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
       <body>
+        <Script id="heika-preference-bootstrap" strategy="beforeInteractive">{`try {
+          const theme = localStorage.getItem('heika-theme');
+          if (theme === 'dark' || theme === 'light' || theme === 'system') document.documentElement.dataset.theme = theme;
+          const font = localStorage.getItem('heika-font');
+          if (font === 'oppo' || font === 'system') document.documentElement.dataset.font = font;
+        } catch {}`}</Script>
         {children}
         <ServiceWorkerRegistration />
       </body>

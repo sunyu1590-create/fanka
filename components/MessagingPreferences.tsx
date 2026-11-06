@@ -15,6 +15,7 @@ export default function MessagingPreferences({
   publicBookmarksLoaded,
   bookmarkVisibilityBusy,
   onBookmarkVisibilityChange,
+  onNotice,
 }: {
   accountId: string | null;
   onLogin: () => void;
@@ -22,6 +23,7 @@ export default function MessagingPreferences({
   publicBookmarksLoaded: boolean;
   bookmarkVisibilityBusy: boolean;
   onBookmarkVisibilityChange: (value: boolean) => void;
+  onNotice?: (message: string) => void;
 }) {
   const [permission, setPermission] = useState<"everyone" | "nobody">("everyone");
   const [notesPrivate, setNotesPrivate] = useState(false);
@@ -70,12 +72,16 @@ export default function MessagingPreferences({
 
   const saveNotesPrivacy = async (value: boolean) => {
     if (!accountId) return;
+    if (!window.confirm(value
+      ? "将作品可见范围设为仅自己可见？这会影响已发布作品、关联内容和图片的公开访问；管理员仍可审核。"
+      : "将作品可见范围设为公开展示？其他用户可按社区规则访问已发布内容。")) return;
     setBusyId("notes"); setError("");
     try {
       const db = await browserDb();
       const { error: saveError } = await db.from("profiles").update({ notes_private: value }).eq("id", accountId);
       if (saveError) throw saveError;
       setNotesPrivate(value);
+      onNotice?.("公开范围已更新");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "保存隐私设置失败"); }
     finally { setBusyId(""); }
   };
@@ -109,8 +115,8 @@ export default function MessagingPreferences({
   return <div className="messaging-preferences">
     <section className="settings-module">
       <div className="settings-module-heading"><strong>隐私设置</strong></div>
-      <div className="switch-row"><span><strong>笔记仅自己可见</strong><small>开启后，其他用户无法查看你已发布的笔记和图片。管理员仍可进行审核。</small></span><button type="button" role="switch" aria-checked={notesPrivate} aria-label="笔记仅自己可见" disabled={busyId === "notes"} className={`toggle-switch ${notesPrivate ? "on" : ""}`} onClick={() => void saveNotesPrivacy(!notesPrivate)}><i/></button></div>
-      <div className="switch-row"><span><strong>公开我的收藏</strong><small>{!publicBookmarksLoaded ? "正在读取收藏公开状态" : publicBookmarks ? "其他人可以在你的主页浏览收藏" : "目前仅自己可见"}</small></span><button type="button" role="switch" aria-checked={publicBookmarks} aria-label="公开我的收藏" disabled={bookmarkVisibilityBusy || !publicBookmarksLoaded} className={`toggle-switch ${publicBookmarks ? "on" : ""}`} onClick={() => onBookmarkVisibilityChange(!publicBookmarks)}><i/></button></div>
+      <div className="switch-row"><span><strong>作品可见范围</strong><small>{notesPrivate ? "仅自己可见：已发布作品、图片、关联话题及评论不会向其他用户公开；管理员仍可审核。" : "公开展示：其他用户可按社区规则访问已发布作品及其关联内容。"}</small></span><button type="button" role="switch" aria-checked={notesPrivate} aria-label="作品仅自己可见" disabled={busyId === "notes"} className={`toggle-switch ${notesPrivate ? "on" : ""}`} onClick={() => void saveNotesPrivacy(!notesPrivate)}><i/></button></div>
+      <div className="switch-row"><span><strong>展示我的收藏</strong><small>{!publicBookmarksLoaded ? "正在读取收藏公开状态" : publicBookmarks ? "其他人可以在你的主页浏览收藏" : "目前仅自己可见"}</small></span><button type="button" role="switch" aria-checked={publicBookmarks} aria-label="展示我的收藏" disabled={bookmarkVisibilityBusy || !publicBookmarksLoaded} className={`toggle-switch ${publicBookmarks ? "on" : ""}`} onClick={() => onBookmarkVisibilityChange(!publicBookmarks)}><i/></button></div>
     </section>
     <section className="settings-module">
       <div className="settings-module-heading"><strong>私聊接收范围</strong></div>
@@ -125,11 +131,11 @@ export default function MessagingPreferences({
       {blocked.length ? blocked.map((person) => <div className="messaging-block-row" key={person.id}><span className="settings-row-icon"><UserRound size={17}/></span><span><strong>{person.nickname || "探索者"}</strong><small>{person.bio || "已限制私聊"}</small></span><button className="soft-button" disabled={busyId === person.id} onClick={() => void unblock(person.id)}>{busyId === person.id ? "处理中…" : "解除"}</button></div>) : <p className="messaging-preferences-note">黑名单为空。你拉黑的用户会显示在这里。</p>}
     </section>
     <section className="settings-module">
-      <div className="settings-module-heading"><strong>账号安全 / 备用恢复码</strong></div>
+      <div className="settings-module-heading"><strong>账号安全 / 账号恢复码</strong></div>
       <p className="messaging-preferences-note">恢复码只展示一次。生成新码会让此前的所有恢复码失效，请离线保存在安全位置。</p>
-      <button type="button" className="soft-button" disabled={busyId === "recovery"} onClick={() => void createRecoveryCodes()}>{busyId === "recovery" ? "正在生成…" : recoveryCodes.length ? "重新生成恢复码" : "生成备用恢复码"}</button>
+      <button type="button" className="soft-button" disabled={busyId === "recovery"} onClick={() => void createRecoveryCodes()}>{busyId === "recovery" ? "正在生成…" : recoveryCodes.length ? "重新生成恢复码" : "生成账号恢复码"}</button>
       {recoveryCodes.length > 0 && <pre className="recovery-code-list">{recoveryCodes.join("\n")}</pre>}
-      <button className="messaging-signout" onClick={() => void browserDb().then((db) => db.auth.signOut())}><LogOut size={17}/>退出账号</button>
+      <button className="messaging-signout" onClick={() => { if (window.confirm("确定退出当前账号吗？")) void browserDb().then((db) => db.auth.signOut()); }}><LogOut size={17}/>退出账号</button>
     </section>
     <AnimatedNotice message={error} className="messaging-preferences-error" />
   </div>;
