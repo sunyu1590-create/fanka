@@ -597,6 +597,7 @@ export default function Community() {
     [composerEditingPublished, setComposerEditingPublished] = useState(false),
     [composerRevisionMode, setComposerRevisionMode] = useState(false),
     [draftSaving, setDraftSaving] = useState(false),
+    [isPublishing, setIsPublishing] = useState(false),
     [topicSummary, setTopicSummary] = useState<TopicSummary | null>(null),
     [topicPosts, setTopicPosts] = useState<Post[]>([]),
     [topicPage, setTopicPage] = useState(1),
@@ -777,6 +778,8 @@ export default function Community() {
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastDraftPayload = useRef("");
+  const draftSaveTimer = useRef<number | null>(null);
+  const publishInFlight = useRef(false);
   const videoCompressionSequence = useRef(0);
   const videoCompressionAbort = useRef<AbortController | null>(null);
   const draftMediaBusy = useRef(new Set<string>());
@@ -2272,6 +2275,7 @@ export default function Community() {
     setComposerVideo(null);
   };
   const publish = async () => {
+    if (publishInFlight.current) return;
     if (!title.trim()) { setComposerValidation("title"); toast("请先填写标题"); document.querySelector<HTMLInputElement>(".composer-title-field input")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!body.trim()) { setComposerValidation("body"); toast("请先填写正文"); document.querySelector<HTMLTextAreaElement>(".composer-body-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     setComposerValidation("");
@@ -2282,6 +2286,13 @@ export default function Community() {
     if (composerVideo?.status === "compressing") return toast("视频正在优化，请稍后发布");
     if (composerVideo?.status === "uploading") return toast("视频正在上传，请稍后发布");
     if (composerVideo && composerImages.length) return toast("视频 Beta 暂不与图片混发，请移除其中一种媒体");
+    if (draftSaveTimer.current !== null) {
+      window.clearTimeout(draftSaveTimer.current);
+      draftSaveTimer.current = null;
+    }
+    if (draftSaving) return toast("草稿正在同步，请稍后发布");
+    publishInFlight.current = true;
+    setIsPublishing(true);
     try {
       const old = state.own.find((p) => p.id === editing);
       const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
@@ -2350,12 +2361,21 @@ export default function Community() {
       setComposerValidation("");
       const owner = accountId || "guest";
       localStorage.removeItem(`heika-compose-${owner}`);
+      localStorage.removeItem(`heika-compose-${writeChannel}-${owner}`);
       await clearDraftFiles(owner).catch(() => {});
-      if (accountId) { localStorage.removeItem("heika-compose-guest"); await clearDraftFiles("guest").catch(() => {}); }
+      if (accountId) {
+        localStorage.removeItem("heika-compose-guest");
+        localStorage.removeItem(`heika-compose-${writeChannel}-guest`);
+        await clearDraftFiles("guest").catch(() => {});
+      }
+      lastDraftPayload.current = "";
       toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : "内容已提交人工审核，通过后将公开展示");
     } catch (e) {
       setUploadingImages(false);
       toast(e instanceof Error ? e.message : "发布失败，请重试");
+    } finally {
+      publishInFlight.current = false;
+      setIsPublishing(false);
     }
   };
   const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community") => {
@@ -2483,10 +2503,14 @@ export default function Community() {
   useEffect(() => {
     if (modal !== "write") return;
     const timer = window.setTimeout(() => {
+      draftSaveTimer.current = null;
+      if (publishInFlight.current) return;
       if (!title && !body && !composerImages.length && !composerVideo && !pollQuestion && !pollOptions.some(Boolean)) return;
       const persist = async () => {
         const owner = accountId || "guest";
+        if (publishInFlight.current) return;
         await saveDraftFiles(owner, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
+        if (publishInFlight.current) return;
         const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
         const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
         localStorage.setItem(`heika-compose-${writeChannel}-${owner}`, JSON.stringify(draftData));
@@ -2496,7 +2520,8 @@ export default function Community() {
           const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex, writeChannel, writeContentType, aiResourceFields });
           let cloudDraft = state.own.find((item) => item.id === editing && item.status === "draft" && (item.channel || "community") === writeChannel);
           if (lastDraftPayload.current !== signature || !cloudDraft) {
-            lastDraftPayload.current = signature; setDraftSaving(true);
+            lastDraftPayload.current = signature;
+            setDraftSaving(true);
             try {
               const cover = composerImages[coverIndex];
               const saved = writeChannel === "ai"
@@ -2530,7 +2555,8 @@ export default function Community() {
       };
       void persist().catch(() => toast("本机草稿保存失败，请检查设备存储空间"));
     }, 500);
-    return () => window.clearTimeout(timer);
+    draftSaveTimer.current = timer;
+    return () => { window.clearTimeout(timer); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
   // Including state.own and the per-render upload helper would restart cloud autosave after each synchronized draft update.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished, writeChannel, writeContentType, aiResourceFields]);
@@ -4914,7 +4940,7 @@ export default function Community() {
               </div>
               </div>
             )}
-            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small><small>发布后进入人工审核</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small><small>发布后进入人工审核</small></span><button className="primary-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}
