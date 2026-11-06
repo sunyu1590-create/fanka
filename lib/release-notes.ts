@@ -7,6 +7,16 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.38.1",
+    date: "2026.11.06",
+    notes: [
+      { category: "体验优化", text: "详情页评论改为头像、正文和点赞三列，统一作者信息、评论正文及时间回复操作的排版。" },
+      { category: "体验优化", text: "二级回复采用扁平回复关系，默认收起多余内容，并保留点赞、回复、复制和权限操作。" },
+      { category: "问题修复", text: "修复窄屏评论竖排、长昵称挤压、操作重叠及回复错位；评论菜单展开不再被滚动容器裁切。" },
+      { category: "体验优化", text: "评论输入默认紧凑单行，编辑时展开；详情评分调整为一行并继续沿用原有评分同步。" },
+    ],
+  },
+  {
     version: "2.38.0",
     notes: [
       { category: "新功能", text: "设置中心升级为五组紧凑设置，并加入独立的品牌介绍与意见反馈。" },

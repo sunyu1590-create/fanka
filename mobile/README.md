@@ -17,11 +17,12 @@ React Native Android client for HEIKA. It renders native React Native screens an
 - Expo Router navigation for native secondary pages
 - Private message inbox, user search, direct chats and Supabase Realtime updates
 - In-app activity notifications backed by the existing notifications API
+- Android notification permission, message channel, and foreground incoming-message alerts with tap-through to the chat
 - Creator analytics, weekly missions and reward claiming
 - AI writing assistant using the server-side DeepSeek workbench API
 - Admin overview, pending post review and keyword-rule controls using server permission checks
 
-The app version is `1.1.0` (Android version code `2`) so it installs over the stage-one APK. Background push delivery is not enabled yet: it requires linking the Expo project and configuring Android FCM credentials. The in-app notification center works without those credentials.
+The app version is `1.1.0` (Android version code `2`) so it installs over the stage-one APK. Android system alerts work for incoming messages while the app is active and the user has granted notification permission. Background push delivery is not enabled yet: it requires linking the Expo project and configuring Android FCM credentials. The in-app notification center works without those credentials.
 
 ## API configuration
 

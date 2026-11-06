@@ -31,29 +31,55 @@ export async function GET(req: NextRequest) {
     dbError(read);
     const rows = data || [];
     const authorIds = [...new Set(rows.map((row) => row.author_id))];
-    const parentIds = [...new Set(rows.flatMap((row) => row.parent_id ? [row.parent_id] : []))];
-    const [profilesResult, parentsResult] = await Promise.all([
-      authorIds.length ? db.from("profiles").select("id,nickname,avatar_url").in("id", authorIds) : Promise.resolve({ data: [], error: null }),
-      parentIds.length ? db.from("comments").select("id,client_id").in("id", parentIds) : Promise.resolve({ data: [], error: null }),
-    ]);
+    const parentRows = new Map<string, { id: string; client_id: number; author_id: string; parent_id: string | null }>();
+    let pendingParentIds = [...new Set(rows.flatMap((row) => row.parent_id ? [row.parent_id] : []))];
+    for (let depth = 0; pendingParentIds.length && depth < 12; depth += 1) {
+      const missingIds = pendingParentIds.filter((id) => !parentRows.has(id));
+      if (!missingIds.length) break;
+      const { data: parentRowsAtDepth, error: parentsError } = await db
+        .from("comments")
+        .select("id,client_id,author_id,parent_id")
+        .in("id", missingIds);
+      dbError(parentsError);
+      for (const parent of parentRowsAtDepth || []) parentRows.set(parent.id, parent);
+      pendingParentIds = (parentRowsAtDepth || []).flatMap((parent) => parent.parent_id ? [parent.parent_id] : []);
+    }
+    const profileIds = [...new Set([...authorIds, ...[...parentRows.values()].map((parent) => parent.author_id)])];
+    const profilesResult = profileIds.length
+      ? await db.from("profiles").select("id,nickname,avatar_url").in("id", profileIds)
+      : { data: [], error: null };
     dbError(profilesResult.error);
-    dbError(parentsResult.error);
     const profiles = new Map((profilesResult.data || []).map((profile) => [profile.id, profile]));
-    const parentClientIds = new Map((parentsResult.data || []).map((parent) => [parent.id, Number(parent.client_id)]));
     return {
-      items: rows.map((c) => ({
-      id: Number(c.client_id),
-      cloudId: c.id,
-      post: clientId,
-      body: c.body,
-      authorId: c.author_id,
-      name: profiles.get(c.author_id)?.nickname?.trim() || "探索者",
-      avatar: profiles.get(c.author_id)?.avatar_url || undefined,
-      parent: c.parent_id ? parentClientIds.get(c.parent_id) : undefined,
-      time: new Date(c.created_at).getTime(),
-      likes: c.comment_reactions.length,
-      liked: !!user && c.comment_reactions.some((r: { user_id: string }) => r.user_id === user.id),
-    })), total: count || 0, offset, limit };
+      items: rows.map((c) => {
+        const directParent = c.parent_id ? parentRows.get(c.parent_id) : undefined;
+        let rootParent = directParent;
+        const seenParents = new Set<string>();
+        while (rootParent?.parent_id && !seenParents.has(rootParent.id)) {
+          seenParents.add(rootParent.id);
+          const nextParent = parentRows.get(rootParent.parent_id);
+          if (!nextParent) break;
+          rootParent = nextParent;
+        }
+        return {
+          id: Number(c.client_id),
+          cloudId: c.id,
+          post: clientId,
+          body: c.body,
+          authorId: c.author_id,
+          name: profiles.get(c.author_id)?.nickname?.trim() || "探索者",
+          avatar: profiles.get(c.author_id)?.avatar_url || undefined,
+          parent: c.parent_id ? Number(rootParent?.client_id || directParent?.client_id) : undefined,
+          replyToName: directParent ? profiles.get(directParent.author_id)?.nickname?.trim() || "探索者" : undefined,
+          time: new Date(c.created_at).getTime(),
+          likes: c.comment_reactions.length,
+          liked: !!user && c.comment_reactions.some((r: { user_id: string }) => r.user_id === user.id),
+        };
+      }),
+      total: count || 0,
+      offset,
+      limit,
+    };
   });
 }
 export async function POST(req: NextRequest) {
@@ -94,15 +120,35 @@ export async function POST(req: NextRequest) {
       return { saved: true };
     }
     let parent: string | null = null;
+    let parentAuthorId: string | null = null;
+    let parentRootClientId: number | undefined;
     if (b.parent) {
       const { data, error } = await db
         .from("comments")
-        .select("id")
+        .select("id,client_id,author_id,parent_id")
         .eq("client_id", Number(b.parent))
         .eq("post_id", post!.id)
         .single();
       dbError(error);
       parent = data!.id;
+      parentAuthorId = data!.author_id;
+      let root = data!;
+      let ancestorId = root.parent_id as string | null;
+      const seen = new Set<string>([root.id]);
+      for (let depth = 0; ancestorId && depth < 12 && !seen.has(ancestorId); depth += 1) {
+        seen.add(ancestorId);
+        const { data: ancestor, error: ancestorError } = await db
+          .from("comments")
+          .select("id,client_id,parent_id")
+          .eq("id", ancestorId)
+          .eq("post_id", post!.id)
+          .maybeSingle();
+        dbError(ancestorError);
+        if (!ancestor) break;
+        root = { ...root, id: ancestor.id, client_id: ancestor.client_id, parent_id: ancestor.parent_id };
+        ancestorId = ancestor.parent_id;
+      }
+      parentRootClientId = Number(root.client_id);
     }
     const { data, error: write } = await db
       .from("comments")
@@ -116,20 +162,24 @@ export async function POST(req: NextRequest) {
       .single();
     dbError(write);
     if (!data) throw new ApiError(500, "评论未保存");
-    const { data: profile } = await db
+    const { data: profiles, error: profilesError } = await db
       .from("profiles")
-      .select("nickname,avatar_url")
-      .eq("id", user!.id)
-      .maybeSingle();
+      .select("id,nickname,avatar_url")
+      .in("id", [...new Set([user!.id, ...(parentAuthorId ? [parentAuthorId] : [])])]);
+    dbError(profilesError);
+    const profilesById = new Map((profiles || []).map((item) => [item.id, item]));
+    const authorProfile = profilesById.get(user!.id);
+    const parentProfile = parentAuthorId ? profilesById.get(parentAuthorId) : undefined;
     return {
       id: Number(data.client_id),
       cloudId: data.id,
       post: Number(b.post),
       body: data.body,
       authorId: user!.id,
-      name: profile?.nickname || "探索者",
-      avatar: profile?.avatar_url || undefined,
-      parent: b.parent || undefined,
+      name: authorProfile?.nickname || "探索者",
+      avatar: authorProfile?.avatar_url || undefined,
+      parent: b.parent ? parentRootClientId || Number(b.parent) : undefined,
+      replyToName: parentProfile?.nickname || undefined,
       time: new Date(data.created_at).getTime(),
       likes: 0,
     };

@@ -16,6 +16,9 @@
       "package": "com.heika.community",
       "versionCode": 2,
       "allowBackup": false,
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#F6F5F1",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,6 +29,13 @@
     "plugins": [
       "expo-router",
       "./plugins/withHeikaSecureStorage",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "heika-community",
+          "color": "#49665F"
+        }
+      ],
       [
         "expo-image-picker",
         {
