@@ -22,7 +22,7 @@ React Native Android client for HEIKA. It renders native React Native screens an
 - AI writing assistant using the server-side DeepSeek workbench API
 - Admin overview, pending post review and keyword-rule controls using server permission checks
 
-The app version is `1.1.0` (Android version code `2`) so it installs over the stage-one APK. Android system alerts work for incoming messages while the app is active and the user has granted notification permission. Background push delivery is not enabled yet: it requires linking the Expo project and configuring Android FCM credentials. The in-app notification center works without those credentials.
+The app version is `2.0.0` (Android version code `3`) for the native phase-two release. Android system alerts work for incoming messages while the app is active and the user has granted notification permission. Background push delivery is not enabled yet: it requires linking the Expo project and configuring Android FCM credentials. The in-app notification center works without those credentials.
 
 ## API configuration
 

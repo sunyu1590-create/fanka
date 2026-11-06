@@ -4,11 +4,11 @@ import { readFile } from "node:fs/promises";
 import ts from "typescript";
 
 const source = (await readFile(new URL("../lib/server/library.ts", import.meta.url), "utf8"))
-  .replace('import { signPostMedia } from "./media";', 'const signPostMedia = async () => ({ data: [], error: null });');
+  .replace('import { signPostMedia } from "./media";', 'const signPostMedia = async (db, paths, expiresIn) => db.signPostMedia(paths, expiresIn);');
 const moduleSource = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { libraryFields, libraryFeedFields, present } = await import(`data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}`);
+const { libraryFields, libraryFeedFields, present, presentMany } = await import(`data:text/javascript;base64,${Buffer.from(moduleSource).toString("base64")}`);
 
 test("content queries disambiguate category and topic foreign keys", () => {
   assert.match(libraryFields, /interest_tags!posts_tag_id_fkey\(name\)/);
@@ -56,4 +56,24 @@ test("feed presenter prefers signed thumbnails and keeps detail originals separa
   assert.equal(post.retinaImages[0], "https://storage.test/photo-960?token=high");
   const detail = present(row, urls, false);
   assert.match(detail.images[0], /photo\.jpg/);
+});
+
+test("failed storage signing does not make post details unavailable", async () => {
+  const row = {
+    id: "post-3", client_id: 19, title: "媒体暂时不可用", body: "正文", cover_text: null,
+    image_url: null, author_id: "user-3", created_at: "2026-11-01T10:00:00.000Z",
+    is_demo: false, status: "published", interest_tags: { name: "生活" },
+    profiles: { nickname: "作者" }, post_media: [
+      { storage_path: "user-3/photo.jpg", sort_order: 0 },
+    ], post_topics: [],
+  };
+  const db = {
+    signPostMedia: async (paths) => paths.includes("user-3/photo.jpg")
+      ? { data: null, error: new Error("storage temporarily unavailable") }
+      : { data: [], error: null },
+  };
+
+  const [post] = await presentMany(db, [row]);
+  assert.equal(post.title, "媒体暂时不可用");
+  assert.match(post.images[0], /\/api\/v1\/media\?path=/);
 });

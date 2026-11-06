@@ -125,7 +125,10 @@ export async function presentMany(db: SupabaseClient, rows: LibraryRow[]) {
     signPostMedia(db, originalPaths, 3600),
     signPostMedia(db, variantPaths, 3600),
   ]);
-  if (originals.error) throw new Error("投稿媒体加载失败");
+  // Media is optional content. A storage signing error must not turn an
+  // otherwise readable post into a 500; `present` will emit the same
+  // first-party media route used by the feed, which can retry signing per file.
+  if (originals.error) return rows.map((row) => present(row));
   const urls = new Map([
     ...(originals.data || []),
     ...(variants.data || []),

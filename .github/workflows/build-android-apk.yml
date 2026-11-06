@@ -50,7 +50,7 @@ jobs:
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$apk"
           badging="$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$apk")"
           printf '%s\n' "$badging" | head -n 1
-          printf '%s\n' "$badging" | grep -F "name='com.heika.community' versionCode='2' versionName='1.1.0'"
+          printf '%s\n' "$badging" | grep -F "name='com.heika.community' versionCode='3' versionName='2.0.0'"
           sha256sum "$apk"
       - name: Upload APK
         uses: actions/upload-artifact@v6
