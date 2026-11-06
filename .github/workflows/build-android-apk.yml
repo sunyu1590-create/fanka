@@ -43,6 +43,15 @@ jobs:
       - name: Build installable APK
         working-directory: mobile/android
         run: ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
+      - name: Verify release APK
+        working-directory: mobile/android
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$apk"
+          badging="$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$apk")"
+          printf '%s\n' "$badging" | head -n 1
+          printf '%s\n' "$badging" | grep -F "name='com.heika.community' versionCode='2' versionName='1.1.0'"
+          sha256sum "$apk"
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
