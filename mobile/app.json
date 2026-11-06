@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "黑卡 HEIKA",
+    "slug": "heika-android",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F6F5F1"
+    },
+    "android": {
+      "package": "com.heika.community",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#F6F5F1",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": true
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允许 HEIKA 选择图片并发布作品。"
+        }
+      ]
+    ]
+  }
+}
