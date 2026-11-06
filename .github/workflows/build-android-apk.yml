@@ -26,7 +26,6 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
-      - uses: android-actions/setup-android@v3
       - name: Install dependencies
         working-directory: mobile
         run: npm ci
