@@ -1,7 +1,9 @@
 import React, { type ReactNode } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useSegments } from "expo-router";
+import { useTheme } from "../lib/theme";
 
 export const palette = {
   bg: "#F6F5F1", paper: "#FFFFFF", ink: "#202421", muted: "#7E8583",
@@ -12,17 +14,21 @@ export function PageFrame({ title, eyebrow, back = true, children, scroll = true
   title: string; eyebrow?: string; back?: boolean; children: ReactNode; scroll?: boolean;
   refreshing?: boolean; onRefresh?: () => void; contentStyle?: ViewStyle;
 }) {
+  const { colors } = useTheme();
+  const themed = makeUi(colors);
+  const segments = useSegments();
+  const inTabs = segments.includes("(tabs)");
   const content = scroll ? (
-    <ScrollView contentContainerStyle={[ui.content, contentStyle]} keyboardShouldPersistTaps="handled" refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={palette.green} /> : undefined}>
+    <ScrollView contentContainerStyle={[themed.content, { paddingBottom: inTabs ? 116 : 34 }, contentStyle]} keyboardShouldPersistTaps="handled" refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.action} /> : undefined}>
       {children}
     </ScrollView>
-  ) : <View style={[ui.content, { flex: 1 }, contentStyle]}>{children}</View>;
-  return <SafeAreaView style={ui.safe} edges={["top", "left", "right", "bottom"]}>
-    <View style={ui.header}>
-      {back && <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace("/")} hitSlop={12} style={ui.back}><Text style={ui.backText}>‹</Text></Pressable>}
-      <View style={ui.headerTitle}>
-        {eyebrow ? <Text style={ui.eyebrow}>{eyebrow}</Text> : null}
-        <Text style={ui.title}>{title}</Text>
+  ) : <View style={[themed.content, { flex: 1 }, contentStyle]}>{children}</View>;
+  return <SafeAreaView style={themed.safe} edges={["top", "left", "right", "bottom"]}>
+    <View style={themed.header}>
+      {back && <Pressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => router.canGoBack() ? router.back() : router.replace("/home")} hitSlop={12} style={themed.back}><Text style={themed.backText}>‹</Text></Pressable>}
+      <View style={themed.headerTitle}>
+        {eyebrow ? <Text style={themed.eyebrow}>{eyebrow}</Text> : null}
+        <Text style={themed.title}>{title}</Text>
       </View>
     </View>
     {content}
@@ -30,31 +36,43 @@ export function PageFrame({ title, eyebrow, back = true, children, scroll = true
 }
 
 export function Loading({ label = "正在加载…" }: { label?: string }) {
-  return <View style={ui.state}><ActivityIndicator color={palette.green} /><Text style={ui.muted}>{label}</Text></View>;
+  const { colors } = useTheme();
+  return <View style={ui.state}><ActivityIndicator color={colors.action} /><Text style={[ui.muted, { color: colors.muted }]}>{label}</Text></View>;
 }
 
 export function Notice({ children, tone = "error" }: { children?: ReactNode; tone?: "error" | "success" | "quiet" }) {
+  const { colors } = useTheme();
   if (!children) return null;
-  return <View style={[ui.notice, tone === "success" && ui.noticeSuccess, tone === "quiet" && ui.noticeQuiet]}><Text style={ui.noticeText}>{children}</Text></View>;
+  const backgroundColor = tone === "error" ? `${colors.danger}18` : tone === "success" ? colors.actionSoft : colors.raised;
+  const borderColor = tone === "error" ? colors.danger : tone === "success" ? colors.action : colors.line;
+  return <Animated.View entering={FadeInDown.duration(220)} exiting={FadeOutUp.duration(160)} layout={LinearTransition.duration(180)} style={[ui.notice, { backgroundColor, borderLeftColor: borderColor }]}><Text style={[ui.noticeText, { color: colors.ink }]}>{children}</Text></Animated.View>;
 }
 
 export function Action({ title, onPress, disabled = false, subtle = false }: { title: string; onPress: () => void; disabled?: boolean; subtle?: boolean }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[ui.action, subtle && ui.actionSubtle, disabled && ui.disabled]}>
-    <Text style={[ui.actionText, subtle && ui.actionSubtleText]}>{title}</Text>
+  const { colors } = useTheme();
+  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[ui.action, { backgroundColor: subtle ? colors.surface : colors.action, borderColor: colors.line, borderWidth: subtle ? 1 : 0 }, disabled && ui.disabled]}>
+    <Text style={[ui.actionText, subtle && { color: colors.ink }]}>{title}</Text>
   </Pressable>;
 }
 
 export function Row({ title, subtitle, accessory, onPress, style }: { title: string; subtitle?: string; accessory?: string; onPress?: () => void; style?: ViewStyle }) {
-  const content = <><View style={ui.rowText}><Text style={ui.rowTitle} numberOfLines={2}>{title}</Text>{subtitle ? <Text style={ui.rowSubtitle} numberOfLines={2}>{subtitle}</Text> : null}</View>{accessory ? <Text style={ui.accessory}>{accessory}</Text> : null}</>;
-  return onPress ? <Pressable onPress={onPress} style={[ui.row, style]}>{content}</Pressable> : <View style={[ui.row, style]}>{content}</View>;
+  const { colors } = useTheme();
+  const content = <><View style={ui.rowText}><Text style={[ui.rowTitle, { color: colors.ink }]} numberOfLines={2}>{title}</Text>{subtitle ? <Text style={[ui.rowSubtitle, { color: colors.muted }]} numberOfLines={2}>{subtitle}</Text> : null}</View>{accessory ? <Text style={[ui.accessory, { color: colors.muted }]}>{accessory}</Text> : null}</>;
+  return onPress ? <Pressable onPress={onPress} style={[ui.row, { borderBottomColor: colors.line }, style]}>{content}</Pressable> : <View style={[ui.row, { borderBottomColor: colors.line }, style]}>{content}</View>;
 }
 
 export function Metric({ label, value }: { label: string; value: string | number }) {
-  return <View style={ui.metric}><Text style={ui.metricValue}>{value}</Text><Text style={ui.metricLabel}>{label}</Text></View>;
+  const { colors } = useTheme();
+  return <View style={[ui.metric, { backgroundColor: colors.surface, borderBottomColor: colors.action }]}><Text style={[ui.metricValue, { color: colors.ink }]}>{value}</Text><Text style={[ui.metricLabel, { color: colors.muted }]}>{label}</Text></View>;
 }
 
 export function SectionTitle({ children, detail }: { children: ReactNode; detail?: string }) {
-  return <View style={ui.section}><Text style={ui.sectionTitle}>{children}</Text>{detail ? <Text style={ui.sectionDetail}>{detail}</Text> : null}</View>;
+  const { colors } = useTheme();
+  return <View style={ui.section}><Text style={[ui.sectionTitle, { color: colors.ink }]}>{children}</Text>{detail ? <Text style={[ui.sectionDetail, { color: colors.muted }]}>{detail}</Text> : null}</View>;
+}
+
+function makeUi(colors: ReturnType<typeof useTheme>["colors"]) {
+  return { ...ui, safe: { ...ui.safe, backgroundColor: colors.bg }, header: { ...ui.header, backgroundColor: colors.surface, borderBottomColor: colors.line }, content: { ...ui.content } , backText: { ...ui.backText, color: colors.action }, eyebrow: { ...ui.eyebrow, color: colors.action }, title: { ...ui.title, color: colors.ink } };
 }
 
 export const ui = StyleSheet.create({

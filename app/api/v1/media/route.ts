@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
-    const form = await req.formData();
+    const form = await req.formData() as unknown as { get: (name: string) => unknown; has: (name: string) => boolean };
     const file = form.get("file");
     if (!(file instanceof File)) throw new ApiError(400, "请选择图片");
     await validImage(file);

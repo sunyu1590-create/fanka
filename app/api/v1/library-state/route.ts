@@ -226,15 +226,25 @@ export async function POST(req: NextRequest) {
       if (title.length > 80 || body.length > 5000) throw new ApiError(400, "标题或正文超过长度限制");
       const { data: tag, error: tagError } = await db.from("interest_tags").select("id").eq("name", String(b.tag || "生活")).single();
       dbError(tagError);
+      const clientId = b.id === undefined || b.id === null ? null : Number(b.id);
+      if (clientId !== null && (!Number.isSafeInteger(clientId) || clientId < 1)) throw new ApiError(400, "草稿编号无效");
       const seriesId = typeof b.seriesId === "string" && b.seriesId ? b.seriesId : null;
       if (seriesId) {
         const owned = await db.from("post_series").select("id").eq("id", seriesId).eq("creator_id", user!.id).maybeSingle();
         dbError(owned.error);
         if (!owned.data) throw new ApiError(400, "请选择自己的作品系列");
       }
-      const { data: existing, error: existingError } = await db.from("posts").select("id").eq("author_id", user!.id).eq("status", "draft").eq("is_demo", false).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      let existingQuery = db.from("posts").select("id,status").eq("author_id", user!.id).eq("is_demo", false);
+      if (clientId !== null) existingQuery = existingQuery.eq("client_id", clientId).in("status", ["draft", "pending_review"]);
+      else existingQuery = existingQuery.eq("status", "draft").order("updated_at", { ascending: false }).limit(1);
+      const { data: existing, error: existingError } = await existingQuery.maybeSingle();
       dbError(existingError);
-      const values = { author_id: user!.id, tag_id: tag!.id, title, body, series_id: seriesId, status: "draft", image_url: typeof b.coverUrl === "string" ? (() => { try { const url = new URL(b.coverUrl); return ["https:", "http:"].includes(url.protocol) ? url.toString() : null; } catch { return null; } })() : null, updated_at: new Date().toISOString() };
+      if (clientId !== null && !existing) throw new ApiError(404, "草稿不存在或已不能编辑");
+      const values: Record<string, unknown> = { author_id: user!.id, tag_id: tag!.id, title, body, series_id: seriesId, status: existing?.status || "draft", updated_at: new Date().toISOString() };
+      if (typeof b.coverUrl === "string") {
+        try { const url = new URL(b.coverUrl); values.image_url = ["https:", "http:"].includes(url.protocol) ? url.toString() : null; }
+        catch { throw new ApiError(400, "封面图片地址无效"); }
+      }
       let result = existing
         ? await db.from("posts").update(values).eq("id", existing.id).eq("author_id", user!.id).select(libraryFields).single()
         : await db.from("posts").insert(values).select(libraryFields).single();
@@ -247,6 +257,28 @@ export async function POST(req: NextRequest) {
       const postId = (result.data as { id: string }).id;
       if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
       await replacePoll(db, postId, b.poll);
+      if (Array.isArray(b.mediaPaths)) {
+        const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];
+        const splitMedia = splitPostMediaPaths(mediaPaths);
+        if (splitMedia.videos.length || splitMedia.images.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes(".."))) throw new ApiError(400, "草稿图片无效；最多添加 9 张图片");
+        if (mediaPaths.length) {
+          const storedMedia = await signPostMedia(db, mediaPaths, 60);
+          dbError(storedMedia.error);
+          if ((storedMedia.data || []).length !== mediaPaths.length || storedMedia.data?.some((item) => !item.signedUrl)) throw new ApiError(400, "有图片尚未同步完成，请重新上传后再保存");
+        }
+        const previousMedia = await db.from("post_media").select("storage_path,thumbnail_path,retina_thumbnail_path").eq("post_id", postId);
+        dbError(previousMedia.error);
+        const previousByPath = new Map((previousMedia.data || []).map((item) => [item.storage_path, item]));
+        const { error: clearMedia } = await db.from("post_media").delete().eq("post_id", postId);
+        dbError(clearMedia);
+        if (mediaPaths.length) {
+          const { error: insertMedia } = await db.from("post_media").insert(mediaPaths.map((storage_path, sort_order) => {
+            const previous = previousByPath.get(storage_path);
+            return { post_id: postId, storage_path, sort_order, thumbnail_path: previous?.thumbnail_path || null, retina_thumbnail_path: previous?.retina_thumbnail_path || null };
+          }));
+          dbError(insertMedia);
+        }
+      }
       const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single();
       dbError(refreshed.error);
       return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];

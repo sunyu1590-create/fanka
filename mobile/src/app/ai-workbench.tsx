@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ActivityIndicator, DeviceEventEmitter, Pressable, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
-import { Action, Notice, PageFrame, SectionTitle, palette, ui } from "../components/MobileUi";
+import { Action, Notice, PageFrame, SectionTitle } from "../components/MobileUi";
 import { api, useMobileSession } from "../lib/mobile-api";
+import { useTheme } from "../lib/theme";
 
 type Mode = "title" | "outline" | "polish" | "topics";
 const modes: { key: Mode; label: string; hint: string }[] = [
@@ -14,6 +15,8 @@ const modes: { key: Mode; label: string; hint: string }[] = [
 ];
 
 export default function AiWorkbenchScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { session, loading: authLoading } = useMobileSession();
   const [mode, setMode] = useState<Mode>("title");
   const [title, setTitle] = useState("");
@@ -47,35 +50,40 @@ export default function AiWorkbenchScreen() {
     setNotice("已复制到剪贴板。");
   };
 
-  if (authLoading) return <PageFrame title="AI 工作台" eyebrow="CREATE / ASSIST"><ActivityIndicator color={palette.green} /></PageFrame>;
-  if (!session) return <PageFrame title="AI 工作台" eyebrow="CREATE / ASSIST"><Text style={ui.muted}>登录后使用 AI 创作助手。</Text><Action title="登录 / 注册" onPress={() => router.push("/account")} /></PageFrame>;
+  if (authLoading) return <PageFrame title="AI 工作台" eyebrow="CREATE / ASSIST"><ActivityIndicator color={colors.action} /></PageFrame>;
+  if (!session) return <PageFrame title="AI 工作台" eyebrow="CREATE / ASSIST"><Text style={styles.intro}>登录后使用 AI 创作助手。</Text><Action title="登录 / 注册" onPress={() => router.push("/account")} /></PageFrame>;
 
   return <PageFrame title="AI 工作台" eyebrow="CREATE / ASSIST">
-    <Text style={intro}>AI 帮你整理表达，内容仍由你判断、修改和发布。</Text>
-    <View style={modeRow}>{modes.map((item) => <Pressable key={item.key} onPress={() => { setMode(item.key); setOutput(""); setError(""); }} style={[modeChip, mode === item.key && modeSelected]}><Text style={[modeLabel, mode === item.key && modeLabelSelected]}>{item.label}</Text></Pressable>)}</View>
-    <Text style={ui.rowSubtitle}>{modes.find((item) => item.key === mode)?.hint}</Text>
-    <TextInput value={title} onChangeText={setTitle} style={field} maxLength={160} placeholder="标题（可选）" placeholderTextColor={palette.muted} />
-    <TextInput value={category} onChangeText={setCategory} style={field} maxLength={40} placeholder="内容分类" placeholderTextColor={palette.muted} />
-    <TextInput value={content} onChangeText={setContent} style={bodyField} multiline textAlignVertical="top" maxLength={6000} placeholder="写下真实素材、观察或初稿…" placeholderTextColor={palette.muted} />
+    <Text style={styles.intro}>AI 帮你整理表达，内容仍由你判断、修改和发布。</Text>
+    <View style={styles.modeRow}>{modes.map((item) => <Pressable key={item.key} onPress={() => { setMode(item.key); setOutput(""); setError(""); }} style={[styles.modeChip, mode === item.key && styles.modeSelected]}><Text style={[styles.modeLabel, mode === item.key && styles.modeLabelSelected]}>{item.label}</Text></Pressable>)}</View>
+    <Text style={styles.muted}>{modes.find((item) => item.key === mode)?.hint}</Text>
+    <TextInput value={title} onChangeText={setTitle} style={styles.field} maxLength={160} placeholder="标题（可选）" placeholderTextColor={colors.subtle} />
+    <TextInput value={category} onChangeText={setCategory} style={styles.field} maxLength={40} placeholder="内容分类" placeholderTextColor={colors.subtle} />
+    <TextInput value={content} onChangeText={setContent} style={styles.bodyField} multiline textAlignVertical="top" maxLength={6000} placeholder="写下真实素材、观察或初稿…" placeholderTextColor={colors.subtle} />
     <Action title={busy ? "正在整理…" : "生成建议"} disabled={busy} onPress={() => void generate()} />
-    {busy ? <ActivityIndicator color={palette.green} style={{ marginTop: 6 }} /> : null}
+    {busy ? <ActivityIndicator color={colors.action} style={{ marginTop: 6 }} /> : null}
     <Notice>{error}</Notice><Notice tone="success">{notice}</Notice>
     {output ? <>
       <SectionTitle>生成结果</SectionTitle>
-      <View style={resultCard}><Text selectable style={resultText}>{output}</Text></View>
-      <View style={buttonRow}><View style={{ flex: 1 }}><Action title="复制结果" subtle onPress={() => void copy()} /></View><View style={{ flex: 1 }}><Action title="带入发布页" onPress={useOutput} /></View></View>
+      <View style={styles.resultCard}><Text selectable style={styles.resultText}>{output}</Text></View>
+      <View style={styles.buttonRow}><View style={{ flex: 1 }}><Action title="复制结果" subtle onPress={() => void copy()} /></View><View style={{ flex: 1 }}><Action title="带入发布页" onPress={useOutput} /></View></View>
     </> : null}
   </PageFrame>;
 }
 
-const intro = { color: palette.muted, fontSize: 13, lineHeight: 20 } as const;
-const modeRow = { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 5 } as const;
-const modeChip = { minHeight: 38, paddingHorizontal: 12, justifyContent: "center", borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper, borderRadius: 18 } as const;
-const modeSelected = { backgroundColor: "#E7ECE8", borderColor: palette.green } as const;
-const modeLabel = { color: palette.muted, fontSize: 12 } as const;
-const modeLabelSelected = { color: palette.green, fontWeight: "700" as const };
-const field = { minHeight: 48, paddingHorizontal: 13, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, borderRadius: 10, color: palette.ink, fontSize: 14 } as const;
-const bodyField = { minHeight: 150, padding: 13, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, borderRadius: 10, color: palette.ink, fontSize: 14, lineHeight: 21 } as const;
-const resultCard = { padding: 14, backgroundColor: palette.paper, borderLeftWidth: 3, borderLeftColor: palette.green } as const;
-const resultText = { color: palette.ink, fontSize: 14, lineHeight: 22 } as const;
-const buttonRow = { flexDirection: "row", gap: 9 } as const;
+function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
+  return {
+    intro: { color: colors.muted, fontSize: 13, lineHeight: 20 },
+    muted: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+    modeRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, marginTop: 5 },
+    modeChip: { minHeight: 38, paddingHorizontal: 12, justifyContent: "center" as const, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, borderRadius: 18 },
+    modeSelected: { backgroundColor: colors.actionSoft, borderColor: colors.action },
+    modeLabel: { color: colors.muted, fontSize: 12 },
+    modeLabelSelected: { color: colors.action, fontWeight: "700" as const },
+    field: { minHeight: 48, paddingHorizontal: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 10, color: colors.ink, fontSize: 14 },
+    bodyField: { minHeight: 150, padding: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 10, color: colors.ink, fontSize: 14, lineHeight: 21 },
+    resultCard: { padding: 14, backgroundColor: colors.surface, borderLeftWidth: 3, borderLeftColor: colors.action },
+    resultText: { color: colors.ink, fontSize: 14, lineHeight: 22 },
+    buttonRow: { flexDirection: "row" as const, gap: 9 },
+  };
+}

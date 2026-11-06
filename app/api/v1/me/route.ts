@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
     const [profile, interests, bookmarks, details] = await Promise.all([
-      db.from("profiles").select("id,nickname,bio,timezone,avatar_url,show_bookmarks").eq("id", user!.id).single(),
+      db.from("profiles").select("id,nickname,bio,timezone,avatar_url,show_bookmarks,role,membership_tier").eq("id", user!.id).single(),
       db.from("user_interests").select("tag_id").eq("user_id", user!.id),
       db.from("bookmarks").select("post_id,created_at").eq("user_id", user!.id),
       db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),
@@ -41,7 +41,7 @@ export async function PATCH(req: NextRequest) {
 
     let profile: unknown = null;
     if (Object.keys(values).length) {
-      const result = await db.from("profiles").update(values).eq("id", user!.id).select("id,nickname,bio,timezone,avatar_url,show_bookmarks").single();
+      const result = await db.from("profiles").update(values).eq("id", user!.id).select("id,nickname,bio,timezone,avatar_url,show_bookmarks,role,membership_tier").single();
       dbError(result.error);
       profile = result.data;
     }

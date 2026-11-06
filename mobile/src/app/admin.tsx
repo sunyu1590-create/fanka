@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from "react-native";
-import { Action, Metric, Notice, PageFrame, SectionTitle, palette, ui } from "../components/MobileUi";
+import { Action, Metric, Notice, PageFrame, SectionTitle } from "../components/MobileUi";
 import { api, useMobileSession } from "../lib/mobile-api";
+import { useTheme } from "../lib/theme";
 
 type Overview = { usersToday?: number; postsToday?: number; pending?: number; pendingReports?: number; views?: number; likes?: number; saves?: number; comments?: number; recent?: Array<{ action: string; reason?: string; created_at: string }> };
 type Submission = { id: string; title: string; body: string; author: string; status: string; kind: "new" | "revision"; created_at: string; originalTitle?: string | null };
@@ -10,6 +11,8 @@ type Scope = "post" | "comment" | "message" | "profile";
 const scopeNames: Record<Scope, string> = { post: "作品", comment: "评论", message: "私信", profile: "资料" };
 
 export default function AdminScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { session, loading: authLoading } = useMobileSession();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
@@ -74,62 +77,67 @@ export default function AdminScreen() {
     finally { setBusy(""); }
   };
 
-  if (authLoading) return <PageFrame title="管理控制台" eyebrow="ADMIN / HEIKA"><ActivityIndicator color={palette.green} /></PageFrame>;
-  if (!session) return <PageFrame title="管理控制台" eyebrow="ADMIN / HEIKA"><Text style={ui.muted}>请先使用管理员账号登录。</Text></PageFrame>;
+  if (authLoading) return <PageFrame title="管理控制台" eyebrow="ADMIN / HEIKA"><ActivityIndicator color={colors.action} /></PageFrame>;
+  if (!session) return <PageFrame title="管理控制台" eyebrow="ADMIN / HEIKA"><Text style={styles.muted}>请先使用管理员账号登录。</Text></PageFrame>;
 
   return <PageFrame title="管理控制台" eyebrow="ADMIN / MODERATION" refreshing={loading} onRefresh={() => void load()}>
-    <Text style={ui.rowSubtitle}>审核和关键词规则由服务端权限控制，管理操作会记录审计日志。</Text>
+    <Text style={styles.muted}>审核和关键词规则由服务端权限控制，管理操作会记录审计日志。</Text>
     <Notice>{error}</Notice>
-    {loading && !overview ? <ActivityIndicator color={palette.green} style={{ marginTop: 18 }} /> : <>
-      <View style={metrics}><Metric label="待处理" value={overview?.pending ?? 0} /><Metric label="待处理举报" value={overview?.pendingReports ?? 0} /></View>
-      <View style={metrics}><Metric label="今日用户" value={overview?.usersToday ?? 0} /><Metric label="今日作品" value={overview?.postsToday ?? 0} /><Metric label="公开阅读" value={overview?.views ?? 0} /></View>
-      <View style={tabs}>
-        <Pressable onPress={() => setTab("review")} style={[tabButton, tab === "review" && selectedTab]}><Text style={[tabText, tab === "review" && selectedTabText]}>作品审核　{submissions.length}</Text></Pressable>
-        <Pressable onPress={() => setTab("rules")} style={[tabButton, tab === "rules" && selectedTab]}><Text style={[tabText, tab === "rules" && selectedTab && selectedTabText]}>关键词规则</Text></Pressable>
+    {loading && !overview ? <ActivityIndicator color={colors.action} style={{ marginTop: 18 }} /> : <>
+      <View style={styles.metrics}><Metric label="待处理" value={overview?.pending ?? 0} /><Metric label="待处理举报" value={overview?.pendingReports ?? 0} /></View>
+      <View style={styles.metrics}><Metric label="今日用户" value={overview?.usersToday ?? 0} /><Metric label="今日作品" value={overview?.postsToday ?? 0} /><Metric label="公开阅读" value={overview?.views ?? 0} /></View>
+      <View style={styles.tabs}>
+        <Pressable onPress={() => setTab("review")} style={[styles.tabButton, tab === "review" && styles.selectedTab]}><Text style={[styles.tabText, tab === "review" && styles.selectedTabText]}>作品审核　{submissions.length}</Text></Pressable>
+        <Pressable onPress={() => setTab("rules")} style={[styles.tabButton, tab === "rules" && styles.selectedTab]}><Text style={[styles.tabText, tab === "rules" && styles.selectedTabText]}>关键词规则</Text></Pressable>
       </View>
       {tab === "review" ? <>
-        {!submissions.length ? <Text style={ui.muted}>当前没有待审核作品。</Text> : null}
-        {submissions.map((item) => <View key={`${item.id}-${item.kind}`} style={submission}>
-          <Text style={submitTitle}>{item.title}</Text>
-          {item.originalTitle ? <Text style={ui.rowSubtitle}>修改原题：{item.originalTitle}</Text> : null}
-          <Text style={ui.rowSubtitle}>{item.author} · {new Date(item.created_at).toLocaleDateString("zh-CN")}</Text>
-          <Text style={submitBody} numberOfLines={5}>{item.body}</Text>
-          <View style={reviewActions}><View style={{ flex: 1 }}><Action title={busy === item.id ? "处理中…" : "通过"} disabled={Boolean(busy)} onPress={() => review(item, true)} /></View><View style={{ flex: 1 }}><Action title="隐藏" subtle disabled={Boolean(busy)} onPress={() => review(item, false)} /></View></View>
+        {!submissions.length ? <Text style={styles.muted}>当前没有待审核作品。</Text> : null}
+        {submissions.map((item) => <View key={`${item.id}-${item.kind}`} style={styles.submission}>
+          <Text style={styles.submitTitle}>{item.title}</Text>
+          {item.originalTitle ? <Text style={styles.muted}>修改原题：{item.originalTitle}</Text> : null}
+          <Text style={styles.muted}>{item.author} · {new Date(item.created_at).toLocaleDateString("zh-CN")}</Text>
+          <Text style={styles.submitBody} numberOfLines={5}>{item.body}</Text>
+          <View style={styles.reviewActions}><View style={{ flex: 1 }}><Action title={busy === item.id ? "处理中…" : "通过"} disabled={Boolean(busy)} onPress={() => review(item, true)} /></View><View style={{ flex: 1 }}><Action title="隐藏" subtle disabled={Boolean(busy)} onPress={() => review(item, false)} /></View></View>
         </View>)}
       </> : <>
-        <Text style={ui.rowSubtitle}>命中关键词后由现有审核规则处理，范围支持作品、评论、私信和资料。</Text>
-        <TextInput value={keyword} onChangeText={setKeyword} style={field} maxLength={80} placeholder="添加拦截关键词" placeholderTextColor={palette.muted} />
-        <View style={scopeRow}>{(Object.keys(scopeNames) as Scope[]).map((scope) => <Pressable key={scope} onPress={() => toggleScope(scope)} style={[scopeChip, scopes.includes(scope) && scopeSelected]}><Text style={[scopeText, scopes.includes(scope) && scopeSelectedText]}>{scopeNames[scope]}</Text></Pressable>)}</View>
+        <Text style={styles.muted}>命中关键词后由现有审核规则处理，范围支持作品、评论、私信和资料。</Text>
+        <TextInput value={keyword} onChangeText={setKeyword} style={styles.field} maxLength={80} placeholder="添加拦截关键词" placeholderTextColor={colors.subtle} />
+        <View style={styles.scopeRow}>{(Object.keys(scopeNames) as Scope[]).map((scope) => <Pressable key={scope} onPress={() => toggleScope(scope)} style={[styles.scopeChip, scopes.includes(scope) && styles.scopeSelected]}><Text style={[styles.scopeText, scopes.includes(scope) && styles.scopeSelectedText]}>{scopeNames[scope]}</Text></Pressable>)}</View>
         <Action title={busy === "new-rule" ? "保存中…" : "添加规则"} disabled={Boolean(busy)} onPress={() => void addRule()} />
         <Notice>{rulesError}</Notice>
         <SectionTitle detail={String(rules.length)}>已配置规则</SectionTitle>
-        {rules.map((rule) => <View key={rule.id} style={ruleRow}>
-          <View style={{ flex: 1 }}><Text style={submitTitle}>{rule.keyword}</Text><Text style={ui.rowSubtitle}>{rule.scopes.map((scope) => scopeNames[scope as Scope] || scope).join(" · ")}</Text></View>
-          <Pressable disabled={Boolean(busy)} onPress={() => void toggleRule(rule)} style={[ruleToggle, rule.enabled && ruleToggleOn]}><Text style={[ruleToggleText, rule.enabled && ruleToggleTextOn]}>{busy === rule.id ? "…" : rule.enabled ? "启用" : "停用"}</Text></Pressable>
+        {rules.map((rule) => <View key={rule.id} style={styles.ruleRow}>
+          <View style={{ flex: 1 }}><Text style={styles.submitTitle}>{rule.keyword}</Text><Text style={styles.muted}>{rule.scopes.map((scope) => scopeNames[scope as Scope] || scope).join(" · ")}</Text></View>
+          <Pressable disabled={Boolean(busy)} onPress={() => void toggleRule(rule)} style={[styles.ruleToggle, rule.enabled && styles.ruleToggleOn]}><Text style={[styles.ruleToggleText, rule.enabled && styles.ruleToggleTextOn]}>{busy === rule.id ? "…" : rule.enabled ? "启用" : "停用"}</Text></Pressable>
         </View>)}
       </>}
     </>}
   </PageFrame>;
 }
 
-const metrics = { flexDirection: "row", gap: 8 } as const;
-const tabs = { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: palette.line, marginTop: 8 } as const;
-const tabButton = { flex: 1, minHeight: 43, justifyContent: "center", alignItems: "center" } as const;
-const selectedTab = { borderBottomWidth: 2, borderBottomColor: palette.green } as const;
-const tabText = { color: palette.muted, fontSize: 12 } as const;
-const selectedTabText = { color: palette.green, fontWeight: "700" as const };
-const submission = { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: palette.line, gap: 7 } as const;
-const submitTitle = { color: palette.ink, fontSize: 14, fontWeight: "700" } as const;
-const submitBody = { color: palette.muted, fontSize: 12, lineHeight: 18, marginTop: 3 } as const;
-const reviewActions = { flexDirection: "row", gap: 9, marginTop: 5 } as const;
-const field = { minHeight: 48, paddingHorizontal: 13, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, borderRadius: 10, color: palette.ink } as const;
-const scopeRow = { flexDirection: "row", flexWrap: "wrap", gap: 7 } as const;
-const scopeChip = { paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: palette.line, borderRadius: 16, backgroundColor: palette.paper } as const;
-const scopeSelected = { borderColor: palette.green, backgroundColor: "#E8EEE9" } as const;
-const scopeText = { color: palette.muted, fontSize: 12 } as const;
-const scopeSelectedText = { color: palette.green, fontWeight: "700" as const };
-const ruleRow = { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: palette.line } as const;
-const ruleToggle = { minWidth: 56, paddingVertical: 8, alignItems: "center", borderWidth: 1, borderColor: palette.line, borderRadius: 8 } as const;
-const ruleToggleOn = { borderColor: palette.green, backgroundColor: "#E8EEE9" } as const;
-const ruleToggleText = { color: palette.muted, fontSize: 11 } as const;
-const ruleToggleTextOn = { color: palette.green, fontWeight: "700" as const };
+function makeStyles(colors: ReturnType<typeof useTheme>["colors"]) {
+  return {
+    metrics: { flexDirection: "row" as const, gap: 8 },
+    tabs: { flexDirection: "row" as const, borderBottomWidth: 1, borderBottomColor: colors.line, marginTop: 8 },
+    tabButton: { flex: 1, minHeight: 43, justifyContent: "center" as const, alignItems: "center" as const },
+    selectedTab: { borderBottomWidth: 2, borderBottomColor: colors.action },
+    tabText: { color: colors.muted, fontSize: 12 },
+    selectedTabText: { color: colors.action, fontWeight: "700" as const },
+    submission: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 7 },
+    submitTitle: { color: colors.ink, fontSize: 14, fontWeight: "700" as const },
+    submitBody: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 3 },
+    muted: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+    reviewActions: { flexDirection: "row" as const, gap: 9, marginTop: 5 },
+    field: { minHeight: 48, paddingHorizontal: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 10, color: colors.ink },
+    scopeRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 7 },
+    scopeChip: { paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: colors.line, borderRadius: 16, backgroundColor: colors.surface },
+    scopeSelected: { borderColor: colors.action, backgroundColor: colors.actionSoft },
+    scopeText: { color: colors.muted, fontSize: 12 },
+    scopeSelectedText: { color: colors.action, fontWeight: "700" as const },
+    ruleRow: { minHeight: 60, flexDirection: "row" as const, alignItems: "center" as const, gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line },
+    ruleToggle: { minWidth: 56, paddingVertical: 8, alignItems: "center" as const, borderWidth: 1, borderColor: colors.line, borderRadius: 8 },
+    ruleToggleOn: { borderColor: colors.action, backgroundColor: colors.actionSoft },
+    ruleToggleText: { color: colors.muted, fontSize: 11 },
+    ruleToggleTextOn: { color: colors.action, fontWeight: "700" as const },
+  };
+}
