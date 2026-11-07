@@ -18,8 +18,8 @@ export function feedImageSource(source?: string | null): string | undefined {
   }
 
   if (url.hostname === "images.unsplash.com") {
-    url.searchParams.set("w", "800");
-    url.searchParams.set("q", "78");
+    url.searchParams.set("w", "640");
+    url.searchParams.set("q", "76");
     return url.href;
   }
 

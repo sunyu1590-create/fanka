@@ -38,8 +38,8 @@ test("discovery feed requests a smaller Unsplash image and preserves other sourc
   const optimizedSource = feedImageSource("https://images.unsplash.com/photo-123?auto=format&w=1600&q=90");
   assert.ok(optimizedSource);
   const optimized = new URL(optimizedSource);
-  assert.equal(optimized.searchParams.get("w"), "800");
-  assert.equal(optimized.searchParams.get("q"), "78");
+  assert.equal(optimized.searchParams.get("w"), "640");
+  assert.equal(optimized.searchParams.get("q"), "76");
   assert.equal(optimized.searchParams.get("auto"), "format");
   assert.equal(feedImageSource("https://cdn.example.test/image.jpg"), "https://cdn.example.test/image.jpg");
   assert.equal(feedImageSource("data:image/svg+xml,%3Csvg/%3E"), "data:image/svg+xml,%3Csvg/%3E");
@@ -50,8 +50,8 @@ test("feed thumbnail is WebP, bounded to feed dimensions, and does not enlarge s
   const largeThumbnail = await createFeedThumbnail(large);
   const largeMetadata = await sharp(largeThumbnail).metadata();
   assert.equal(largeMetadata.format, "webp");
-  assert.equal(largeMetadata.width, 800);
-  assert.equal(largeMetadata.height, 450);
+  assert.equal(largeMetadata.width, 640);
+  assert.equal(largeMetadata.height, 360);
 
   const small = await sharp({ create: { width: 320, height: 200, channels: 3, background: "#334455" } }).png().toBuffer();
   const smallThumbnail = await createFeedThumbnail(small);

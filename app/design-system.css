@@ -1984,6 +1984,18 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .mine-page .masonry,.topic-detail-page>.masonry { columns: 5; }
 }
 
+/* Let Chromium/WebView skip layout and paint work for distant waterfall cards. */
+.editorial-feed > .editorial-post {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px;
+}
+@media (min-width: 700px) {
+  .editorial-feed > .editorial-post { contain-intrinsic-size: auto 460px; }
+}
+@media (min-width: 1280px) {
+  .editorial-feed > .editorial-post { contain-intrinsic-size: auto 500px; }
+}
+
 /* Keep the native WebView's full-screen card transition on a lighter blur path. */
 html[data-heika-native="true"] .flip-overlay {
   backdrop-filter: blur(6px);
