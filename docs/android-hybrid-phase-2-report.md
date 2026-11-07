@@ -75,6 +75,13 @@
 
 本地 Debug APK 已生成：[app-debug.apk](../android/app/build/outputs/apk/debug/app-debug.apk)。Release 构建产物为未签名 APK，构建通过不表示已完成签名或发布。
 
+### GitHub Actions 构建
+
+- 分支：`codex/heika-android-phase-2`；没有更新 `main`。
+- 提交：[`340cdc6`](https://github.com/sunyu1590-create/fanka/commit/340cdc6254541aaad255b2084560bd0edff85197)。
+- Workflow：[`HEIKA Android APK #14`](https://github.com/sunyu1590-create/fanka/actions/runs/42366514943)，Web 验证、Android Debug/Release 组装和 artifact 上传均成功。
+- Artifact：`heika-android-apk`（约 4.4 MB），包含 `HEIKA-debug.apk` 和 `HEIKA-release-unsigned.apk`，保留至 2026-11-21。可在 workflow 页面下载。
+
 ## 遗留风险与下一步
 
 - 应在至少一台 60Hz 和一台 90/120Hz Android 设备上录制翻卡、详情返回、评论/弹层和大图列表的帧时长与内存，再与原版本比较。
