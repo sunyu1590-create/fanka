@@ -201,8 +201,8 @@ export default function HomeScreen() {
 function DeckCardTile({ card, post, phase, rarity, ratingCount, experience, busy, colors, onOpen, onView }: { card: DeckCard; post?: NativePost; phase: "closed" | "rarity" | "content"; rarity?: string; ratingCount: number; experience: number; busy: boolean; colors: ReturnType<typeof useTheme>["colors"]; onOpen: () => void; onView: () => void }) {
   const flipped = Boolean(post);
   const flip = useSharedValue(flipped ? 1 : 0);
-  // Use an opacity reveal instead of a nested 3D RenderNode transform. Some Android 17
-  // HWUI builds overflow RenderThread's transform stack during cold launch with perspective cards.
+  // Candidate mitigation for the reported HWUI transform-stack crash. Keep the reveal animation
+  // while removing this perspective transform path until it can be A/B tested on the affected device.
   const frontStyle = useAnimatedStyle(() => ({ opacity: 1 - flip.value }));
   const backStyle = useAnimatedStyle(() => ({ opacity: flip.value }));
   useEffect(() => { flip.value = withTiming(flipped ? 1 : 0, { duration: 680, easing: Easing.out(Easing.cubic) }); }, [flip, flipped]);

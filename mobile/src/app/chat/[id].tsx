@@ -31,6 +31,7 @@ export default function ChatScreen() {
   const restoreOffset = useRef<number | null>(null);
   const autoScroll = useRef(true);
   const pendingAttempt = useRef<PendingAttempt | null>(null);
+  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const signMedia = useCallback(async (client: Awaited<ReturnType<typeof getDb>>, rows: Message[]) => {
     const paths = [...new Set(rows.flatMap((row) => row.media_path ? [row.media_path] : []))];
@@ -68,6 +69,7 @@ export default function ChatScreen() {
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "dm_messages", filter: `conversation_id=eq.${id}` }, async (payload) => {
           const incoming = payload.new as Message;
           const rows = await signMedia(client, [incoming]);
+          if (!active) return;
           const message = rows[0];
           setMessages((current) => current.some((row) => row.id === message.id) ? current : [...current, message]);
           autoScroll.current = true;
@@ -81,12 +83,15 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!session || !id) return;
+    let active = true;
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") return;
-      void getDb().then((client) => loadInitial(client, id, session.user.id, () => true)).catch(() => setError("消息同步暂时中断，请下拉重试。"));
+      void getDb().then((client) => loadInitial(client, id, session.user.id, () => active)).catch(() => { if (active) setError("消息同步暂时中断，请下拉重试。"); });
     });
-    return () => subscription.remove();
+    return () => { active = false; subscription.remove(); };
   }, [id, loadInitial, session]);
+
+  useEffect(() => () => { if (scrollTimeout.current) clearTimeout(scrollTimeout.current); }, []);
 
   const loadOlder = async () => {
     const oldest = messages[0];
@@ -146,7 +151,8 @@ export default function ChatScreen() {
       autoScroll.current = true;
       setMessages((current) => current.some((row) => row.id === data.id) ? current : [...current, prepared[0]]);
       setDraft(""); setImage(null); pendingAttempt.current = null;
-      setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 40);
+      if (scrollTimeout.current) clearTimeout(scrollTimeout.current);
+      scrollTimeout.current = setTimeout(() => { scroll.current?.scrollToEnd({ animated: true }); scrollTimeout.current = null; }, 40);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "发送失败，文字和图片仍保留在输入区，请重试。"); }
     finally { setBusy(false); }
   };

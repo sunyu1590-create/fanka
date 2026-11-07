@@ -14,8 +14,8 @@ import { prepareNativeNotifications, showIncomingMessageNotification } from "../
 
 function RootStack() {
   const { colors, isDark } = useTheme();
-  // Keep route transitions opacity-only. The launch screen runs on a broad range of
-  // Android HWUI implementations where nested transform transitions can overflow RenderThread.
+  // Candidate mitigation for the reported HWUI transform-stack crash. The app-side trigger
+  // is not confirmed yet; compare this transition against the original on the affected device.
   return <><StatusBar style={isDark ? "light" : "dark"} /><NativeNotificationBridge /><Stack screenOptions={{ headerShown: false, animation: "fade", contentStyle: { backgroundColor: colors.bg }, gestureEnabled: true, fullScreenGestureEnabled: true }} /></>;
 }
 

@@ -27,10 +27,19 @@ export default function MessagesScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const rowCount = useRef(0);
+  const loadInFlight = useRef(false);
+  const reloadQueued = useRef(false);
+  const mounted = useRef(true);
+  const loadRef = useRef<(manual?: boolean) => Promise<void>>(async () => undefined);
+  const activeUserId = useRef<string | null>(session?.user.id || null);
+  activeUserId.current = session?.user.id || null;
   useEffect(() => { rowCount.current = rows.length; }, [rows.length]);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const load = useCallback(async (manual = false) => {
     if (!session) { setLoading(false); return; }
+    if (loadInFlight.current) { reloadQueued.current = true; return; }
+    loadInFlight.current = true;
     if (manual) setRefreshing(true); else if (!rowCount.current) setLoading(true);
     setError("");
     try {
@@ -42,11 +51,17 @@ export default function MessagesScreen() {
       const peopleResult = ids.length ? await client.from("profiles").select("id,nickname,bio,avatar_url").in("id", ids) : { data: [], error: null };
       if (peopleResult.error) throw peopleResult.error;
       const mapped = Object.fromEntries(((peopleResult.data || []) as Person[]).map((person) => [person.id, person]));
+      if (!mounted.current || activeUserId.current !== session.user.id) return;
       setRows(items); setProfiles(mapped);
       void writeCache(`messages:${session.user.id}`, { rows: items, profiles: mapped } satisfies InboxCache);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "消息列表加载失败，请稍后重试。"); }
-    finally { setLoading(false); setRefreshing(false); }
+    } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : "消息列表加载失败，请稍后重试。"); }
+    finally {
+      loadInFlight.current = false;
+      if (mounted.current) { setLoading(false); setRefreshing(false); }
+      if (reloadQueued.current && mounted.current) { reloadQueued.current = false; void loadRef.current(); }
+    }
   }, [session]);
+  useEffect(() => { loadRef.current = load; }, [load]);
 
   useEffect(() => {
     if (!session) { setRows([]); setProfiles({}); setLoading(false); return; }
