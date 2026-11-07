@@ -68,6 +68,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var navigationTimeout: Runnable? = null
     private var lastBackAt = 0L
     private var loadTimeout: Runnable? = null
+    private var recoveringFromUntrustedNavigation = false
 
     private data class PendingNavigation(val id: String, val route: String)
 
@@ -255,26 +256,31 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 super.onPageStarted(view, url, favicon)
                 webContentCommitted = false
                 bridge?.onPageStarted()
+                val uri = url.toUri()
+                if (!isTrustedUrl(uri)) {
+                    diagnostics.record("web_untrusted_main_navigation")
+                    if (!recoveringFromUntrustedNavigation) {
+                        recoveringFromUntrustedNavigation = true
+                        cancelLoadTimeout()
+                        lastSafeRoute = BuildConfig.WEB_APP_URL
+                        view.stopLoading()
+                        view.loadUrl(lastSafeRoute)
+                    }
+                    return
+                }
+                recoveringFromUntrustedNavigation = false
                 cancelLoadTimeout()
                 showLoading()
                 loadTimeout = Runnable {
                     diagnostics.record("web_load_timeout")
                     showLoadError()
                 }.also { mainHandler.postDelayed(it, LOAD_TIMEOUT_MS) }
-
-                val uri = url.toUri()
-                if (!isTrustedUrl(uri)) {
-                    cancelLoadTimeout()
-                    view.stopLoading()
-                    openExternal(uri)
-                    showLoadError()
-                } else {
-                    lastSafeRoute = safeRoute(uri) ?: BuildConfig.WEB_APP_URL
-                }
+                lastSafeRoute = safeRoute(uri) ?: BuildConfig.WEB_APP_URL
             }
 
             override fun onPageCommitVisible(view: WebView, url: String) {
                 super.onPageCommitVisible(view, url)
+                if (!isTrustedUrl(url.toUri())) return
                 webContentCommitted = true
                 cancelLoadTimeout()
                 clearOverlay()
@@ -289,6 +295,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             ) {
                 super.onReceivedError(view, request, error)
                 diagnostics.recordResourceFailure()
+                if (recoveringFromUntrustedNavigation && !isTrustedUrl(request.url)) return
                 if (request.isForMainFrame) showLoadError()
             }
 
@@ -298,6 +305,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 errorResponse: android.webkit.WebResourceResponse,
             ) {
                 super.onReceivedHttpError(view, request, errorResponse)
+                if (recoveringFromUntrustedNavigation && !isTrustedUrl(request.url)) return
                 if (request.isForMainFrame && errorResponse.statusCode >= 400) {
                     diagnostics.record("web_http_error", errorResponse.statusCode.toLong())
                     showLoadError()
@@ -379,7 +387,17 @@ class MainActivity : androidx.activity.ComponentActivity() {
         showLoading()
         val restored = restoredState != null && view.restoreState(restoredState) != null
         if (restored) {
-            lastSafeRoute = safeRoute(view.url?.toUri()) ?: BuildConfig.WEB_APP_URL
+            val restoredRoute = safeRoute(view.url?.toUri())
+            if (restoredRoute != null) {
+                lastSafeRoute = restoredRoute
+            } else {
+                diagnostics.record("web_state_restore_rejected")
+                recoveringFromUntrustedNavigation = true
+                lastSafeRoute = BuildConfig.WEB_APP_URL
+                view.stopLoading()
+                view.clearHistory()
+                view.loadUrl(lastSafeRoute)
+            }
         } else {
             view.loadUrl(lastSafeRoute)
         }

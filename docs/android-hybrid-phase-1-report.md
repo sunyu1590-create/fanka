@@ -26,7 +26,7 @@
 
 ## 稳定性与诊断
 
-- Activity 正常重建时保存/恢复 WebView 状态；Renderer 异常最多自动重建一次/分钟，之后提供明确重试页。
+- Activity 正常重建时仅恢复可信 HTTPS 业务路由；若保存状态指向本地或其他不可信 URL，则丢弃该状态并重新加载 Web 入口。Renderer 异常最多自动重建一次/分钟，之后提供明确重试页。
 - 网络超时、主页面加载错误、HTTP 错误、SSL 错误、外链 Scheme、Bridge 错误和资源错误都有独立诊断事件。
 - 记录进程启动到 Web 内容可见/Bridge 可交互耗时、内存 trim 事件、前次 ANR/崩溃退出原因；未记录密码、令牌、私信正文。
 - 未新增服务端数据表、迁移或用户数据清理操作。
@@ -53,7 +53,7 @@
 - 现有 Playwright P0 套件 4 项中 1 项通过、3 项失败：主题变量期望 `#F8F7F4` 实际为 `#FFFFFF`；设置测试找不到“单列阅读”按钮；管理员测试找不到“内容审核”标题。这些是当前 Web 验收失败项，本阶段未改动对应 UI；尚未对原始基线运行同一套件，不能断言其是否早已存在。
 - 当前环境的 `adb devices` 无设备，且没有安装 emulator；未能在真实设备完成 Android 13 通知权限、进程回收、弱网、键盘和长时间内存测试。
 - GitHub Actions workflow 会在 PR 更新时运行 Web 校验与 Android APK 构建；`HEIKA-debug.apk` 和 `HEIKA-release-unsigned.apk` artifact 可从 [PR #1 的 Checks/Actions](https://github.com/sunyu1590-create/fanka/pull/1) 下载，保留 14 天。
-- Android 包名延续旧客户端 `com.heika.community`，版本 `2.2.0`、versionCode 6、minSdk 26、targetSdk 35。GitHub debug APK 使用 debug key；若旧安装使用发布密钥签名，则需正式发布签名包才能覆盖升级。当前 release artifact 未签名。
+- Android 包名延续旧客户端 `com.heika.community`，修复版本 `2.2.1`、versionCode 7、minSdk 26、targetSdk 35。GitHub debug APK 使用 debug key；若旧安装使用发布密钥签名，则需正式发布签名包才能覆盖升级。当前 release artifact 未签名。
 - 弃用 Expo 工程已从 `android/phase-one` 与 `android/phase-two` 当前树清除。`publish-vercel` 仍是 Vercel 生产部署分支，其 47 个旧文件的删除已放入 [draft PR #2](https://github.com/sunyu1590-create/fanka/pull/2)；未合并，避免未经确认触发生产站点重部署。
 
 旧 Expo 客户端的私信提醒依赖其进程中的 Supabase Realtime 订阅并发送本地通知；它不是 FCM 远程推送。真实设备后台推送投递和 Token 账号绑定仍需 Android 设备、Firebase 与后端服务端接口配置；当前后端没有 FCM 服务。
