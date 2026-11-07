@@ -51,7 +51,6 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNo
     </section>
 
     <section className="membership-developer-letter">
-      <div className="membership-section-kicker">A NOTE FROM THE DEVELOPER</div>
       <h3>关于黑卡，我想说几句话。</h3>
       <p className="membership-letter-summary">黑卡是一个由我独立开发和维护的内容探索应用。最初只是想创造一个不太一样的内容世界，也希望它能在大家的日常里继续运行、继续成长。</p>
       <div className={`membership-letter-full${letterOpen ? " is-open" : ""}`} aria-hidden={!letterOpen} inert={!letterOpen}>
@@ -61,7 +60,6 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNo
     </section>
 
     <section className="membership-plan-section" aria-labelledby="membership-plan-title">
-      <div className="membership-section-kicker">MEMBERSHIP PREVIEW</div>
       <div className="membership-section-heading"><div><h3 id="membership-plan-title">会员方案预览</h3><p>选择适合你的支持方式，解锁更多探索次数。</p></div></div>
       <div className="membership-plan-grid" role="group" aria-label="选择会员方案预览">
         {MEMBERSHIP_PLANS.map((plan) => <button type="button" key={plan.id} className={`membership-plan-card is-${plan.id}${selectedPlan === plan.id ? " selected" : ""}`} aria-pressed={selectedPlan === plan.id} onClick={() => setSelectedPlan(plan.id)}>
@@ -74,7 +72,6 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNo
     </section>
 
     <section className="membership-support-section" id="heika-support" ref={supportRef}>
-      <div className="membership-section-kicker">VOLUNTARY SUPPORT</div>
       <h3>支持黑卡</h3>
       <p className="membership-support-lead">你的支持，会成为黑卡继续成长的一份力量。</p>
       <p>支持完全出于自愿。无论是否提供支持，都可以继续使用黑卡现有的免费功能；支持不会与会员权益绑定。</p>

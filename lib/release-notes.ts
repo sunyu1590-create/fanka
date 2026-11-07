@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.39.1",
+    date: "2026.11.07",
+    notes: [
+      { category: "体验优化", text: "会员中心去除装饰性英文标签与重复卡片容器，改用黑卡现有的编辑式排版、细分隔线和克制金色强调。" },
+      { category: "体验优化", text: "优化会员方案选中详情、支持用途列表和规则折叠的视觉层级，提升手机端阅读舒适度。" },
+    ],
+  },
+  {
     version: "2.39.0",
     date: "2026.11.07",
     notes: [

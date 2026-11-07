@@ -781,6 +781,47 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 @media(prefers-reduced-motion:reduce) {
   .membership-selected-detail,.membership-quota-track i { animation:none; transition:none; }
 }
+/* Keep the membership page in HEIKA's restrained editorial visual language. */
+.membership-section-kicker { display:none; }
+.membership-center-page { gap:26px 34px; }
+.membership-letterhead { border-bottom:1px solid var(--line); }
+.membership-letterhead>span { color:var(--muted); font-size:12px; letter-spacing:.04em; }
+.membership-identity { border:0; border-bottom:1px solid var(--line); border-radius:0; padding:6px 0 20px; background:transparent; box-shadow:none; }
+.membership-identity-icon { width:44px; height:44px; border:0; border-radius:50%; background:color-mix(in srgb,#d9b975 10%,var(--surface)); }
+.membership-identity-main strong { font-size:21px; }
+.membership-identity-quota { font-size:28px; }
+.membership-developer-letter { padding-top:0; }
+.membership-plan-section { padding:0 0 22px; border:0; border-radius:0; border-bottom:1px solid var(--line); background:transparent; }
+.membership-plan-section h3 { margin-top:0; font-size:24px; }
+.membership-plan-grid { gap:10px; }
+.membership-plan-card { min-height:150px; padding:15px 14px; border-color:color-mix(in srgb,var(--line) 72%,transparent); border-radius:12px; background:color-mix(in srgb,var(--surface) 70%,transparent); }
+.membership-plan-card.is-free { background:color-mix(in srgb,var(--surface) 70%,transparent); }
+.membership-plan-card.is-plus { background:color-mix(in srgb,#9183a7 5%,var(--surface)); }
+.membership-plan-card.is-pro { border-color:color-mix(in srgb,#d9b975 32%,var(--line)); background:color-mix(in srgb,#d9b975 5%,var(--surface)); }
+.membership-plan-card.selected { border-color:#d9b975!important; background:color-mix(in srgb,#d9b975 9%,var(--surface))!important; }
+.membership-plan-card>strong { font-size:25px; }
+.membership-plan-name { font-size:15px; }
+.membership-plan-benefit { font-size:12px; }
+.membership-selected-detail { display:flex; align-items:center; border:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); border-radius:0; padding:14px 2px; background:transparent; }
+.membership-support-section { padding:0; border:0; border-radius:0; background:transparent; }
+.membership-support-section h3 { margin:0 0 8px; }
+.membership-support-unavailable { margin:14px 0 18px; padding:0 0 0 13px; border-left:2px solid color-mix(in srgb,#d9b975 45%,var(--line)); border-radius:0; background:transparent; }
+.membership-use-list>div { border-top:1px solid color-mix(in srgb,var(--line) 55%,transparent); }
+.membership-use-list>div>svg { color:var(--muted); }
+.membership-extra-section { border-top:1px solid var(--line); }
+.membership-extra-section .membership-disclosure { border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent); }
+@media(max-width:700px) {
+  .membership-center-page { gap:22px; }
+  .membership-identity { padding:4px 0 18px; }
+  .membership-identity-quota { font-size:27px; }
+  .membership-plan-section { padding-bottom:20px; }
+  .membership-plan-grid { gap:7px; }
+  .membership-plan-card { min-height:144px; padding:12px 9px; }
+  .membership-plan-card>strong { font-size:clamp(20px,5.8vw,24px); }
+  .membership-plan-name { font-size:14px; }
+  .membership-plan-benefit { font-size:10px; }
+  .membership-support-section { padding:0; }
+}
 
 /* Keep the reward toast clear of the card and use a compact metallic signal. */
 .lucky-reward-burst {
