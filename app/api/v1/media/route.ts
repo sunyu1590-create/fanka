@@ -1,17 +1,43 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {context,respond,ApiError,dbError,uuid} from '@/lib/server/api';
+import {createFeedThumbnail} from '@/lib/server/feed-thumbnail';
+
+export const runtime = 'nodejs';
+
 export async function GET(req:NextRequest){
   if(req.nextUrl.searchParams.get('redirect')==='1'){
     try{
       const {db}=await context(req,false);
       const path=req.nextUrl.searchParams.get('path');
       if(!path||path.length>300||path.includes('..'))throw new ApiError(400,'图片路径无效');
-      const {data:media,error:mediaError}=await db.from('post_media').select('post_id,posts!inner(status)').eq('storage_path',path).single();
+      const variant=req.nextUrl.searchParams.get('variant');
+      if(variant&&variant!=='feed')throw new ApiError(400,'图片尺寸无效');
+      let mediaQuery=db.from('post_media').select('post_id,posts!inner(status)').eq('storage_path',path);
+      if(variant==='feed')mediaQuery=mediaQuery.eq('posts.status','published');
+      const {data:media,error:mediaError}=await mediaQuery.single();
       dbError(mediaError);
       if(!media)throw new ApiError(404,'图片不存在');
       const {data,error}=await db.storage.from('post-covers').createSignedUrl(path,600);
       dbError(error);
       if(!data?.signedUrl)throw new ApiError(404,'图片不存在');
+      if(variant==='feed'){
+        try{
+          const original=await fetch(data.signedUrl,{signal:AbortSignal.timeout(10000)});
+          if(!original.ok)throw new Error('原图读取失败');
+          const contentLength=Number(original.headers.get('content-length')||0);
+          if(contentLength>5*1024*1024)throw new Error('原图超过处理限制');
+          const bytes=Buffer.from(await original.arrayBuffer());
+          if(bytes.byteLength>5*1024*1024)throw new Error('原图超过处理限制');
+          const thumbnail=await createFeedThumbnail(bytes);
+          const responseBytes=new Uint8Array(thumbnail.byteLength);
+          responseBytes.set(thumbnail);
+          return new NextResponse(responseBytes,{headers:{'Content-Type':'image/webp','Cache-Control':'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800','X-Content-Type-Options':'nosniff'}});
+        }catch(error){
+          // Keep published images visible if optimization fails for an unusual or legacy file.
+          console.warn('[media] feed thumbnail fallback',error instanceof Error?error.name:'unknown');
+          return NextResponse.redirect(data.signedUrl,302);
+        }
+      }
       return NextResponse.redirect(data.signedUrl,302);
     }catch(error){return NextResponse.json({error:error instanceof ApiError?error.message:'图片加载失败'},{status:error instanceof ApiError?error.status:500})}
   }

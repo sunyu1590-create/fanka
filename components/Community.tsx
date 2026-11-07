@@ -51,6 +51,22 @@ import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
+import { animationCoordinator } from "@/lib/animation-coordinator";
+import { readPublicCache, schedulePublicCacheWrite } from "@/lib/public-content-cache";
+import { feedImageSource } from "@/lib/feed-images";
+import {
+  announceNativeReady,
+  cancelNativeCardTransition,
+  hasNativeBridge,
+  installNativeBridge,
+  prepareNativeCardTransition,
+  releaseNativeCardTransition,
+  requestNativeNotificationPermission,
+  subscribeNativeEvent,
+  startNativeCardTransition,
+  waitForNativeCardTransition,
+  type NativeTransitionRect,
+} from "@/lib/native-bridge";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -77,6 +93,8 @@ type ComposerImage = { id: string; file?: File; path?: string; url: string; stat
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[] };
 type SearchPerson = { id: string; nickname: string; bio: string | null; avatar_url: string | null };
+type DetailReturnAnchor = { postId: number; scrollY: number; viewportTop: number; savedAt: number };
+type NativeTransitionCandidate = { id: string; src: string; prepared: Promise<boolean>; createdAt: number };
 function relativeTime(timestamp: number) {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (seconds < 45) return "刚刚";
@@ -296,14 +314,38 @@ export default function Community() {
     document.documentElement.dataset.bottomNav = bottomNavStyle;
     localStorage.setItem("heika-bottom-nav-style", bottomNavStyle);
   }, [bottomNavStyle, bottomNavStyleReady]);
+  useEffect(() => {
+    const finishAnimations = () => animationCoordinator.cancelAll();
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") finishAnimations();
+    };
+    const unsubscribeLifecycle = subscribeNativeEvent("app.lifecycle", (payload) => {
+      if (payload.state === "background") finishAnimations();
+    });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", finishAnimations);
+    return () => {
+      unsubscribeLifecycle();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", finishAnimations);
+    };
+  }, []);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
+  const detailReturnAnchor = useRef<DetailReturnAnchor | null>(null);
+  const detailWasOpen = useRef(false);
+  const topicReturnPostIdRef = useRef<number | null>(null);
+  const nativeTransitionCandidate = useRef<NativeTransitionCandidate | null>(null);
+  const feedRequestSequence = useRef(0);
+  const topicRequestSequence = useRef(0);
   const sharedPostHandled = useRef<string | null>(null);
+  const sharedConversationHandled = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
+  const [messageConversation, setMessageConversation] = useState<string | null>(null);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -315,6 +357,8 @@ export default function Community() {
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const cloudHydrated = useRef(false);
   const pullStart = useRef<number | null>(null);
+  const nativeBackHandler = useRef<() => boolean>(() => false);
+  const nativeNavigationHandler = useRef<(payload: Record<string, unknown>) => boolean>(() => false);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
   const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
@@ -322,6 +366,8 @@ export default function Community() {
     rect: DOMRect;
     src: string;
     sourceImage: HTMLImageElement;
+    nativeTransitionId?: string;
+    nativePrepared?: Promise<boolean>;
   } | null>(null);
   const [luckyReward, setLuckyReward] = useState<{ postId: number; amount: number } | null>(null);
   const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
@@ -434,6 +480,8 @@ export default function Community() {
     [noticeLeaving, setNoticeLeaving] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
   const modalCloseTimer = useRef<number | null>(null);
+  const noticeQueue = useRef<string[]>([]);
+  const currentNotice = useRef<string | null>(null);
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
   }, []);
@@ -688,8 +736,14 @@ export default function Community() {
     if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
+    noticeQueue.current = [];
+    currentNotice.current = null;
   }, []);
   useEffect(() => {
+    if (hasNativeBridge()) {
+      setNotificationPermission("default");
+      return;
+    }
     if (!("Notification" in window)) {
       setNotificationPermission("unsupported");
       return;
@@ -701,30 +755,55 @@ export default function Community() {
     if (reset) feedController.current?.abort();
     const controller = new AbortController();
     feedController.current = controller;
+    const requestSequence = ++feedRequestSequence.current;
     publicFeedLoading.current = true;
     setFeedLoading(true);
     setFeedError("");
     const params = new URLSearchParams({ mode: "discover", page: String(requestedPage), limit: "24" });
     if (requestedTag !== "全部") params.set("tag", requestedTag);
+    const cacheKey = `discover:${requestedTag}:${requestedPage}`;
+    let networkApplied = false;
+    let cacheApplied = false;
+    const cached = readPublicCache<{ items: Post[]; total: number }>(cacheKey, 5 * 60 * 1000);
+    const network = fetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
+    void cached.then((entry) => {
+      if (!entry || !Array.isArray(entry.value.items) || controller.signal.aborted ||
+          requestSequence !== feedRequestSequence.current || networkApplied) return;
+      cacheApplied = true;
+      const { items, total } = entry.value;
+      setPublicFeed((current) => reset ? items : [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
+      setFeedTotal(Number(total) || items.length);
+      setFeedPage(requestedPage);
+      setFeedHasMore(requestedPage * 24 < (Number(total) || 0));
+      setFeedLoadedTag(requestedTag);
+      if (reset) setPage(12);
+      else setPage((current) => current + items.length);
+    }).catch(() => undefined);
     try {
-      const response = await fetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
+      const response = await network;
       const result = await response.json();
       if (!response.ok) throw new Error("内容加载失败");
       const payload = result.data;
       const items: Post[] | undefined = Array.isArray(payload) ? payload : payload?.items;
       if (!Array.isArray(items)) throw new Error("内容格式无效");
       if (controller.signal.aborted) return;
+      networkApplied = true;
       setPublicFeed((current) => reset ? items : [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
       const total = Array.isArray(payload) ? items.length : Number(payload.total) || 0;
       setFeedTotal(total);
       setFeedPage(requestedPage);
       setFeedHasMore(!Array.isArray(payload) && requestedPage * 24 < total);
       setFeedLoadedTag(requestedTag);
-      setPage((current) => reset ? 12 : current + items.length);
+      setPage((current) => reset ? 12 : cacheApplied ? current : current + items.length);
+      schedulePublicCacheWrite(cacheKey, { items, total });
+      for (const item of items) schedulePublicCacheWrite(`post:${item.id}`, item);
     } catch {
-      if (!controller.signal.aborted) setFeedError("内容加载失败，请重试");
+      if (!controller.signal.aborted && requestSequence === feedRequestSequence.current) {
+        const fallback = await cached.catch(() => null);
+        if (!fallback) setFeedError("内容加载失败，请重试");
+      }
     } finally {
-      if (feedController.current === controller) {
+      if (feedController.current === controller && requestSequence === feedRequestSequence.current) {
         publicFeedLoading.current = false;
         setFeedLoading(false);
       }
@@ -864,11 +943,12 @@ export default function Community() {
       ratingBusy.current = false;
     }
   };
-  const toast = (msg: string) => {
+  const displayNotice = (msg: string) => {
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
     noticeTimer.current = null;
     noticeExitTimer.current = null;
+    currentNotice.current = msg;
     setNoticeLeaving(false);
     setNoticeId((id) => id + 1);
     setNotice(msg);
@@ -877,10 +957,22 @@ export default function Community() {
       noticeExitTimer.current = window.setTimeout(() => {
         setNotice("");
         setNoticeLeaving(false);
+        currentNotice.current = null;
         noticeExitTimer.current = null;
         noticeTimer.current = null;
+        const next = noticeQueue.current.shift();
+        if (next) displayNotice(next);
       }, 330);
     }, 2700);
+  };
+  const toast = (msg: string) => {
+    if (document.documentElement.dataset.heikaNative === "true" && currentNotice.current) {
+      if (msg === currentNotice.current || noticeQueue.current.includes(msg)) return;
+      if (noticeQueue.current.length < 3) noticeQueue.current.push(msg);
+      else noticeQueue.current[2] = msg;
+      return;
+    }
+    displayNotice(msg);
   };
   const submitContentReport = async () => {
     if (reportSubmitting) return;
@@ -946,6 +1038,30 @@ export default function Community() {
       ? rect
       : null;
   };
+  const prewarmNativeCardTransition = (id: number, sourceElement: Element | null) => {
+    if (!hasNativeBridge() || !sourceElement) return;
+    const cardElement = sourceElement instanceof HTMLImageElement
+      ? sourceElement
+      : sourceElement.closest<HTMLElement>(
+          `[data-window-card-id="${id}"], [data-card-id="${id}"], [data-discover-id="${id}"]`,
+        ) || sourceElement;
+    const sourceImage = cardElement instanceof HTMLImageElement
+      ? cardElement
+      : cardElement.querySelector<HTMLImageElement>("img");
+    if (!sourceImage || !sourceImage.complete || sourceImage.naturalWidth < 1) return;
+    const rect = sourceImage.getBoundingClientRect();
+    const src = sourceImage.currentSrc || sourceImage.src;
+    if (!src || rect.width < 1 || rect.height < 1 || rect.bottom <= 0 || rect.top >= innerHeight) return;
+    const transactionId = globalThis.crypto?.randomUUID?.() || `card-${Date.now().toString(36)}-${id}`;
+    const safeRect: NativeTransitionRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    const candidate: NativeTransitionCandidate = {
+      id: transactionId,
+      src,
+      createdAt: Date.now(),
+      prepared: prepareNativeCardTransition(transactionId, safeRect, window.devicePixelRatio),
+    };
+    nativeTransitionCandidate.current = candidate;
+  };
   const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null) => {
     if (source) detailSource.current = source;
     if (
@@ -985,12 +1101,48 @@ export default function Community() {
       });
     const sourceRect = sourceImage?.getBoundingClientRect();
     const sourceImageUrl = sourceImage?.currentSrc || sourceImage?.src;
-    scrollBeforeDetail.current = window.scrollY;
+    let savedAnchor: DetailReturnAnchor | null = null;
+    try {
+      const raw = sessionStorage.getItem("heika-detail-return-anchor");
+      const parsed = raw ? JSON.parse(raw) as DetailReturnAnchor : null;
+      const routePost = new URLSearchParams(location.search).get("post");
+      if (parsed && parsed.postId === id && routePost === String(id) && Date.now() - parsed.savedAt < 10 * 60 * 1000) {
+        savedAnchor = parsed;
+      }
+    } catch {}
+    const sourceCard = [
+      ...document.querySelectorAll<HTMLElement>(`[data-discover-id="${id}"], [data-card-id="${id}"]`),
+    ].find((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    }) || explicitSource?.closest<HTMLElement>(`[data-window-card-id="${id}"]`);
+    const cardTop = sourceCard?.getBoundingClientRect().top;
+    const anchor: DetailReturnAnchor = savedAnchor || {
+      postId: id,
+      scrollY: window.scrollY,
+      viewportTop: Number.isFinite(cardTop) ? cardTop! : 0,
+      savedAt: Date.now(),
+    };
+    detailReturnAnchor.current = anchor;
+    scrollBeforeDetail.current = anchor.scrollY;
+    try { sessionStorage.setItem("heika-detail-return-anchor", JSON.stringify(anchor)); } catch {}
+    const candidate = nativeTransitionCandidate.current;
+    const transitionCandidate = candidate && candidate.src === sourceImageUrl && Date.now() - candidate.createdAt < 5_000
+      ? candidate
+      : null;
     setDetailImageTransition(
       sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
-        ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
+        ? {
+            rect: sourceRect,
+            src: sourceImageUrl,
+            sourceImage,
+            nativeTransitionId: transitionCandidate?.id,
+            nativePrepared: transitionCandidate?.prepared,
+          }
         : null,
     );
+    nativeTransitionCandidate.current = null;
     if (viewerId === id) {
       cancelFlipRain(id);
       if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
@@ -1006,11 +1158,7 @@ export default function Community() {
     setDetailReady(false);
     setDetail(id);
     setTransitionPhase("opening");
-    history.pushState({ ...history.state, heikaDetail: id }, "");
-    update((s) => ({
-      ...s,
-      viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
-    }));
+    history.pushState({ ...history.state, heikaDetail: id }, "", `/?post=${id}`);
   };
   const cancelFlipRain = (id?: number) => {
     if (id !== undefined && flipRainId !== id) return;
@@ -1028,16 +1176,37 @@ export default function Community() {
     sharedPostHandled.current = sharedId;
     openPostRef.current(id, "discover");
   }, [ready, detail, all]);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const conversationId = params.get("conversation");
+    if (!ready || !conversationId || params.getAll("conversation").length !== 1 ||
+        sharedConversationHandled.current === conversationId ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return;
+    sharedConversationHandled.current = conversationId;
+    setMessageConversation(conversationId.toLowerCase());
+    setMessagesTabVisited(true);
+    setTabState("messages");
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+  }, [ready]);
   const sharedPostLoading = useRef<string | null>(null);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
     const id = Number(sharedId);
     if (!ready || !sharedId || !Number.isSafeInteger(id) || all.some((item) => item.id === id) || sharedPostLoading.current === sharedId) return;
     sharedPostLoading.current = sharedId;
+    let networkApplied = false;
+    void readPublicCache<Post>(`post:${id}`, 30 * 60 * 1000).then((cached) => {
+      if (!cached || networkApplied) return;
+      setPublicFeed((current) => current.some((post) => post.id === id) ? current : [cached.value, ...current]);
+    }).catch(() => undefined);
     void fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
       .then((response) => response.json().then((result) => ({ response, result })))
       .then(({ response, result }) => {
-        if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [result.data as Post, ...current]);
+        if (response.ok && result.data) {
+          networkApplied = true;
+          schedulePublicCacheWrite(`post:${id}`, result.data as Post);
+          setPublicFeed((current) => current.some((post) => post.id === id) ? current.map((post) => post.id === id ? result.data as Post : post) : [result.data as Post, ...current]);
+        }
       })
       .catch(() => {})
       .finally(() => { sharedPostLoading.current = null; });
@@ -1057,7 +1226,36 @@ export default function Community() {
     setTransitionPhase("closing");
   };
   useLayoutEffect(() => {
-    if (detail === null) return;
+    if (detail === null) {
+      if (!detailWasOpen.current) return;
+      detailWasOpen.current = false;
+      if (topicReturnPostIdRef.current !== null) return;
+      const anchor = detailReturnAnchor.current;
+      requestAnimationFrame(() => {
+        if (anchor) {
+          const source = [
+            ...document.querySelectorAll<HTMLElement>(`[data-discover-id="${anchor.postId}"], [data-card-id="${anchor.postId}"]`),
+          ].find((element) => {
+            const rect = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+          });
+          if (source) {
+            const rect = source.getBoundingClientRect();
+            const targetScroll = Math.max(0, window.scrollY + rect.top - anchor.viewportTop);
+            window.scrollTo({ top: targetScroll, behavior: "instant" });
+          } else {
+            window.scrollTo({ top: anchor.scrollY, behavior: "instant" });
+          }
+          try { sessionStorage.removeItem("heika-detail-return-anchor"); } catch {}
+          detailReturnAnchor.current = null;
+        } else {
+          window.scrollTo({ top: scrollBeforeDetail.current, behavior: "instant" });
+        }
+      });
+      return;
+    }
+    detailWasOpen.current = true;
     const body = document.body,
       previousOverflow = body.style.overflow,
       previousPadding = body.style.paddingRight,
@@ -1069,17 +1267,27 @@ export default function Community() {
     return () => {
       body.style.overflow = previousOverflow;
       body.style.paddingRight = previousPadding;
-      window.scrollTo({ top: scrollBeforeDetail.current, behavior: "instant" });
+      if (topicReturnPostIdRef.current === null) {
+        window.scrollTo({ top: detailReturnAnchor.current?.scrollY ?? scrollBeforeDetail.current, behavior: "instant" });
+      }
       history.scrollRestoration = previousScrollRestoration;
     };
   }, [detail]);
   useEffect(() => {
     const onBack = () => {
-      if (detail !== null) closeDetail(true);
+      if (detail !== null) {
+        closeDetail(true);
+        const openedPost = new URLSearchParams(location.search).get("post");
+        if (openedPost && sharedPostHandled.current === openedPost) {
+          history.replaceState(history.state, "", location.pathname);
+        }
+      } else if (tab === "topic") {
+        nativeBackHandler.current();
+      }
     };
     window.addEventListener("popstate", onBack);
     return () => window.removeEventListener("popstate", onBack);
-  }, [detail, transitionPhase]);
+  }, [detail, transitionPhase, tab]);
   useLayoutEffect(() => {
     if (!viewerPhase || viewerId === null) return;
     const opening = viewerPhase === "opening",
@@ -1087,7 +1295,12 @@ export default function Community() {
       stage = viewerStageRef.current,
       reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animation: Animation | undefined;
+    let transaction: ReturnType<typeof animationCoordinator.track> | undefined;
+    let disposed = false;
+    let settled = false;
     const finish = () => {
+      if (settled || disposed) return;
+      settled = true;
       if (opening) setViewerPhase(null);
       else {
         setViewerId(null);
@@ -1100,9 +1313,13 @@ export default function Community() {
       finish();
       return;
     }
-    if (!rect || !stage) {
-      const node = document.querySelector<HTMLElement>(".flip-stage");
-      if (node) {
+    const node = stage || document.querySelector<HTMLElement>(".flip-stage");
+    if (!node) {
+      finish();
+      return;
+    }
+    try {
+      if (!rect || !stage) {
         animation = node.animate(
           opening
             ? [
@@ -1115,54 +1332,64 @@ export default function Community() {
               ],
           { duration: 240, easing: "ease-out", fill: "forwards" },
         );
-        animation.onfinish = finish;
-      } else finish();
-      return () => animation?.cancel();
+      } else {
+        stage.style.transformOrigin = "top left";
+        const target = stage.getBoundingClientRect();
+        const first = `translate3d(${rect.left - target.left}px,${rect.top - target.top}px,0) scale(${rect.width / target.width},${rect.height / target.height})`;
+        const radius = getComputedStyle(stage).borderRadius || "6px";
+        animation = stage.animate(
+          opening
+            ? [
+                { transform: first, borderRadius: radius, opacity: 1 },
+                { transform: "translate3d(0,0,0) scale(1)", borderRadius: radius, opacity: 1 },
+              ]
+            : [
+                { transform: "translate3d(0,0,0) scale(1)", borderRadius: radius, opacity: 1 },
+                { transform: first, borderRadius: radius, opacity: 1 },
+              ],
+          { duration: 380, easing: "cubic-bezier(.22,.72,.18,1)", fill: "forwards" },
+        );
+      }
+      transaction = animationCoordinator.track("flip-stage", "P0", animation, finish, 1_200);
+    } catch {
+      finish();
     }
-    stage.style.transformOrigin = "top left";
-    const target = stage.getBoundingClientRect(),
-      first = `translate3d(${rect.left - target.left}px,${rect.top - target.top}px,0) scale(${rect.width / target.width},${rect.height / target.height})`;
-    animation = stage.animate(
-      opening
-        ? [
-            { transform: first, borderRadius: "7px", opacity: 1 },
-            {
-              transform: "translate3d(0,0,0) scale(1)",
-              borderRadius: "8px",
-              opacity: 1,
-            },
-          ]
-        : [
-            {
-              transform: "translate3d(0,0,0) scale(1)",
-              borderRadius: "8px",
-              opacity: 1,
-            },
-            { transform: first, borderRadius: "7px", opacity: 1 },
-          ],
-      {
-        duration: 380,
-        easing: "cubic-bezier(.22,.72,.18,1)",
-        fill: "forwards",
-      },
-    );
-    animation.onfinish = finish;
-    return () => animation?.cancel();
+    return () => {
+      disposed = true;
+      transaction?.release();
+      animation?.cancel();
+    };
   }, [viewerPhase, viewerId, viewerRect]);
   useLayoutEffect(() => {
     if (!transitionPhase) return;
     const opening = transitionPhase === "opening";
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const transitionImage = detailImageTransition;
     let imageAnimation: Animation | undefined;
+    let transaction: ReturnType<typeof animationCoordinator.track> | undefined;
     let imageClone: HTMLImageElement | null = null;
     let imageTarget: HTMLImageElement | null = null;
     let cancelled = false;
     let finished = false;
-    const finish = () => {
-      if (finished || cancelled) return;
+    let panelSettled = false;
+    let imageSettled = !transitionImage || reduced;
+    let nativeStarted = false;
+    let nativeSettled = false;
+    let imageTimeout = 0;
+    const finishTransition = () => {
+      if (finished) return;
       finished = true;
+      cancelled = true;
+      window.clearTimeout(imageTimeout);
+      if (nativeStarted && !nativeSettled && transitionImage?.nativeTransitionId) {
+        void cancelNativeCardTransition(transitionImage.nativeTransitionId);
+      } else if (!nativeStarted && transitionImage?.nativeTransitionId) {
+        void releaseNativeCardTransition(transitionImage.nativeTransitionId);
+      }
+      imageAnimation?.cancel();
       imageTarget?.style.removeProperty("visibility");
       imageClone?.remove();
+      imageClone = null;
       if (opening) {
         setDetailReady(true);
       } else {
@@ -1173,85 +1400,172 @@ export default function Community() {
       setTransitionPhase(null);
       transitionBusy.current = false;
     };
+    const finishIfSettled = () => {
+      if (panelSettled && imageSettled) finishTransition();
+    };
+    const settleImage = () => {
+      if (imageSettled) return;
+      imageSettled = true;
+      window.clearTimeout(imageTimeout);
+      finishIfSettled();
+    };
+    const onPageHide = () => finishTransition();
+    window.addEventListener("pagehide", onPageHide, { once: true });
     const detailNode = document.querySelector<HTMLElement>(".overlay .detail");
+    let animation: Animation | undefined;
+    const duration = opening ? 430 : 300;
     if (!detailNode || reduced) {
-      finish();
-      return;
-    }
-    const animation = detailNode.animate(
-      opening
-        ? [
-            { opacity: 1, transform: "translate3d(0,24px,0)" },
-            { opacity: 1, transform: "translate3d(0,0,0)" },
-          ]
-        : [
-            { opacity: 1, transform: "translate3d(0,0,0)" },
-            { opacity: 1, transform: "translate3d(0,18px,0)" },
-          ],
-      { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
-    );
-    animation.onfinish = finish;
-    const transitionImage = detailImageTransition;
-    if (transitionImage) {
+      panelSettled = true;
       imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
-      if (imageTarget) {
-        const animateImage = async () => {
-          imageTarget?.style.setProperty("visibility", "hidden");
-          try { await imageTarget?.decode(); } catch {}
-          if (cancelled || !imageTarget) return;
-          const targetRect = imageTarget.getBoundingClientRect();
-          const originRect = transitionImage.rect;
-          const from = opening ? originRect : targetRect;
-          const returnRect = transitionImage.sourceImage.isConnected
-            ? transitionImage.sourceImage.getBoundingClientRect()
-            : originRect;
-          const to = opening ? targetRect :
-            returnRect.width && returnRect.height ? returnRect : originRect;
-          if (!from.width || !from.height || !to.width || !to.height || from.bottom < 0 || from.top > innerHeight || to.bottom < 0 || to.top > innerHeight) {
-            imageTarget.style.removeProperty("visibility");
-            return;
-          }
-          imageClone = new Image();
-          imageClone.src = transitionImage.src;
-          try { await imageClone.decode(); } catch {}
-          if (cancelled || !imageClone) return;
-          imageClone.alt = "";
-          imageClone.setAttribute("aria-hidden", "true");
-          Object.assign(imageClone.style, {
-            position: "fixed",
-            left: `${to.left}px`,
-            top: `${to.top}px`,
-            width: `${to.width}px`,
-            height: `${to.height}px`,
-            objectFit: "cover",
-            objectPosition: "center",
-            zIndex: "120",
-            pointerEvents: "none",
-            willChange: "left,top,width,height,border-radius",
-          });
-          document.body.appendChild(imageClone);
-          imageAnimation = imageClone.animate(
-            [
-              { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: "6px" },
-              { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: "0px" },
-            ],
-            { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
-          );
-          imageAnimation.onfinish = () => {
+      imageTarget?.style.removeProperty("visibility");
+      imageSettled = true;
+      finishIfSettled();
+    } else {
+      try {
+        animation = detailNode.animate(
+          opening
+            ? [
+                { opacity: 1, transform: "translate3d(0,24px,0)" },
+                { opacity: 1, transform: "translate3d(0,0,0)" },
+              ]
+            : [
+                { opacity: 1, transform: "translate3d(0,0,0)" },
+                { opacity: 1, transform: "translate3d(0,18px,0)" },
+              ],
+          { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+        );
+        transaction = animationCoordinator.track("detail-panel", "P0", animation, () => {
+          panelSettled = true;
+          finishIfSettled();
+        }, duration + 900);
+      } catch {
+        panelSettled = true;
+      }
+
+      if (transitionImage) {
+        imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
+        if (imageTarget) {
+          imageTimeout = window.setTimeout(() => {
+            if (nativeStarted && !nativeSettled && transitionImage.nativeTransitionId) {
+              void cancelNativeCardTransition(transitionImage.nativeTransitionId);
+              void releaseNativeCardTransition(transitionImage.nativeTransitionId);
+              nativeSettled = true;
+            }
             imageTarget?.style.removeProperty("visibility");
             imageClone?.remove();
             imageClone = null;
+            settleImage();
+          }, 1_200);
+          const animateImage = async () => {
+            const decodeTarget = imageTarget;
+            if (!decodeTarget) { settleImage(); return; }
+            try { await decodeTarget.decode(); } catch { settleImage(); return; }
+            if (cancelled || finished) return;
+            const targetRect = decodeTarget.getBoundingClientRect();
+            const originRect = transitionImage.rect;
+            const returnRect = transitionImage.sourceImage.isConnected
+              ? transitionImage.sourceImage.getBoundingClientRect()
+              : originRect;
+            const from = opening ? originRect : targetRect;
+            const to = opening ? targetRect :
+              returnRect.width && returnRect.height ? returnRect : originRect;
+            if (!from.width || !from.height || !to.width || !to.height || from.bottom < 0 || from.top > innerHeight || to.bottom < 0 || to.top > innerHeight) {
+              settleImage();
+              return;
+            }
+            if (transitionImage.nativeTransitionId && transitionImage.nativePrepared) {
+              const prepared = await transitionImage.nativePrepared.catch(() => false);
+              if (cancelled || finished) return;
+              if (prepared) {
+                const destination: NativeTransitionRect = { left: to.left, top: to.top, width: to.width, height: to.height };
+                const durationMs = opening ? 360 : 240;
+                const accepted = await startNativeCardTransition(
+                  transitionImage.nativeTransitionId,
+                  opening ? "open" : "close",
+                  destination,
+                  durationMs,
+                );
+                if (cancelled || finished) {
+                  if (accepted) void cancelNativeCardTransition(transitionImage.nativeTransitionId);
+                  return;
+                }
+                if (accepted) {
+                  nativeStarted = true;
+                  decodeTarget.style.setProperty("visibility", "hidden");
+                  const completed = await waitForNativeCardTransition(transitionImage.nativeTransitionId, durationMs + 400);
+                  nativeSettled = true;
+                  decodeTarget.style.removeProperty("visibility");
+                  if (!opening || !completed) void releaseNativeCardTransition(transitionImage.nativeTransitionId);
+                  settleImage();
+                  return;
+                }
+              }
+            }
+            if (cancelled || finished) return;
+            imageClone = new Image();
+            imageClone.src = transitionImage.src;
+            try { await imageClone.decode(); } catch { settleImage(); return; }
+            if (cancelled || finished || !imageClone) return;
+            imageClone.alt = "";
+            imageClone.setAttribute("aria-hidden", "true");
+            const deltaX = to.left - from.left;
+            const deltaY = to.top - from.top;
+            const scaleX = to.width / from.width;
+            const scaleY = to.height / from.height;
+            Object.assign(imageClone.style, {
+              position: "fixed",
+              left: `${from.left}px`,
+              top: `${from.top}px`,
+              width: `${from.width}px`,
+              height: `${from.height}px`,
+              objectFit: "cover",
+              objectPosition: "center",
+              zIndex: "120",
+              pointerEvents: "none",
+              transformOrigin: "top left",
+              willChange: "transform,border-radius",
+            });
+            document.body.appendChild(imageClone);
+            decodeTarget.style.setProperty("visibility", "hidden");
+            try {
+              imageAnimation = imageClone.animate(
+                [
+                  { transform: "translate3d(0,0,0) scale(1,1)", borderRadius: "6px" },
+                  { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(${scaleX},${scaleY})`, borderRadius: "0px" },
+                ],
+                { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+              );
+              imageAnimation.addEventListener("finish", () => {
+                decodeTarget.style.removeProperty("visibility");
+                imageClone?.remove();
+                imageClone = null;
+                settleImage();
+              }, { once: true });
+            } catch {
+              decodeTarget.style.removeProperty("visibility");
+              imageClone.remove();
+              imageClone = null;
+              settleImage();
+            }
           };
-        };
-        void animateImage();
+          void animateImage();
+        } else imageSettled = true;
       }
+      if (reduced) imageSettled = true;
+      finishIfSettled();
     }
     return () => {
       cancelled = true;
+      window.removeEventListener("pagehide", onPageHide);
+      window.clearTimeout(imageTimeout);
+      transaction?.release();
       animation?.cancel();
       imageAnimation?.cancel();
       imageTarget?.style.removeProperty("visibility");
       imageClone?.remove();
+      if (nativeStarted && !nativeSettled && transitionImage?.nativeTransitionId) {
+        void cancelNativeCardTransition(transitionImage.nativeTransitionId);
+      }
     };
   }, [transitionPhase, detailImageTransition]);
   const toggleSave = async (id: number) => {
@@ -1448,6 +1762,23 @@ export default function Community() {
         ...s,
         notifications: { ...s.notifications, [key]: false },
       }));
+      return;
+    }
+    if (hasNativeBridge()) {
+      try {
+        const result = await requestNativeNotificationPermission();
+        if (!result?.granted || !result.enabled) {
+          setNotificationPermission("denied");
+          return toast("请在 Android 系统设置中允许黑卡通知");
+        }
+        setNotificationPermission("granted");
+        update((s) => ({
+          ...s,
+          notifications: { ...s.notifications, [key]: true },
+        }));
+      } catch {
+        toast("无法请求系统通知权限，请稍后重试");
+      }
       return;
     }
     if (notificationPermission === "unsupported" || !("Notification" in window))
@@ -1808,35 +2139,101 @@ export default function Community() {
     setComposerImages([]); setTitle(""); setBody(""); setEditing(null); setModal(null); toast("草稿已删除");
   };
   const openTopic = async (name: string) => {
+    const requestSequence = ++topicRequestSequence.current;
+    const cacheKey = `topic:${name}:1`;
+    let cacheApplied = false;
+    const returnPostId = detail;
+    const returnTab = detail === null ? tab : detailSource.current;
+    topicReturnPostIdRef.current = returnPostId;
+    setTopicReturnPostId(returnPostId);
+    setTopicReturnTab(returnTab);
+    setTopicSummary(null);
+    setTopicPosts([]);
+    setTopicTotal(0);
+    setTopicPage(1);
     setTopicLoading(true);
+    if (returnPostId !== null) {
+      sharedPostHandled.current = String(returnPostId);
+      const topicUrl = new URL(window.location.href);
+      topicUrl.searchParams.delete("post");
+      const topicHistoryState = { ...history.state };
+      delete topicHistoryState.heikaDetail;
+      history.replaceState(topicHistoryState, "", `${topicUrl.pathname}${topicUrl.search}${topicUrl.hash}`);
+      setDetail(null);
+      setDetailReady(false);
+      setDetailMoreOpen(false);
+      setTransitionPhase(null);
+      transitionBusy.current = false;
+    }
+    scrollPositions.current[returnTab] = window.scrollY;
+    setTab("topic");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    const applyPage = (page: TopicPageResponse) => {
+      if (requestSequence !== topicRequestSequence.current) return;
+      setTopicSummary(page.topic);
+      setTopicPosts(page.items);
+      setTopicTotal(page.total);
+      setTopicPage(1);
+    };
     try {
-      const listResponse = await fetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
-      const listResult = await listResponse.json();
-      if (!listResponse.ok) throw new Error(listResult.error || "话题读取失败");
-      const topic = (listResult.data as TopicSummary[]).find((item) => item.name === name);
-      if (!topic) throw new Error("话题不存在");
-      const response = await fetch(`/api/v1/topics/${topic.id}?page=1&limit=12`);
+      const cached = await readPublicCache<TopicPageResponse>(cacheKey, 10 * 60 * 1000).catch(() => null);
+      if (cached && Array.isArray(cached.value.items)) {
+        cacheApplied = true;
+        applyPage(cached.value);
+      }
+      let topicId = cached?.value.topic?.id;
+      if (!topicId) {
+        const listResponse = await fetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
+        const listResult = await listResponse.json();
+        if (!listResponse.ok) throw new Error(listResult.error || "话题读取失败");
+        const topic = (listResult.data as TopicSummary[]).find((item) => item.name === name);
+        if (!topic) throw new Error("话题不存在");
+        topicId = topic.id;
+      }
+      const response = await fetch(`/api/v1/topics/${topicId}?page=1&limit=12`, { cache: "no-store" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题内容读取失败");
       const page = result.data as TopicPageResponse;
-      setTopicSummary(page.topic); setTopicPosts(page.items); setTopicTotal(page.total); setTopicPage(1);
-      setTopicReturnPostId(detail); setTopicReturnTab(detail === null ? tab : detailSource.current);
-      if (detail !== null) { setDetail(null); setDetailReady(false); }
-      scrollPositions.current[tab] = window.scrollY;
-      setTab("topic"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-    } catch (error) { toast(error instanceof Error ? error.message : "话题读取失败"); }
-    finally { setTopicLoading(false); }
+      if (requestSequence !== topicRequestSequence.current) return;
+      applyPage(page);
+      schedulePublicCacheWrite(cacheKey, page);
+      for (const item of page.items) schedulePublicCacheWrite(`post:${item.id}`, item);
+    } catch (error) {
+      if (requestSequence === topicRequestSequence.current && !cacheApplied) toast(error instanceof Error ? error.message : "话题读取失败");
+    } finally {
+      if (requestSequence === topicRequestSequence.current) setTopicLoading(false);
+    }
   };
   const loadMoreTopicPosts = async () => {
     if (!topicSummary || topicLoading || topicPosts.length >= topicTotal) return;
-    const nextPage = topicPage + 1; setTopicLoading(true);
+    const summary = topicSummary;
+    const nextPage = topicPage + 1;
+    const requestSequence = ++topicRequestSequence.current;
+    const cacheKey = `topic:${summary.id}:${nextPage}`;
+    let cacheApplied = false;
+    setTopicLoading(true);
     try {
-      const response = await fetch(`/api/v1/topics/${topicSummary.id}?page=${nextPage}&limit=12`);
+      const cached = await readPublicCache<TopicPageResponse>(cacheKey, 10 * 60 * 1000).catch(() => null);
+      if (cached && Array.isArray(cached.value.items)) {
+        cacheApplied = true;
+        setTopicPosts((items) => [...items, ...cached.value.items.filter((post) => !items.some((old) => old.id === post.id))]);
+        setTopicTotal(cached.value.total);
+        setTopicPage(nextPage);
+      }
+      const response = await fetch(`/api/v1/topics/${summary.id}?page=${nextPage}&limit=12`, { cache: "no-store" });
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "内容读取失败");
       const page = result.data as TopicPageResponse;
-      setTopicPosts((items) => [...items, ...page.items]); setTopicTotal(page.total); setTopicPage(nextPage);
-    } catch (error) { toast(error instanceof Error ? error.message : "内容读取失败"); }
-    finally { setTopicLoading(false); }
+      if (requestSequence !== topicRequestSequence.current) return;
+      setTopicPosts((items) => [...items, ...page.items.filter((post) => !items.some((old) => old.id === post.id))]);
+      setTopicTotal(page.total);
+      setTopicPage(nextPage);
+      schedulePublicCacheWrite(cacheKey, page);
+      for (const item of page.items) schedulePublicCacheWrite(`post:${item.id}`, item);
+    } catch (error) {
+      if (requestSequence === topicRequestSequence.current && !cacheApplied) toast(error instanceof Error ? error.message : "内容读取失败");
+    } finally {
+      if (requestSequence === topicRequestSequence.current) setTopicLoading(false);
+    }
   };
   const closeTopicPage = () => {
     const backTab = topicReturnTab;
@@ -1844,7 +2241,10 @@ export default function Community() {
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[backTab] || 0, behavior: "instant" }));
     if (topicReturnPostId !== null) {
       const postId = topicReturnPostId;
+      topicReturnPostIdRef.current = null;
       setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
+    } else {
+      topicReturnPostIdRef.current = null;
     }
   };
   useEffect(() => {
@@ -1896,6 +2296,80 @@ export default function Community() {
     if (tab === "my-content") { setTab(myContentReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" })); return; }
     if (tab === "debug") { setTab("mine"); return; }
   };
+  nativeBackHandler.current = () => {
+    if (modal !== null) { setModal(null); return true; }
+    if (previewImage) { setPreviewImage(false); return true; }
+    if (authorProfile !== null) { setAuthorProfile(null); return true; }
+    if (detailMoreOpen) { setDetailMoreOpen(false); return true; }
+    if (viewerId !== null) { closeViewer(); return true; }
+    if (detail !== null) { closeDetail(); return true; }
+    if (tab === "messages") {
+      const chat = document.querySelector(".chat-screen");
+      if (chat && !chat.closest("[hidden]")) return false;
+    }
+    if (secondaryTitle !== null) { handleSecondaryBack(); return true; }
+    if (tab !== "today") {
+      setTab("today");
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.today || 0, behavior: "instant" }));
+      return true;
+    }
+    return false;
+  };
+  nativeNavigationHandler.current = (payload) => {
+    const route = typeof payload.route === "string" ? payload.route : "";
+    if (route.length > 2048 || !route.startsWith("/") || route.startsWith("//") || route.includes("#") || route.includes("\\")) return false;
+    let target: URL;
+    try { target = new URL(route, window.location.origin); }
+    catch { return false; }
+    if (target.origin !== window.location.origin || target.pathname !== "/" || target.username || target.password) return false;
+    const params = [...target.searchParams.keys()];
+    if (params.some((name) => name !== "post" && name !== "auth" && name !== "conversation")) return false;
+    const postId = target.searchParams.get("post");
+    const auth = target.searchParams.get("auth");
+    const conversationId = target.searchParams.get("conversation");
+    if (target.searchParams.getAll("post").length > 1 || target.searchParams.getAll("auth").length > 1 ||
+        target.searchParams.getAll("conversation").length > 1) return false;
+    if (postId && (!/^[0-9]{1,20}$/.test(postId) || !Number.isSafeInteger(Number(postId)))) return false;
+    if (auth && auth !== "reset") return false;
+    if (conversationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return false;
+    if ([postId, auth, conversationId].filter(Boolean).length > 1) return false;
+    if (auth === "reset") {
+      window.location.assign("/?auth=reset");
+      return true;
+    }
+    if (postId) {
+      if (new URLSearchParams(window.location.search).get("post") === postId) return true;
+      if (detail !== null || transitionBusy.current) {
+        window.location.assign(`/?post=${postId}`);
+        return true;
+      }
+      const id = Number(postId);
+      if (all.some((item) => item.id === id)) openPostRef.current(id, "discover");
+      else window.location.assign(`/?post=${postId}`);
+      return true;
+    }
+    if (conversationId) {
+      setMessageConversation(conversationId.toLowerCase());
+      setMessagesTabVisited(true);
+      setTab("messages");
+      return true;
+    }
+    setTab("today");
+    return true;
+  };
+  useEffect(() => {
+    const unsubscribeBack = subscribeNativeEvent("system.back", () => nativeBackHandler.current());
+    const unsubscribeNavigation = subscribeNativeEvent("navigation.open", (payload) => nativeNavigationHandler.current(payload));
+    const uninstallBridge = installNativeBridge();
+    return () => {
+      unsubscribeBack();
+      unsubscribeNavigation();
+      uninstallBridge();
+    };
+  }, []);
+  useEffect(() => {
+    if (ready) announceNativeReady();
+  }, [ready]);
   useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
@@ -1906,25 +2380,43 @@ export default function Community() {
     setCommentTotal(0);
     setCommentHasMore(false);
     let alive = true;
-    void fetch(`/api/library-comments?id=${detail}&offset=0&limit=40&sort=${detailSort === "最新" ? "new" : "hot"}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((result) => {
-        if (!alive) return;
-        if (result.data?.items && Array.isArray(result.data.items)) {
-          const items = result.data.items as Comment[];
-          setState((s) => ({
-            ...s,
-            comments: [
-              ...s.comments.filter((c) => c.post !== detail || !c.cloudId),
-              ...items,
-            ],
-          }));
-          setCommentTotal(result.data.total || 0);
-          setCommentOffset(items.length);
-          setCommentHasMore(items.length < (result.data.total || 0));
-        } else throw new Error("评论加载失败");
+    const postId = detail;
+    const sortKey = detailSort === "最新" ? "new" : "hot";
+    const cacheKey = `comments:${postId}:${sortKey}:0`;
+    let cacheApplied = false;
+    let networkApplied = false;
+    const cached = readPublicCache<{ items: Comment[]; total: number }>(cacheKey, 2 * 60 * 1000);
+    const applyComments = (items: Comment[], total: number) => {
+      if (!alive) return;
+      const safeItems = items.map((comment) => ({ ...comment, liked: false }));
+      setState((current) => ({
+        ...current,
+        comments: [
+          ...current.comments.filter((comment) => comment.post !== postId || !comment.cloudId),
+          ...safeItems,
+        ],
+      }));
+      setCommentTotal(total);
+      setCommentOffset(safeItems.length);
+      setCommentHasMore(safeItems.length < total);
+      setCommentsLoading(false);
+    };
+    void cached.then((entry) => {
+      if (!alive || !entry || !Array.isArray(entry.value.items) || networkApplied) return;
+      cacheApplied = true;
+      applyComments(entry.value.items, Number(entry.value.total) || 0);
+    }).catch(() => undefined);
+    void fetch(`/api/library-comments?id=${postId}&offset=0&limit=40&sort=${sortKey}`, { cache: "no-store" })
+      .then((response) => response.json().then((result) => ({ response, result })))
+      .then(({ response, result }) => {
+        if (!alive || !response.ok || !Array.isArray(result.data?.items)) throw new Error("评论加载失败");
+        networkApplied = true;
+        const items = result.data.items as Comment[];
+        const total = Number(result.data.total) || 0;
+        applyComments(items, total);
+        schedulePublicCacheWrite(cacheKey, { items: items.map((comment) => ({ ...comment, liked: false })), total });
       })
-      .catch(() => { if (alive) setCommentsError(true); })
+      .catch(() => { if (alive && !cacheApplied) setCommentsError(true); })
       .finally(() => { if (alive) setCommentsLoading(false); });
     return () => {
       alive = false;
@@ -2057,17 +2549,20 @@ export default function Community() {
       className="post-card editorial-post"
       key={p.id}
       data-discover-id={p.id}
+      onPointerDown={(event) => prewarmNativeCardTransition(p.id, event.currentTarget)}
       onClick={(event) => openPost(p.id, source, event.currentTarget)}
     >
       <div
         className="post-cover editorial-cover"
         style={{ background: coverColor(p.tag) }}
       >
-        {p.image && (
+        {(p.image || p.images?.[0]) && (
           <img
-            src={p.image}
+            src={feedImageSource(p.image || p.images?.[0])}
             alt=""
             loading="lazy"
+            decoding="async"
+            fetchPriority="low"
             onError={(e) => {
               e.currentTarget.dataset.failed = "true";
             }}
@@ -2123,7 +2618,8 @@ export default function Community() {
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
-        setDetail(null);
+        if (detail !== null && history.state?.heikaDetail === detail) history.back();
+        else setDetail(null);
         setDetailReady(false);
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
@@ -2623,7 +3119,7 @@ export default function Community() {
             </div>
             {searchError && <div className="search-state search-error"><span>{searchError}</span><button onClick={() => setSearchRetry((n) => n + 1)}>重试</button></div>}
             {searchKind === "content" ? <div className="search-post-results" role="tabpanel">
-              {searchPosts.map((item) => <button className="search-post-result" key={item.id} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
+              {searchPosts.map((item) => <button className="search-post-result" key={item.id} onPointerDown={(event) => prewarmNativeCardTransition(item.id, event.currentTarget)} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
                 <span className="search-post-thumbnail">{item.image && <img src={item.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}<small>{item.tag}</small></span>
                 <span className="search-post-copy"><strong>{item.title}</strong><span>{item.body.slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
                 <ChevronRight size={17}/>
@@ -2689,6 +3185,11 @@ export default function Community() {
           {feed(list)}
         </section>
       )}
+      {tab === "topic" && !topicSummary && (
+        <section className="page editorial-home topic-detail-page" aria-busy={topicLoading}>
+          <p className="topic-empty-state">{topicLoading ? "正在打开话题…" : "话题暂时无法加载"}</p>
+        </section>
+      )}
       {tab === "topic" && topicSummary && (
         <section className="page editorial-home topic-detail-page">
           <button className="back settings-back" onClick={closeTopicPage}><ArrowLeft size={18} /> 返回</button>
@@ -2707,8 +3208,10 @@ export default function Community() {
         <div className="messages-tab-cache" hidden={tab !== "messages"}>
           <Messages
             initialPeer={messagePeer}
+            initialConversation={messageConversation}
             isActive={tab === "messages"}
             onPeerOpened={() => setMessagePeer(null)}
+            onConversationOpened={() => setMessageConversation(null)}
           />
         </div>
       )}
@@ -2815,7 +3318,7 @@ export default function Community() {
               <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
               <p>开启你关心的提醒。浏览器通知仍需系统许可。</p>
               {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
-              {notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
+              {notificationPermission === "denied" && <div className="permission-state">{hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}</div>}
             </div>
           )}
         </section>
@@ -3309,10 +3812,24 @@ export default function Community() {
             const rarityTier = state.rarityTiers[viewerId] || revealed?.rarityTier || "pending";
             const rarityLabel = cardRarityLabel(rarityTier);
             const rarityGrade = rarityTier === "ordinary" ? "N" : rarityTier === "pending" ? "待评" : rarityTier;
+            const stageRatio = viewerRect?.height
+              ? viewerRect.width / viewerRect.height
+              : 0.75;
+            const stageWidth = Math.max(1, Math.min(
+              430,
+              window.innerWidth - 28,
+              (window.innerHeight - 44) * stageRatio,
+            ));
             return (
               <div
                 ref={viewerStageRef}
                 className={`flip-stage ${viewerFlipped ? "is-flipped" : ""}`}
+                style={{
+                  "--flip-stage-width": `${stageWidth}px`,
+                  "--flip-stage-ratio": viewerRect?.height
+                    ? `${viewerRect.width} / ${viewerRect.height}`
+                    : "3 / 4",
+                } as CSSProperties}
               >
                 <div className="flip-inner">
                   <div className="flip-face flip-front flip-window-face">
@@ -3365,6 +3882,7 @@ export default function Community() {
                       <button
                         className="window-more"
                         disabled={!viewerFlipped || viewerPhase !== null || viewerRevealPhase === "rarity"}
+                        onPointerDown={(event) => prewarmNativeCardTransition(viewerId, event.currentTarget)}
                         onClick={(event) => openPost(viewerId, "today", event.currentTarget)}
                       >
                         查看更多 <ArrowRight size={17} />
@@ -3734,7 +4252,7 @@ export default function Community() {
                 )}
                 {notificationPermission === "denied" && (
                   <div className="permission-state">
-                    浏览器通知权限已拒绝，请在站点设置中重新允许。
+                    {hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}
                   </div>
                 )}
                 <div className="switch-list">

@@ -748,8 +748,7 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 .filters button.selected,.editorial-filters button.selected{border-color:var(--action);background:transparent;color:var(--ink)}
 .editorial-post{margin-bottom:20px;border:0;border-radius:0;background:transparent}
 .editorial-cover,.editorial-post:nth-child(3n) .editorial-cover{border-radius:0;border-color:var(--line)}
-.editorial-cover img{filter:saturate(.78);transition:filter .25s ease,opacity .35s ease}
-.editorial-post:active .editorial-cover img{filter:saturate(1)}
+.editorial-cover img{transition:opacity .2s ease}
 .editorial-post .post-meta{padding:9px 0 0}
 .editorial-post .post-meta small,.editorial-post .post-meta div,.editorial-post .post-summary{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.05em}
 .editorial-post .post-meta b{font-family:Georgia,"Songti SC",serif;font-size:15px;font-weight:560;line-height:1.5}
@@ -943,8 +942,8 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #FFFFFF;
-  --surface: #FFFFFF;
+  --bg: #F8F7F4;
+  --surface: #FBFAF7;
   --card: #F5F6F7;
   --metal: #AAB9BD;
   --ink: #24272A;
@@ -1984,3 +1983,68 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .editorial-feed,.candidate-feed { columns: 5; }
   .mine-page .masonry,.topic-detail-page>.masonry { columns: 5; }
 }
+
+/* Keep the native WebView's full-screen card transition on a lighter blur path. */
+html[data-heika-native="true"] .flip-overlay {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+html[data-heika-native="true"] .flip-stage {
+  width: min(var(--flip-stage-width, 430px), 100%);
+  aspect-ratio: var(--flip-stage-ratio, .75);
+  max-height: calc(100dvh - 44px);
+}
+html[data-heika-native="true"] .flip-inner {
+  height: 100%;
+  min-height: 0;
+}
+html[data-heika-native="true"] .detail-header {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+@keyframes heika-native-notice-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes heika-native-notice-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes heika-native-toast-in {
+  from { opacity: 0; transform: translate(-50%,9px) scale(.96); }
+  to { opacity: 1; transform: translate(-50%,0) scale(1); }
+}
+@keyframes heika-native-toast-out {
+  from { opacity: 1; transform: translate(-50%,0) scale(1); }
+  to { opacity: 0; transform: translate(-50%,-5px) scale(.98); }
+}
+@keyframes heika-native-modal-in {
+  from { opacity: 0; transform: translate3d(0,12px,0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes heika-native-modal-out {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(0,8px,0) scale(.99); }
+}
+@keyframes heika-native-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes heika-native-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing) {
+  animation: heika-native-overlay-in 220ms ease both;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing)>.modal,
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing)>.composer-modal,
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing)>.report-dialog {
+  animation: heika-native-modal-in 300ms cubic-bezier(.2,.75,.25,1) both;
+}
+html[data-heika-native="true"] .modal-backdrop.is-closing { animation: heika-native-overlay-out 210ms ease both; }
+html[data-heika-native="true"] .modal-backdrop.is-closing>.modal,
+html[data-heika-native="true"] .modal-backdrop.is-closing>.composer-modal,
+html[data-heika-native="true"] .modal-backdrop.is-closing>.report-dialog {
+  animation: heika-native-modal-out 210ms cubic-bezier(.4,0,.8,.3) both;
+}
+html[data-heika-native="true"] .toast { animation: heika-native-toast-in 280ms cubic-bezier(.2,.75,.25,1) both; }
+html[data-heika-native="true"] .toast.is-leaving { animation: heika-native-toast-out 300ms ease both; }
+html[data-heika-native="true"] .animated-notice { animation: heika-native-notice-in 260ms cubic-bezier(.2,.75,.25,1) both; }
+html[data-heika-native="true"] .animated-notice.is-leaving { animation: heika-native-notice-out 280ms ease both; }

@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.Heika" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#0D1012</item>
+        <item name="android:navigationBarColor">#0D1012</item>
+        <item name="android:windowBackground">#0D1012</item>
+        <item name="android:colorAccent">#D5B45C</item>
+    </style>
+</resources>
