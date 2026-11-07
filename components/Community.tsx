@@ -51,6 +51,13 @@ import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
+import {
+  announceNativeReady,
+  hasNativeBridge,
+  installNativeBridge,
+  requestNativeNotificationPermission,
+  subscribeNativeEvent,
+} from "@/lib/native-bridge";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -302,8 +309,10 @@ export default function Community() {
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
   const sharedPostHandled = useRef<string | null>(null);
+  const sharedConversationHandled = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
+  const [messageConversation, setMessageConversation] = useState<string | null>(null);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -315,6 +324,8 @@ export default function Community() {
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const cloudHydrated = useRef(false);
   const pullStart = useRef<number | null>(null);
+  const nativeBackHandler = useRef<() => boolean>(() => false);
+  const nativeNavigationHandler = useRef<(payload: Record<string, unknown>) => boolean>(() => false);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
   const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
@@ -690,6 +701,10 @@ export default function Community() {
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
   }, []);
   useEffect(() => {
+    if (hasNativeBridge()) {
+      setNotificationPermission("default");
+      return;
+    }
     if (!("Notification" in window)) {
       setNotificationPermission("unsupported");
       return;
@@ -1006,7 +1021,7 @@ export default function Community() {
     setDetailReady(false);
     setDetail(id);
     setTransitionPhase("opening");
-    history.pushState({ ...history.state, heikaDetail: id }, "");
+    history.pushState({ ...history.state, heikaDetail: id }, "", `/?post=${id}`);
     update((s) => ({
       ...s,
       viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
@@ -1028,6 +1043,18 @@ export default function Community() {
     sharedPostHandled.current = sharedId;
     openPostRef.current(id, "discover");
   }, [ready, detail, all]);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const conversationId = params.get("conversation");
+    if (!ready || !conversationId || params.getAll("conversation").length !== 1 ||
+        sharedConversationHandled.current === conversationId ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return;
+    sharedConversationHandled.current = conversationId;
+    setMessageConversation(conversationId.toLowerCase());
+    setMessagesTabVisited(true);
+    setTabState("messages");
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+  }, [ready]);
   const sharedPostLoading = useRef<string | null>(null);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
@@ -1075,7 +1102,13 @@ export default function Community() {
   }, [detail]);
   useEffect(() => {
     const onBack = () => {
-      if (detail !== null) closeDetail(true);
+      if (detail !== null) {
+        closeDetail(true);
+        const openedPost = new URLSearchParams(location.search).get("post");
+        if (openedPost && sharedPostHandled.current === openedPost) {
+          history.replaceState(history.state, "", location.pathname);
+        }
+      }
     };
     window.addEventListener("popstate", onBack);
     return () => window.removeEventListener("popstate", onBack);
@@ -1448,6 +1481,23 @@ export default function Community() {
         ...s,
         notifications: { ...s.notifications, [key]: false },
       }));
+      return;
+    }
+    if (hasNativeBridge()) {
+      try {
+        const result = await requestNativeNotificationPermission();
+        if (!result?.granted || !result.enabled) {
+          setNotificationPermission("denied");
+          return toast("请在 Android 系统设置中允许黑卡通知");
+        }
+        setNotificationPermission("granted");
+        update((s) => ({
+          ...s,
+          notifications: { ...s.notifications, [key]: true },
+        }));
+      } catch {
+        toast("无法请求系统通知权限，请稍后重试");
+      }
       return;
     }
     if (notificationPermission === "unsupported" || !("Notification" in window))
@@ -1896,6 +1946,80 @@ export default function Community() {
     if (tab === "my-content") { setTab(myContentReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" })); return; }
     if (tab === "debug") { setTab("mine"); return; }
   };
+  nativeBackHandler.current = () => {
+    if (modal !== null) { setModal(null); return true; }
+    if (previewImage) { setPreviewImage(false); return true; }
+    if (authorProfile !== null) { setAuthorProfile(null); return true; }
+    if (detailMoreOpen) { setDetailMoreOpen(false); return true; }
+    if (viewerId !== null) { closeViewer(); return true; }
+    if (detail !== null) { closeDetail(); return true; }
+    if (tab === "messages") {
+      const chat = document.querySelector(".chat-screen");
+      if (chat && !chat.closest("[hidden]")) return false;
+    }
+    if (secondaryTitle !== null) { handleSecondaryBack(); return true; }
+    if (tab !== "today") {
+      setTab("today");
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.today || 0, behavior: "instant" }));
+      return true;
+    }
+    return false;
+  };
+  nativeNavigationHandler.current = (payload) => {
+    const route = typeof payload.route === "string" ? payload.route : "";
+    if (route.length > 2048 || !route.startsWith("/") || route.startsWith("//") || route.includes("#") || route.includes("\\")) return false;
+    let target: URL;
+    try { target = new URL(route, window.location.origin); }
+    catch { return false; }
+    if (target.origin !== window.location.origin || target.pathname !== "/" || target.username || target.password) return false;
+    const params = [...target.searchParams.keys()];
+    if (params.some((name) => name !== "post" && name !== "auth" && name !== "conversation")) return false;
+    const postId = target.searchParams.get("post");
+    const auth = target.searchParams.get("auth");
+    const conversationId = target.searchParams.get("conversation");
+    if (target.searchParams.getAll("post").length > 1 || target.searchParams.getAll("auth").length > 1 ||
+        target.searchParams.getAll("conversation").length > 1) return false;
+    if (postId && (!/^[0-9]{1,20}$/.test(postId) || !Number.isSafeInteger(Number(postId)))) return false;
+    if (auth && auth !== "reset") return false;
+    if (conversationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return false;
+    if ([postId, auth, conversationId].filter(Boolean).length > 1) return false;
+    if (auth === "reset") {
+      window.location.assign("/?auth=reset");
+      return true;
+    }
+    if (postId) {
+      if (new URLSearchParams(window.location.search).get("post") === postId) return true;
+      if (detail !== null || transitionBusy.current) {
+        window.location.assign(`/?post=${postId}`);
+        return true;
+      }
+      const id = Number(postId);
+      if (all.some((item) => item.id === id)) openPostRef.current(id, "discover");
+      else window.location.assign(`/?post=${postId}`);
+      return true;
+    }
+    if (conversationId) {
+      setMessageConversation(conversationId.toLowerCase());
+      setMessagesTabVisited(true);
+      setTab("messages");
+      return true;
+    }
+    setTab("today");
+    return true;
+  };
+  useEffect(() => {
+    const unsubscribeBack = subscribeNativeEvent("system.back", () => nativeBackHandler.current());
+    const unsubscribeNavigation = subscribeNativeEvent("navigation.open", (payload) => nativeNavigationHandler.current(payload));
+    const uninstallBridge = installNativeBridge();
+    return () => {
+      unsubscribeBack();
+      unsubscribeNavigation();
+      uninstallBridge();
+    };
+  }, []);
+  useEffect(() => {
+    if (ready) announceNativeReady();
+  }, [ready]);
   useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
@@ -2123,7 +2247,8 @@ export default function Community() {
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
-        setDetail(null);
+        if (detail !== null && history.state?.heikaDetail === detail) history.back();
+        else setDetail(null);
         setDetailReady(false);
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
@@ -2707,8 +2832,10 @@ export default function Community() {
         <div className="messages-tab-cache" hidden={tab !== "messages"}>
           <Messages
             initialPeer={messagePeer}
+            initialConversation={messageConversation}
             isActive={tab === "messages"}
             onPeerOpened={() => setMessagePeer(null)}
+            onConversationOpened={() => setMessageConversation(null)}
           />
         </div>
       )}
@@ -2815,7 +2942,7 @@ export default function Community() {
               <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
               <p>开启你关心的提醒。浏览器通知仍需系统许可。</p>
               {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
-              {notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
+              {notificationPermission === "denied" && <div className="permission-state">{hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}</div>}
             </div>
           )}
         </section>
@@ -3734,7 +3861,7 @@ export default function Community() {
                 )}
                 {notificationPermission === "denied" && (
                   <div className="permission-state">
-                    浏览器通知权限已拒绝，请在站点设置中重新允许。
+                    {hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}
                   </div>
                 )}
                 <div className="switch-list">
