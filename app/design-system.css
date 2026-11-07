@@ -1984,3 +1984,68 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .editorial-feed,.candidate-feed { columns: 5; }
   .mine-page .masonry,.topic-detail-page>.masonry { columns: 5; }
 }
+
+/* Keep the native WebView's full-screen card transition on a lighter blur path. */
+html[data-heika-native="true"] .flip-overlay {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+html[data-heika-native="true"] .flip-stage {
+  width: min(var(--flip-stage-width, 430px), 100%);
+  aspect-ratio: var(--flip-stage-ratio, .75);
+  max-height: calc(100dvh - 44px);
+}
+html[data-heika-native="true"] .flip-inner {
+  height: 100%;
+  min-height: 0;
+}
+html[data-heika-native="true"] .detail-header {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+@keyframes heika-native-notice-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes heika-native-notice-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes heika-native-toast-in {
+  from { opacity: 0; transform: translate(-50%,9px) scale(.96); }
+  to { opacity: 1; transform: translate(-50%,0) scale(1); }
+}
+@keyframes heika-native-toast-out {
+  from { opacity: 1; transform: translate(-50%,0) scale(1); }
+  to { opacity: 0; transform: translate(-50%,-5px) scale(.98); }
+}
+@keyframes heika-native-modal-in {
+  from { opacity: 0; transform: translate3d(0,12px,0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes heika-native-modal-out {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(0,8px,0) scale(.99); }
+}
+@keyframes heika-native-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes heika-native-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing) {
+  animation: heika-native-overlay-in 220ms ease both;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing)>.modal,
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing)>.composer-modal,
+html[data-heika-native="true"] .modal-backdrop:not(.is-closing)>.report-dialog {
+  animation: heika-native-modal-in 300ms cubic-bezier(.2,.75,.25,1) both;
+}
+html[data-heika-native="true"] .modal-backdrop.is-closing { animation: heika-native-overlay-out 210ms ease both; }
+html[data-heika-native="true"] .modal-backdrop.is-closing>.modal,
+html[data-heika-native="true"] .modal-backdrop.is-closing>.composer-modal,
+html[data-heika-native="true"] .modal-backdrop.is-closing>.report-dialog {
+  animation: heika-native-modal-out 210ms cubic-bezier(.4,0,.8,.3) both;
+}
+html[data-heika-native="true"] .toast { animation: heika-native-toast-in 280ms cubic-bezier(.2,.75,.25,1) both; }
+html[data-heika-native="true"] .toast.is-leaving { animation: heika-native-toast-out 300ms ease both; }
+html[data-heika-native="true"] .animated-notice { animation: heika-native-notice-in 260ms cubic-bezier(.2,.75,.25,1) both; }
+html[data-heika-native="true"] .animated-notice.is-leaving { animation: heika-native-notice-out 280ms ease both; }

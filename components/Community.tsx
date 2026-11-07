@@ -51,6 +51,14 @@ import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
+import { animationCoordinator } from "@/lib/animation-coordinator";
+import {
+  announceNativeReady,
+  hasNativeBridge,
+  installNativeBridge,
+  requestNativeNotificationPermission,
+  subscribeNativeEvent,
+} from "@/lib/native-bridge";
 
 const FLIP_RAIN_PARTICLES = 112;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -296,14 +304,32 @@ export default function Community() {
     document.documentElement.dataset.bottomNav = bottomNavStyle;
     localStorage.setItem("heika-bottom-nav-style", bottomNavStyle);
   }, [bottomNavStyle, bottomNavStyleReady]);
+  useEffect(() => {
+    const finishAnimations = () => animationCoordinator.cancelAll();
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") finishAnimations();
+    };
+    const unsubscribeLifecycle = subscribeNativeEvent("app.lifecycle", (payload) => {
+      if (payload.state === "background") finishAnimations();
+    });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", finishAnimations);
+    return () => {
+      unsubscribeLifecycle();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", finishAnimations);
+    };
+  }, []);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
   const sharedPostHandled = useRef<string | null>(null);
+  const sharedConversationHandled = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
+  const [messageConversation, setMessageConversation] = useState<string | null>(null);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -315,6 +341,8 @@ export default function Community() {
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const cloudHydrated = useRef(false);
   const pullStart = useRef<number | null>(null);
+  const nativeBackHandler = useRef<() => boolean>(() => false);
+  const nativeNavigationHandler = useRef<(payload: Record<string, unknown>) => boolean>(() => false);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
   const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
@@ -434,6 +462,8 @@ export default function Community() {
     [noticeLeaving, setNoticeLeaving] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
   const modalCloseTimer = useRef<number | null>(null);
+  const noticeQueue = useRef<string[]>([]);
+  const currentNotice = useRef<string | null>(null);
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
   }, []);
@@ -688,8 +718,14 @@ export default function Community() {
     if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
+    noticeQueue.current = [];
+    currentNotice.current = null;
   }, []);
   useEffect(() => {
+    if (hasNativeBridge()) {
+      setNotificationPermission("default");
+      return;
+    }
     if (!("Notification" in window)) {
       setNotificationPermission("unsupported");
       return;
@@ -864,11 +900,12 @@ export default function Community() {
       ratingBusy.current = false;
     }
   };
-  const toast = (msg: string) => {
+  const displayNotice = (msg: string) => {
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
     noticeTimer.current = null;
     noticeExitTimer.current = null;
+    currentNotice.current = msg;
     setNoticeLeaving(false);
     setNoticeId((id) => id + 1);
     setNotice(msg);
@@ -877,10 +914,22 @@ export default function Community() {
       noticeExitTimer.current = window.setTimeout(() => {
         setNotice("");
         setNoticeLeaving(false);
+        currentNotice.current = null;
         noticeExitTimer.current = null;
         noticeTimer.current = null;
+        const next = noticeQueue.current.shift();
+        if (next) displayNotice(next);
       }, 330);
     }, 2700);
+  };
+  const toast = (msg: string) => {
+    if (document.documentElement.dataset.heikaNative === "true" && currentNotice.current) {
+      if (msg === currentNotice.current || noticeQueue.current.includes(msg)) return;
+      if (noticeQueue.current.length < 3) noticeQueue.current.push(msg);
+      else noticeQueue.current[2] = msg;
+      return;
+    }
+    displayNotice(msg);
   };
   const submitContentReport = async () => {
     if (reportSubmitting) return;
@@ -1006,7 +1055,7 @@ export default function Community() {
     setDetailReady(false);
     setDetail(id);
     setTransitionPhase("opening");
-    history.pushState({ ...history.state, heikaDetail: id }, "");
+    history.pushState({ ...history.state, heikaDetail: id }, "", `/?post=${id}`);
     update((s) => ({
       ...s,
       viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
@@ -1028,6 +1077,18 @@ export default function Community() {
     sharedPostHandled.current = sharedId;
     openPostRef.current(id, "discover");
   }, [ready, detail, all]);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const conversationId = params.get("conversation");
+    if (!ready || !conversationId || params.getAll("conversation").length !== 1 ||
+        sharedConversationHandled.current === conversationId ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return;
+    sharedConversationHandled.current = conversationId;
+    setMessageConversation(conversationId.toLowerCase());
+    setMessagesTabVisited(true);
+    setTabState("messages");
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+  }, [ready]);
   const sharedPostLoading = useRef<string | null>(null);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
@@ -1075,7 +1136,13 @@ export default function Community() {
   }, [detail]);
   useEffect(() => {
     const onBack = () => {
-      if (detail !== null) closeDetail(true);
+      if (detail !== null) {
+        closeDetail(true);
+        const openedPost = new URLSearchParams(location.search).get("post");
+        if (openedPost && sharedPostHandled.current === openedPost) {
+          history.replaceState(history.state, "", location.pathname);
+        }
+      }
     };
     window.addEventListener("popstate", onBack);
     return () => window.removeEventListener("popstate", onBack);
@@ -1087,7 +1154,12 @@ export default function Community() {
       stage = viewerStageRef.current,
       reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animation: Animation | undefined;
+    let transaction: ReturnType<typeof animationCoordinator.track> | undefined;
+    let disposed = false;
+    let settled = false;
     const finish = () => {
+      if (settled || disposed) return;
+      settled = true;
       if (opening) setViewerPhase(null);
       else {
         setViewerId(null);
@@ -1100,9 +1172,13 @@ export default function Community() {
       finish();
       return;
     }
-    if (!rect || !stage) {
-      const node = document.querySelector<HTMLElement>(".flip-stage");
-      if (node) {
+    const node = stage || document.querySelector<HTMLElement>(".flip-stage");
+    if (!node) {
+      finish();
+      return;
+    }
+    try {
+      if (!rect || !stage) {
         animation = node.animate(
           opening
             ? [
@@ -1115,54 +1191,52 @@ export default function Community() {
               ],
           { duration: 240, easing: "ease-out", fill: "forwards" },
         );
-        animation.onfinish = finish;
-      } else finish();
-      return () => animation?.cancel();
+      } else {
+        stage.style.transformOrigin = "top left";
+        const target = stage.getBoundingClientRect();
+        const first = `translate3d(${rect.left - target.left}px,${rect.top - target.top}px,0) scale(${rect.width / target.width},${rect.height / target.height})`;
+        const radius = getComputedStyle(stage).borderRadius || "6px";
+        animation = stage.animate(
+          opening
+            ? [
+                { transform: first, borderRadius: radius, opacity: 1 },
+                { transform: "translate3d(0,0,0) scale(1)", borderRadius: radius, opacity: 1 },
+              ]
+            : [
+                { transform: "translate3d(0,0,0) scale(1)", borderRadius: radius, opacity: 1 },
+                { transform: first, borderRadius: radius, opacity: 1 },
+              ],
+          { duration: 380, easing: "cubic-bezier(.22,.72,.18,1)", fill: "forwards" },
+        );
+      }
+      transaction = animationCoordinator.track("flip-stage", "P0", animation, finish, 1_200);
+    } catch {
+      finish();
     }
-    stage.style.transformOrigin = "top left";
-    const target = stage.getBoundingClientRect(),
-      first = `translate3d(${rect.left - target.left}px,${rect.top - target.top}px,0) scale(${rect.width / target.width},${rect.height / target.height})`;
-    animation = stage.animate(
-      opening
-        ? [
-            { transform: first, borderRadius: "7px", opacity: 1 },
-            {
-              transform: "translate3d(0,0,0) scale(1)",
-              borderRadius: "8px",
-              opacity: 1,
-            },
-          ]
-        : [
-            {
-              transform: "translate3d(0,0,0) scale(1)",
-              borderRadius: "8px",
-              opacity: 1,
-            },
-            { transform: first, borderRadius: "7px", opacity: 1 },
-          ],
-      {
-        duration: 380,
-        easing: "cubic-bezier(.22,.72,.18,1)",
-        fill: "forwards",
-      },
-    );
-    animation.onfinish = finish;
-    return () => animation?.cancel();
+    return () => {
+      disposed = true;
+      transaction?.release();
+      animation?.cancel();
+    };
   }, [viewerPhase, viewerId, viewerRect]);
   useLayoutEffect(() => {
     if (!transitionPhase) return;
     const opening = transitionPhase === "opening";
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let imageAnimation: Animation | undefined;
+    let transaction: ReturnType<typeof animationCoordinator.track> | undefined;
     let imageClone: HTMLImageElement | null = null;
     let imageTarget: HTMLImageElement | null = null;
     let cancelled = false;
     let finished = false;
     const finish = () => {
-      if (finished || cancelled) return;
+      if (finished) return;
       finished = true;
+      cancelled = true;
+      imageAnimation?.cancel();
       imageTarget?.style.removeProperty("visibility");
       imageClone?.remove();
+      imageClone = null;
       if (opening) {
         setDetailReady(true);
       } else {
@@ -1178,27 +1252,40 @@ export default function Community() {
       finish();
       return;
     }
-    const animation = detailNode.animate(
-      opening
-        ? [
-            { opacity: 1, transform: "translate3d(0,24px,0)" },
-            { opacity: 1, transform: "translate3d(0,0,0)" },
-          ]
-        : [
-            { opacity: 1, transform: "translate3d(0,0,0)" },
-            { opacity: 1, transform: "translate3d(0,18px,0)" },
-          ],
-      { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
-    );
-    animation.onfinish = finish;
+    let animation: Animation | undefined;
+    try {
+      const duration = opening ? 430 : 300;
+      animation = detailNode.animate(
+        opening
+          ? [
+              { opacity: 1, transform: "translate3d(0,24px,0)" },
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+            ]
+          : [
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+              { opacity: 1, transform: "translate3d(0,18px,0)" },
+            ],
+        { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+      );
+      transaction = animationCoordinator.track("detail-panel", "P0", animation, finish, duration + 900);
+    } catch {
+      finish();
+      return;
+    }
     const transitionImage = detailImageTransition;
     if (transitionImage) {
       imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
       if (imageTarget) {
         const animateImage = async () => {
           imageTarget?.style.setProperty("visibility", "hidden");
-          try { await imageTarget?.decode(); } catch {}
-          if (cancelled || !imageTarget) return;
+          try {
+            await imageTarget?.decode();
+          } catch {
+            // Keep the original image visible when this browser cannot decode it for a clone.
+            imageTarget?.style.removeProperty("visibility");
+            return;
+          }
+          if (cancelled || finished || !imageTarget) return;
           const targetRect = imageTarget.getBoundingClientRect();
           const originRect = transitionImage.rect;
           const from = opening ? originRect : targetRect;
@@ -1213,41 +1300,61 @@ export default function Community() {
           }
           imageClone = new Image();
           imageClone.src = transitionImage.src;
-          try { await imageClone.decode(); } catch {}
-          if (cancelled || !imageClone) return;
+          try {
+            await imageClone.decode();
+          } catch {
+            // Skip the shared-element effect if its temporary copy is not ready.
+            imageTarget.style.removeProperty("visibility");
+            imageClone.remove();
+            imageClone = null;
+            return;
+          }
+          if (cancelled || finished || !imageClone) return;
           imageClone.alt = "";
           imageClone.setAttribute("aria-hidden", "true");
+          const deltaX = to.left - from.left;
+          const deltaY = to.top - from.top;
+          const scaleX = to.width / from.width;
+          const scaleY = to.height / from.height;
           Object.assign(imageClone.style, {
             position: "fixed",
-            left: `${to.left}px`,
-            top: `${to.top}px`,
-            width: `${to.width}px`,
-            height: `${to.height}px`,
+            left: `${from.left}px`,
+            top: `${from.top}px`,
+            width: `${from.width}px`,
+            height: `${from.height}px`,
             objectFit: "cover",
             objectPosition: "center",
             zIndex: "120",
             pointerEvents: "none",
-            willChange: "left,top,width,height,border-radius",
+            transformOrigin: "top left",
+            willChange: "transform,border-radius",
           });
           document.body.appendChild(imageClone);
-          imageAnimation = imageClone.animate(
-            [
-              { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, borderRadius: "6px" },
-              { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: "0px" },
-            ],
-            { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
-          );
-          imageAnimation.onfinish = () => {
-            imageTarget?.style.removeProperty("visibility");
-            imageClone?.remove();
+          try {
+            imageAnimation = imageClone.animate(
+              [
+                { transform: "translate3d(0,0,0) scale(1,1)", borderRadius: "6px" },
+                { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(${scaleX},${scaleY})`, borderRadius: "0px" },
+              ],
+              { duration: opening ? 430 : 300, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+            );
+            imageAnimation.addEventListener("finish", () => {
+              imageTarget?.style.removeProperty("visibility");
+              imageClone?.remove();
+              imageClone = null;
+            }, { once: true });
+          } catch {
+            imageTarget.style.removeProperty("visibility");
+            imageClone.remove();
             imageClone = null;
-          };
+          }
         };
         void animateImage();
       }
     }
     return () => {
       cancelled = true;
+      transaction?.release();
       animation?.cancel();
       imageAnimation?.cancel();
       imageTarget?.style.removeProperty("visibility");
@@ -1448,6 +1555,23 @@ export default function Community() {
         ...s,
         notifications: { ...s.notifications, [key]: false },
       }));
+      return;
+    }
+    if (hasNativeBridge()) {
+      try {
+        const result = await requestNativeNotificationPermission();
+        if (!result?.granted || !result.enabled) {
+          setNotificationPermission("denied");
+          return toast("请在 Android 系统设置中允许黑卡通知");
+        }
+        setNotificationPermission("granted");
+        update((s) => ({
+          ...s,
+          notifications: { ...s.notifications, [key]: true },
+        }));
+      } catch {
+        toast("无法请求系统通知权限，请稍后重试");
+      }
       return;
     }
     if (notificationPermission === "unsupported" || !("Notification" in window))
@@ -1896,6 +2020,80 @@ export default function Community() {
     if (tab === "my-content") { setTab(myContentReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" })); return; }
     if (tab === "debug") { setTab("mine"); return; }
   };
+  nativeBackHandler.current = () => {
+    if (modal !== null) { setModal(null); return true; }
+    if (previewImage) { setPreviewImage(false); return true; }
+    if (authorProfile !== null) { setAuthorProfile(null); return true; }
+    if (detailMoreOpen) { setDetailMoreOpen(false); return true; }
+    if (viewerId !== null) { closeViewer(); return true; }
+    if (detail !== null) { closeDetail(); return true; }
+    if (tab === "messages") {
+      const chat = document.querySelector(".chat-screen");
+      if (chat && !chat.closest("[hidden]")) return false;
+    }
+    if (secondaryTitle !== null) { handleSecondaryBack(); return true; }
+    if (tab !== "today") {
+      setTab("today");
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.today || 0, behavior: "instant" }));
+      return true;
+    }
+    return false;
+  };
+  nativeNavigationHandler.current = (payload) => {
+    const route = typeof payload.route === "string" ? payload.route : "";
+    if (route.length > 2048 || !route.startsWith("/") || route.startsWith("//") || route.includes("#") || route.includes("\\")) return false;
+    let target: URL;
+    try { target = new URL(route, window.location.origin); }
+    catch { return false; }
+    if (target.origin !== window.location.origin || target.pathname !== "/" || target.username || target.password) return false;
+    const params = [...target.searchParams.keys()];
+    if (params.some((name) => name !== "post" && name !== "auth" && name !== "conversation")) return false;
+    const postId = target.searchParams.get("post");
+    const auth = target.searchParams.get("auth");
+    const conversationId = target.searchParams.get("conversation");
+    if (target.searchParams.getAll("post").length > 1 || target.searchParams.getAll("auth").length > 1 ||
+        target.searchParams.getAll("conversation").length > 1) return false;
+    if (postId && (!/^[0-9]{1,20}$/.test(postId) || !Number.isSafeInteger(Number(postId)))) return false;
+    if (auth && auth !== "reset") return false;
+    if (conversationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return false;
+    if ([postId, auth, conversationId].filter(Boolean).length > 1) return false;
+    if (auth === "reset") {
+      window.location.assign("/?auth=reset");
+      return true;
+    }
+    if (postId) {
+      if (new URLSearchParams(window.location.search).get("post") === postId) return true;
+      if (detail !== null || transitionBusy.current) {
+        window.location.assign(`/?post=${postId}`);
+        return true;
+      }
+      const id = Number(postId);
+      if (all.some((item) => item.id === id)) openPostRef.current(id, "discover");
+      else window.location.assign(`/?post=${postId}`);
+      return true;
+    }
+    if (conversationId) {
+      setMessageConversation(conversationId.toLowerCase());
+      setMessagesTabVisited(true);
+      setTab("messages");
+      return true;
+    }
+    setTab("today");
+    return true;
+  };
+  useEffect(() => {
+    const unsubscribeBack = subscribeNativeEvent("system.back", () => nativeBackHandler.current());
+    const unsubscribeNavigation = subscribeNativeEvent("navigation.open", (payload) => nativeNavigationHandler.current(payload));
+    const uninstallBridge = installNativeBridge();
+    return () => {
+      unsubscribeBack();
+      unsubscribeNavigation();
+      uninstallBridge();
+    };
+  }, []);
+  useEffect(() => {
+    if (ready) announceNativeReady();
+  }, [ready]);
   useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
@@ -2123,7 +2321,8 @@ export default function Community() {
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
-        setDetail(null);
+        if (detail !== null && history.state?.heikaDetail === detail) history.back();
+        else setDetail(null);
         setDetailReady(false);
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
@@ -2707,8 +2906,10 @@ export default function Community() {
         <div className="messages-tab-cache" hidden={tab !== "messages"}>
           <Messages
             initialPeer={messagePeer}
+            initialConversation={messageConversation}
             isActive={tab === "messages"}
             onPeerOpened={() => setMessagePeer(null)}
+            onConversationOpened={() => setMessageConversation(null)}
           />
         </div>
       )}
@@ -2815,7 +3016,7 @@ export default function Community() {
               <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
               <p>开启你关心的提醒。浏览器通知仍需系统许可。</p>
               {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
-              {notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
+              {notificationPermission === "denied" && <div className="permission-state">{hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}</div>}
             </div>
           )}
         </section>
@@ -3309,10 +3510,24 @@ export default function Community() {
             const rarityTier = state.rarityTiers[viewerId] || revealed?.rarityTier || "pending";
             const rarityLabel = cardRarityLabel(rarityTier);
             const rarityGrade = rarityTier === "ordinary" ? "N" : rarityTier === "pending" ? "待评" : rarityTier;
+            const stageRatio = viewerRect?.height
+              ? viewerRect.width / viewerRect.height
+              : 0.75;
+            const stageWidth = Math.max(1, Math.min(
+              430,
+              window.innerWidth - 28,
+              (window.innerHeight - 44) * stageRatio,
+            ));
             return (
               <div
                 ref={viewerStageRef}
                 className={`flip-stage ${viewerFlipped ? "is-flipped" : ""}`}
+                style={{
+                  "--flip-stage-width": `${stageWidth}px`,
+                  "--flip-stage-ratio": viewerRect?.height
+                    ? `${viewerRect.width} / ${viewerRect.height}`
+                    : "3 / 4",
+                } as CSSProperties}
               >
                 <div className="flip-inner">
                   <div className="flip-face flip-front flip-window-face">
@@ -3734,7 +3949,7 @@ export default function Community() {
                 )}
                 {notificationPermission === "denied" && (
                   <div className="permission-state">
-                    浏览器通知权限已拒绝，请在站点设置中重新允许。
+                    {hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}
                   </div>
                 )}
                 <div className="switch-list">

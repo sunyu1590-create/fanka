@@ -155,6 +155,88 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   expect(Math.abs((await page.evaluate(() => window.scrollY)) - beforeDetailScroll)).toBeLessThanOrEqual(2);
 });
 
+test("native flip and detail transitions preserve card ratio and animate the shared image with transforms", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.addInitScript(() => {
+    window.HeikaNative = { postMessage: () => {}, onmessage: null };
+  });
+  await enterApp(page);
+  const nativeModalMotion = await page.evaluate(() => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    const panel = document.createElement("div");
+    panel.className = "modal";
+    backdrop.append(panel);
+    document.body.append(backdrop);
+    const animation = panel.getAnimations()[0];
+    const keyframes = (animation?.effect as KeyframeEffect | null)?.getKeyframes() || [];
+    const result = {
+      backdropFilter: getComputedStyle(backdrop).backdropFilter,
+      animationName: getComputedStyle(panel).animationName,
+      keyframes: keyframes.map((frame) => Object.keys(frame)),
+    };
+    backdrop.remove();
+    return result;
+  });
+  expect(nativeModalMotion.backdropFilter).toBe("blur(3px)");
+  expect(nativeModalMotion.animationName).toBe("heika-native-modal-in");
+  expect(nativeModalMotion.keyframes.every((frame) => !frame.includes("filter"))).toBe(true);
+  await page.evaluate(() => {
+    const target = window as Window & { __heikaSharedImageKeyframes?: string[][] };
+    target.__heikaSharedImageKeyframes = [];
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!(node instanceof HTMLImageElement) || node.getAttribute("aria-hidden") !== "true") continue;
+          const animation = node.getAnimations()[0];
+          const effect = animation?.effect as KeyframeEffect | null;
+          const keyframes = effect?.getKeyframes().map((frame) => Object.keys(frame));
+          if (keyframes) target.__heikaSharedImageKeyframes?.push(...keyframes);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
+
+  await page.getByRole("button", { name: "首页" }).click();
+  const card = page.locator(".candidate-feed-card").first();
+  await expect(card).toBeVisible();
+  const source = await card.boundingBox();
+  await card.click();
+  const stage = page.locator(".flip-stage");
+  await expect(stage).toBeVisible();
+  await expect.poll(() => stage.evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running"))).toBe(true);
+  await page.evaluate(() => {
+    const message = {
+      version: 1,
+      id: "test-background-transition",
+      type: "event",
+      event: "app.lifecycle",
+      payload: { state: "background" },
+    };
+    window.HeikaNative?.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) }));
+  });
+  await expect.poll(() => stage.evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running"))).toBe(false);
+  await expect.poll(() => stage.evaluate((node) => getComputedStyle(node).transform)).toBe("none");
+  const stageRatio = await stage.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return rect.width / rect.height;
+  });
+  expect(Math.abs(stageRatio - (source?.width || 1) / (source?.height || 1))).toBeLessThan(0.025);
+
+  await page.getByRole("button", { name: "确认翻开" }).click();
+  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
+  await page.getByRole("button", { name: "查看更多" }).click();
+  await expect(page.locator(".detail")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __heikaSharedImageKeyframes?: string[][] }).__heikaSharedImageKeyframes?.length || 0)).toBeGreaterThan(0);
+  const keyframes = await page.evaluate(() => (window as Window & { __heikaSharedImageKeyframes?: string[][] }).__heikaSharedImageKeyframes || []);
+  expect(keyframes.every((keys) => keys.includes("transform"))).toBe(true);
+  expect(keyframes.some((keys) => keys.some((key) => ["left", "top", "width", "height"].includes(key)))).toBe(false);
+  await page.getByRole("button", { name: "返回" }).click();
+  await expect(page.locator(".flip-overlay")).toHaveCount(0);
+});
+
 test("discovery, image detail, and publish composer remain responsive with soft keyboard focus", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await enterApp(page);
