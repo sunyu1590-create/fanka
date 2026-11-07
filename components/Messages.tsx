@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { browserDb } from "@/lib/browser-db";
+import { subscribeNativeEvent } from "@/lib/native-bridge";
 import AnimatedNotice from "./AnimatedNotice";
 type Profile = { id: string; nickname: string; bio: string };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
@@ -91,6 +92,15 @@ export default function Messages({
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = user?.id ?? null;
   activeRef.current = active;
+  useEffect(() => subscribeNativeEvent("system.back", () => {
+    if (!isActive) return false;
+    const screen = document.querySelector(".chat-screen");
+    if (activeRef.current && screen && !screen.closest("[hidden]")) {
+      setActive(null);
+      return true;
+    }
+    return false;
+  }), [isActive]);
   useEffect(() => {
     let alive = true;
     let cleanup = () => {};

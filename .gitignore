@@ -1,5 +1,11 @@
 node_modules/
 .next/
+.gradle/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/**/release.keystore
+android/**/signing.properties
 .npm-cache/
 .env.local
 *.tsbuildinfo
