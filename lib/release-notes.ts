@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.38.8",
+    date: "2026.11.07",
+    notes: [
+      { category: "体验优化", text: "会员中心重构为黑卡支持计划，加入开发者来信、当前等级额度、会员方案预览和自愿支持说明。" },
+      { category: "问题修复", text: "保留原会员等级、动态翻卡额度和额外翻卡包预览逻辑；当前不产生扣费或真实订单。" },
+    ],
+  },
+  {
     version: "2.38.7",
     date: "2026.11.07",
     notes: [

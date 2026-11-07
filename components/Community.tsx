@@ -77,6 +77,7 @@ import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExte
 import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
+import MembershipCenter from "./MembershipCenter";
 const AboutHeika = dynamic(() => import("./AboutHeika"));
 const CacheManager = dynamic(() => import("./CacheManager"));
 const FeedbackForm = dynamic(() => import("./FeedbackForm"));
@@ -238,11 +239,6 @@ const initial: State = {
   },
   viewed: [],
 };
-const membershipPlans = [
-  { id: "plus", name: "Plus", price: 12, dailyFlips: 9 },
-  { id: "pro", name: "Pro", price: 16, dailyFlips: 13 },
-] as const;
-const extraFlipPacks = [3, 5, 10] as const;
 function hydrateProfileDetails(rows: Array<{ attribute: string; value: string; is_public: boolean }> = []): ProfileDetails {
   const details: ProfileDetails = {
     gender: "", mbti: "", birthday: "", hobbies: [],
@@ -478,10 +474,6 @@ export default function Community() {
   } | null>(null);
   const [luckyReward, setLuckyReward] = useState<{ postId: number; amount: number } | null>(null);
   const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
-  const [selectedFlipPack, setSelectedFlipPack] = useState<number | null>(null);
-  const [extraPacksOpen, setExtraPacksOpen] = useState(false);
-  const [subscriptionRulesOpen, setSubscriptionRulesOpen] = useState(false);
   const luckyRewardTimer = useRef<number | null>(null);
   const rarityRevealTimer = useRef<number | null>(null);
   const flipRainTimer = useRef<number | null>(null);
@@ -3930,11 +3922,9 @@ export default function Community() {
         />
       )}
       {tab === "settings" && settingsDetail !== null && (
-        <section key={settingsDetail} className="page settings-page settings-detail-page">
+        <section key={settingsDetail} className={`page settings-page settings-detail-page${settingsDetail === "membership" ? " membership-settings-page" : ""}`}>
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
-          <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理"})[settingsDetail]}</h1>
-          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "membership" ? "查看当前会员等级、每日翻卡额度与可选权益。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          {settingsDetail !== "membership" && <><div className="eyebrow">HEIKA / SETTINGS</div><h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
@@ -3960,57 +3950,7 @@ export default function Community() {
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
           {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
-          {settingsDetail === "membership" && <div className="membership-center-page">
-            <div className="membership-center-summary">
-              <span className="membership-center-mark"><Crown size={19}/></span>
-              <div><small>当前会员</small><strong>{membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}</strong></div>
-              <span className="membership-center-quota">今日 {dailyAllowance} 次</span>
-            </div>
-            <p className="membership-center-note">免费版每日 5 次 · Plus 每日 9 次 · Pro 每日 13 次；幸运加成会另行计入。</p>
-            <div className="subscription-section-label"><strong>会员方案预览</strong></div>
-            <div className="subscription-plans" role="group" aria-label="选择会员套餐">
-              {membershipPlans.map((plan) => {
-                const selected = selectedPlan === plan.id;
-                return <button type="button" key={plan.id} className={`subscription-plan${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setSelectedPlan(plan.id)}>
-                  <span className="subscription-plan-name">{plan.name}</span>
-                  <span className="subscription-plan-daily">{plan.dailyFlips} 次 <small>/ 日</small></span>
-                  <span className="subscription-plan-price">¥{plan.price}<small> / 月</small></span>
-                  <span className="subscription-plan-check" aria-hidden="true">{selected ? <Check size={15}/> : null}</span>
-                </button>;
-              })}
-            </div>
-            <button className="primary-button full subscription-continue" type="button" disabled={!selectedPlan} onClick={() => toast("当前仅预览，不会扣款")}>{selectedPlan ? `预览 ${membershipPlans.find((plan) => plan.id === selectedPlan)?.name} 订阅` : "请选择套餐"}</button>
-            <p className="subscription-preview-note">当前仅预览 · 不会扣款或开通套餐</p>
-            <section className="membership-disclosure-group">
-              <button type="button" className="membership-disclosure" aria-expanded={extraPacksOpen} onClick={() => setExtraPacksOpen((open) => !open)}>
-                <span><strong>额外翻卡包</strong><small>{selectedFlipPack ? `已选 +${selectedFlipPack} 次` : "一次性补充翻卡机会"}</small></span>
-                <ChevronRight size={17}/>
-              </button>
-              <div className={`membership-collapsible${extraPacksOpen ? " open" : ""}`} aria-hidden={!extraPacksOpen} inert={!extraPacksOpen}>
-                <div className="membership-collapsible-inner">
-                  <div className="extra-flip-options">
-                    {extraFlipPacks.map((count) => <button type="button" key={count} className={selectedFlipPack === count ? "selected" : ""} aria-pressed={selectedFlipPack === count} onClick={() => setSelectedFlipPack(count)}><strong>+{count}</strong><span>次翻卡</span></button>)}
-                  </div>
-                  {selectedFlipPack && <button className="soft-button full extra-pack-preview" type="button" onClick={() => toast("当前仅预览，不会扣款")}>预览 +{selectedFlipPack} 次卡包</button>}
-                  <p className="subscription-preview-note">一次性补充机会；当前仅预览，不会扣款。</p>
-                </div>
-              </div>
-            </section>
-            <section className="membership-disclosure-group rules-disclosure-group">
-              <button type="button" className="membership-disclosure" aria-expanded={subscriptionRulesOpen} onClick={() => setSubscriptionRulesOpen((open) => !open)}>
-                <span><strong>翻卡与订阅规则</strong><small>权益、概率与额度说明</small></span>
-                <ChevronRight size={17}/>
-              </button>
-              <div className={`membership-collapsible${subscriptionRulesOpen ? " open" : ""}`} aria-hidden={!subscriptionRulesOpen} inert={!subscriptionRulesOpen}>
-                <div className="membership-collapsible-inner subscription-rules-copy">
-                  <p>免费每日 5 次；Plus 每日共 9 次，Pro 每日共 13 次。会员次数按天刷新，幸运加成另行累计。</p>
-                  <p>Plus 每日首次翻卡额外 +3 EXP，Pro 额外 +6 EXP。</p>
-                  <p>每次翻卡的幸运奖励概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%；幸运加成每日最多累计 10 次。</p>
-                  <p>额外翻卡包为一次性补充。当前页面仅供预览，不会扣款、创建订单或开通权益。</p>
-                </div>
-              </div>
-            </section>
-          </div>}
+          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} onNotice={toast} /> }
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>兴趣保存在此设备，并按账号分别存储。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
