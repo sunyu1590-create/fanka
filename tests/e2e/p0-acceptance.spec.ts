@@ -50,6 +50,8 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
     } } }));
     await page.route("**/api/v1/admin/reports**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/posts**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
+    await page.route("**/api/v1/admin/message-reports**", (route) => route.fulfill({ json: { data: [] } }));
+    await page.route("**/api/v1/admin/users**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
   }
   await page.goto("/");
   const skip = page.getByRole("button", { name: /先随便看看/ });
@@ -155,6 +157,35 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   expect(Math.abs((await page.evaluate(() => window.scrollY)) - beforeDetailScroll)).toBeLessThanOrEqual(2);
 });
 
+test("discovery feed renders its local cache after a restart when the network is unavailable", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await enterApp(page);
+  await page.getByRole("button", { name: "发现" }).click();
+  await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
+  await expect.poll(() => page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase | null>((resolve) => {
+      const request = indexedDB.open("heika-public-content-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    });
+    if (!database) return false;
+    return await new Promise<boolean>((resolve) => {
+      const request = database.transaction("entries").objectStore("entries").get("discover:全部:1");
+      request.onsuccess = () => resolve(Boolean(request.result?.value?.items?.length));
+      request.onerror = () => resolve(false);
+    });
+  })).toBe(true);
+
+  await page.unroute("**/api/demo/cards**");
+  await page.route("**/api/demo/cards**", (route) => route.abort());
+  await page.reload();
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  await expect(navigation).toBeVisible();
+  await page.getByRole("button", { name: "发现" }).click();
+  await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
+  await expect(page.locator(".editorial-feed .post-card").first()).toContainText("浏览器验收内容");
+});
+
 test("native flip and detail transitions preserve card ratio and animate the shared image with transforms", async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 375, height: 812 });
@@ -237,19 +268,66 @@ test("native flip and detail transitions preserve card ratio and animate the sha
   await expect(page.locator(".flip-overlay")).toHaveCount(0);
 });
 
+test("native card transition uses the typed prepare, open, close, and release protocol", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.addInitScript(() => {
+    const requests: { type: string; payload: Record<string, unknown> }[] = [];
+    const bridge = {
+      postMessage(raw: string) {
+        const request = JSON.parse(raw) as { version: number; id: string; type: string; payload?: Record<string, unknown> };
+        requests.push({ type: request.type, payload: request.payload || {} });
+        if (request.type === "card.transition.prepare" || request.type === "card.transition.start" ||
+            request.type === "card.transition.cancel" || request.type === "card.transition.release" || request.type === "capabilities.get") {
+          const data = request.type === "card.transition.prepare" ? { prepared: true } :
+            request.type === "card.transition.start" ? { accepted: true } : {};
+          window.setTimeout(() => bridge.onmessage?.(new MessageEvent("message", { data: JSON.stringify({
+            version: 1, id: request.id, type: "result", requestType: request.type, ok: true, data,
+          }) })), 0);
+          if (request.type === "card.transition.start") {
+            window.setTimeout(() => bridge.onmessage?.(new MessageEvent("message", { data: JSON.stringify({
+              version: 1, id: `native-finished-${requests.length}`, type: "event", event: "card.transition.finished",
+              payload: { transactionId: request.payload?.transactionId, completed: true },
+            }) })), 120);
+          }
+        }
+      },
+      onmessage: null as ((event: MessageEvent<string>) => void) | null,
+    };
+    (window as Window & { HeikaNative?: typeof bridge; __heikaNativeRequests?: typeof requests }).HeikaNative = bridge;
+    (window as Window & { __heikaNativeRequests?: typeof requests }).__heikaNativeRequests = requests;
+  });
+  await enterApp(page);
+  await page.getByRole("button", { name: "发现" }).click();
+  const card = page.locator(".editorial-feed .post-card").first();
+  await expect(card).toBeVisible();
+  await expect.poll(() => card.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await card.click();
+  await expect(page.locator(".detail")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __heikaNativeRequests?: { type: string }[] }).__heikaNativeRequests?.some((entry) => entry.type === "card.transition.start"))).toBe(true);
+  await page.getByRole("button", { name: "返回" }).click();
+  await expect(page.locator(".flip-overlay")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    const requests = (window as Window & { __heikaNativeRequests?: { type: string; payload: Record<string, unknown> }[] }).__heikaNativeRequests || [];
+    return requests.some((entry) => entry.type === "card.transition.start" && entry.payload.direction === "close") &&
+      requests.some((entry) => entry.type === "card.transition.release");
+  })).toBe(true);
+});
+
 test("discovery, image detail, and publish composer remain responsive with soft keyboard focus", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await enterApp(page);
   await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.getByRole("button", { name: "单列阅读" }).click();
-  await page.locator(".settings-page .settings-back").click();
+  await page.getByRole("button", { name: /发现页布局/ }).click();
+  await page.getByRole("radio", { name: /单列阅读/ }).click();
+  await page.getByRole("button", { name: /返回，当前页面：设置/ }).click();
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
   await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("1");
   await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.locator(".discover-layout-options").getByRole("button", { name: "瀑布流", exact: true }).click();
-  await page.locator(".settings-page .settings-back").click();
+  await page.getByRole("button", { name: /发现页布局/ }).click();
+  await page.locator(".settings-detail-page").getByRole("radio", { name: /瀑布流/ }).click();
+  await page.getByRole("button", { name: /返回，当前页面：设置/ }).click();
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
   await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("2");
   await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
@@ -262,14 +340,14 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   await page.locator(".detail-topic-list").getByRole("button", { name: "#生活" }).click();
   await expect(page.locator(".topic-detail-page h1")).toHaveText("#生活");
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#0D0F12");
-  await page.locator(".topic-detail-page .settings-back").click();
+  await page.getByRole("button", { name: /返回，当前页面：发现/ }).click();
   await expect(page.locator(".detail")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "返回" }).click();
   await page.getByRole("button", { name: "发布内容" }).click();
-  await expect(page.getByRole("heading", { name: "分享一篇内容" })).toBeVisible();
+  await expect(page.locator(".composer-topbar strong")).toHaveText("分享一篇内容");
   await page.getByRole("textbox", { name: "标题" }).fill("浏览器验收草稿");
   await page.getByRole("textbox", { name: "正文" }).focus();
   await expect(page.getByRole("textbox", { name: "正文" })).toBeFocused();
@@ -296,7 +374,7 @@ test("report sheet and admin queue use the same theme tokens for signed-in accou
   await page.getByRole("button", { name: "我的" }).click();
   await page.getByRole("button", { name: /个人设置/ }).click();
   await page.getByRole("button", { name: /举报与内容审核/ }).click();
-  await expect(page.getByRole("heading", { name: /内容审核/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /管理后台/ })).toBeVisible();
   await expect(page.getByText("当前没有符合条件的举报。" )).toBeVisible();
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#F8F7F4");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

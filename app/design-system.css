@@ -943,8 +943,8 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #FFFFFF;
-  --surface: #FFFFFF;
+  --bg: #F8F7F4;
+  --surface: #FBFAF7;
   --card: #F5F6F7;
   --metal: #AAB9BD;
   --ink: #24272A;

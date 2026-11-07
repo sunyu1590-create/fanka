@@ -28,8 +28,8 @@ android {
         applicationId = "com.heika.community"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "2.2.1"
+        versionCode = 8
+        versionName = "2.2.2"
         buildConfigField("String", "WEB_APP_URL", "\"$normalizedWebUrl\"")
         buildConfigField("String", "WEB_APP_ORIGIN", "\"${webUri.scheme}://${webUri.rawAuthority}\"")
         manifestPlaceholders["webHost"] = webUri.host

@@ -25,6 +25,7 @@ internal class NativeBridge(
         fun onPageState(path: String)
         fun onBackResult(requestId: String, consumed: Boolean)
         fun onNavigationAck(requestId: String, accepted: Boolean)
+        fun onCardTransitionRequest(requestId: String, requestType: String, payload: JSONObject)
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -100,6 +101,10 @@ internal class NativeBridge(
         complete(requestId, requestType, false, JSONObject().put("code", error))
     }
 
+    fun completeRequest(requestId: String, requestType: String, ok: Boolean, data: JSONObject = JSONObject()) {
+        complete(requestId, requestType, ok, data)
+    }
+
     private fun handleMessage(raw: String, replyProxy: JavaScriptReplyProxy) {
         val request = try {
             JSONObject(raw)
@@ -173,6 +178,16 @@ internal class NativeBridge(
                 diagnostics.recordResourceFailure()
                 complete(id, type, true, JSONObject())
             }
+            "card.transition.prepare", "card.transition.start", "card.transition.cancel", "card.transition.release" -> {
+                val payload = request.optJSONObject("payload") ?: JSONObject()
+                val transactionId = payload.optString("transactionId")
+                if (!TRANSITION_ID.matches(transactionId)) {
+                    complete(id, type, false, JSONObject().put("code", "invalid_transition"))
+                } else {
+                    pending[id] = PendingReply(type, replyProxy)
+                    callbacks.onCardTransitionRequest(id, type, payload)
+                }
+            }
         }
     }
 
@@ -234,6 +249,7 @@ internal class NativeBridge(
         private const val MAX_CACHED_RESULTS = 128
         private const val MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991L
         private val REQUEST_ID = Regex("^[A-Za-z0-9_-]{1,80}$")
+        private val TRANSITION_ID = Regex("^[A-Za-z0-9_-]{1,80}$")
         private val POST_ID = Regex("^[0-9]{1,20}$")
         private val SAFE_PAGE_PATH = Regex("^/(?:\\?post=[0-9]{1,20}|\\?auth=reset|\\?conversation=[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})?$")
         private val ALLOWED_TYPES = setOf(
@@ -244,6 +260,10 @@ internal class NativeBridge(
             "system.back.result",
             "navigation.ack",
             "image.error",
+            "card.transition.prepare",
+            "card.transition.start",
+            "card.transition.cancel",
+            "card.transition.release",
         )
     }
 }

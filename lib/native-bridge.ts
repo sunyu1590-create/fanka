@@ -3,6 +3,13 @@ export type NativePermissionResult = {
   enabled: boolean;
 };
 
+export type NativeTransitionRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 type NativeMessage = {
   version: 1;
   id: string;
@@ -171,7 +178,78 @@ export async function requestNativeNotificationPermission(): Promise<NativePermi
   };
 }
 
-function request(type: string, payload: Record<string, unknown> = {}): Promise<NativeMessage> {
+export async function prepareNativeCardTransition(
+  transactionId: string,
+  rect: NativeTransitionRect,
+  devicePixelRatio: number,
+): Promise<boolean> {
+  if (!hasNativeBridge() || !isTransitionRect(rect) || !Number.isFinite(devicePixelRatio) || devicePixelRatio < 0.5 || devicePixelRatio > 4) return false;
+  try {
+    const response = await request("card.transition.prepare", { transactionId, rect, devicePixelRatio }, 600);
+    return response.ok === true && response.data?.prepared === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function startNativeCardTransition(
+  transactionId: string,
+  direction: "open" | "close",
+  targetRect: NativeTransitionRect,
+  durationMs: number,
+): Promise<boolean> {
+  if (!hasNativeBridge() || !isTransitionRect(targetRect) || !Number.isFinite(durationMs)) return false;
+  try {
+    const response = await request("card.transition.start", {
+      transactionId,
+      direction,
+      targetRect,
+      durationMs: Math.min(600, Math.max(160, Math.round(durationMs))),
+    }, 500);
+    return response.ok === true && response.data?.accepted === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function cancelNativeCardTransition(transactionId: string) {
+  if (!hasNativeBridge()) return;
+  try {
+    await request("card.transition.cancel", { transactionId }, 300);
+  } catch {
+    // The Activity also releases transition resources on pause and page teardown.
+  }
+}
+
+export async function releaseNativeCardTransition(transactionId: string) {
+  if (!hasNativeBridge()) return;
+  try {
+    await request("card.transition.release", { transactionId }, 300);
+  } catch {
+    // Releasing an already expired snapshot is harmless.
+  }
+}
+
+export function waitForNativeCardTransition(transactionId: string, timeoutMs: number) {
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let timeout = 0;
+    const finish = (completed: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      unsubscribe();
+      resolve(completed);
+    };
+    const unsubscribe = subscribeNativeEvent("card.transition.finished", (payload) => {
+      if (payload.transactionId !== transactionId) return;
+      finish(payload.completed === true);
+    });
+    timeout = window.setTimeout(() => finish(false), Math.max(100, timeoutMs));
+  });
+}
+
+function request(type: string, payload: Record<string, unknown> = {}, timeoutMs = 8_000): Promise<NativeMessage> {
   const bridge = typeof window === "undefined" ? undefined : window.HeikaNative;
   if (!bridge) return Promise.reject(new Error("原生通信不可用"));
   const id = newId();
@@ -179,7 +257,7 @@ function request(type: string, payload: Record<string, unknown> = {}): Promise<N
     const timeout = window.setTimeout(() => {
       pendingRequests.delete(id);
       reject(new Error("原生通信超时"));
-    }, 8_000);
+    }, timeoutMs);
     pendingRequests.set(id, { requestType: type, resolve, reject, timeout });
     try {
       bridge.postMessage(JSON.stringify({ version: 1, id, type, payload }));
@@ -189,4 +267,10 @@ function request(type: string, payload: Record<string, unknown> = {}): Promise<N
       reject(new Error("原生通信失败"));
     }
   });
+}
+
+function isTransitionRect(rect: NativeTransitionRect) {
+  return [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) &&
+    rect.width > 0 && rect.height > 0 && rect.width <= 2_000 && rect.height <= 2_000 &&
+    Math.abs(rect.left) <= 10_000 && Math.abs(rect.top) <= 10_000;
 }

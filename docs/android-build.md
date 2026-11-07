@@ -9,7 +9,7 @@
 
 原有 Expo Android 实现和 `build-android-apk.yml` 已从远端 `android/phase-one`、`android/phase-two` 分支的当前树中移除；第一阶段统一使用本目录下的 Kotlin WebView 容器及新 workflow。
 
-新包沿用旧客户端的 `applicationId` `com.heika.community`；当前首版修复版本为 `2.2.1`（`versionCode=7`）。GitHub debug APK 使用 Android debug key；如果现有安装由另一把发布密钥签名，Android 不允许直接覆盖安装。正式升级包需要使用原发布签名密钥；当前 workflow 的 unsigned release 包不能直接安装。
+新包沿用旧客户端的 `applicationId` `com.heika.community`；当前版本为 `2.2.2`（`versionCode=8`）。GitHub debug APK 使用 Android debug key；如果现有安装由另一把发布密钥签名，Android 不允许直接覆盖安装。正式升级包需要使用原发布签名密钥；当前 workflow 的 unsigned release 包不能直接安装。
 
 默认入口为 `https://moonclean.shop/`。如需使用其他部署地址，在仓库的 **Settings → Secrets and variables → Actions → Variables** 设置 `HEIKA_WEB_URL`，值必须为可信 HTTPS 根地址；不要包含路径、查询参数或 fragment。构建会以此地址生成精确的 WebView Bridge 来源规则和 HTTPS Deep Link host。
 

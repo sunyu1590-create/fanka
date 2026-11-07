@@ -53,6 +53,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var root: FrameLayout? = null
     private var webView: WebView? = null
     private var bridge: NativeBridge? = null
+    private var cardTransition: NativeCardTransition? = null
     private var bridgeSupported = false
     private var webContentCommitted = false
     private var overlay: View? = null
@@ -156,6 +157,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     override fun onPause() {
         stopFrameMetrics()
         bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "background"))
+        cardTransition?.clearAll()
         webView?.onPause()
         super.onPause()
     }
@@ -186,6 +188,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     override fun onDestroy() {
         stopFrameMetrics()
+        cardTransition?.clearAll()
+        cardTransition = null
         loadTimeout?.let(mainHandler::removeCallbacks)
         backTimeout?.let(mainHandler::removeCallbacks)
         navigationTimeout?.let(mainHandler::removeCallbacks)
@@ -224,6 +228,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
 
+        cardTransition = NativeCardTransition(this, container, view, diagnostics) { id, completed ->
+            bridge?.sendEvent(
+                "card.transition.finished",
+                JSONObject().put("transactionId", id).put("completed", completed),
+            )
+        }
+
         val nativeBridge = NativeBridge(view, trustedOrigin, diagnostics, object : NativeBridge.Callbacks {
             override fun onWebReady() {
                 diagnostics.recordFirstInteractive()
@@ -258,6 +269,45 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 lastDeliveredRoute = null
                 dispatchNextNavigation()
             }
+
+            override fun onCardTransitionRequest(requestId: String, requestType: String, payload: JSONObject) {
+                val transactionId = payload.optString("transactionId")
+                when (requestType) {
+                    "card.transition.prepare" -> {
+                        val rect = payload.optJSONObject("rect")
+                        if (rect == null) {
+                            bridge?.completeRequest(requestId, requestType, false, JSONObject().put("code", "invalid_rect"))
+                        } else {
+                            cardTransition?.prepare(transactionId, rect, payload.optDouble("devicePixelRatio", Double.NaN)) { prepared ->
+                                bridge?.completeRequest(
+                                    requestId,
+                                    requestType,
+                                    true,
+                                    JSONObject().put("prepared", prepared),
+                                )
+                            } ?: bridge?.completeRequest(requestId, requestType, true, JSONObject().put("prepared", false))
+                        }
+                    }
+                    "card.transition.start" -> {
+                        val target = payload.optJSONObject("targetRect")
+                        val accepted = target != null && cardTransition?.start(
+                            transactionId,
+                            payload.optString("direction"),
+                            target,
+                            payload.optLong("durationMs", 360L),
+                        ) == true
+                        bridge?.completeRequest(requestId, requestType, true, JSONObject().put("accepted", accepted))
+                    }
+                    "card.transition.cancel" -> {
+                        cardTransition?.cancel(transactionId)
+                        bridge?.completeRequest(requestId, requestType, true)
+                    }
+                    "card.transition.release" -> {
+                        cardTransition?.release(transactionId)
+                        bridge?.completeRequest(requestId, requestType, true)
+                    }
+                }
+            }
         })
         bridge = nativeBridge
         bridgeSupported = nativeBridge.install()
@@ -280,6 +330,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 webContentCommitted = false
+                cardTransition?.clearAll()
                 bridge?.onPageStarted()
                 val uri = url.toUri()
                 if (!isTrustedUrl(uri)) {
@@ -352,6 +403,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     return true
                 }
                 lastSafeRoute = safeRoute(view.url?.toUri()) ?: lastSafeRoute
+                cardTransition?.clearAll()
                 detachRendererLostWebView(view)
                 val now = SystemClock.elapsedRealtime()
                 if (now - rendererRestartWindow > RENDERER_RESTART_WINDOW_MS) {
@@ -430,6 +482,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     private fun releaseWebView() {
         val view = webView ?: return
+        cardTransition?.clearAll()
+        cardTransition = null
         cancelLoadTimeout()
         view.stopLoading()
         view.webChromeClient = null
