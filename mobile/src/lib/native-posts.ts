@@ -13,6 +13,9 @@ export type NativePost = {
   likeCount: number;
   viewCount: number;
   channel: "community" | "ai";
+  contentType?: string;
+  resourceData?: Record<string, unknown>;
+  rarityTier?: string;
   isDemo: boolean;
   status?: string;
 };
@@ -41,6 +44,9 @@ export function normalizePost(value: unknown): NativePost | null {
     likeCount: Math.max(0, Number(row.likeCount ?? row.like_count) || 0),
     viewCount: Math.max(0, Number(row.viewCount ?? row.view_count) || 0),
     channel: row.channel === "ai" ? "ai" : "community",
+    contentType: typeof row.contentType === "string" ? row.contentType : typeof row.content_type === "string" ? row.content_type : undefined,
+    resourceData: row.resourceData && typeof row.resourceData === "object" && !Array.isArray(row.resourceData) ? row.resourceData as Record<string, unknown> : row.resource_data && typeof row.resource_data === "object" && !Array.isArray(row.resource_data) ? row.resource_data as Record<string, unknown> : undefined,
+    rarityTier: typeof row.rarityTier === "string" ? row.rarityTier : undefined,
     isDemo: Boolean(row.isDemo),
     status: typeof row.status === "string" ? row.status : undefined,
   };
