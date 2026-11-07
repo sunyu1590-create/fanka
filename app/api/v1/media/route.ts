@@ -18,10 +18,10 @@ const imagePaths = (path: string) => {
   const [, folder, basename] = match;
   return { original: path, thumbnail: `${folder}${basename}-480.webp`, retina: `${folder}${basename}-960.webp` };
 };
-const validImagePath = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-(?:480|960))?\.(?:jpg|png|webp)$/i;
+const validMediaPath = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-(?:480|960))?\.(?:jpg|png|webp|mp4|webm)$/i;
 
-async function findImage(db: Awaited<ReturnType<typeof context>>["db"], path: string) {
-  if (!validImagePath.test(path)) throw new ApiError(400, "图片路径无效");
+async function findMedia(db: Awaited<ReturnType<typeof context>>["db"], path: string) {
+  if (!validMediaPath.test(path)) throw new ApiError(400, "媒体路径无效");
   const { data, error } = await db.from("post_media")
     .select("post_id,posts!inner(status)")
     .or(`storage_path.eq.${path},thumbnail_path.eq.${path},retina_thumbnail_path.eq.${path}`)
@@ -35,24 +35,24 @@ export async function GET(req: NextRequest) {
     try {
       const { db } = await context(req, false);
       const path = req.nextUrl.searchParams.get("path") || "";
-      const media = await findImage(db, path);
-      if (!media) throw new ApiError(404, "图片不存在");
-      const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 600);
+      const media = await findMedia(db, path);
+      if (!media) throw new ApiError(404, "媒体不存在");
+      const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 3600);
       dbError(error);
-      if (!data?.signedUrl) throw new ApiError(404, "图片不存在");
+      if (!data?.signedUrl) throw new ApiError(404, "媒体不存在");
       return NextResponse.redirect(data.signedUrl, 302);
     } catch (error) {
-      return NextResponse.json({ error: error instanceof ApiError ? error.message : "图片加载失败" }, { status: error instanceof ApiError ? error.status : 500 });
+      return NextResponse.json({ error: error instanceof ApiError ? error.message : "媒体加载失败" }, { status: error instanceof ApiError ? error.status : 500 });
     }
   }
   return respond(async () => {
     const { db } = await context(req, false);
     const path = req.nextUrl.searchParams.get("path") || "";
-    const media = await findImage(db, path);
-    if (!media) throw new ApiError(404, "图片不存在");
-    const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 600);
+    const media = await findMedia(db, path);
+    if (!media) throw new ApiError(404, "媒体不存在");
+    const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 3600);
     dbError(error);
-    return { url: data?.signedUrl, expires_in: 600 };
+    return { url: data?.signedUrl, expires_in: 3600 };
   });
 }
 

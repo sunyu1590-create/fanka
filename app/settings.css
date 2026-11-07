@@ -67,6 +67,12 @@
 .cache-list li small { color: var(--muted); }
 .cache-clear-button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
 .feedback-form { display: grid; gap: 16px; }
+.feedback-attachment { display:grid; gap:7px; color:var(--muted); font-size:12px; }
+.feedback-attachment input { color:var(--ink); font:inherit; }
+.feedback-attachment small { font-size:11px; }
+.feedback-attachment-preview { display:flex; align-items:flex-start; gap:12px; }
+.feedback-attachment-preview img,.feedback-admin-attachment { width:min(100%,320px); max-height:320px; border-radius:8px; object-fit:contain; background:var(--surface); }
+.feedback-attachment-preview button { border:1px solid var(--line); border-radius:8px; padding:8px 12px; background:transparent; color:var(--ink); }
 .feedback-form>label:not(.feedback-honeypot) { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
 .feedback-form select, .feedback-form textarea, .feedback-admin select, .feedback-admin textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; background: var(--surface); color: var(--ink); font-size: 14px; line-height: 1.55; }
 .feedback-form textarea, .feedback-admin textarea { resize: vertical; }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 
-type Item = { id: string; user_id: string | null; category: "suggestion" | "problem" | "other"; message: string; status: "open" | "in_progress" | "resolved" | "dismissed"; review_note: string | null; created_at: string };
+type Item = { id: string; user_id: string | null; category: "suggestion" | "problem" | "other"; message: string; status: "open" | "in_progress" | "resolved" | "dismissed"; review_note: string | null; attachment_url?: string | null; created_at: string };
 const categoryName = { suggestion: "功能建议", problem: "使用问题", other: "其他反馈" };
 const statusName = { open: "待处理", in_progress: "处理中", resolved: "已解决", dismissed: "已归档" };
 
@@ -38,7 +38,7 @@ export default function FeedbackAdmin() {
     {error && <p className="settings-error" role="alert">{error}</p>}
     {!items.length && !error ? <p className="settings-note">当前没有反馈。</p> : <div className="feedback-admin-list">{items.map((item) => <article className="feedback-admin-item" key={item.id}>
       <div className="feedback-admin-meta"><span>{categoryName[item.category]}</span><span>{statusName[item.status]}</span><time>{new Date(item.created_at).toLocaleString("zh-CN")}</time></div>
-      <p>{item.message}</p><small>提交者：{item.user_id ? item.user_id.slice(0, 8) : "账号已删除"}</small>
+      <p>{item.message}</p>{item.attachment_url && <a href={item.attachment_url} target="_blank" rel="noreferrer"><img className="feedback-admin-attachment" src={item.attachment_url} alt="用户反馈附件"/></a>}<small>提交者：{item.user_id ? item.user_id.slice(0, 8) : "账号已删除"}</small>
       <textarea value={notes[item.id] ?? item.review_note ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} maxLength={1000} rows={2} placeholder="处理说明（可选）" />
       <div className="feedback-admin-actions"><button type="button" disabled={busy === item.id} onClick={() => void update(item.id, "in_progress")}>处理中</button><button type="button" disabled={busy === item.id} onClick={() => void update(item.id, "resolved")}>标记已解决</button><button type="button" disabled={busy === item.id} onClick={() => void update(item.id, "dismissed")}>归档</button></div>
     </article>)}</div>}
