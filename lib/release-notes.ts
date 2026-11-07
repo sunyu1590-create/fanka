@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.39.0",
+    date: "2026.11.07",
+    notes: [
+      { category: "体验优化", text: "放大会员中心排版与关键数字，强化当前额度、三档会员方案和支持计划的视觉层级，完善移动端布局与折叠交互。" },
+      { category: "问题修复", text: "明确区分会员基础额度与每日幸运奖励，Pro 15 次会显示为基础 13 次加奖励 2 次。" },
+    ],
+  },
+  {
     version: "2.38.9",
     date: "2026.11.07",
     notes: [

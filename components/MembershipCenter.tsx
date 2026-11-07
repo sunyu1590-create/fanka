@@ -21,7 +21,7 @@ const letter = [
 ];
 
 export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNotice }: { tier: MembershipTier; dailyAllowance: number; usedFlips: number; onNotice: (message: string) => void }) {
-  const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<MembershipTier | null>(null);
   const [selectedPack, setSelectedPack] = useState<number | null>(null);
   const [letterOpen, setLetterOpen] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
@@ -32,6 +32,9 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNo
   const used = Math.min(Math.max(0, usedFlips), dailyAllowance);
   const remaining = Math.max(0, dailyAllowance - used);
   const currentName = tier === "pro" ? "Pro" : tier === "plus" ? "Plus" : "Free";
+  const baseAllowance = MEMBERSHIP_PLANS.find((plan) => plan.id === tier)?.dailyFlips ?? 5;
+  const bonusAllowance = Math.max(0, dailyAllowance - baseAllowance);
+  const activePlan = selectedPlan ? MEMBERSHIP_PLANS.find((plan) => plan.id === selectedPlan) : null;
   const scrollToSupport = () => supportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return <div className={`membership-center-page membership-tier-${tier}`}>
@@ -43,7 +46,7 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNo
 
     <section className="membership-identity" aria-label="当前会员身份">
       <span className="membership-identity-icon"><Crown size={19}/></span>
-      <div className="membership-identity-main"><small>当前身份</small><strong>{currentName}</strong><span>今日已翻 {used} 次 · 还可翻 {remaining} 次</span></div>
+      <div className="membership-identity-main"><small>当前会员身份</small><strong>{currentName}</strong><span>今日已翻 {used} 次 · 还可翻 {remaining} 次</span><div className="membership-quota-track" role="progressbar" aria-label="今日翻卡进度" aria-valuemin={0} aria-valuemax={dailyAllowance} aria-valuenow={used}><i style={{ width: `${dailyAllowance ? Math.min(100, used / dailyAllowance * 100) : 0}%` }}/></div><small className="membership-quota-breakdown">基础 {baseAllowance} 次{bonusAllowance > 0 ? ` + 幸运奖励 ${bonusAllowance} 次` : ""}</small></div>
       <span className="membership-identity-quota">{dailyAllowance}<small> 次 / 日</small></span>
     </section>
 
@@ -59,16 +62,14 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNo
 
     <section className="membership-plan-section" aria-labelledby="membership-plan-title">
       <div className="membership-section-kicker">MEMBERSHIP PREVIEW</div>
-      <div className="membership-section-heading"><div><h3 id="membership-plan-title">黑卡支持计划</h3><p>预览未来的会员身份与每日翻卡额度。</p></div></div>
+      <div className="membership-section-heading"><div><h3 id="membership-plan-title">会员方案预览</h3><p>选择适合你的支持方式，解锁更多探索次数。</p></div></div>
       <div className="membership-plan-grid" role="group" aria-label="选择会员方案预览">
-        {MEMBERSHIP_PLANS.map((plan) => plan.id === "free" ? <div className="membership-plan-card is-free" key={plan.id} aria-current={tier === "free" ? "true" : undefined}>
-          <span className="membership-plan-name">Free{tier === "free" && <small>当前</small>}</span><strong>{plan.dailyFlips}<small> 次 / 日</small></strong><span className="membership-plan-price">{plan.previewPrice}</span><span className="membership-plan-benefit">黑卡基础探索额度</span>
-        </div> : <button type="button" key={plan.id} className={`membership-plan-card is-${plan.id}${selectedPlan === plan.id ? " selected" : ""}`} aria-pressed={selectedPlan === plan.id} onClick={() => setSelectedPlan(plan.id)}>
-          <span className="membership-plan-name">{plan.name}{tier === plan.id && <small>当前</small>}</span><strong>{plan.dailyFlips}<small> 次 / 日</small></strong><span className="membership-plan-price">{plan.previewPrice}<small> / 月</small></span><span className="membership-plan-benefit">{plan.note} · 仅供参考</span>{selectedPlan === plan.id && <Check className="membership-plan-selected-icon" size={16} aria-hidden="true"/>}
+        {MEMBERSHIP_PLANS.map((plan) => <button type="button" key={plan.id} className={`membership-plan-card is-${plan.id}${selectedPlan === plan.id ? " selected" : ""}`} aria-pressed={selectedPlan === plan.id} onClick={() => setSelectedPlan(plan.id)}>
+          <span className="membership-plan-name">{plan.name}{tier === plan.id && <small>当前</small>}</span><strong>{plan.dailyFlips}<small> 次 / 日</small></strong><span className="membership-plan-price">{plan.previewPrice}{plan.id !== "free" && <small> / 月</small>}</span><span className="membership-plan-benefit">{plan.id === "free" ? "黑卡基础探索额度" : "更多每日探索机会"}</span>{selectedPlan === plan.id && <Check className="membership-plan-selected-icon" size={16} aria-hidden="true"/>}
         </button>)}
       </div>
       <p className="membership-preview-disclaimer">当前仅供预览，不会扣费或开通套餐。</p>
-      {selectedPlan && <button type="button" className="membership-plan-preview-action" onClick={() => onNotice(`${selectedPlan === "pro" ? "Pro" : "Plus"} 方案仅供预览，不会扣费或开通会员`)}>预览 {selectedPlan === "pro" ? "Pro" : "Plus"} 方案</button>}
+      {activePlan && <div className={`membership-selected-detail is-${activePlan.id}`} aria-live="polite"><span><strong>{activePlan.name}</strong><small>{activePlan.id === "free" ? "持续可用的免费方案" : "方案权益预览 · 尚未开放订阅"}</small></span><b>{activePlan.dailyFlips}<small> 次 / 日</small></b><button type="button" className="membership-plan-preview-action" onClick={() => onNotice(`${activePlan.name} 方案仅供预览，不会扣费或开通会员`)}>查看方案详情</button></div>}
       <button type="button" className="membership-support-cta" onClick={scrollToSupport}>了解支持方式 <ArrowDown size={16}/></button>
     </section>
 
