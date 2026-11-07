@@ -64,6 +64,7 @@
 | 新增翻卡/详情/原生弹层专项 Playwright | 1/1 通过 |
 | 完整 `npx playwright test --reporter=line` | 7/7 通过 |
 | `:app:assembleDebug`、`:app:assembleRelease`、`:app:lintDebug` | 均通过 |
+| GitHub Actions #15 | Web 验证与 Debug/Release APK 组装、artifact 上传均成功 |
 | Android 真机/模拟器 | 未运行：环境没有连接设备或可用模拟器 |
 
 本地 Debug APK 已生成：[app-debug.apk](../android/app/build/outputs/apk/debug/app-debug.apk)。Release 构建产物为未签名 APK，构建通过不表示已完成签名或发布。
@@ -72,8 +73,9 @@
 
 - 分支：`codex/heika-android-phase-2`；没有更新 `main`。
 - 提交：[`340cdc6`](https://github.com/sunyu1590-create/fanka/commit/340cdc6254541aaad255b2084560bd0edff85197)。
-- Workflow：[`HEIKA Android APK #14`](https://github.com/sunyu1590-create/fanka/actions/runs/42366514943)，Web 验证、Android Debug/Release 组装和 artifact 上传均成功。
-- Artifact：`heika-android-apk`（约 4.4 MB），包含 `HEIKA-debug.apk` 和 `HEIKA-release-unsigned.apk`，保留至 2026-11-21。可在 workflow 页面下载。
+- 构建提交：[`d959ec5`](https://github.com/sunyu1590-create/fanka/commit/d959ec5ebcf761bba12b35f30f4d39c73dfdd961)。
+- Workflow：[`HEIKA Android APK #15`](https://github.com/sunyu1590-create/fanka/actions/runs/42370785225) 成功；Web 测试、TypeScript 检查、Next.js 构建和 Android Debug/Release 组装全部通过。
+- Artifact：`heika-android-apk`（4,415,562 bytes），包含 `HEIKA-debug.apk` 和 `HEIKA-release-unsigned.apk`，有效期至 2026-11-21；可从 workflow 页面下载。
 
 ## 遗留风险与下一步
 
