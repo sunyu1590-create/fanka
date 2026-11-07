@@ -922,7 +922,7 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 @media(prefers-reduced-motion:reduce){.flip-confetti{display:none!important}}
 
 /* Every transient notice enters and exits with the same soft defocus. */
-.app [role="status"]:not(.daily-quota-summary):not(.lucky-reward-burst):not(.toast):not(.action-toast):not(.animated-notice){animation:notice-blur-in 260ms cubic-bezier(.2,.75,.25,1) both}
+.app [role="status"]:not(.daily-quota-summary):not(.lucky-reward-burst):not(.toast):not(.animated-notice){animation:notice-blur-in 260ms cubic-bezier(.2,.75,.25,1) both}
 @media(prefers-reduced-motion:reduce){
   .toast,.animated-notice,.lucky-reward-burst,.app [role="status"]:not(.daily-quota-summary):not(.lucky-reward-burst):not(.toast):not(.animated-notice){animation:none!important;filter:none!important}
 }
@@ -3424,22 +3424,6 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
 @media(max-width:480px){.toast{width:calc(100vw - 24px);max-width:440px;gap:9px;padding:10px 11px}.toast-copy{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.toast,.toast.is-leaving{animation:none!important;translate:0 0}.toast-copy{transition:none!important}}
 
-/* Centered operation feedback uses a near-opaque liquid-glass finish. */
-.action-toast{position:fixed;z-index:130;top:50%;left:50%;width:min(360px,calc(100vw - 36px));min-height:88px;display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;gap:14px;padding:17px 19px;overflow:hidden;border:1px solid color-mix(in srgb,var(--line) 90%,#fff);border-radius:var(--radius-dialog,16px);color:var(--ink);background:linear-gradient(145deg,color-mix(in srgb,var(--surface) 98%,#fff),color-mix(in srgb,var(--card) 94%,var(--surface)));-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);box-shadow:0 18px 54px color-mix(in srgb,var(--bg) 32%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 56%,transparent),inset 0 0 0 1px color-mix(in srgb,var(--line) 38%,transparent);transform:translate(-50%,-50%);animation:action-toast-enter 260ms cubic-bezier(.22,1,.36,1) both;pointer-events:none}
-.action-toast::before{position:absolute;inset:0;content:"";pointer-events:none;background:linear-gradient(125deg,color-mix(in srgb,#fff 31%,transparent),transparent 38%,transparent 72%,color-mix(in srgb,var(--action) 8%,transparent));opacity:.8}
-.action-toast.is-leaving{animation:action-toast-exit 180ms ease-in both}
-.action-toast-icon{position:relative;width:42px;height:42px;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--action) 25%,var(--line));border-radius:13px;color:var(--action);background:linear-gradient(145deg,color-mix(in srgb,var(--action) 16%,var(--surface)),color-mix(in srgb,var(--surface) 92%,var(--card)));box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 65%,transparent),0 4px 12px color-mix(in srgb,var(--ink) 8%,transparent)}
-.action-toast.is-error .action-toast-icon{color:#ae5252;border-color:color-mix(in srgb,#ae5252 30%,var(--line));background:linear-gradient(145deg,color-mix(in srgb,#ae5252 14%,var(--surface)),var(--surface))}
-.action-toast-copy{position:relative;min-width:0;display:grid;gap:3px;text-align:left}.action-toast-copy strong{font-size:13px;line-height:1.3;font-weight:650;color:var(--ink)}.action-toast-copy>span{font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
-:root[data-theme="dark"] .action-toast{border-color:#ffffff30;background:linear-gradient(145deg,rgba(43,49,53,.985),rgba(28,33,36,.98));box-shadow:0 18px 54px #0008,inset 0 1px 0 #ffffff32,inset 0 0 0 1px #ffffff0b}
-:root[data-theme="dark"] .action-toast::before{background:linear-gradient(125deg,#ffffff24,transparent 39%,transparent 74%,color-mix(in srgb,var(--action) 10%,transparent))}
-:root[data-theme="light"] .action-toast{border-color:#ffffff;background:linear-gradient(145deg,rgba(255,254,250,.99),rgba(241,239,231,.985));box-shadow:0 18px 48px #28251d2c,inset 0 1px 0 #ffffff,inset 0 0 0 1px #ffffff6e}
-:root[data-theme="light"] .action-toast::before{background:linear-gradient(125deg,#ffffffa8,transparent 42%,transparent 74%,#b8ad8d18)}
-@keyframes action-toast-enter{from{opacity:0;filter:blur(7px);transform:translate(-50%,calc(-50% + 11px))}to{opacity:1;filter:blur(0);transform:translate(-50%,-50%)}}
-@keyframes action-toast-exit{from{opacity:1;filter:blur(0);transform:translate(-50%,-50%)}to{opacity:0;filter:blur(5px);transform:translate(-50%,calc(-50% - 6px))}}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.action-toast{-webkit-backdrop-filter:none;backdrop-filter:none}}
-@media(max-width:480px){.action-toast{width:min(360px,calc(100vw - 32px));min-height:82px;padding:15px 16px;gap:12px}.action-toast-icon{width:38px;height:38px}}
-@media(prefers-reduced-motion:reduce){.action-toast,.action-toast.is-leaving{animation:none!important;filter:none!important;transform:translate(-50%,-50%)}}
 
 /* Content-first personal profile and exploration tools. */
 .mine-topline { height:58px; padding-inline:16px; }
@@ -4535,4 +4519,52 @@ img, video, canvas, iframe { max-width:100%; }
 @media(prefers-reduced-motion:reduce) {
   .overlay.detail-opening .detail-image-frame.transition-blur-rise .progressive-image-stack,
   .overlay.detail-closing .detail-image-frame.transition-blur-rise .progressive-image-stack { animation:none!important; }
+}
+
+/* Keep transient feedback in the established top banner; center decision surfaces. */
+.modal-backdrop:not(.composer-backdrop) { align-items:center; padding:20px; }
+.modal-backdrop:not(.composer-backdrop)>.modal:not(.composer-modal) {
+  width:min(560px,100%); max-height:min(88dvh,900px); margin:auto; overflow:auto;
+  border:1px solid color-mix(in srgb,var(--line) 80%,#fff); border-radius:var(--radius-dialog,16px);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--surface) 96%,#fff),color-mix(in srgb,var(--card) 94%,var(--surface)));
+  -webkit-backdrop-filter:blur(24px) saturate(150%); backdrop-filter:blur(24px) saturate(150%);
+  box-shadow:0 24px 72px color-mix(in srgb,#000 30%,transparent),inset 0 1px 0 color-mix(in srgb,#fff 68%,transparent),inset 0 0 0 1px color-mix(in srgb,var(--line) 38%,transparent);
+}
+:root[data-theme="dark"] .modal-backdrop:not(.composer-backdrop)>.modal:not(.composer-modal) {
+  border-color:#ffffff2b; background:linear-gradient(145deg,rgba(42,47,50,.97),rgba(25,29,32,.96));
+  box-shadow:0 24px 72px #0009,inset 0 1px 0 #ffffff2d,inset 0 0 0 1px #ffffff0b;
+}
+:root[data-theme="light"] .modal-backdrop:not(.composer-backdrop)>.modal:not(.composer-modal) {
+  border-color:#ffffff; background:linear-gradient(145deg,rgba(255,254,250,.97),rgba(241,239,231,.96));
+  box-shadow:0 24px 64px #28251d30,inset 0 1px 0 #fff,inset 0 0 0 1px #ffffff85;
+}
+.choice-select-panel {
+  border-color:color-mix(in srgb,var(--line) 78%,#fff);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--surface) 96%,#fff),color-mix(in srgb,var(--card) 94%,var(--surface)));
+  -webkit-backdrop-filter:blur(24px) saturate(150%); backdrop-filter:blur(24px) saturate(150%);
+  box-shadow:0 22px 68px #0005,inset 0 1px 0 color-mix(in srgb,#fff 60%,transparent);
+}
+:root[data-theme="dark"] .choice-select-panel { border-color:#ffffff2b; background:linear-gradient(145deg,rgba(42,47,50,.97),rgba(25,29,32,.96)); }
+:root[data-theme="light"] .choice-select-panel { border-color:#fff; background:linear-gradient(145deg,rgba(255,254,250,.97),rgba(241,239,231,.96)); }
+.in-app-dialog-backdrop { background:color-mix(in srgb,var(--bg) 66%,transparent); -webkit-backdrop-filter:blur(10px) saturate(125%); backdrop-filter:blur(10px) saturate(125%); }
+.in-app-dialog {
+  border-color:color-mix(in srgb,var(--line) 80%,#fff); border-radius:var(--radius-dialog,16px);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--surface) 96%,#fff),color-mix(in srgb,var(--card) 94%,var(--surface)));
+  -webkit-backdrop-filter:blur(24px) saturate(150%); backdrop-filter:blur(24px) saturate(150%);
+  box-shadow:0 24px 72px #0007,inset 0 1px 0 color-mix(in srgb,#fff 62%,transparent),inset 0 0 0 1px color-mix(in srgb,var(--line) 35%,transparent);
+}
+:root[data-theme="dark"] .in-app-dialog { border-color:#ffffff2b; background:linear-gradient(145deg,rgba(42,47,50,.97),rgba(25,29,32,.96)); box-shadow:0 24px 72px #0009,inset 0 1px 0 #ffffff2d,inset 0 0 0 1px #ffffff0b; }
+:root[data-theme="light"] .in-app-dialog { border-color:#fff; background:linear-gradient(145deg,rgba(255,254,250,.97),rgba(241,239,231,.96)); box-shadow:0 24px 64px #28251d30,inset 0 1px 0 #fff,inset 0 0 0 1px #ffffff85; }
+@media(max-width:640px) {
+  .modal-backdrop:not(.composer-backdrop) { align-items:center; padding:18px max(16px,env(safe-area-inset-right)) 18px max(16px,env(safe-area-inset-left)); }
+  .modal-backdrop:not(.composer-backdrop)>.modal:not(.composer-modal) { width:min(560px,100%); max-height:calc(100dvh - 36px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding:26px 20px; border-bottom:1px solid color-mix(in srgb,var(--line) 80%,#fff); }
+  .choice-select-backdrop { align-items:center; padding:max(18px,env(safe-area-inset-top)) 16px max(18px,env(safe-area-inset-bottom)); background:color-mix(in srgb,var(--bg) 68%,transparent); -webkit-backdrop-filter:blur(10px) saturate(125%); backdrop-filter:blur(10px) saturate(125%); }
+  .choice-select-panel { width:min(460px,100%); max-height:min(76dvh,620px); border:1px solid color-mix(in srgb,var(--line) 78%,#fff); border-radius:16px; box-shadow:0 24px 72px #0007,inset 0 1px 0 color-mix(in srgb,#fff 60%,transparent); animation:heika-focus-in 240ms cubic-bezier(.22,1,.36,1) both; }
+  .choice-select-backdrop.is-closing .choice-select-panel { animation:heika-focus-out 160ms ease both; }
+  .choice-select-menu { max-height:min(64dvh,540px); padding:4px 12px 12px; }
+  .in-app-dialog-backdrop { place-items:center; padding:max(18px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
+  .in-app-dialog { width:min(420px,100%); border-radius:16px; padding:20px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .choice-select-backdrop,.choice-select-panel,.choice-select-backdrop.is-closing .choice-select-panel { animation:none!important; }
 }

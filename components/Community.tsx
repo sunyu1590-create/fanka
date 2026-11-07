@@ -76,7 +76,6 @@ import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
 import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
-import ActionToast from "./ActionToast";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 const AboutHeika = dynamic(() => import("./AboutHeika"));
 const CacheManager = dynamic(() => import("./CacheManager"));
@@ -488,9 +487,6 @@ export default function Community() {
   const flipRainTimer = useRef<number | null>(null);
   const noticeTimer = useRef<number | null>(null);
   const noticeExitTimer = useRef<number | null>(null);
-  const actionToastTimer = useRef<number | null>(null);
-  const actionToastExitTimer = useRef<number | null>(null);
-  const actionToastRef = useRef<NoticeBannerItem | null>(null);
   const noticeRef = useRef<NoticeBannerItem | null>(null);
   const noticeQueue = useRef<NoticeBannerItem[]>([]);
   const noticeSequence = useRef(0);
@@ -624,9 +620,7 @@ export default function Community() {
     [editing, setEditing] = useState<number | null>(null),
     [notice, setNotice] = useState<NoticeBannerItem | null>(null),
     [noticeLeaving, setNoticeLeaving] = useState(false),
-    [noticeExpanded, setNoticeExpanded] = useState(false),
-    [actionToast, setActionToast] = useState<NoticeBannerItem | null>(null),
-    [actionToastLeaving, setActionToastLeaving] = useState(false);
+    [noticeExpanded, setNoticeExpanded] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
   const modalCloseTimer = useRef<number | null>(null);
   const presentNotice = useCallback((item: NoticeBannerItem) => {
@@ -658,23 +652,6 @@ export default function Community() {
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => dismissNoticeRef.current(), 6500);
   }, []);
-  const presentActionToast = useCallback((item: NoticeBannerItem) => {
-    if (actionToastTimer.current !== null) window.clearTimeout(actionToastTimer.current);
-    if (actionToastExitTimer.current !== null) window.clearTimeout(actionToastExitTimer.current);
-    actionToastRef.current = item;
-    setActionToast(item);
-    setActionToastLeaving(false);
-    actionToastTimer.current = window.setTimeout(() => {
-      actionToastTimer.current = null;
-      setActionToastLeaving(true);
-      actionToastExitTimer.current = window.setTimeout(() => {
-        actionToastExitTimer.current = null;
-        actionToastRef.current = null;
-        setActionToast(null);
-        setActionToastLeaving(false);
-      }, 180);
-    }, 2300);
-  }, []);
   const toast = useCallback((msg: string, options: NoticeOptions = {}) => {
     const body = userMessage(msg).trim();
     if (!body) return;
@@ -684,22 +661,15 @@ export default function Community() {
       ? error ? "操作未完成" : "操作完成"
       : error ? "操作未完成" : kind === "like" ? "点赞提醒" : kind === "comment" ? "评论提醒" : kind === "bookmark" ? "收藏提醒" : kind === "follow" ? "关注动态" : kind === "rating" ? "评分提醒" : kind === "message" ? "社区动态" : kind === "reward" ? "探索进度" : kind === "content" ? "内容提醒" : kind === "account" ? "账号提醒" : kind === "success" ? "操作完成" : "HEIKA 提醒");
     const item: NoticeBannerItem = { ...options, id: ++noticeSequence.current, title, body, createdAt: Date.now(), kind };
-    if (!options.onActivate) {
-      if (actionToastRef.current?.title === title && actionToastRef.current.body === body) return;
-      presentActionToast(item);
-      return;
-    }
     if ((noticeRef.current?.title === title && noticeRef.current.body === body) || noticeQueue.current.some((queued) => queued.title === title && queued.body === body)) return;
     if (!noticeRef.current) presentNotice(item);
     else if (noticeQueue.current.length < 12) noticeQueue.current.push(item);
     else if (!noticeQueue.current.some((queued) => queued.title === "更多提醒")) {
       noticeQueue.current[noticeQueue.current.length - 1] = { id: ++noticeSequence.current, title: "更多提醒", body: "还有新的提醒，请前往消息中心查看。", createdAt: Date.now(), kind: "general" };
     }
-  }, [presentActionToast, presentNotice]);
+  }, [presentNotice]);
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
-    if (actionToastTimer.current !== null) window.clearTimeout(actionToastTimer.current);
-    if (actionToastExitTimer.current !== null) window.clearTimeout(actionToastExitTimer.current);
   }, []);
   const [messagesTabVisited, setMessagesTabVisited] = useState(false);
   const [secondaryReturnTab, setSecondaryReturnTab] = useState("discover");
@@ -5008,7 +4978,6 @@ export default function Community() {
         </div>
       )}
       {notice && <NoticeBanner key={notice.id} notice={notice} leaving={noticeLeaving} expanded={noticeExpanded} onExpand={expandNotice} onDismiss={dismissNotice} />}
-      {actionToast && <ActionToast key={actionToast.id} notice={actionToast} leaving={actionToastLeaving} />}
     </main>
   );
 }
