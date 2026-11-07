@@ -7,6 +7,13 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.38.2",
+    date: "2026.11.07",
+    notes: [
+      { category: "问题修复", text: "注册确认、确认邮件重发和密码找回链接固定返回 HEIKA 生产站点，避免手机打开 localhost 导致连接失败。" },
+    ],
+  },
+  {
     version: "2.38.1",
     date: "2026.11.06",
     notes: [

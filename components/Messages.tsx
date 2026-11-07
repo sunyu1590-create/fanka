@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ArrowLeft, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Send, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
+import { authRedirectUrl } from "@/lib/auth-redirect";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
 import AnimatedNotice from "./AnimatedNotice";
 import type { NoticeOptions } from "./NoticeBanner";
@@ -343,14 +344,14 @@ export default function Messages({
         if (nickname.trim().length < 2 || nickname.trim().length > 24) throw new Error("昵称请填写 2–24 个字。");
         const { data, error } = await db.auth.signUp({
           email: email.trim(), password,
-          options: { data: { nickname: nickname.trim() }, emailRedirectTo: window.location.origin },
+          options: { data: { nickname: nickname.trim() }, emailRedirectTo: authRedirectUrl() },
         });
         if (error) throw error;
         if (!data.session) { setAuthView("confirm"); setAuthMessage("确认邮件已发送。请前往邮箱完成验证，再回来登录。"); }
         else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
       } else if (authView === "forgot") {
         if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
-        const { error } = await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/?auth=reset` } });
+        const { error } = await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: authRedirectUrl("/?auth=reset") } });
         if (error) throw error;
         localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));
         setResendSeconds(60);
@@ -391,8 +392,8 @@ export default function Messages({
     setBusy(true); setError(""); setAuthMessage("");
     try {
       const { error } = authPurpose === "signup"
-        ? await db.auth.resend({ type: "signup", email: email.trim(), options: { emailRedirectTo: window.location.origin } })
-        : await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/?auth=reset` } });
+        ? await db.auth.resend({ type: "signup", email: email.trim(), options: { emailRedirectTo: authRedirectUrl() } })
+        : await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: authRedirectUrl("/?auth=reset") } });
       if (error) throw error;
       if (authPurpose === "recovery") {
         localStorage.setItem(`heika-password-reset:${email.trim().toLowerCase()}`, String(Date.now() + 60000));
