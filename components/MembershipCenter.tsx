@@ -2,13 +2,8 @@
 
 import { useRef, useState } from "react";
 import { ArrowDown, Check, ChevronDown, Crown, Database, HeartHandshake, Server, Wrench } from "lucide-react";
+import { MEMBERSHIP_PLANS, type MembershipTier } from "@/lib/membership-plans";
 
-type Tier = "free" | "plus" | "pro";
-const plans = [
-  { id: "free", name: "Free", flips: 5, price: "免费" },
-  { id: "plus", name: "Plus", flips: 9, price: "¥12", note: "每月预览价" },
-  { id: "pro", name: "Pro", flips: 13, price: "¥16", note: "每月预览价" },
-] as const;
 const packs = [3, 5, 10] as const;
 const letter = [
   "黑卡并不是一家公司的产品。",
@@ -25,7 +20,7 @@ const letter = [
   "谢谢你愿意来到这里。",
 ];
 
-export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNotice }: { tier: Tier; dailyAllowance: number; usedFlips: number; onNotice: (message: string) => void }) {
+export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNotice }: { tier: MembershipTier; dailyAllowance: number; usedFlips: number; onNotice: (message: string) => void }) {
   const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
   const [selectedPack, setSelectedPack] = useState<number | null>(null);
   const [letterOpen, setLetterOpen] = useState(false);
@@ -66,10 +61,10 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, onNo
       <div className="membership-section-kicker">MEMBERSHIP PREVIEW</div>
       <div className="membership-section-heading"><div><h3 id="membership-plan-title">黑卡支持计划</h3><p>预览未来的会员身份与每日翻卡额度。</p></div></div>
       <div className="membership-plan-grid" role="group" aria-label="选择会员方案预览">
-        {plans.map((plan) => plan.id === "free" ? <div className="membership-plan-card is-free" key={plan.id} aria-current={tier === "free" ? "true" : undefined}>
-          <span className="membership-plan-name">Free{tier === "free" && <small>当前</small>}</span><strong>{plan.flips}<small> 次 / 日</small></strong><span className="membership-plan-price">{plan.price}</span><span className="membership-plan-benefit">黑卡基础探索额度</span>
+        {MEMBERSHIP_PLANS.map((plan) => plan.id === "free" ? <div className="membership-plan-card is-free" key={plan.id} aria-current={tier === "free" ? "true" : undefined}>
+          <span className="membership-plan-name">Free{tier === "free" && <small>当前</small>}</span><strong>{plan.dailyFlips}<small> 次 / 日</small></strong><span className="membership-plan-price">{plan.previewPrice}</span><span className="membership-plan-benefit">黑卡基础探索额度</span>
         </div> : <button type="button" key={plan.id} className={`membership-plan-card is-${plan.id}${selectedPlan === plan.id ? " selected" : ""}`} aria-pressed={selectedPlan === plan.id} onClick={() => setSelectedPlan(plan.id)}>
-          <span className="membership-plan-name">{plan.name}{tier === plan.id && <small>当前</small>}</span><strong>{plan.flips}<small> 次 / 日</small></strong><span className="membership-plan-price">{plan.price}<small> / 月</small></span><span className="membership-plan-benefit">{plan.note} · 仅供参考</span>{selectedPlan === plan.id && <Check className="membership-plan-selected-icon" size={16} aria-hidden="true"/>}
+          <span className="membership-plan-name">{plan.name}{tier === plan.id && <small>当前</small>}</span><strong>{plan.dailyFlips}<small> 次 / 日</small></strong><span className="membership-plan-price">{plan.previewPrice}<small> / 月</small></span><span className="membership-plan-benefit">{plan.note} · 仅供参考</span>{selectedPlan === plan.id && <Check className="membership-plan-selected-icon" size={16} aria-hidden="true"/>}
         </button>)}
       </div>
       <p className="membership-preview-disclaimer">当前仅供预览，不会扣费或开通套餐。</p>

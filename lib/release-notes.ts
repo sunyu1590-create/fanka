@@ -7,6 +7,13 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.38.9",
+    date: "2026.11.07",
+    notes: [
+      { category: "问题修复", text: "集中管理会员方案、预览价格与每日基础额度，补充 Free / Plus / Pro 兼容性回归测试和接口现状文档。" },
+    ],
+  },
+  {
     version: "2.38.8",
     date: "2026.11.07",
     notes: [

@@ -78,6 +78,7 @@ import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THR
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 import MembershipCenter from "./MembershipCenter";
+import { baseDailyFlipAllowance } from "@/lib/membership-plans";
 const AboutHeika = dynamic(() => import("./AboutHeika"));
 const CacheManager = dynamic(() => import("./CacheManager"));
 const FeedbackForm = dynamic(() => import("./FeedbackForm"));
@@ -821,7 +822,7 @@ export default function Community() {
     : state.revealed[latestOpenedId] || null;
   const luckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
   const membershipTier = experienceSummary.membershipTier || "free";
-  const memberFlipAllowance = membershipTier === "pro" ? 13 : membershipTier === "plus" ? 9 : 5;
+  const memberFlipAllowance = baseDailyFlipAllowance(membershipTier);
   const dailyAllowance = memberFlipAllowance + luckyBonusToday;
   const candidatePosts = state.cardIds.map(
     (id) =>
