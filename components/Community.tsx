@@ -4357,6 +4357,10 @@ export default function Community() {
           )}
           {(() => {
             const revealed = state.revealed[viewerId];
+            const revealImage = revealed?.image || revealed?.images?.find(Boolean);
+            const hasRevealImage = Boolean(revealImage);
+            const revealBody = revealed?.body?.trim() || "";
+            const isShortTextOnly = !hasRevealImage && revealBody.length <= 120;
             const rarityTier = state.rarityTiers[viewerId] || revealed?.rarityTier || "pending";
             const rarityLabel = cardRarityLabel(rarityTier);
             const rarityGrade = rarityTier === "ordinary" ? "N" : rarityTier === "pending" ? "待评" : rarityTier;
@@ -4380,22 +4384,19 @@ export default function Community() {
                     )}
                   </div>
                   <div
-                    className={`flip-face flip-back flip-window-revealed${viewerRevealPhase === "rarity" ? " is-rarity-reveal" : ""}`}
+                    className={`flip-face flip-back flip-window-revealed${hasRevealImage ? " has-image" : " no-image"}${viewerRevealPhase === "rarity" ? " is-rarity-reveal" : ""}`}
                     data-window-card-id={viewerId}
-                    style={{ background: coverColor(revealed?.tag || "") }}
                   >
-                    <div className="flip-window-visual-fallback">
-                      {revealed?.cover || "HEIKA"}
-                    </div>
-                    {revealed?.image && (
+                    {hasRevealImage && (
                       <img
-                        src={revealed.image}
+                        src={revealImage || ""}
                         alt=""
                         onError={(e) => {
-                          if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
+                          e.currentTarget.dataset.failed = "true";
                         }}
                       />
                     )}
+                    {hasRevealImage && <span className="flip-window-image-error" role="status">封面暂时无法加载</span>}
                     {viewerRevealPhase === "rarity" && (
                       <div className={`flip-rarity-reveal rarity-tier-${rarityTier}`} aria-live="polite">
                         <small>卡片稀有度</small>
@@ -4403,22 +4404,16 @@ export default function Community() {
                         <span>{rarityLabel}</span>
                       </div>
                     )}
-                    <div className={`window-reveal-copy${viewerRevealPhase === "rarity" ? " is-rarity-hidden" : ""}`} aria-hidden={viewerRevealPhase === "rarity" || undefined}>
+                    <div className={`window-reveal-copy${hasRevealImage ? " has-image" : " no-image"}${viewerRevealPhase === "rarity" ? " is-rarity-hidden" : ""}`} aria-hidden={viewerRevealPhase === "rarity" || undefined}>
                       <div className="window-reveal-meta"><small>{revealed?.tag || "HEIKA"}</small><i className={`rarity-inline-chip rarity-tier-${rarityTier}`}>{rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier}</i></div>
                       <h2>{revealed?.title || ""}</h2>
-                      <p>
-                        {revealed?.body?.slice(0, 220)}
-                        {(revealed?.body?.length || 0) > 220 ? "…" : ""}
-                      </p>
-                      <small className="window-quota">
-                        今日已翻 {opened.length} / {dailyAllowance} 张 · 还可翻 {Math.max(0, dailyAllowance - opened.length)} 张
-                      </small>
+                      <p>{hasRevealImage ? revealBody.slice(0, 220) : revealBody.slice(0, 2400)}</p>
                       <button
                         className="window-more"
                         disabled={!viewerFlipped || viewerPhase !== null || viewerRevealPhase === "rarity"}
                         onClick={(event) => openPost(viewerId, "today", event.currentTarget)}
                       >
-                        查看更多 <ArrowRight size={17} />
+                        {isShortTextOnly ? "查看详情" : "查看更多"} <ArrowRight size={17} />
                       </button>
                     </div>
                   </div>

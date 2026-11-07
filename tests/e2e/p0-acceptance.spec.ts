@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function enterApp(page: import("@playwright/test").Page, options: { role?: "user" | "admin" } = {}) {
+async function enterApp(page: import("@playwright/test").Page, options: { role?: "user" | "admin"; noImage?: boolean; failedImage?: boolean } = {}) {
   await page.addInitScript(() => { Math.random = () => 0.999; });
   await page.route("**/api/client-config", (route) => route.fulfill({
     status: 200,
@@ -14,7 +14,7 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
     const request = route.request();
     if (request.method() === "POST") {
       const body = request.postDataJSON() as { id?: number };
-      await route.fulfill({ json: { data: fixturePost(Number(body.id) || 1) } });
+      await route.fulfill({ json: { data: fixturePost(Number(body.id) || 1, !options.noImage, options.failedImage) } });
       return;
     }
     const url = new URL(request.url());
@@ -84,7 +84,7 @@ async function chooseDetailTransition(page: import("@playwright/test").Page, opt
   await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
 }
 
-function fixturePost(id: number) {
+function fixturePost(id: number, withImage = true, failedImage = false) {
   const images = [
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E",
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%235c4d68'/%3E%3C/svg%3E",
@@ -93,8 +93,7 @@ function fixturePost(id: number) {
     id, cloudId: `cloud-post-${id}`, status: "published", tag: "生活", topics: ["生活"], title: `浏览器验收内容 ${id}`,
     body: "用于本地浏览器验收的内容正文。", cover: "安静观察日常",
     author: "验收账号", date: "2026-11-01",
-    image: images[0],
-    images,
+    ...(withImage ? { image: failedImage ? "https://example.test/broken-cover.jpg" : images[0], images: failedImage ? ["https://example.test/broken-cover.jpg"] : images } : {}),
     isDemo: true,
   };
 }
@@ -233,6 +232,20 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   await expect(page.getByRole("status").filter({ hasText: "今日已翻开 0 / 5 张" })).toBeVisible();
   await page.getByRole("button", { name: "确认翻开" }).click();
   await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 " + firstCardId);
+  const revealCard = page.locator(".flip-window-revealed");
+  await expect(revealCard).not.toHaveClass(/is-rarity-reveal/);
+  await expect(revealCard).toHaveClass(/has-image/);
+  await expect(revealCard.locator(".window-quota")).toHaveCount(0);
+  const [revealBox, imageBox] = await Promise.all([
+    revealCard.boundingBox(),
+    revealCard.locator(":scope > img").boundingBox(),
+  ]);
+  expect(revealBox).not.toBeNull();
+  expect(imageBox).not.toBeNull();
+  expect(imageBox!.height / revealBox!.height).toBeGreaterThanOrEqual(.64);
+  expect(imageBox!.height / revealBox!.height).toBeLessThanOrEqual(.66);
+  expect(await revealCard.evaluate((element) => getComputedStyle(element).borderRadius)).toBe("15px");
+  expect(await revealCard.locator(":scope > img").evaluate((image) => getComputedStyle(image).borderRadius)).toBe("0px");
   await page.locator(".flip-close").click({ timeout: 10_000 });
   await expect(first).toHaveClass(/is-unlocked/);
   await expect(first.locator(".card-back-copy strong")).not.toHaveText("");
@@ -265,6 +278,42 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   await page.getByRole("button", { name: "返回" }).click();
   await expect(page.locator(".flip-overlay")).toHaveCount(0);
   expect(Math.abs((await page.evaluate(() => window.scrollY)) - beforeDetailScroll)).toBeLessThanOrEqual(2);
+});
+
+test("text-only today reveal fills the card, omits image placeholders, and opens details", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await enterApp(page, { noImage: true });
+  await page.getByRole("button", { name: "首页" }).click();
+  const card = page.locator(".candidate-feed-card").first();
+  await card.click();
+  await page.getByRole("button", { name: "确认翻开" }).click();
+  const reveal = page.locator(".flip-window-revealed");
+  await expect(reveal).not.toHaveClass(/is-rarity-reveal/);
+  await expect(reveal).toHaveClass(/no-image/);
+  await expect(reveal.locator(":scope > img")).toHaveCount(0);
+  await expect(reveal.locator(".flip-window-image-error,.flip-window-visual-fallback")).toHaveCount(0);
+  await expect(reveal.locator(".window-more")).toHaveText("查看详情");
+  await expect(reveal.locator(".window-quota")).toHaveCount(0);
+  const [revealBox, copyBox] = await Promise.all([reveal.boundingBox(), reveal.locator(".window-reveal-copy").boundingBox()]);
+  expect(revealBox).not.toBeNull();
+  expect(copyBox).not.toBeNull();
+  expect(Math.abs(copyBox!.height - revealBox!.height)).toBeLessThanOrEqual(3);
+  await reveal.locator(".window-more").click();
+  await expect(page.locator(".detail")).toBeVisible();
+});
+
+test("failed reveal image stays in image layout and reports the load failure", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.route("https://example.test/broken-cover.jpg", (route) => route.abort());
+  await enterApp(page, { failedImage: true });
+  await page.getByRole("button", { name: "首页" }).click();
+  await page.locator(".candidate-feed-card").first().click();
+  await page.getByRole("button", { name: "确认翻开" }).click();
+  const reveal = page.locator(".flip-window-revealed");
+  await expect(reveal).not.toHaveClass(/is-rarity-reveal/);
+  await expect(reveal).toHaveClass(/has-image/);
+  await expect(reveal).not.toHaveClass(/no-image/);
+  await expect(reveal.locator(".flip-window-image-error")).toBeVisible();
 });
 
 test("discovery, image detail, and publish composer remain responsive with soft keyboard focus", async ({ page }) => {

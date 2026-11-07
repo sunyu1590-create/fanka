@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.38.7",
+    date: "2026.11.07",
+    notes: [
+      { category: "体验优化", text: "翻卡详情卡片改为一体式圆角布局；有图卡突出图片，纯文字内容自动扩展阅读区域，并移除重复进度信息。" },
+      { category: "问题修复", text: "翻卡封面加载失败时保留图片卡片布局并提示错误，避免被误判为纯文字内容。" },
+    ],
+  },
+  {
     version: "2.38.6",
     date: "2026.11.07",
     notes: [
