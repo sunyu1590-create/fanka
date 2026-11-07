@@ -1,4 +1,4 @@
-const DEFAULT_AUTH_REDIRECT_ORIGIN = "https://fanka-two.vercel.app";
+const DEFAULT_AUTH_REDIRECT_ORIGIN = "https://moonclean.shop";
 
 /**
  * Auth emails must return to a publicly reachable site. Do not derive this
