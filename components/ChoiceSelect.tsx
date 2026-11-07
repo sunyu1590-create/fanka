@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 
 export type ChoiceOption = { value: string; label: string; description?: string };
 
@@ -79,20 +79,25 @@ export default function ChoiceSelect({
         <ChevronDown size={17} aria-hidden="true" />
       </button>
       {open && (
-        <div className={`choice-select-menu${closing ? " is-closing" : ""}`} id={id} role="listbox" aria-label={label} aria-hidden={closing || undefined}>
-          {options.map((option) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={value === option.value}
-              className={`choice-select-option${value === option.value ? " selected" : ""}`}
-              key={option.value || "empty"}
-              onClick={() => { onChange(option.value); closeMenu(); }}
-            >
-              <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
-              {value === option.value && <Check size={17} aria-hidden="true" />}
-            </button>
-          ))}
+        <div className={`choice-select-backdrop${closing ? " is-closing" : ""}`} onPointerDown={(event) => { if (event.target === event.currentTarget) closeMenu(); }}>
+          <section className="choice-select-panel" role="dialog" aria-modal="true" aria-label={`选择${label}`}>
+            <header className="choice-select-heading"><strong>选择{label}</strong><button type="button" aria-label="关闭" onClick={closeMenu}><X size={18}/></button></header>
+            <div className="choice-select-menu" id={id} role="listbox" aria-label={label} aria-hidden={closing || undefined}>
+              {options.map((option) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={value === option.value}
+                  className={`choice-select-option${value === option.value ? " selected" : ""}`}
+                  key={option.value || "empty"}
+                  onClick={() => { onChange(option.value); closeMenu(); }}
+                >
+                  <span><strong>{option.label}</strong>{option.description && <small>{option.description}</small>}</span>
+                  {value === option.value && <Check size={17} aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
       )}
     </div>

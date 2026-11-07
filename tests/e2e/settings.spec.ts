@@ -34,4 +34,17 @@ test("settings center groups are reachable and about and notification states are
   await page.getByRole("button", { name: "意见反馈" }).click();
   await expect(page.getByText("登录后可提交并查看处理进度。")).toBeVisible();
   await expect(page.getByRole("button", { name: "前往登录" })).toBeVisible();
+  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
+  await page.evaluate(async () => {
+    const cache = await caches.open("heika-static-e2e");
+    await cache.put("/e2e-cache-entry", new Response("test"));
+  });
+  await page.getByRole("button", { name: /缓存管理/ }).click();
+  const clearCache = page.getByRole("button", { name: "清理缓存" });
+  await expect(clearCache).toBeEnabled();
+  await clearCache.click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText("作品、草稿、收藏和登录状态不会被删除");
+  await confirm.getByRole("button", { name: "清理缓存" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "缓存已清理" })).toBeVisible();
 });

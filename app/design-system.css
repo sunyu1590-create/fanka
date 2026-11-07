@@ -1855,6 +1855,53 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   ::view-transition-old(root),::view-transition-new(root),::view-transition-group(root) { animation: none !important; }
   .toggle-switch,.toggle-switch i,.profile-visibility-row input[type="checkbox"],.profile-visibility-row input[type="checkbox"]::after { transition-duration: .01ms !important; }
 }
+
+/* One in-app choice surface across forms, settings, and administration. */
+.choice-select-backdrop { position: static; }
+.choice-select-panel { position: absolute; top: calc(100% + 7px); right: 0; left: 0; z-index: 35; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 18px 44px #0003; animation: heika-focus-in 220ms var(--ease, ease) both; }
+.choice-select-heading { display: none; }
+.choice-select-menu { position: static; inset: auto; max-height: min(320px, 48vh); overflow: auto; padding: 5px; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; animation: none; }
+.choice-select-option { min-height: 46px; border-radius: 7px; color: var(--ink); }
+.choice-select-option:hover { background: color-mix(in srgb, var(--action) 10%, var(--surface)); }
+.choice-select-option.selected { border-color: color-mix(in srgb, var(--action) 48%, var(--line)); background: color-mix(in srgb, var(--action) 12%, var(--surface)); color: var(--ink); box-shadow: none; }
+.choice-select-option.selected>svg { color: var(--action); }
+.choice-select-trigger { min-height: 44px; border-color: var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: none; }
+.choice-select-trigger:hover,.choice-select.is-open .choice-select-trigger { border-color: var(--action); box-shadow: 0 0 0 2px color-mix(in srgb, var(--action) 18%, transparent); }
+.choice-select-trigger svg { color: var(--muted); }
+:root[data-theme="dark"] .choice-select-panel { background: var(--surface); }
+:root[data-theme="dark"] .choice-select-option { color: var(--ink); }
+:root[data-theme="dark"] .choice-select-option:hover { background: color-mix(in srgb, var(--action) 14%, var(--surface)); }
+:root[data-theme="dark"] .choice-select-option.selected { border-color: color-mix(in srgb, var(--action) 44%, var(--line)); background: color-mix(in srgb, var(--action) 16%, var(--surface)); color: var(--ink); }
+@media(max-width: 640px) {
+  .choice-select-backdrop { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: flex-end; justify-content: center; padding-top: max(32px, env(safe-area-inset-top)); background: #08090bb8; backdrop-filter: blur(5px); animation: heika-overlay-in 220ms ease both; }
+  .choice-select-backdrop.is-closing { pointer-events: none; animation: heika-overlay-out 160ms ease both; }
+  .choice-select-panel { position: relative; top: auto; right: auto; left: auto; width: min(560px, 100%); max-height: min(72dvh, 620px); display: flex; flex-direction: column; border-radius: 12px 12px 0 0; border-color: var(--line); border-bottom: 0; background: var(--surface); box-shadow: 0 -14px 44px #0004; animation: heika-choice-sheet-in 240ms cubic-bezier(.2,.8,.2,1) both; }
+  .choice-select-backdrop.is-closing .choice-select-panel { animation: heika-choice-sheet-out 160ms ease both; }
+  .choice-select-heading { min-height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--line); color: var(--ink); }
+  .choice-select-heading strong { font-size: 15px; font-weight: 650; }
+  .choice-select-heading button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
+  .choice-select-menu { max-height: min(62dvh, 540px); padding: 4px 12px max(12px, env(safe-area-inset-bottom)); }
+  .choice-select-option { min-height: 58px; padding: 10px 8px; border-bottom: 1px solid var(--line); border-radius: 0; }
+  .choice-select-option:last-child { border-bottom: 0; }
+}
+@keyframes heika-choice-sheet-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes heika-choice-sheet-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(16px); } }
+@media(prefers-reduced-motion: reduce) { .choice-select-backdrop,.choice-select-panel,.choice-select-backdrop.is-closing .choice-select-panel { animation: none !important; } }
+.in-app-dialog-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 20px; background: #070809b5; backdrop-filter: blur(5px); animation: heika-overlay-in 180ms ease both; }
+.in-app-dialog { width: min(420px,100%); border: 1px solid var(--line); border-radius: 12px; padding: 18px; background: var(--surface); color: var(--ink); box-shadow: 0 22px 70px #0006; animation: heika-focus-in 220ms cubic-bezier(.2,.8,.2,1) both; }
+.in-app-dialog>header { display: flex; align-items: center; gap: 10px; }
+.in-app-dialog>header>span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb,var(--action) 14%,var(--surface)); color: var(--action); }
+.in-app-dialog>header>span.is-danger { background: color-mix(in srgb,#bf5548 14%,var(--surface)); color: #c2584b; }
+.in-app-dialog>header>strong { flex: 1; font-size: 15px; }
+.in-app-dialog>header>button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
+.in-app-dialog>p { margin: 14px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.in-app-dialog input { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; }
+.in-app-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+.in-app-dialog-actions button { min-width: 76px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
+.in-app-dialog-actions .in-app-dialog-confirm { border-color: var(--action); background: var(--action); color: var(--bg); }
+.in-app-dialog-actions .in-app-dialog-confirm.is-danger { border-color: #bd5448; background: #bd5448; color: #fff; }
+@media(max-width:640px) { .in-app-dialog-backdrop { align-items: end; padding: 0; } .in-app-dialog { width: 100%; border-radius: 12px 12px 0 0; padding: 20px 18px max(18px,env(safe-area-inset-bottom)); } }
+@media(prefers-reduced-motion:reduce) { .in-app-dialog-backdrop,.in-app-dialog { animation:none !important; } }
 .selection-control,.preference-option,.account-interest-option,.reading-mode-option,.subscription-plan,.composer-topic-options button,.report-reasons label,.extra-flip-options button,.theme-option,.font-option,.discover-layout-options button { transition: transform 220ms cubic-bezier(.2,.8,.2,1),filter 220ms ease,border-color 220ms ease,background-color 220ms ease,box-shadow 220ms ease; }
 .reading-mode-option.selected,.subscription-plan.selected,.composer-topic-options button.selected,.report-reasons label.selected,.extra-flip-options button.selected,.theme-option.selected { animation: heika-choice-select 320ms cubic-bezier(.2,.8,.2,1); }
 .reading-mode-option:active,.subscription-plan:active,.composer-topic-options button:active,.report-reasons label:active,.extra-flip-options button:active,.theme-option:active,.font-option:active { filter: blur(1.5px); transform: scale(.97); }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, ExternalLink, Flag, History, Link2 } from "lucide-react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { safeResourceLink } from "@/lib/ai-resources";
+import ChoiceSelect from "./ChoiceSelect";
 
 type Version = { id: string; version_label: string; changelog: string; created_at: string };
 type Props = { postId: string; contentType: string; resourceData: Record<string, unknown>; accountId: string | null; onLogin: () => void; onNotice: (message: string) => void };
@@ -62,6 +63,6 @@ export default function AIResourceDetails({ postId, contentType, resourceData, a
       </div>;
     })}</dl>
     {!!versions.length && <details className="ai-resource-version-history"><summary><History size={15}/> 版本记录 · {versions.length}</summary><ol>{versions.map((version) => <li key={version.id}><strong>{version.version_label}</strong><span>{version.changelog || "资源更新"}</span><time>{new Date(version.created_at).toLocaleDateString("zh-CN")}</time></li>)}</ol></details>}
-    <details className="ai-resource-feedback"><summary><Flag size={15}/> 报告资源失效或风险</summary><label>反馈类型<select value={feedbackKind} onChange={(event) => setFeedbackKind(event.target.value)}><option value="broken_link">链接失效</option><option value="outdated">内容过时</option><option value="unsafe">存在安全风险</option><option value="other">其他问题</option></select></label><textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} maxLength={1000} placeholder="说明需要核查的链接或内容，至少 3 个字"/><button type="button" className="soft-button" disabled={sending || feedback.trim().length < 3} onClick={() => void sendFeedback()}>{sending ? "提交中…" : "提交反馈"}</button></details>
+    <details className="ai-resource-feedback"><summary><Flag size={15}/> 报告资源失效或风险</summary><label>反馈类型<ChoiceSelect label="反馈类型" value={feedbackKind} onChange={setFeedbackKind} options={[{value:"broken_link",label:"链接失效"},{value:"outdated",label:"内容过时"},{value:"unsafe",label:"存在安全风险"},{value:"other",label:"其他问题"}]}/></label><textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} maxLength={1000} placeholder="说明需要核查的链接或内容，至少 3 个字"/><button type="button" className="soft-button" disabled={sending || feedback.trim().length < 3} onClick={() => void sendFeedback()}>{sending ? "提交中…" : "提交反馈"}</button></details>
   </section>;
 }

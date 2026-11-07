@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Check, Edit3, Plus, RefreshCw, ShieldAlert, Trash2, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { userMessage } from "@/lib/user-message";
+import ChoiceSelect from "./ChoiceSelect";
+import { confirmInApp } from "@/lib/in-app-dialog";
 
 type Mode = "keywords" | "comments" | "audit";
 type Scope = "post" | "comment" | "message" | "profile";
@@ -84,7 +86,7 @@ export default function AdminGovernance({ mode }: Props) {
     finally { setSaving(null); }
   };
   const deleteRule = async (rule: Rule) => {
-    if (!window.confirm(`确定删除「${rule.keyword}」这条关键词规则吗？`)) return;
+    if (!await confirmInApp(`确定删除「${rule.keyword}」这条关键词规则吗？`, {title:"删除规则",confirmLabel:"删除",danger:true})) return;
     setSaving(rule.id); setError(""); setNotice("");
     try { await cloudRequest(`/api/v1/admin/moderation-rules/${rule.id}`, undefined, "DELETE"); setNotice("关键词规则已删除。"); if (editingId === rule.id) resetRuleForm(); await load(); }
     catch (e) { setError(userMessage(e, "删除关键词规则失败")); }
@@ -118,7 +120,7 @@ export default function AdminGovernance({ mode }: Props) {
         <p className="admin-rule-hint">匹配不区分英文大小写；命中后内容不会发布或发送，作者会收到中文提示。管理员不受此规则影响。</p>
         <div className="admin-rule-form-actions"><button className="primary-button" disabled={saving === "rule" || !keyword.trim() || !scopes.length}>{saving === "rule" ? "保存中…" : editingId ? "保存修改" : <><Plus size={15}/> 添加规则</>}</button>{editingId && <button type="button" className="soft-button" onClick={resetRuleForm}>取消编辑</button>}</div>
       </form>
-      <div className="admin-rule-probe"><label>测试一段内容<input value={probe} onChange={(event) => setProbe(event.target.value)} placeholder="输入文本，查看当前规则是否会拦截" /></label><label>检查范围<select value={probeScope} onChange={(event) => setProbeScope(event.target.value as Scope)}>{scopeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><span>{probe.trim() ? (rules.some((rule) => rule.enabled && rule.scopes.includes(probeScope) && probe.toLowerCase().includes(rule.keyword.toLowerCase())) ? "命中启用规则" : "未命中当前范围规则") : "本地预览，不会提交内容"}</span></div>
+      <div className="admin-rule-probe"><label>测试一段内容<input value={probe} onChange={(event) => setProbe(event.target.value)} placeholder="输入文本，查看当前规则是否会拦截" /></label><label>检查范围<ChoiceSelect label="检查范围" value={probeScope} onChange={(value) => setProbeScope(value as Scope)} options={scopeOptions.map(([value,label]) => ({value,label}))}/></label><span>{probe.trim() ? (rules.some((rule) => rule.enabled && rule.scopes.includes(probeScope) && probe.toLowerCase().includes(rule.keyword.toLowerCase())) ? "命中启用规则" : "未命中当前范围规则") : "本地预览，不会提交内容"}</span></div>
       <div className="admin-rule-list"><div className="creator-subheading"><h3>已配置规则</h3><span>{rules.filter((rule) => rule.enabled).length} 条启用</span></div>
         {loading && !rules.length ? <p className="moderation-empty">正在加载规则…</p> : rules.length ? rules.map((rule) => <article className={`admin-rule-row${rule.enabled ? "" : " is-disabled"}`} key={rule.id}>
           <div className="admin-rule-copy"><strong>{rule.keyword}</strong><small>{rule.scopes.map((scope) => scopeOptions.find(([value]) => value === scope)?.[1]).filter(Boolean).join(" · ")}</small></div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, Check, ChevronRight, FileCheck, Flag, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
+import { confirmInApp } from "@/lib/in-app-dialog";
 import { userMessage } from "@/lib/user-message";
 import { MarkdownContent } from "./MarkdownContent";
 import AdminAIWorkspace from "./AdminAIWorkspace";
@@ -146,7 +147,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setAiSettingsBusy(false); }
   };
   const removeAiSettings = async () => {
-    if (!window.confirm("确定删除云端 DeepSeek 密钥吗？删除后 AI 工作台将暂停服务。")) return;
+    if (!await confirmInApp("确定删除云端 DeepSeek 密钥吗？删除后 AI 工作台将暂停服务。", {title:"删除 AI 密钥",confirmLabel:"删除密钥",danger:true})) return;
     setAiSettingsBusy(true); setError(""); setNotice("");
     try { await cloudRequest("/api/v1/admin/ai-settings", { action: "delete" }); setAiConfigured(false); setAiMasked(""); setNotice("云端 AI 密钥已删除。"); }
     catch (e) { setError(e instanceof Error ? e.message : "AI 密钥删除失败"); }
@@ -225,7 +226,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const changeUserRole = async (account: AdminUser, role: AdminUser["role"]) => {
     const roleLabels: Record<AdminUser["role"], string> = { member: "普通用户", admin: "超级管理员", content_manager: "内容管理员", reviewer: "审核员" };
     if (role === account.role) return;
-    if (!window.confirm(`确定将「${account.nickname || "探索者"}」设置为${roleLabels[role]}吗？`)) return;
+    if (!await confirmInApp(`确定将「${account.nickname || "探索者"}」设置为${roleLabels[role]}吗？`, {title:"变更账号权限",confirmLabel:"确认变更"})) return;
     setSaving(account.id); setError(""); setNotice("");
     try {
       await cloudRequest(`/api/v1/admin/users/${account.id}`, { role }, "PATCH");
@@ -379,7 +380,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </> : section === "topic-events" ? <>
       <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
         <div className="admin-topic-event-form-heading"><div><small>COMMUNITY / OPEN CALL</small><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
-        <label>关联话题<select required value={eventTopic} onChange={(event) => setEventTopic(event.target.value)}><option value="" disabled>选择一个话题</option>{topicTags.map((topic) => <option key={topic.id} value={topic.id}>#{topic.name}</option>)}</select></label>
+        <label>关联话题<ChoiceSelect label="关联话题" value={eventTopic} onChange={setEventTopic} placeholder="选择一个话题" options={[{value:"",label:"选择一个话题"},...topicTags.map((topic) => ({value:String(topic.id),label:`#${topic.name}`}))]}/></label>
         <label>活动标题<input required minLength={4} maxLength={80} value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="例如：本月共创 · 给生活留一点空白" /></label>
         <label>活动说明<textarea required minLength={8} maxLength={500} value={eventDescription} onChange={(event) => setEventDescription(event.target.value)} placeholder="说明创作方向与参与方式" /></label>
         <div className="admin-topic-event-dates"><label>开始时间<input required type="datetime-local" value={eventStarts} onChange={(event) => setEventStarts(event.target.value)} /></label><label>结束时间<input required type="datetime-local" value={eventEnds} onChange={(event) => setEventEnds(event.target.value)} /></label></div>
@@ -405,7 +406,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
           <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{value:"free",label:"普通"},{value:"plus",label:"Plus"},{value:"pro",label:"Pro"}]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])}/></div>
           <div className="admin-user-role-select"><span>权限角色</span><ChoiceSelect label={`${account.nickname || "探索者"}的管理角色`} value={account.role} disabled={saving === account.id} options={[{value:"member",label:"普通用户"},{value:"reviewer",label:"审核员"},{value:"content_manager",label:"内容管理员"},{value:"admin",label:"超级管理员"}]} onChange={(role) => void changeUserRole(account, role as AdminUser["role"])}/></div>
           {!(["admin", "content_manager", "reviewer"].includes(account.role)) && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
-          {restrictionTarget === account.id && !(["admin", "content_manager", "reviewer"].includes(account.role)) && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<select value={restrictionDuration} onChange={(event) => setRestrictionDuration(event.target.value as typeof restrictionDuration)}><option value="1h">1 小时</option><option value="24h">24 小时</option><option value="7d">7 天</option><option value="30d">30 天</option><option value="permanent">永久</option></select></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
+          {restrictionTarget === account.id && !(["admin", "content_manager", "reviewer"].includes(account.role)) && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<ChoiceSelect label="限制时长" value={restrictionDuration} onChange={(value) => setRestrictionDuration(value as typeof restrictionDuration)} options={[{value:"1h",label:"1 小时"},{value:"24h",label:"24 小时"},{value:"7d",label:"7 天"},{value:"30d",label:"30 天"},{value:"permanent",label:"永久"}]}/></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
         </article>;
       })}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}
       {userTotal > users.length && !appliedUserQuery && <p className="admin-user-limit">当前显示最近 {users.length} 个账号，共 {userTotal} 个。</p>}

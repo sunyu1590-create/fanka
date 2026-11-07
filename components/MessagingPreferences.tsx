@@ -5,6 +5,7 @@ import { LogOut, ShieldCheck, UserRound, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import { cloudFetch } from "@/lib/cloud";
 import AnimatedNotice from "./AnimatedNotice";
+import { confirmInApp } from "@/lib/in-app-dialog";
 
 type BlockedProfile = { id: string; nickname: string; bio: string };
 
@@ -72,9 +73,9 @@ export default function MessagingPreferences({
 
   const saveNotesPrivacy = async (value: boolean) => {
     if (!accountId) return;
-    if (!window.confirm(value
+    if (!await confirmInApp(value
       ? "将作品可见范围设为仅自己可见？这会影响已发布作品、关联内容和图片的公开访问；管理员仍可审核。"
-      : "将作品可见范围设为公开展示？其他用户可按社区规则访问已发布内容。")) return;
+      : "将作品可见范围设为公开展示？其他用户可按社区规则访问已发布内容。", {title:"更新作品可见范围",confirmLabel:"确认更新"})) return;
     setBusyId("notes"); setError("");
     try {
       const db = await browserDb();
@@ -135,7 +136,7 @@ export default function MessagingPreferences({
       <p className="messaging-preferences-note">恢复码只展示一次。生成新码会让此前的所有恢复码失效，请离线保存在安全位置。</p>
       <button type="button" className="soft-button" disabled={busyId === "recovery"} onClick={() => void createRecoveryCodes()}>{busyId === "recovery" ? "正在生成…" : recoveryCodes.length ? "重新生成恢复码" : "生成账号恢复码"}</button>
       {recoveryCodes.length > 0 && <pre className="recovery-code-list">{recoveryCodes.join("\n")}</pre>}
-      <button className="messaging-signout" onClick={() => { if (window.confirm("确定退出当前账号吗？")) void browserDb().then((db) => db.auth.signOut()); }}><LogOut size={17}/>退出账号</button>
+      <button className="messaging-signout" onClick={() => void confirmInApp("确定退出当前账号吗？", {title:"退出账号",confirmLabel:"退出登录",danger:true}).then((confirmed) => { if (confirmed) void browserDb().then((db) => db.auth.signOut()); })}><LogOut size={17}/>退出账号</button>
     </section>
     <AnimatedNotice message={error} className="messaging-preferences-error" />
   </div>;

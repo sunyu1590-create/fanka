@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
+import { confirmInApp } from "@/lib/in-app-dialog";
 
 type CacheSummary = { name: string; count: number; bytes: number | null };
 const isHeikaWorkerCache = (name: string) => name.startsWith("heika-shell-") || name.startsWith("heika-static-");
@@ -39,7 +40,7 @@ export default function CacheManager({ onNotice }: { onNotice: (message: string)
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   const clear = async () => {
-    if (busy || !window.confirm("清理 HEIKA 离线页面与静态资源缓存？作品、草稿、收藏和登录状态不会被删除。")) return;
+    if (busy || !await confirmInApp("清理 HEIKA 离线页面与静态资源缓存？作品、草稿、收藏和登录状态不会被删除。", {title:"清理缓存",confirmLabel:"清理缓存",danger:true})) return;
     setBusy(true); setError("");
     try {
       const keys = await caches.keys();

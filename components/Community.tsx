@@ -37,6 +37,8 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import ProgressiveImage from "./ProgressiveImage";
+import ChoiceSelect from "./ChoiceSelect";
+import { confirmInApp, promptInApp } from "@/lib/in-app-dialog";
 const Messages = dynamic(() => import("./Messages"), {
   loading: () => <div className="empty">正在加载消息…</div>,
 });
@@ -1219,16 +1221,16 @@ export default function Community() {
     });
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   };
-  const updateBookmarkVisibility = (value: boolean) => {
+  const updateBookmarkVisibility = async (value: boolean) => {
     if (!accountId) {
       toast("登录后可管理收藏公开状态");
       setTab("messages");
       return;
     }
     const previous = publicBookmarks;
-    if (!window.confirm(value
+    if (!await confirmInApp(value
       ? "将收藏设置为公开展示？其他人可以在你的主页浏览收藏。"
-      : "停止展示我的收藏？其他人将无法在你的主页浏览收藏。")) return;
+      : "停止展示我的收藏？其他人将无法在你的主页浏览收藏。", {title:"更新收藏公开范围",confirmLabel:"确认更新"})) return;
     setPublicBookmarks(value);
     setPublicBookmarksLoaded(true);
     setBookmarkVisibilityBusy(true);
@@ -1253,7 +1255,7 @@ export default function Community() {
     } catch (error) { toast(error instanceof Error ? error.message : "收藏夹创建失败"); }
   };
   const deleteBookmarkCollection = async (collection: BookmarkCollection) => {
-    if (!window.confirm(`删除“${collection.name}”？其中的内容会回到未分类收藏。`)) return;
+    if (!await confirmInApp(`删除“${collection.name}”？其中的内容会回到未分类收藏。`, {title:"删除收藏夹",confirmLabel:"删除",danger:true})) return;
     try {
       await cloudRequest("/api/v1/bookmark-collections", { action: "delete", id: collection.id });
       setBookmarkCollections((current) => current.filter((item) => item.id !== collection.id));
@@ -1295,7 +1297,7 @@ export default function Community() {
       setBookmarkCollections((items) => items.map((item) => item.id === collection.id ? { ...item, ...result } : item));
       const url = `${window.location.origin}${window.location.pathname}?collection=${result.share_code}`;
       try { await navigator.clipboard.writeText(url); toast("协作分享链接已开启并复制，可邀请朋友查看和加入整理"); }
-      catch { window.prompt("复制这个协作分享链接", url); }
+      catch { await promptInApp("复制这个协作分享链接", url, {title:"协作分享链接",confirmLabel:"完成"}); }
     } catch (error) { toast(error instanceof Error ? error.message : "分享设置失败"); }
   };
   const joinBookmarkCollection = async () => {
@@ -2095,9 +2097,9 @@ export default function Community() {
     }));
     toast("已保存至此设备");
   };
-  const clearTodayFlips = () => {
+  const clearTodayFlips = async () => {
     if (!opened.length) return toast("今天还没有翻开的卡片");
-    if (!confirm("清除今天的翻卡记录？这些卡片会重新锁定。")) return;
+    if (!await confirmInApp("清除今天的翻卡记录？这些卡片会重新锁定。", {title:"清除翻卡记录",confirmLabel:"清除记录",danger:true})) return;
     update((current) => ({
       ...current,
       opened: { ...current.opened, [today]: [] },
@@ -2137,7 +2139,7 @@ export default function Community() {
     }
   };
   const deleteOwn = async (p: Post) => {
-    if (!confirm("确定删除这篇内容？")) return;
+    if (!await confirmInApp("确定删除这篇内容？", {title:"删除作品",confirmLabel:"删除",danger:true})) return;
     try {
       if (p.cloudId)
         await cloudRequest("/api/v1/library-state", {
@@ -2151,7 +2153,7 @@ export default function Community() {
     }
   };
   const deleteComment = async (c: Comment) => {
-    if (!confirm("删除这条评论？")) return;
+    if (!await confirmInApp("删除这条评论？", {title:"删除评论",confirmLabel:"删除",danger:true})) return;
     try {
       if (c.cloudId)
         await cloudRequest("/api/library-comments", {
@@ -2655,7 +2657,7 @@ export default function Community() {
   };
   const discardComposerDraft = async () => {
     if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id)) || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在处理，请稍后再删除");
-    if (!confirm("删除这份草稿及其图片？此操作无法撤销。")) return;
+    if (!await confirmInApp("删除这份草稿及其图片？此操作无法撤销。", {title:"删除草稿",confirmLabel:"删除草稿",danger:true})) return;
     let old = state.own.find((item) => item.id === editing);
     if (accountId && !composerEditingPublished) {
       try {
@@ -4169,7 +4171,7 @@ export default function Community() {
                   <button type="button" className={favoriteCollection === "uncategorized" ? "selected" : ""} onClick={() => setFavoriteCollection("uncategorized")}>未分类</button>
                   {bookmarkCollections.map((collection) => <span className="collection-chip" key={collection.id}>{editingCollection === collection.id ? <><input aria-label="收藏夹新名称" maxLength={24} value={editingCollectionName} onChange={(event) => setEditingCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameBookmarkCollection(collection); if (event.key === "Escape") setEditingCollection(null); }}/><button type="button" className="collection-delete" aria-label="保存收藏夹名称" onClick={() => void renameBookmarkCollection(collection)}><Check size={13}/></button><button type="button" className="collection-delete" aria-label="取消重命名" onClick={() => setEditingCollection(null)}><X size={12}/></button></> : <><button type="button" className={favoriteCollection === collection.id ? "selected" : ""} onClick={() => setFavoriteCollection(collection.id)}>{collection.name}{collection.role === "collaborator" ? " · 协作" : ""}</button>{collection.role !== "collaborator" && <><button type="button" className="collection-delete" aria-label={`分享收藏夹 ${collection.name}`} onClick={() => void shareBookmarkCollection(collection)}><Share2 size={12}/></button><button type="button" className="collection-delete" aria-label={`重命名收藏夹 ${collection.name}`} onClick={() => { setEditingCollection(collection.id); setEditingCollectionName(collection.name); }}><PenLine size={12}/></button><button type="button" className="collection-delete" aria-label={`删除收藏夹 ${collection.name}`} onClick={() => void deleteBookmarkCollection(collection)}><X size={12}/></button></>}</>}</span>)}
                 </div>
-                {organizedFavoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{organizedFavoritePosts.map((post) => <div className="organized-favorite-card" key={post.id}>{postCard(post, state.revealed[post.id] ? "today" : "discover")}{state.saved.includes(post.id) ? <label className="collection-assignment">整理到<select aria-label={`整理《${post.title}》到收藏夹`} value={bookmarkMembership[post.cloudId || ""] || ""} disabled={!accountId || !post.cloudId} onChange={(event) => void assignBookmarkCollection(post, event.target.value)}><option value="">未分类</option>{bookmarkCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label> : <small className="collection-assignment shared-bookmark-note">朋友也收藏了这份灵感</small>}</div>)}</div> : <div className="empty">{favoritePostsForView.length ? "没有符合搜索条件的收藏。" : favoriteCollection !== "all" && favoriteCollection !== "uncategorized" ? "这个协作收藏夹还没有内容。" : "收藏的内容会集中保存在这里。"}</div>}
+                {organizedFavoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{organizedFavoritePosts.map((post) => <div className="organized-favorite-card" key={post.id}>{postCard(post, state.revealed[post.id] ? "today" : "discover")}{state.saved.includes(post.id) ? <label className="collection-assignment">整理到<ChoiceSelect label={`整理《${post.title}》到收藏夹`} value={bookmarkMembership[post.cloudId || ""] || ""} disabled={!accountId || !post.cloudId} onChange={(value) => void assignBookmarkCollection(post, value)} placeholder="未分类" options={[{value:"",label:"未分类"},...bookmarkCollections.map((collection) => ({value:collection.id,label:collection.name}))]}/></label> : <small className="collection-assignment shared-bookmark-note">朋友也收藏了这份灵感</small>}</div>)}</div> : <div className="empty">{favoritePostsForView.length ? "没有符合搜索条件的收藏。" : favoriteCollection !== "all" && favoriteCollection !== "uncategorized" ? "这个协作收藏夹还没有内容。" : "收藏的内容会集中保存在这里。"}</div>}
               </div>
             )}
             {mineSection === "liked" && (
@@ -4855,7 +4857,7 @@ export default function Community() {
               <div className="composer-workspace">
               <div className="composer-scroll">
                 {editing === null && <section className="composer-channel-picker" role="group" aria-label="发布内容类型"><strong>发布到</strong><div>{([["community", "社区作品"], ["ai", "AI 空间"]] as const).map(([value, label]) => <button type="button" key={value} className={writeChannel === value ? "selected" : ""} aria-pressed={writeChannel === value} onClick={() => { setWriteChannel(value); setWriteTag(value === "ai" ? aiCategories.find((item) => item.kind === "category")?.name || "AI 知识" : communityCategories[0] || tags[0]); setWriteTopics([]); setWriteContentType("knowledge_article"); setAiResourceFields({}); }}>{label}</button>)}</div></section>}
-                {writeChannel === "ai" && <section className="composer-ai-type"><label>AI 内容类型<select value={writeContentType} onChange={(event) => setWriteContentType(event.target.value as AiContentType)}>{([["knowledge_article", "AI 知识文章"], ["agent", "Agent 智能体"], ["skill", "Skills 技能"], ["prompt", "Prompt 提示词"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"]] as const).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><small>{writeContentType === "knowledge_article" ? "使用标准图文文章格式，支持 Markdown。" : "按类型填写结构化字段；发布后由管理员审核，并保留已发布版本。"}</small></section>}
+                {writeChannel === "ai" && <section className="composer-ai-type"><label>AI 内容类型<ChoiceSelect label="AI 内容类型" value={writeContentType} onChange={(value) => setWriteContentType(value as AiContentType)} options={([["knowledge_article", "AI 知识文章"], ["agent", "Agent 智能体"], ["skill", "Skills 技能"], ["prompt", "Prompt 提示词"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"]] as const).map(([value,label]) => ({value,label}))}/></label><small>{writeContentType === "knowledge_article" ? "使用标准图文文章格式，支持 Markdown。" : "按类型填写结构化字段；发布后由管理员审核，并保留已发布版本。"}</small></section>}
                 <label className="composer-title-field">
                   标题
                   <input
@@ -4947,11 +4949,9 @@ export default function Community() {
                 </section>}
                 <label className="composer-category-field">
                   {writeChannel === "ai" ? "AI 分类" : "分类"}
-                  <select value={writeTag} onChange={(event) => setWriteTag(event.target.value)}>
-                    {(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => <option key={tag}>{tag}</option>)}
-                  </select>
+                  <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={setWriteTag} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
                 </label>
-                {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<select value={writeSeriesId} onChange={(event) => setWriteSeriesId(event.target.value)}><option value="">暂不加入系列</option>{creatorSeries.map((series) => <option key={series.id} value={series.id}>{series.title}</option>)}</select><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
+                {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<ChoiceSelect label="加入作品系列" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入系列"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
                 <section className="composer-topic-section" aria-label="选择话题">
                   <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
                   {writeTopics.length > 0 && <div className="composer-selected-topics" aria-label="已选话题">{writeTopics.map((topic) => <button type="button" key={topic} onClick={() => setWriteTopics((current) => current.filter((item) => item !== topic))}>#{topic}<span aria-hidden="true">×</span></button>)}</div>}

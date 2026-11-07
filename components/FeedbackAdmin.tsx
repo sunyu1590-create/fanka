@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
+import ChoiceSelect from "./ChoiceSelect";
 
 type Item = { id: string; user_id: string | null; category: "suggestion" | "problem" | "other"; message: string; status: "open" | "in_progress" | "resolved" | "dismissed"; review_note: string | null; attachment_url?: string | null; created_at: string };
 const categoryName = { suggestion: "功能建议", problem: "使用问题", other: "其他反馈" };
@@ -34,7 +35,7 @@ export default function FeedbackAdmin() {
     finally { setBusy(""); }
   };
   return <div className="feedback-admin">
-    <label className="feedback-filter">处理状态<select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="open">待处理</option><option value="in_progress">处理中</option><option value="resolved">已解决</option><option value="dismissed">已归档</option><option value="all">全部</option></select></label>
+    <label className="feedback-filter">处理状态<ChoiceSelect label="处理状态" value={status} onChange={(value) => { setStatus(value); setPage(1); }} options={[{value:"open",label:"待处理"},{value:"in_progress",label:"处理中"},{value:"resolved",label:"已解决"},{value:"dismissed",label:"已归档"},{value:"all",label:"全部"}]}/></label>
     {error && <p className="settings-error" role="alert">{error}</p>}
     {!items.length && !error ? <p className="settings-note">当前没有反馈。</p> : <div className="feedback-admin-list">{items.map((item) => <article className="feedback-admin-item" key={item.id}>
       <div className="feedback-admin-meta"><span>{categoryName[item.category]}</span><span>{statusName[item.status]}</span><time>{new Date(item.created_at).toLocaleString("zh-CN")}</time></div>

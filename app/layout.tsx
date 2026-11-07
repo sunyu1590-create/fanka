@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import ServiceWorkerRegistration from '../components/ServiceWorkerRegistration';
+import InAppDialogHost from '../components/InAppDialogHost';
 import './style.css';
 import './design-system.css';
 import './settings.css';
@@ -42,6 +43,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           if (font === 'oppo' || font === 'system') document.documentElement.dataset.font = font;
         } catch {}`}</Script>
         {children}
+        <InAppDialogHost />
         <ServiceWorkerRegistration />
       </body>
     </html>

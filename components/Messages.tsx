@@ -4,6 +4,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ArrowLeft, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Send, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import { authRedirectUrl } from "@/lib/auth-redirect";
+import { promptInApp } from "@/lib/in-app-dialog";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
 import AnimatedNotice from "./AnimatedNotice";
 import type { NoticeOptions } from "./NoticeBanner";
@@ -473,7 +474,7 @@ export default function Messages({
   };
   const report = async (message?: Message) => {
     if (!db || !user) return;
-    const reason = prompt("请输入举报原因（至少 3 个字）");
+    const reason = await promptInApp("请输入举报原因（至少 3 个字）", "", {title:"举报私信",confirmLabel:"提交举报"});
     if (!reason || reason.trim().length < 3) return;
     const { error } = await db
       .from("dm_reports")

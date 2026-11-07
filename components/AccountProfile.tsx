@@ -7,6 +7,7 @@ import { cloudRequest } from "@/lib/cloud";
 import { tags } from "@/lib/content";
 import AnimatedNotice from "./AnimatedNotice";
 import ChoiceSelect from "./ChoiceSelect";
+import { confirmInApp } from "@/lib/in-app-dialog";
 
 export type ProfileDetails = {
   gender: string;
@@ -176,7 +177,7 @@ export default function AccountProfile({
 
     <section className="profile-visibility-settings account-profile-section" aria-labelledby="profile-visibility-title">
       <div className="account-profile-section-heading"><span className="account-profile-section-index">03</span><div><h3 id="profile-visibility-title">公开范围</h3><p>关闭后，该项只会保留在你的账号中。</p></div></div>
-      <div className="profile-visibility-list" aria-label="资料公开设置">{(Object.keys(detailLabels) as (keyof ProfileDetails["visibility"])[]).map((key) => <label className="profile-visibility-row" key={key}><span><strong>{detailLabels[key]}</strong><small>{profileDetails.visibility[key] ? "已展示在公开主页" : "仅自己可见"}</small></span><span className="profile-visibility-control"><input type="checkbox" checked={profileDetails.visibility[key]} aria-label={`公开${detailLabels[key]}`} onChange={(event) => { const isVisible = event.target.checked; if (isVisible && !window.confirm("公开展示" + detailLabels[key] + "？")) { event.currentTarget.checked = false; return; } setProfileDetails((value) => ({ ...value, visibility: { ...value.visibility, [key]: isVisible } })); }} /></span></label>)}</div>
+      <div className="profile-visibility-list" aria-label="资料公开设置">{(Object.keys(detailLabels) as (keyof ProfileDetails["visibility"])[]).map((key) => <label className="profile-visibility-row" key={key}><span><strong>{detailLabels[key]}</strong><small>{profileDetails.visibility[key] ? "已展示在公开主页" : "仅自己可见"}</small></span><span className="profile-visibility-control"><input type="checkbox" checked={profileDetails.visibility[key]} aria-label={`公开${detailLabels[key]}`} onChange={(event) => { const isVisible = event.target.checked; const apply = () => setProfileDetails((value) => ({ ...value, visibility: { ...value.visibility, [key]: isVisible } })); if (isVisible) void confirmInApp("公开展示" + detailLabels[key] + "？", {title:"更新个人信息展示",confirmLabel:"公开展示"}).then((confirmed) => { if (confirmed) apply(); }); else apply(); }} /></span></label>)}</div>
     </section>
 
     <AnimatedNotice message={error}/>

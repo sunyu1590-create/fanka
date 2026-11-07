@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { cloudFetch } from "@/lib/cloud";
+import ChoiceSelect from "./ChoiceSelect";
 
 export default function FeedbackForm({ accountId, onLogin, onNotice }: { accountId: string | null; onLogin: () => void; onNotice: (message: string) => void }) {
   const [category, setCategory] = useState("suggestion");
@@ -28,7 +29,7 @@ export default function FeedbackForm({ accountId, onLogin, onNotice }: { account
   };
   if (!accountId) return <div className="feedback-login"><p>登录后可提交并查看处理进度。</p><button type="button" className="primary-button" onClick={onLogin}>前往登录</button></div>;
   return <form className="feedback-form" onSubmit={(event) => void submit(event)}>
-    <label>反馈分类<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="suggestion">功能建议</option><option value="problem">使用问题</option><option value="other">其他反馈</option></select></label>
+    <label>反馈分类<ChoiceSelect label="反馈分类" value={category} onChange={setCategory} options={[{value:"suggestion",label:"功能建议"},{value:"problem",label:"使用问题"},{value:"other",label:"其他反馈"}]}/></label>
     <label>反馈内容<textarea value={message} onChange={(event) => setMessage(event.target.value)} minLength={10} maxLength={3000} rows={7} placeholder="请描述你遇到的情况或建议（10–3000 字）" required /></label>
     <label className="feedback-honeypot" aria-hidden="true">网站<input tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} /></label>
     <label className="feedback-attachment">图片（可选）<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file && file.size > 5 * 1024 * 1024) { setError("图片不能超过 5 MB"); event.target.value = ""; return; } setError(""); setAttachment(file || null); }}/><small>支持 JPG、PNG、WebP，单张不超过 5 MB</small></label>
