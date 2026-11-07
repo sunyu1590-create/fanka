@@ -62,7 +62,7 @@ export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partia
     return path ? mediaUrls?.get(path) : undefined;
   };
   const imageUrl = (item: PostMediaRow) => {
-    if (partial) return thumbnailUrl(item) || originalUrl(item);
+    if (partial) return thumbnailUrl(item) || mediaRoute(item.storage_path);
     return originalUrl(item);
   };
   const images = [

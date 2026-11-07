@@ -71,6 +71,7 @@ import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
+import { feedImageSource } from "@/lib/feed-images";
 import { userMessage } from "@/lib/user-message";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
@@ -3130,8 +3131,8 @@ export default function Community() {
         style={{ background: discoveryFeed && !coverImage && !coverVideo ? "linear-gradient(145deg,#30383d,#13171a)" : coverColor(p.tag), ...(own ? { aspectRatio: "3 / 4" } : source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
       >
         {coverImage && <img
-            src={coverImage}
-            srcSet={coverImage === p.image && p.imageRetina ? `${coverImage} 480w, ${p.imageRetina} 960w` : undefined}
+            src={discoveryFeed ? feedImageSource(coverImage) : coverImage}
+            srcSet={!discoveryFeed && coverImage === p.image && p.imageRetina ? `${coverImage} 480w, ${p.imageRetina} 960w` : undefined}
             sizes={state.discoverLayout === "single" ? "100vw" : "(min-width: 1600px) 20vw, (min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"}
             alt={discoveryFeed ? p.title : ""}
             loading={priority ? "eager" : "lazy"}

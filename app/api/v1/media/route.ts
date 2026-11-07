@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { context, respond, ApiError, dbError, uuid } from "@/lib/server/api";
 import { mediaBucketForPath } from "@/lib/media-path";
 import { createMediaThumbnails } from "@/lib/server/media-thumbnails";
+import { createFeedThumbnail } from "@/lib/server/feed-thumbnail";
+
+export const runtime = "nodejs";
 
 const validImage = async (file: File) => {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 4 * 1024 * 1024 || !file.size) throw new ApiError(400, "仅支持不超过 4 MB 的 JPG、PNG、WebP 图片");
@@ -20,12 +23,13 @@ const imagePaths = (path: string) => {
 };
 const validMediaPath = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-(?:480|960))?\.(?:jpg|png|webp|mp4|webm)$/i;
 
-async function findMedia(db: Awaited<ReturnType<typeof context>>["db"], path: string) {
+async function findMedia(db: Awaited<ReturnType<typeof context>>["db"], path: string, publishedOnly = false) {
   if (!validMediaPath.test(path)) throw new ApiError(400, "媒体路径无效");
-  const { data, error } = await db.from("post_media")
+  let query = db.from("post_media")
     .select("post_id,posts!inner(status)")
     .or(`storage_path.eq.${path},thumbnail_path.eq.${path},retina_thumbnail_path.eq.${path}`)
-    .maybeSingle();
+  if (publishedOnly) query = query.eq("posts.status", "published");
+  const { data, error } = await query.maybeSingle();
   dbError(error);
   return data;
 }
@@ -35,11 +39,34 @@ export async function GET(req: NextRequest) {
     try {
       const { db } = await context(req, false);
       const path = req.nextUrl.searchParams.get("path") || "";
-      const media = await findMedia(db, path);
+      const variant = req.nextUrl.searchParams.get("variant");
+      if (variant && variant !== "feed") throw new ApiError(400, "图片尺寸无效");
+      const media = await findMedia(db, path, variant === "feed");
       if (!media) throw new ApiError(404, "媒体不存在");
       const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 3600);
       dbError(error);
       if (!data?.signedUrl) throw new ApiError(404, "媒体不存在");
+      if (variant === "feed") {
+        try {
+          const original = await fetch(data.signedUrl, { signal: AbortSignal.timeout(10000) });
+          if (!original.ok) throw new Error("原图读取失败");
+          const contentLength = Number(original.headers.get("content-length") || 0);
+          if (contentLength > 5 * 1024 * 1024) throw new Error("原图超过处理限制");
+          const bytes = Buffer.from(await original.arrayBuffer());
+          if (bytes.byteLength > 5 * 1024 * 1024) throw new Error("原图超过处理限制");
+          const thumbnail = await createFeedThumbnail(bytes);
+          return new NextResponse(new Uint8Array(thumbnail), {
+            headers: {
+              "Content-Type": "image/webp",
+              "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+              "X-Content-Type-Options": "nosniff",
+            },
+          });
+        } catch (error) {
+          console.warn("[media] feed thumbnail fallback", error instanceof Error ? error.name : "unknown");
+          return NextResponse.redirect(data.signedUrl, 302);
+        }
+      }
       return NextResponse.redirect(data.signedUrl, 302);
     } catch (error) {
       return NextResponse.json({ error: error instanceof ApiError ? error.message : "媒体加载失败" }, { status: error instanceof ApiError ? error.status : 500 });

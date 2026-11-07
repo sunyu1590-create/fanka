@@ -3690,7 +3690,7 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
   background: transparent;
   content-visibility: auto;
   contain-intrinsic-size: auto 360px;
-  transition: transform var(--motion-fast) var(--ease), opacity var(--motion-fast) var(--ease);
+  transition: none;
 }
 @media (min-width:700px) { .discover-content-card { contain-intrinsic-size: auto 460px; } }
 @media (min-width:1280px) { .discover-content-card { contain-intrinsic-size: auto 500px; } }
@@ -3709,10 +3709,13 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
 .discover-content-card .discover-post-cover>img {
   z-index: -1;
   filter: none;
-  transition: transform 280ms var(--ease), opacity 200ms ease;
+  transition: none;
 }
-.discover-content-card:hover .discover-post-cover>img,
-.discover-content-card:focus-visible .discover-post-cover>img { transform: scale(1.012); }
+@media (hover: hover) and (pointer: fine) {
+  .discover-content-card .discover-post-cover>img { transition: transform 280ms var(--ease); }
+  .discover-content-card:hover .discover-post-cover>img,
+  .discover-content-card:focus-visible .discover-post-cover>img { transform: scale(1.012); }
+}
 .discover-post-cover.is-placeholder { background: linear-gradient(145deg,#30383d,#13171a)!important; }
 .discover-post-cover .post-cover-tag {
   position: absolute;
