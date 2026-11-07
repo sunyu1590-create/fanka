@@ -133,6 +133,8 @@ AppState resume ─┤
 - 没有新增 Android 原生配置或数据库修改，也没有把候选渲染补丁标为已确认根因修复。
 - 新增本审计报告文件。
 
+提交与构建记录：`1385748e45609808396b427c9a6c7073f3032dce`（`Audit Android stability and guard message lifecycle`），已推送至 `android/phase-two`。GitHub Actions run [#13](https://github.com/sunyu1590-create/fanka/actions/runs/42351345421) 成功；APK 签名、包名、版本均通过校验，artifact 已上传。报告状态于 2026-11-07 更新。
+
 ## 7. 自动化、构建与真机测试报告
 
 | 检查 | 结果 |
@@ -143,7 +145,12 @@ AppState resume ─┤
 | `npm audit --audit-level=low` | 通过，0 vulnerabilities |
 | `npx expo-doctor` | 18/20 检查通过；2 项远程检查因环境 DNS/网络失败（`exp.host` 与 React Native Directory），不是代码检查通过 |
 | Java / Gradle wrapper | Java 21、Gradle 9.4.1 可运行 |
-| 原生 Gradle APK 构建 | 未运行：环境无 Android SDK（`ANDROID_HOME` 未设置），无法生成/安装 APK |
+| Release 原生 APK 构建 | GitHub Actions run #13 成功；Gradle `assembleRelease`、APK v2 签名校验、版本验证和 artifact 上传均通过 |
+| APK 元数据 | `com.heika.community`, `versionCode=5`, `versionName=2.1.1`, `compileSdk=37` |
+| APK SHA-256 | `9060acb77095d43ea1d9153af4adc345fd08926f1f1ca567d2bfb0e148313b78` |
+| APK 签名一致性 | 本次 APK SHA-256 signer `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`，与上一份成功构建 APK 一致 |
+| APK artifact | `heika-android-preview-apk`，约 21.4 MB，保留至 2026-12-07；[GitHub Actions 下载页](https://github.com/sunyu1590-create/fanka/actions/runs/42351345421) |
+| 本地原生 Gradle 构建 | 未运行：本地环境无 Android SDK（`ANDROID_HOME` 未设置）；CI 完成 Release 原生构建 |
 | `adb` 真机/模拟器 | 未运行：当前环境没有 `adb` 或设备 |
 | 冷/热启动、翻卡、导航、滚动、断网、通知、长时运行压力矩阵 | 未执行；不能报告为通过 |
 | Android 版本对照、Debug/Release 对照 | 未执行 |
