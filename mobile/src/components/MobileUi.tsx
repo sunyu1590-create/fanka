@@ -1,12 +1,9 @@
 import React, { type ReactNode } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-reanimated";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useSegments } from "expo-router";
 import { useTheme } from "../lib/theme";
-import { useBottomNavStyle } from "../lib/navigation-preferences";
-import { NativeIcon } from "./NativeIcon";
-import { useMobileSession } from "../lib/mobile-api";
 
 export const palette = {
   bg: "#F6F5F1", paper: "#FFFFFF", ink: "#202421", muted: "#7E8583",
@@ -20,23 +17,15 @@ export function PageFrame({ title, eyebrow, back = true, children, scroll = true
   const { colors } = useTheme();
   const themed = makeUi(colors);
   const segments = useSegments();
-  const insets = useSafeAreaInsets();
-  const { style: navStyle } = useBottomNavStyle();
-  const { session } = useMobileSession();
   const inTabs = segments.includes("(tabs)");
-  const bottomSpace = inTabs ? (navStyle === "glass" ? Math.max(108, insets.bottom + 94) : Math.max(84, insets.bottom + 70)) : 34;
   const content = scroll ? (
-    <ScrollView contentContainerStyle={[themed.content, { paddingBottom: bottomSpace }, contentStyle]} keyboardShouldPersistTaps="handled" refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.action} /> : undefined}>
+    <ScrollView contentContainerStyle={[themed.content, { paddingBottom: inTabs ? 116 : 34 }, contentStyle]} keyboardShouldPersistTaps="handled" refreshControl={onRefresh ? <RefreshControl refreshing={Boolean(refreshing)} onRefresh={onRefresh} tintColor={colors.action} /> : undefined}>
       {children}
     </ScrollView>
-  ) : <View style={[themed.content, { flex: 1, paddingBottom: bottomSpace }, contentStyle]}>{children}</View>;
+  ) : <View style={[themed.content, { flex: 1 }, contentStyle]}>{children}</View>;
   return <SafeAreaView style={themed.safe} edges={["top", "left", "right", "bottom"]}>
-    <View style={{ minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, backgroundColor: colors.bg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><View style={{ width: 16, height: 16, borderWidth: 1.4, borderColor: colors.action, transform: [{ rotate: "45deg" }] }} /><Text style={{ color: colors.ink, fontSize: 17, fontWeight: "800", letterSpacing: 2 }}>黑卡</Text><Text style={{ color: colors.subtle, fontSize: 9, fontWeight: "600", letterSpacing: 2 }}>HEIKA</Text></View>
-      <View style={{ minHeight: 28, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}><View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: session ? colors.action : colors.subtle }} /><Text style={{ color: colors.muted, fontSize: 9 }}>{session ? "已登录 · 云端同步" : "访客探索"}</Text></View>
-    </View>
     <View style={themed.header}>
-      {back && <Pressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => router.canGoBack() ? router.back() : router.replace("/home")} hitSlop={12} style={themed.back}><NativeIcon name="back" color={colors.action} size={18} /></Pressable>}
+      {back && <Pressable accessibilityRole="button" accessibilityLabel="返回" onPress={() => router.canGoBack() ? router.back() : router.replace("/home")} hitSlop={12} style={themed.back}><Text style={themed.backText}>‹</Text></Pressable>}
       <View style={themed.headerTitle}>
         {eyebrow ? <Text style={themed.eyebrow}>{eyebrow}</Text> : null}
         <Text style={themed.title}>{title}</Text>

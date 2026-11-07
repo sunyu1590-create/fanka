@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, TextInput, View, type ScaledSize } from "react-native";
-import * as Clipboard from "expo-clipboard";
+import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View, type ScaledSize } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeIn, FadeInDown, LinearTransition } from "react-native-reanimated";
 import { Action, Notice, PageFrame } from "../../components/MobileUi";
@@ -9,7 +8,7 @@ import { NativeImage } from "../../components/NativeImage";
 import { API_BASE, api, getDb, useMobileSession } from "../../lib/mobile-api";
 import { useTheme } from "../../lib/theme";
 
-type Post = { id: string; client_id: number; title: string; body: string; images?: string[]; image_url?: string | null; cover_text?: string | null; created_at?: string; channel?: "community" | "ai"; contentType?: string; content_type?: string; resourceData?: Record<string, unknown>; resource_data?: Record<string, unknown>; author_id?: string | null; profiles?: { nickname?: string | null; avatar_url?: string | null } | null; interest_tags?: { name?: string | null } | null; post_media?: Array<{ storage_path: string; sort_order: number }> };
+type Post = { id: string; client_id: number; title: string; body: string; images?: string[]; image_url?: string | null; cover_text?: string | null; created_at?: string; author_id?: string | null; profiles?: { nickname?: string | null; avatar_url?: string | null } | null; interest_tags?: { name?: string | null } | null; post_media?: Array<{ storage_path: string; sort_order: number }> };
 type Comment = { id: string; author_id: string; parent_id: string | null; body: string; created_at: string; likeCount: number; liked: boolean; author?: { nickname?: string | null; avatar_url?: string | null } | null };
 type Rating = { average: number; count: number; myRating: number | null };
 type CommentPage = { items: Comment[]; total: number; has_more: boolean; hot_window_limited?: boolean; page: number; limit: number };
@@ -186,7 +185,6 @@ export default function PostScreen() {
         <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>{post.profiles?.nickname || "黑卡探索者"}</Text><Text style={{ color: colors.subtle, fontSize: 10 }}>· {post.created_at ? new Date(post.created_at).toLocaleDateString("zh-CN") : ""}</Text>
       </Pressable>
       <Text selectable style={{ color: colors.ink, fontSize: 15, lineHeight: 25, marginTop: 13 }}>{post.body}</Text>
-      {(post.channel === "ai" || post.contentType || post.content_type) ? <AIResourcePanel post={post} colors={colors} onNotice={setNotice} /> : null}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 18, paddingVertical: 13, borderBottomWidth: 1, borderColor: colors.line }}>
         <MotionPressable accessibilityRole="button" accessibilityLabel={`${liked ? "取消赞" : "点赞"}`} onPress={() => void toggleLike()} style={{ minHeight: 42, flexDirection: "row", alignItems: "center", gap: 6 }}><Text style={{ color: liked ? colors.danger : colors.muted, fontSize: 20 }}>{liked ? "♥" : "♡"}</Text><Text style={{ color: liked ? colors.danger : colors.muted, fontSize: 12 }}>赞</Text></MotionPressable>
         <MotionPressable accessibilityRole="button" onPress={() => void toggleBookmark()} style={{ minHeight: 42, flexDirection: "row", alignItems: "center", gap: 6 }}><Text style={{ color: saved ? colors.gold : colors.muted, fontSize: 18 }}>{saved ? "◆" : "◇"}</Text><Text style={{ color: saved ? colors.gold : colors.muted, fontSize: 12 }}>{saved ? "已收藏" : "收藏"}</Text></MotionPressable>
@@ -218,46 +216,6 @@ export default function PostScreen() {
       </KeyboardAvoidingView>
     </> : !loading ? <View style={{ paddingVertical: 24 }}><Text style={{ color: colors.ink, fontSize: 15, fontWeight: "700" }}>内容暂时无法显示</Text><Text style={{ color: colors.muted, fontSize: 12, marginTop: 5 }}>{error || "请检查网络后重试。"}</Text><Action title="重新加载" subtle onPress={() => void load()} /></View> : null}
   </PageFrame>;
-}
-
-const aiFieldLabels: Record<string, string> = {
-  functionality: "功能说明", platforms: "兼容平台", run_mode: "运行方式", use_cases: "适用场景", tutorial: "使用教程",
-  environments: "兼容环境", installation: "安装步骤", configuration: "配置内容", example: "使用示例", model: "适用模型",
-  scenario: "应用场景", prompt: "完整提示词", variables: "可替换变量", pricing: "价格信息", difficulty: "难度",
-  requirements: "准备条件", steps: "实战步骤", source_url: "资源来源", changelog: "更新记录", version: "版本",
-};
-const aiTypeLabels: Record<string, string> = { knowledge_article: "知识文章", agent: "智能体", skill: "技能", prompt: "提示词", ai_tool: "AI 工具", tutorial: "实战教程" };
-const copyableAiFields = new Set(["prompt", "installation", "configuration", "steps", "example", "tutorial"]);
-
-function AIResourcePanel({ post, colors, onNotice }: { post: Post; colors: ReturnType<typeof useTheme>["colors"]; onNotice: (message: string) => void }) {
-  const [copied, setCopied] = useState("");
-  const data = post.resourceData || post.resource_data || {};
-  const fields = Object.entries(data).filter(([, value]) => (typeof value === "string" && value.trim()) || (Array.isArray(value) && value.length) || (typeof value === "number" && Number.isFinite(value)));
-  const type = post.contentType || post.content_type || "knowledge_article";
-  const copy = async (key: string, value: string) => {
-    try { await Clipboard.setStringAsync(value); setCopied(key); onNotice("资源内容已复制"); setTimeout(() => setCopied(""), 1500); }
-    catch { onNotice("复制失败，请检查应用剪贴板权限。"); }
-  };
-  const openSource = async (value: string) => {
-    try {
-      const parsed = new URL(value);
-      if (parsed.protocol !== "https:") throw new Error("unsafe link");
-      await Linking.openURL(parsed.toString());
-    } catch { onNotice("资源链接无效或无法打开。"); }
-  };
-  if (!fields.length && type === "knowledge_article") return null;
-  return <View style={{ marginTop: 18, padding: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 13, shadowColor: "#000", shadowOpacity: .08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 }}>
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: 11, borderBottomWidth: 1, borderColor: colors.line }}><View><Text style={{ color: colors.subtle, fontSize: 9, fontWeight: "800", letterSpacing: 1.4 }}>HEIKA / AI RESOURCE</Text><Text style={{ color: colors.ink, fontSize: 16, fontWeight: "700", marginTop: 4 }}>资源信息</Text></View><Text style={{ color: colors.action, fontSize: 10, fontWeight: "700", paddingHorizontal: 9, paddingVertical: 5, borderRadius: 12, backgroundColor: colors.actionSoft }}>{aiTypeLabels[type] || "AI 内容"}</Text></View>
-    {!fields.length ? <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 19, paddingTop: 11 }}>这篇知识文章暂时没有额外的结构化字段。</Text> : fields.map(([key, raw]) => {
-      const value = Array.isArray(raw) ? raw.map((item) => typeof item === "string" ? item : JSON.stringify(item)).join("\n") : typeof raw === "object" && raw !== null ? JSON.stringify(raw, null, 2) : String(raw);
-      const source = key.endsWith("_url") && /^https:\/\//i.test(value.trim());
-      return <View key={key} style={{ paddingTop: 11, paddingBottom: 9, borderBottomWidth: 1, borderColor: colors.line }}>
-        <Text style={{ color: colors.subtle, fontSize: 10, fontWeight: "700", marginBottom: 6 }}>{aiFieldLabels[key] || key}</Text>
-        {source ? <Pressable onPress={() => void openSource(value)}><Text numberOfLines={2} style={{ color: colors.action, fontSize: 12, lineHeight: 18, textDecorationLine: "underline" }}>{value}</Text></Pressable> : <Text selectable style={{ color: colors.ink, fontSize: 12, lineHeight: 19 }}>{value}</Text>}
-        {copyableAiFields.has(key) ? <Pressable accessibilityRole="button" onPress={() => void copy(key, value)} style={{ alignSelf: "flex-start", minHeight: 34, flexDirection: "row", alignItems: "center", gap: 5, marginTop: 5, paddingHorizontal: 9, borderWidth: 1, borderColor: colors.line, borderRadius: 9 }}><Text style={{ color: colors.action, fontSize: 10, fontWeight: "700" }}>{copied === key ? "✓ 已复制" : "复制内容"}</Text></Pressable> : null}
-      </View>;
-    })}
-  </View>;
 }
 
 function CommentRow({ comment, own, authorId, onReply, onLike, onDelete, onReport, colors, compact = false }: { comment: Comment; own: boolean; authorId?: string | null; onReply: () => void; onLike: () => void; onDelete: () => void; onReport: () => void; colors: ReturnType<typeof useTheme>["colors"]; compact?: boolean }) {

@@ -4,8 +4,6 @@ import { router } from "expo-router";
 import { Action, Notice, PageFrame } from "../components/MobileUi";
 import { api, useMobileSession } from "../lib/mobile-api";
 import { useTheme, type ThemeMode } from "../lib/theme";
-import { useBottomNavStyle } from "../lib/navigation-preferences";
-import type { BottomNavStyle } from "../lib/navigation-preferences";
 import { getNativeNotificationPermission, requestNativeNotificationPermission } from "../lib/native-notifications";
 
 type NotificationSettings = { commentsEnabled: boolean };
@@ -13,7 +11,6 @@ const modes: Array<{ key: ThemeMode; label: string }> = [{ key: "system", label:
 
 export default function SettingsScreen() {
   const { colors, mode, setMode } = useTheme();
-  const { style: bottomNavStyle, setStyle: setBottomNavStyle } = useBottomNavStyle();
   const { session } = useMobileSession();
   const [notifications, setNotifications] = useState<NotificationSettings>({ commentsEnabled: true });
   const [loading, setLoading] = useState(false);
@@ -64,11 +61,6 @@ export default function SettingsScreen() {
   return <PageFrame title="设置" eyebrow="SETTINGS / HEIKA">
     <Text style={{ color: colors.subtle, fontSize: 10, fontWeight: "700", letterSpacing: 1.4 }}>外观</Text>
     <View style={{ flexDirection: "row", borderBottomWidth: 1, borderColor: colors.line }}>{modes.map((item) => <Pressable key={item.key} accessibilityRole="button" accessibilityState={{ selected: mode === item.key }} onPress={() => setMode(item.key)} style={{ flex: 1, minHeight: 46, alignItems: "center", justifyContent: "center", borderBottomWidth: 2, borderColor: mode === item.key ? colors.action : "transparent" }}><Text style={{ color: mode === item.key ? colors.action : colors.muted, fontSize: 12, fontWeight: mode === item.key ? "700" : "500" }}>{item.label}</Text></Pressable>)}</View>
-    <Text style={{ color: colors.subtle, fontSize: 10, fontWeight: "700", letterSpacing: 1.4, marginTop: 14 }}>导航栏样式</Text>
-    <View style={{ flexDirection: "row", gap: 10 }}>
-      <BottomNavOption value="glass" current={bottomNavStyle} label="悬浮玻璃" detail="轻透悬浮，保留页面空间" onPress={setBottomNavStyle} colors={colors} />
-      <BottomNavOption value="fixed" current={bottomNavStyle} label="固定底栏" detail="贴合屏幕底部，稳定易触达" onPress={setBottomNavStyle} colors={colors} />
-    </View>
     <Text style={{ color: colors.subtle, fontSize: 10, fontWeight: "700", letterSpacing: 1.4, marginTop: 14 }}>账号与资料</Text>
     <SettingRow title="个人资料" subtitle="昵称、头像和公开资料" onPress={() => router.push("/profile-edit")} colors={colors} />
     <SettingRow title="账号安全" subtitle="登录、修改密码和备用恢复码" onPress={() => router.push("/account")} colors={colors} />
@@ -88,16 +80,4 @@ export default function SettingsScreen() {
 
 function SettingRow({ title, subtitle, onPress, colors }: { title: string; subtitle: string; onPress: () => void; colors: ReturnType<typeof useTheme>["colors"] }) {
   return <Pressable accessibilityRole="button" onPress={onPress} style={{ minHeight: 58, flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderColor: colors.line }}><View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontSize: 13, fontWeight: "600" }}>{title}</Text><Text style={{ color: colors.muted, fontSize: 10, marginTop: 3 }}>{subtitle}</Text></View><Text style={{ color: colors.subtle, fontSize: 18 }}>›</Text></Pressable>;
-}
-
-function BottomNavOption({ value, current, label, detail, onPress, colors }: { value: BottomNavStyle; current: BottomNavStyle; label: string; detail: string; onPress: (value: BottomNavStyle) => void; colors: ReturnType<typeof useTheme>["colors"] }) {
-  const selected = current === value;
-  const floating = value === "glass";
-  return <Pressable accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => onPress(value)} style={{ flex: 1, minHeight: 114, padding: 10, borderWidth: 1, borderColor: selected ? colors.action : colors.line, borderRadius: 12, backgroundColor: selected ? colors.actionSoft : colors.surface }}>
-    <View style={{ height: 47, justifyContent: "flex-end", paddingBottom: 2, backgroundColor: colors.bg, overflow: "hidden" }}>
-      <View style={{ height: 24, marginHorizontal: floating ? 7 : 0, borderRadius: floating ? 9 : 0, borderTopLeftRadius: floating ? 9 : 0, borderTopRightRadius: floating ? 9 : 0, borderWidth: 1, borderColor: colors.line, backgroundColor: `${colors.surface}F0`, alignItems: "center", justifyContent: "center" }}><View style={{ flexDirection: "row", gap: 12 }}><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.action }} /><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.muted }} /><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold }} /><View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.muted }} /></View></View>
-    </View>
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}><Text style={{ color: colors.ink, fontSize: 11, fontWeight: "700" }}>{label}</Text><View style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: selected ? colors.action : colors.subtle, alignItems: "center", justifyContent: "center" }}>{selected ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.action }} /> : null}</View></View>
-    <Text style={{ color: colors.muted, fontSize: 9, lineHeight: 13, marginTop: 4 }}>{detail}</Text>
-  </Pressable>;
 }

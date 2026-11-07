@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, Vibration } from "react-native";
 import { router } from "expo-router";
-import Animated, { Easing, FadeInDown, interpolate, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { Easing, FadeInDown, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useTheme } from "../../lib/theme";
 import { API_BASE, api, useMobileSession } from "../../lib/mobile-api";
 import { readCache, writeCache } from "../../lib/local-store";
@@ -201,8 +201,10 @@ export default function HomeScreen() {
 function DeckCardTile({ card, post, phase, rarity, ratingCount, experience, busy, colors, onOpen, onView }: { card: DeckCard; post?: NativePost; phase: "closed" | "rarity" | "content"; rarity?: string; ratingCount: number; experience: number; busy: boolean; colors: ReturnType<typeof useTheme>["colors"]; onOpen: () => void; onView: () => void }) {
   const flipped = Boolean(post);
   const flip = useSharedValue(flipped ? 1 : 0);
-  const frontStyle = useAnimatedStyle(() => ({ transform: [{ perspective: 1000 }, { rotateY: `${interpolate(flip.value, [0, 1], [0, 180])}deg` }] }));
-  const backStyle = useAnimatedStyle(() => ({ transform: [{ perspective: 1000 }, { rotateY: `${interpolate(flip.value, [0, 1], [180, 360])}deg` }], opacity: flip.value }));
+  // Use an opacity reveal instead of a nested 3D RenderNode transform. Some Android 17
+  // HWUI builds overflow RenderThread's transform stack during cold launch with perspective cards.
+  const frontStyle = useAnimatedStyle(() => ({ opacity: 1 - flip.value }));
+  const backStyle = useAnimatedStyle(() => ({ opacity: flip.value }));
   useEffect(() => { flip.value = withTiming(flipped ? 1 : 0, { duration: 680, easing: Easing.out(Easing.cubic) }); }, [flip, flipped]);
   const press = () => { if (card.opened_at) { if (post) onView(); return; } onOpen(); };
   return <MotionPressable accessibilityRole="button" accessibilityLabel={`第 ${card.slot} 张卡片${card.opened_at ? "，已翻开" : "，点击翻开"}`} onPress={press} disabled={busy || Boolean(card.opened_at && !post)} style={{ flex: 1, minWidth: 0 }}>
