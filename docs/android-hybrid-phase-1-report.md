@@ -54,6 +54,7 @@
 - 当前环境的 `adb devices` 无设备，且没有安装 emulator；未能在真实设备完成 Android 13 通知权限、进程回收、弱网、键盘和长时间内存测试。
 - GitHub Actions workflow 会在 PR 更新时运行 Web 校验与 Android APK 构建；`HEIKA-debug.apk` 和 `HEIKA-release-unsigned.apk` artifact 可从 [PR #1 的 Checks/Actions](https://github.com/sunyu1590-create/fanka/pull/1) 下载，保留 14 天。
 - Android 包名延续旧客户端 `com.heika.community`，版本 `2.2.0`、versionCode 6、minSdk 26、targetSdk 35。GitHub debug APK 使用 debug key；若旧安装使用发布密钥签名，则需正式发布签名包才能覆盖升级。当前 release artifact 未签名。
+- 弃用 Expo 工程已从 `android/phase-one` 与 `android/phase-two` 当前树清除。`publish-vercel` 仍是 Vercel 生产部署分支，其 47 个旧文件的删除已放入 [draft PR #2](https://github.com/sunyu1590-create/fanka/pull/2)；未合并，避免未经确认触发生产站点重部署。
 
 旧 Expo 客户端的私信提醒依赖其进程中的 Supabase Realtime 订阅并发送本地通知；它不是 FCM 远程推送。真实设备后台推送投递和 Token 账号绑定仍需 Android 设备、Firebase 与后端服务端接口配置；当前后端没有 FCM 服务。
 
