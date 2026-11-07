@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.38.5",
+    date: "2026.11.07",
+    notes: [
+      { category: "问题修复", text: "修复社区作品云端草稿误将 UUID 当作草稿编号，导致加载本地草稿以及发布时报编号无效的问题。" },
+      { category: "问题修复", text: "发布和草稿保存按数值内容编号更新，并限定在社区频道，避免与 AI 内容草稿互相覆盖。" },
+    ],
+  },
+  {
     version: "2.38.4",
     date: "2026.11.07",
     notes: [

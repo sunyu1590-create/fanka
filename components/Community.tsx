@@ -2332,7 +2332,7 @@ export default function Community() {
       const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
       const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai"
         ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
-        : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
+        : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
@@ -2560,7 +2560,7 @@ export default function Community() {
               const cover = composerImages[coverIndex];
               const saved = writeChannel === "ai"
                 ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: cloudDraft?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields, coverUrl: cover?.external ? cover.url : null }) as Post | null
-                : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
+                : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId ? cloudDraft.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
               if (saved) { cloudDraft = saved; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] })); }
             } catch { setDraftSaved(false); toast("云端草稿保存失败，已保留本机草稿"); }
             finally { setDraftSaving(false); }
@@ -2644,7 +2644,7 @@ export default function Community() {
     setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "uploading" } : item));
     try {
       const old = state.own.find((item) => item.id === editing);
-      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag }) as Post | null;
+      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败");
       const synced = await uploadImageToPost(image, draft.cloudId, composerImages.indexOf(image));
       setEditing(draft.id); update((current) => ({ ...current, own: [draft, ...current.own.filter((item) => item.id !== draft.id)] }));
@@ -2659,7 +2659,7 @@ export default function Community() {
     let old = state.own.find((item) => item.id === editing);
     if (accountId && !composerEditingPublished) {
       try {
-        const draft = await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag }) as Post | null;
+        const draft = await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
         if (draft?.cloudId) {
           old = draft;
           for (const image of composerImages) if (image.file && !image.path) await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: draft.cloudId }, "DELETE");

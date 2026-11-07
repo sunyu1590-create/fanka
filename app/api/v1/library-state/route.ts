@@ -290,8 +290,14 @@ export async function POST(req: NextRequest) {
         .eq("name", String(b.tag))
         .single();
       dbError(tagError);
-      const existingPost = b.id ? await db.from("posts").select("id,status").eq("client_id", Number(b.id)).eq("author_id", user!.id).single() : null;
-      if (existingPost) dbError(existingPost.error);
+      const clientId = b.id === undefined || b.id === null || b.id === "" ? null : Number(b.id);
+      if (clientId !== null && (!Number.isSafeInteger(clientId) || clientId < 1)) throw new ApiError(400, "草稿编号无效");
+      const existingPost = clientId !== null
+        ? await db.from("posts").select("id,status").eq("client_id", clientId).eq("author_id", user!.id).single()
+        : null;
+      if (existingPost) {
+        dbError(existingPost.error);
+      }
       if (existingPost?.data) await ensurePollEditable(db, existingPost.data.id, b.poll);
       const seriesId = typeof b.seriesId === "string" && b.seriesId ? b.seriesId : null;
       if (seriesId) {
@@ -355,10 +361,10 @@ export async function POST(req: NextRequest) {
         image_url: typeof b.coverUrl === "string" ? (() => { try { const url = new URL(b.coverUrl); return ["https:", "http:"].includes(url.protocol) ? url.toString() : null; } catch { return null; } })() : null,
       };
       const q = db.from("posts");
-      const { data, error } = b.id
+      const { data, error } = clientId !== null
         ? await q
             .update(values)
-            .eq("client_id", Number(b.id))
+            .eq("client_id", clientId)
             .eq("author_id", user!.id)
             .select(libraryFields)
             .single()
