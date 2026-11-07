@@ -30,7 +30,7 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
   const groups: { title: string; rows: { label: string; value?: string; action: () => void }[] }[] = [
     { title: "外观与显示", rows: [
       { label: "主题外观", value: ({ dark: "深色", light: "浅色", system: "跟随系统" } as const)[theme], action: () => onOpenDetail("theme") },
-      { label: "字体设置", value: fontChoice === "oppo" ? "OPPO Sans 4.0 · 设备回退" : "系统字体", action: () => onOpenDetail("font") },
+      { label: "字体设置", value: fontChoice === "oppo" ? "OPPO Sans 4.0 · 应用内字体" : "系统字体", action: () => onOpenDetail("font") },
       { label: "底部导航", value: bottomNavStyle === "glass" ? "悬浮玻璃" : "固定底栏", action: () => onOpenDetail("bottomNav") },
     ] },
     { title: "浏览与阅读", rows: [

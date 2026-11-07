@@ -7,6 +7,16 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.38.4",
+    date: "2026.11.07",
+    notes: [
+      { category: "体验优化", text: "翻卡彩蛋保留，彩带粒子由 112 调整为 96，降低网页端动画开销。" },
+      { category: "体验优化", text: "详情页默认使用轻柔模糊上浮；未手动选择的旧默认迁移为新默认，其他显式偏好保留。" },
+      { category: "体验优化", text: "默认底栏改为悬浮玻璃样式，同时保留用户明确选择的固定底栏。" },
+      { category: "问题修复", text: "随应用提供 OPPO Sans 4.0 字体及版权许可说明，移除设置中字体文件缺失的提示。" },
+    ],
+  },
+  {
     version: "2.38.3",
     date: "2026.11.07",
     notes: [

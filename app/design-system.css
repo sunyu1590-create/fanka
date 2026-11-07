@@ -4339,3 +4339,31 @@ img, video, canvas, iframe { max-width:100%; }
 @media(prefers-reduced-motion:reduce) {
   .comment-like,.comment-reply-like,.comment-actions-menu summary,.comment-actions-panel,.comment-replies-extra,.detail-comment-input { animation:none!important; transition:none!important; }
 }
+
+/* Use the unchanged OPPO Sans 4.0 font bundled with HEIKA. */
+@font-face {
+  font-family: "OPPO Sans 4.0";
+  src: local("OPPO Sans 4.0"), local("OPPOSans40"), url("/fonts/OPPO-Sans-4.0.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@keyframes detail-image-soft-rise-in {
+  from { opacity: .72; filter: blur(7px); transform: translate3d(0,12px,0) scale(.992); }
+  to { opacity: 1; filter: blur(0); transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes detail-image-soft-rise-out {
+  from { opacity: 1; filter: blur(0); transform: translate3d(0,0,0) scale(1); }
+  to { opacity: .78; filter: blur(5px); transform: translate3d(0,8px,0) scale(.995); }
+}
+.overlay.detail-opening .detail-image-frame.transition-blur-rise .progressive-image-stack {
+  animation: detail-image-soft-rise-in 210ms cubic-bezier(.22,1,.36,1) both;
+}
+.overlay.detail-closing .detail-image-frame.transition-blur-rise .progressive-image-stack {
+  animation: detail-image-soft-rise-out 160ms ease-in both;
+}
+@media(prefers-reduced-motion:reduce) {
+  .overlay.detail-opening .detail-image-frame.transition-blur-rise .progressive-image-stack,
+  .overlay.detail-closing .detail-image-frame.transition-blur-rise .progressive-image-stack { animation:none!important; }
+}

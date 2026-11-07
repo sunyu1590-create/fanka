@@ -85,7 +85,7 @@ const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
 const AppealCenter = dynamic(() => import("./AppealCenter"));
 import type { AiContentType } from "@/lib/ai-resources";
 
-const FLIP_RAIN_PARTICLES = 112;
+const FLIP_RAIN_PARTICLES = 96;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
 const FLIP_RAIN_DURATION_SPREAD_MS = 900;
 const FLIP_RAIN_LEAD_MS = 240;
@@ -352,9 +352,9 @@ const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
-  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("fixed");
+  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("glass");
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
-  const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("image-zoom");
+  const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("blur-rise");
   const [detailTransitionLoaded, setDetailTransitionLoaded] = useState(false);
   const [profileLayout, setProfileLayout] = useState<"masonry" | "list">("masonry");
   const [profileLayoutLoaded, setProfileLayoutLoaded] = useState(false);
@@ -369,12 +369,21 @@ export default function Community() {
     if (savedFont === "oppo" || savedFont === "system") setFontChoice(savedFont);
     setFontReady(true);
     const savedBottomNavStyle = localStorage.getItem("heika-bottom-nav-style");
-    if (savedBottomNavStyle === "glass" || savedBottomNavStyle === "fixed")
-      setBottomNavStyle(savedBottomNavStyle);
+    if (savedBottomNavStyle === "glass") setBottomNavStyle("glass");
+    if (savedBottomNavStyle === "fixed") {
+      const explicitlyChosen = localStorage.getItem("heika-bottom-nav-style-explicit") === "1";
+      const nextStyle = explicitlyChosen ? "fixed" : "glass";
+      setBottomNavStyle(nextStyle);
+      if (!explicitlyChosen) localStorage.setItem("heika-bottom-nav-style", nextStyle);
+    }
     setBottomNavStyleReady(true);
     const savedDetailTransition = localStorage.getItem("heika-detail-transition");
-    if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise" || savedDetailTransition === "ghost-handoff")
-      setDetailTransition(savedDetailTransition);
+    if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise" || savedDetailTransition === "ghost-handoff") {
+      const explicitlyChosen = localStorage.getItem("heika-detail-transition-explicit") === "1";
+      const nextTransition = savedDetailTransition === "image-zoom" && !explicitlyChosen ? "blur-rise" : savedDetailTransition;
+      setDetailTransition(nextTransition);
+      if (nextTransition !== savedDetailTransition) localStorage.setItem("heika-detail-transition", nextTransition);
+    }
     setDetailTransitionLoaded(true);
     const savedProfileLayout = localStorage.getItem("heika-public-profile-layout");
     if (savedProfileLayout === "masonry" || savedProfileLayout === "list")
@@ -1457,12 +1466,16 @@ export default function Community() {
       localStorage.removeItem("heika-theme");
       localStorage.removeItem("heika-font");
       localStorage.removeItem("heika-bottom-nav-style");
+      localStorage.removeItem("heika-bottom-nav-style-explicit");
+      localStorage.removeItem("heika-detail-transition");
+      localStorage.removeItem("heika-detail-transition-explicit");
       setState({ ...initial, cardIds: state.cardIds });
       setPublicBookmarks(false);
       setPublicBookmarksLoaded(true);
       setTheme("dark");
       setFontChoice("oppo");
-      setBottomNavStyle("fixed");
+      setBottomNavStyle("glass");
+      setDetailTransition("blur-rise");
       setSelectedCalendarDate("");
       setTab("today");
       imageSwitchSequence.current += 1;
@@ -4008,12 +4021,12 @@ export default function Community() {
           )}
           {settingsDetail === "font" && (
             <div className="preference-options" role="radiogroup" aria-label="字体选择">
-              {([['oppo','OPPO Sans 4.0','未随应用提供字体文件，设备未安装时自动回退系统字体'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
+              {([['oppo','OPPO Sans 4.0','已随应用提供；字体版权归 OPPO，未选中时使用系统字体'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "bottomNav" && (
             <div className="preference-options" role="radiogroup" aria-label="底部导航样式">
-              {([['glass','悬浮玻璃','轻透悬浮，保留页面呼吸感'],['fixed','固定底栏','贴合屏幕底部，稳定易触达']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`preference-option${bottomNavStyle===value?' selected':''}`} onClick={()=>setBottomNavStyle(value)}>{renderPreferencePreview('bottomNav',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{bottomNavStyle===value?'✓':''}</i></button>)}
+              {([['glass','悬浮玻璃','轻透悬浮，保留页面呼吸感'],['fixed','固定底栏','贴合屏幕底部，稳定易触达']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`preference-option${bottomNavStyle===value?' selected':''}`} onClick={()=>{localStorage.setItem("heika-bottom-nav-style-explicit","1");setBottomNavStyle(value)}}>{renderPreferencePreview('bottomNav',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{bottomNavStyle===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "discoverLayout" && (
@@ -4042,7 +4055,7 @@ export default function Community() {
                 ["image-zoom", "连续展开", "保留封面放大进入详情、返回原卡片的连贯转场"],
                 ["blur-rise", "柔和上浮", "新图片从轻微柔焦与短距离上浮中清晰出现"],
                 ["ghost-handoff", "留影衔接", "上一张短暂留影，新图轻柔上浮；快速切换可立即接续"],
-              ] as const).map(([value, label, description]) => <button key={value} role="radio" aria-checked={detailTransition === value} className={`preference-option${detailTransition === value ? " selected" : ""}`} onClick={() => setDetailTransition(value)}>
+              ] as const).map(([value, label, description]) => <button key={value} role="radio" aria-checked={detailTransition === value} className={`preference-option${detailTransition === value ? " selected" : ""}`} onClick={() => { localStorage.setItem("heika-detail-transition-explicit", "1"); setDetailTransition(value); }}>
                 <span className={`preference-preview preview-transition preview-transition-${value}`} aria-hidden="true"><i/><b/></span><span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{detailTransition === value ? "✓" : ""}</i>
               </button>)}
             </div>
