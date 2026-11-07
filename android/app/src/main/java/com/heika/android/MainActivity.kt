@@ -223,6 +223,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
             override fun onNavigationAck(requestId: String, accepted: Boolean) {
                 if (inFlightNavigationId != requestId) return
                 if (!accepted) diagnostics.record("navigation_rejected")
+                else lastDeliveredRoute?.let { route ->
+                    lastSafeRoute = BuildConfig.WEB_APP_URL.trimEnd('/') + route
+                }
                 navigationTimeout?.let(mainHandler::removeCallbacks)
                 navigationTimeout = null
                 inFlightNavigationId = null
@@ -527,9 +530,22 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
         }
         val data = intent.data ?: return null
+        if (data.scheme.equals("heika", ignoreCase = true)) {
+            val conversationId = data.pathSegments.singleOrNull()
+                ?.takeIf { CONVERSATION_ID.matches(it) }
+                ?.lowercase()
+            if (data.host.equals("chat", ignoreCase = true) &&
+                data.userInfo == null && data.query == null && data.fragment == null &&
+                conversationId != null
+            ) {
+                return "/?conversation=$conversationId" to UUID.randomUUID().toString()
+            }
+            diagnostics.record("blocked_external_scheme")
+            return null
+        }
         if (!isTrustedUrl(data)) return null
         val route = safeRoute(data) ?: return null
-        return route to (intent.getStringExtra(EXTRA_NOTIFICATION_ID) ?: "link-${route.hashCode().toUInt()}")
+        return route to (intent.getStringExtra(EXTRA_NOTIFICATION_ID) ?: UUID.randomUUID().toString())
     }
 
     private fun safeRoute(uri: Uri?): String? {
@@ -547,16 +563,20 @@ class MainActivity : androidx.activity.ComponentActivity() {
             val params = uri.queryParameterNames
             val post = uri.getQueryParameter("post")
             val auth = uri.getQueryParameter("auth")
-            if (params.any { it !in setOf("post", "auth") }) return null
+            val conversation = uri.getQueryParameter("conversation")
+            if (params.any { it !in setOf("post", "auth", "conversation") }) return null
             if (uri.getQueryParameters("post").size > 1 || uri.getQueryParameters("auth").size > 1) return null
+            if (uri.getQueryParameters("conversation").size > 1) return null
             val numericPostId = post?.toLongOrNull()
             if (post != null && (!POST_ID.matches(post) || numericPostId == null || numericPostId > MAX_SAFE_JS_INTEGER)) return null
             if (auth != null && auth != "reset") return null
-            if (post != null && auth != null) return null
+            if (conversation != null && !CONVERSATION_ID.matches(conversation)) return null
+            if (listOfNotNull(post, auth, conversation).size > 1) return null
             buildString {
                 append('/')
                 if (post != null) append("?post=").append(post)
                 else if (auth != null) append("?auth=reset")
+                else if (conversation != null) append("?conversation=").append(conversation.lowercase())
             }
         }.getOrNull()
     }
@@ -664,5 +684,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991L
         val MESSAGE_ID = Regex("^[A-Za-z0-9_-]{1,120}$")
         val POST_ID = Regex("^[0-9]{1,20}$")
+        val CONVERSATION_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
     }
 }

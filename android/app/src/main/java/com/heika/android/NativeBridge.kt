@@ -235,7 +235,7 @@ internal class NativeBridge(
         private const val MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991L
         private val REQUEST_ID = Regex("^[A-Za-z0-9_-]{1,80}$")
         private val POST_ID = Regex("^[0-9]{1,20}$")
-        private val SAFE_PAGE_PATH = Regex("^/(?:\\?post=[0-9]{1,20}|\\?auth=reset)?$")
+        private val SAFE_PAGE_PATH = Regex("^/(?:\\?post=[0-9]{1,20}|\\?auth=reset|\\?conversation=[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})?$")
         private val ALLOWED_TYPES = setOf(
             "bridge.ready",
             "capabilities.get",

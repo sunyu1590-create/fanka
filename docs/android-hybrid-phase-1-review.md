@@ -12,7 +12,7 @@
 | 身份认证 | `browserDb()` 创建 Supabase JS 客户端；Web 端读取 Supabase Auth 会话并在 API 请求中使用 Bearer Token | 沿用 WebView 自己的 Web 存储和 Supabase 会话刷新；不向原生层暴露 Token |
 | 内容和草稿缓存 | 页面有 `localStorage` 状态，发布图片草稿使用 IndexedDB；没有 Service Worker | 保留现有 Web 缓存；WebView 使用标准 HTTP 缓存，不增加重复原生图片缓存 |
 | 图片和文件 | 页面直接加载图片；Web 发布使用文件输入、IndexedDB 备份和现有 API 上传 | 原生仅提供系统文件选择器给 WebView 文件输入；文件内容仍由 Web 业务上传 |
-| 推送 | 有通知偏好和浏览器通知权限 UI；没有 FCM 依赖、设备令牌表/接口、消息推送服务 | 实现 Android 通知权限桥和通知/深链路由入口；第一阶段不虚构 FCM 服务端、Token 同步或业务通知 |
+| 推送 | Web 后端无 FCM sender、设备 Token 表/注册解绑接口。旧 Expo 分支在客户端订阅 Supabase Realtime 并排程本地私信通知，不能替代独立远程推送 | 保留 Android 通知权限桥；实现安全通知路由，并兼容旧 `heika://chat/<conversation-id>` 目标。第一阶段不虚构 FCM 服务端或 Token 同步接口 |
 | 后端 | 有 Supabase 迁移和 API 路由；本阶段未发现需要新增的推送接口 | 不改生产数据库，不新增登录体系 |
 | 诊断 | Web 有 Node/Playwright 测试；无 Android 崩溃或性能组件 | 加入本地崩溃摘要、启动/首屏计时、渲染进程和内存事件日志 |
 | GitHub 构建 | 默认 `main` 起初没有 Android 工程或构建 workflow；远端 `android/phase-one`、`android/phase-two` 分支还包含 Expo `mobile/` 工程及旧 `build-android-apk.yml` | 已从两个遗留分支当前版本删除 `mobile/` 和旧 workflow；新 APK workflow 只在当前混合架构代码上构建 |
@@ -22,8 +22,8 @@
 1. 保留 Web 客户端和 Supabase 会话、翻卡、消息、内容、资料及草稿逻辑。
 2. 新建轻量 Android Kotlin 容器和单一 WebView 核心。
 3. 使用受可信 origin 限定的 AndroidX WebKit 消息监听器；只提供通知权限、页面状态、返回和业务路由等有限消息类型。
-4. 允许可信 HTTPS 业务页面在 WebView 内导航；对其他 HTTPS/HTTP、邮件和电话链接采用系统外部跳转；拒绝任意自定义 Scheme、明文混合内容和 SSL 错误继续访问。
-5. 处理系统返回、进程重建、WebView renderer 终止、加载失败、Android 13 通知权限、文件选择器和前后台状态。
+4. 允许可信 HTTPS 业务页面在 WebView 内导航；对其他 HTTPS/HTTP、邮件和电话链接采用系统外部跳转；只接受格式固定的 `heika://chat/<UUID>` 私信链接，拒绝其他自定义 Scheme、明文混合内容和 SSL 错误继续访问。
+5. 处理系统返回、进程重建、WebView renderer 终止、加载失败、Android 13 通知权限、文件选择器和前后台状态；延续旧包名、递增 versionCode 并映射旧私信链接。
 6. 保持 WebView 的标准 HTTP 缓存、本地存储和 IndexedDB；不复制会话或写入新敏感缓存。
 7. 清理旧 Expo App 与 APK workflow；增加 GitHub Actions 构建 debug/release APK 并上传 artifact；不执行发布签名或 Play Store 发布。
 8. 运行 Web 测试、类型检查、生产构建，并在可用时运行 Android 构建；设备测试限制单独记录。

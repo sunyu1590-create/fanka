@@ -15,12 +15,12 @@
 - 消息采用固定 allowlist、请求 ID、参数范围校验、有限结果状态和超时；不暴露通用原生方法调用，也不接受可执行 JavaScript 字符串。
 - 当前消息覆盖能力查询、Android 通知权限、页面状态、系统返回、通知路由确认及图片失败诊断。
 - Web 路由处理详情页、标签页、消息会话和覆盖层返回。原生只在 Web 不消费返回事件后才使用 WebView 历史作为兜底。
-- 外部网页、邮件和电话链接通过系统 Intent 打开；不支持的 Scheme 和 SSL 错误会被拦截。
+- 外部网页、邮件和电话链接通过系统 Intent 打开；除明确允许的私信链接外，其他自定义 Scheme 和 SSL 错误会被拦截。
 
 ## 推送、缓存和系统能力边界
 
 - 仓库原有后端没有 FCM sender、设备 Token 表或 Token 注册/解绑 API。因此本阶段只实现 Android 13+ 通知权限、稳定 Intent 消息 ID 去重和页面就绪后的安全业务路由；没有伪造 FCM 收件服务或数据库接口。
-- 当前可路由的业务 Deep Link 为 `/?post=<安全整数>` 和 `/?auth=reset`。评论锚点、私信会话等目标需要 Web 路由及后端通知载荷约定后再加入 allowlist。
+- 当前可路由的业务 Deep Link 为 `/?post=<安全整数>`、`/?auth=reset` 和 `/?conversation=<UUID>`。同时兼容旧客户端的 `heika://chat/<conversation-id>`，并在 Web 会话列表加载后确认该会话属于当前登录用户再打开。
 - 没有独立原生 `CacheManager`：当前图片、草稿和内容均由 Web 端现有机制管理。原生文件缓存暂不需要，避免重复存储和账号隔离问题。
 - 使用系统文件选择器选择图片/视频，不申请广泛存储权限。备份和设备迁移规则排除 WebView 会话及用户本地数据。
 
@@ -50,12 +50,12 @@
 
 - `npm test`：17/17 通过；`npm run typecheck`：通过；`npm run build`：通过。Next 构建仍报告项目原有的未使用变量、图片标签和 Hook dependency ESLint 警告。
 - `:app:assembleDebug`、`:app:assembleRelease`、`:app:lintDebug`：通过；Android lint 为 0 errors、0 warnings。debug APK 使用 debug key 签名，release APK 未签名。
-- 现有 Playwright P0 套件 4 项中 1 项通过、3 项失败：主题变量期望 `#F8F7F4` 实际为 `#FFFFFF`；设置测试找不到“单列阅读”按钮；管理员测试找不到“内容审核”标题。这三处未归入 Android Bridge 改动，本阶段没有修改相关 Web 页面。
+- 现有 Playwright P0 套件 4 项中 1 项通过、3 项失败：主题变量期望 `#F8F7F4` 实际为 `#FFFFFF`；设置测试找不到“单列阅读”按钮；管理员测试找不到“内容审核”标题。这些是当前 Web 验收失败项，本阶段未改动对应 UI；尚未对原始基线运行同一套件，不能断言其是否早已存在。
 - 当前环境的 `adb devices` 无设备，且没有安装 emulator；未能在真实设备完成 Android 13 通知权限、进程回收、弱网、键盘和长时间内存测试。
-- GitHub Actions 已成功完成前一提交的完整 Web + Android APK 构建并上传 artifact。最终代码提交会再运行一次同一流程；最终 run 和 artifact 链接在 PR 的 Checks/Actions 页面。
-- 本地 debug APK 标识为 `com.heika.android`、版本 `1.0.0`、minSdk 26、targetSdk 35。
+- GitHub Actions workflow 会在 PR 更新时运行 Web 校验与 Android APK 构建；`HEIKA-debug.apk` 和 `HEIKA-release-unsigned.apk` artifact 可从 [PR #1 的 Checks/Actions](https://github.com/sunyu1590-create/fanka/pull/1) 下载，保留 14 天。
+- Android 包名延续旧客户端 `com.heika.community`，版本 `2.2.0`、versionCode 6、minSdk 26、targetSdk 35。GitHub debug APK 使用 debug key；若旧安装使用发布密钥签名，则需正式发布签名包才能覆盖升级。当前 release artifact 未签名。
 
-真实设备推送投递和 Token 账号绑定仍需 Android 设备、Firebase 与后端服务端接口配置；当前后端没有 FCM 服务。
+旧 Expo 客户端的私信提醒依赖其进程中的 Supabase Realtime 订阅并发送本地通知；它不是 FCM 远程推送。真实设备后台推送投递和 Token 账号绑定仍需 Android 设备、Firebase 与后端服务端接口配置；当前后端没有 FCM 服务。
 
 ## 回滚
 

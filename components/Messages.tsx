@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { browserDb } from "@/lib/browser-db";
-import { subscribeNativeEvent } from "@/lib/native-bridge";
+import { reportNativePageState, subscribeNativeEvent } from "@/lib/native-bridge";
 import AnimatedNotice from "./AnimatedNotice";
 type Profile = { id: string; nickname: string; bio: string };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
@@ -17,11 +17,15 @@ type Message = {
 type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset";
 export default function Messages({
   initialPeer,
+  initialConversation,
   onPeerOpened,
+  onConversationOpened,
   isActive = true,
 }: {
   initialPeer?: string | null;
+  initialConversation?: string | null;
   onPeerOpened?: () => void;
+  onConversationOpened?: () => void;
   isActive?: boolean;
 }) {
   const [db, setDb] = useState<SupabaseClient>(),
@@ -89,6 +93,9 @@ export default function Messages({
   const list = useRef<HTMLDivElement>(null),
     nearBottom = useRef(true),
     activeRef = useRef<Room | null>(null);
+  const openedConversationRef = useRef<string | null>(null);
+  const conversationOpenedCallbackRef = useRef(onConversationOpened);
+  conversationOpenedCallbackRef.current = onConversationOpened;
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = user?.id ?? null;
   activeRef.current = active;
@@ -101,6 +108,14 @@ export default function Messages({
     }
     return false;
   }), [isActive]);
+  useEffect(() => {
+    const conversationId = isActive ? active?.id || initialConversation : null;
+    const path = conversationId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)
+      ? `/?conversation=${conversationId.toLowerCase()}`
+      : "/";
+    reportNativePageState(path);
+  }, [active?.id, initialConversation, isActive]);
   useEffect(() => {
     let alive = true;
     let cleanup = () => {};
@@ -244,6 +259,8 @@ export default function Messages({
       });
     }
   };
+  const loadConversationRef = useRef(load);
+  loadConversationRef.current = load;
   useEffect(() => {
     if (!db || !user || !isActive) return;
     void refresh();
@@ -396,6 +413,20 @@ export default function Messages({
         onPeerOpened?.();
       });
   }, [db, user?.id, initialPeer]);
+  useEffect(() => {
+    if (!initialConversation) {
+      openedConversationRef.current = null;
+      return;
+    }
+    if (!db || !user?.id || !isActive || openedConversationRef.current === initialConversation) return;
+    const room = rooms.find((item) => item.id === initialConversation);
+    if (!room) return;
+    openedConversationRef.current = initialConversation;
+    setActive(room);
+    setMessages([]);
+    void loadConversationRef.current(room);
+    conversationOpenedCallbackRef.current?.();
+  }, [db, user?.id, isActive, rooms, initialConversation]);
   const send = async (retry?: { id: string; body: string }) => {
     if (!db || !active || busy) return;
     const pending = retry || { id: crypto.randomUUID(), body: draft.trim() };
