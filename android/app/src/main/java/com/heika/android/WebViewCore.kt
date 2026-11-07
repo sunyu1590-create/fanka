@@ -1,13 +1,15 @@
 package com.heika.android
 
 import android.content.Context
+import android.annotation.SuppressLint
 import android.graphics.Color
-import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 
 internal object WebViewCore {
+    // The trusted web app owns its business UI; local files and mixed content remain disabled.
+    @SuppressLint("SetJavaScriptEnabled")
     fun create(context: Context): WebView {
         val webView = WebView(context)
         webView.apply {
@@ -27,7 +29,7 @@ internal object WebViewCore {
                 setSupportZoom(false)
                 builtInZoomControls = false
                 displayZoomControls = false
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
+                safeBrowsingEnabled = true
             }
         }
 
@@ -36,9 +38,7 @@ internal object WebViewCore {
             setAcceptThirdPartyCookies(webView, false)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, false)
-        }
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, false)
         return webView
     }
 }

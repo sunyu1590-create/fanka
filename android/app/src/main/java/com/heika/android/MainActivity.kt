@@ -15,7 +15,6 @@ import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
@@ -34,6 +33,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -46,7 +46,7 @@ import kotlin.math.max
 
 class MainActivity : androidx.activity.ComponentActivity() {
     private val diagnostics get() = (application as HeikaApplication).diagnostics
-    private val trustedOrigin = Uri.parse(BuildConfig.WEB_APP_ORIGIN)
+    private val trustedOrigin = BuildConfig.WEB_APP_ORIGIN.toUri()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var root: FrameLayout? = null
     private var webView: WebView? = null
@@ -105,10 +105,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.rgb(13, 16, 18)
-        window.navigationBarColor = Color.rgb(13, 16, 18)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             isAppearanceLightStatusBars = false
             isAppearanceLightNavigationBars = false
@@ -240,7 +237,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         view.webViewClient = object : WebViewClient() {
             override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
                 super.doUpdateVisitedHistory(view, url, isReload)
-                safeRoute(Uri.parse(url))?.let { lastSafeRoute = it }
+                safeRoute(url.toUri())?.let { lastSafeRoute = it }
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -262,7 +259,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     showLoadError()
                 }.also { mainHandler.postDelayed(it, LOAD_TIMEOUT_MS) }
 
-                val uri = Uri.parse(url)
+                val uri = url.toUri()
                 if (!isTrustedUrl(uri)) {
                     cancelLoadTimeout()
                     view.stopLoading()
@@ -318,7 +315,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     view.destroy()
                     return true
                 }
-                lastSafeRoute = safeRoute(view.url?.let { Uri.parse(it) }) ?: lastSafeRoute
+                lastSafeRoute = safeRoute(view.url?.toUri()) ?: lastSafeRoute
                 detachRendererLostWebView(view)
                 val now = SystemClock.elapsedRealtime()
                 if (now - rendererRestartWindow > RENDERER_RESTART_WINDOW_MS) {
@@ -375,11 +372,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
         }
 
-        lastSafeRoute = safeRoute(Uri.parse(firstUrl)) ?: BuildConfig.WEB_APP_URL
+        lastSafeRoute = safeRoute(firstUrl.toUri()) ?: BuildConfig.WEB_APP_URL
         showLoading()
         val restored = restoredState != null && view.restoreState(restoredState) != null
         if (restored) {
-            lastSafeRoute = safeRoute(view.url?.let { Uri.parse(it) }) ?: BuildConfig.WEB_APP_URL
+            lastSafeRoute = safeRoute(view.url?.toUri()) ?: BuildConfig.WEB_APP_URL
         } else {
             view.loadUrl(lastSafeRoute)
         }
@@ -545,14 +542,15 @@ class MainActivity : androidx.activity.ComponentActivity() {
         if (route.length > MAX_ROUTE_LENGTH || !route.startsWith('/') || route.startsWith("//")) return null
         if ('#' in route || '\\' in route) return null
         return runCatching {
-            val uri = Uri.parse("${BuildConfig.WEB_APP_ORIGIN}$route")
+            val uri = "${BuildConfig.WEB_APP_ORIGIN}$route".toUri()
             if (!isTrustedUrl(uri) || uri.path != "/" || uri.userInfo != null) return null
             val params = uri.queryParameterNames
             val post = uri.getQueryParameter("post")
             val auth = uri.getQueryParameter("auth")
             if (params.any { it !in setOf("post", "auth") }) return null
             if (uri.getQueryParameters("post").size > 1 || uri.getQueryParameters("auth").size > 1) return null
-            if (post != null && !POST_ID.matches(post)) return null
+            val numericPostId = post?.toLongOrNull()
+            if (post != null && (!POST_ID.matches(post) || numericPostId == null || numericPostId > MAX_SAFE_JS_INTEGER)) return null
             if (auth != null && auth != "reset") return null
             if (post != null && auth != null) return null
             buildString {
@@ -663,6 +661,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val MAX_PENDING_NAVIGATIONS = 20
         const val MAX_SEEN_NAVIGATION_IDS = 128
         const val MAX_ROUTE_LENGTH = 2_048
+        const val MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991L
         val MESSAGE_ID = Regex("^[A-Za-z0-9_-]{1,120}$")
         val POST_ID = Regex("^[0-9]{1,20}$")
     }

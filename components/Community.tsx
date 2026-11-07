@@ -1962,7 +1962,7 @@ export default function Community() {
     if (params.some((name) => name !== "post" && name !== "auth")) return false;
     const postId = target.searchParams.get("post");
     const auth = target.searchParams.get("auth");
-    if (postId && !/^[0-9]{1,20}$/.test(postId)) return false;
+    if (postId && (!/^[0-9]{1,20}$/.test(postId) || !Number.isSafeInteger(Number(postId)))) return false;
     if (auth && auth !== "reset") return false;
     if (postId && auth) return false;
     if (auth === "reset") {
@@ -1970,6 +1970,11 @@ export default function Community() {
       return true;
     }
     if (postId) {
+      if (new URLSearchParams(window.location.search).get("post") === postId) return true;
+      if (detail !== null || transitionBusy.current) {
+        window.location.assign(`/?post=${postId}`);
+        return true;
+      }
       const id = Number(postId);
       if (all.some((item) => item.id === id)) openPostRef.current(id, "discover");
       else window.location.assign(`/?post=${postId}`);

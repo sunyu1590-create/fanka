@@ -1,9 +1,11 @@
 package com.heika.android
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
+import androidx.core.net.toUri
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -36,6 +38,7 @@ internal class NativeBridge(
 
     data class PendingReply(val requestType: String, val proxy: JavaScriptReplyProxy)
 
+    @SuppressLint("RequiresFeature")
     fun install(): Boolean {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             diagnostics.recordBridgeFailure()
@@ -188,6 +191,7 @@ internal class NativeBridge(
         if (proxy == null || !safePost(proxy, response)) diagnostics.recordBridgeFailure()
     }
 
+    @SuppressLint("RequiresFeature")
     private fun safePost(proxy: JavaScriptReplyProxy, message: String): Boolean =
         runCatching { proxy.postMessage(message); true }.getOrElse { false }
 
@@ -196,7 +200,10 @@ internal class NativeBridge(
         if ('#' in path || '\\' in path) return false
         if (!SAFE_PAGE_PATH.matches(path)) return false
         return runCatching {
-            val uri = Uri.parse("${originString(trustedOrigin)}$path")
+            val uri = "${originString(trustedOrigin)}$path".toUri()
+            val post = uri.getQueryParameter("post")
+            val numericPostId = post?.toLongOrNull()
+            if (post != null && (!POST_ID.matches(post) || numericPostId == null || numericPostId > MAX_SAFE_JS_INTEGER)) return false
             sameOrigin(uri, trustedOrigin) && uri.userInfo == null
         }.getOrDefault(false)
     }
@@ -225,7 +232,9 @@ internal class NativeBridge(
         private const val MAX_MESSAGE_LENGTH = 16 * 1024
         private const val MAX_PATH_LENGTH = 1024
         private const val MAX_CACHED_RESULTS = 128
+        private const val MAX_SAFE_JS_INTEGER = 9_007_199_254_740_991L
         private val REQUEST_ID = Regex("^[A-Za-z0-9_-]{1,80}$")
+        private val POST_ID = Regex("^[0-9]{1,20}$")
         private val SAFE_PAGE_PATH = Regex("^/(?:\\?post=[0-9]{1,20}|\\?auth=reset)?$")
         private val ALLOWED_TYPES = setOf(
             "bridge.ready",

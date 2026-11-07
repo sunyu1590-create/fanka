@@ -134,7 +134,9 @@ export function announceNativeReady() {
   post("bridge.ready");
   const current = new URL(window.location.href);
   const postId = current.searchParams.get("post");
-  const path = postId && /^[0-9]{1,20}$/.test(postId) ? `/?post=${postId}` : "/";
+  const path = postId && /^[0-9]{1,20}$/.test(postId) && Number.isSafeInteger(Number(postId))
+    ? `/?post=${postId}`
+    : "/";
   post("page.state", { path });
 }
 
