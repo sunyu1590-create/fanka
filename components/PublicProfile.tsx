@@ -135,12 +135,23 @@ export default function PublicProfile({
           <div className="public-profile-content">
             <section className="public-profile-identity">
               {profile.avatar_url ? <img className="public-profile-avatar" src={profile.avatar_url} alt={`${profile.nickname}的头像`} /> : <div className="public-profile-avatar public-profile-avatar-placeholder"><UserRound size={31}/></div>}
-              <div className="public-profile-name-block"><h1>{profile.nickname || "探索者"}</h1><p>{profile.bio || "还没有填写简介。"}</p><small className="public-profile-followers">{followerCount.toLocaleString("zh-CN")} 位关注者</small></div>
-              <div className="public-profile-actions"><button className={`public-profile-follow${following ? " is-following" : ""}`} type="button" disabled={followBusy} onClick={() => void toggleFollow()}>{following ? "已关注" : "关注"}</button><button className="public-profile-message" type="button" onClick={() => onMessage(id)}><MessageCircle size={16}/> 私聊</button></div>
+              <div className="public-profile-name-block"><h1>{profile.nickname || "探索者"}</h1></div>
             </section>
+            <p className="public-profile-bio">{profile.bio || "还没有填写简介。"}</p>
             {!!attributes.filter((item) => item.value).length && <div className="public-profile-facts" aria-label="公开资料">
-              {attributes.filter((item) => item.value).map((item) => <span key={item.attribute}><small>{{ gender: "性别", mbti: "MBTI", birthday: "生日", hobbies: "兴趣" }[item.attribute]}</small><strong>{displayAttributeValue(item)}</strong></span>)}
+              {attributes.filter((item) => item.value).flatMap((item) => {
+                const values = item.attribute === "hobbies" ? displayAttributeValue(item).split("、").filter(Boolean) : [displayAttributeValue(item)];
+                return values.map((value, index) => <span key={`${item.attribute}-${index}`}>{item.attribute !== "hobbies" && item.attribute !== "gender" && item.attribute !== "mbti" && <small>{{ birthday: "生日" }[item.attribute]}</small>}<strong>{value}</strong></span>);
+              })}
             </div>}
+            <section className="public-profile-overview" aria-label="主页数据与操作">
+              <div className="public-profile-stats">
+                <span><strong>{posts.length === 30 ? "30+" : posts.length}</strong><small>笔记</small></span>
+                <span><strong>{followerCount.toLocaleString("zh-CN")}</strong><small>粉丝</small></span>
+                {profile.show_bookmarks && <span><strong>{bookmarks.length === 30 ? "30+" : bookmarks.length}</strong><small>公开收藏</small></span>}
+              </div>
+              <div className="public-profile-actions"><button className={`public-profile-follow${following ? " is-following" : ""}`} type="button" disabled={followBusy} onClick={() => void toggleFollow()}>{following ? "已关注" : "+ 关注"}</button><button className="public-profile-message" type="button" onClick={() => onMessage(id)}><MessageCircle size={16}/> 私聊</button></div>
+            </section>
             <div className="public-profile-tabs" role="group" aria-label="主页内容分类">
               <button type="button" aria-pressed={section === "posts"} onClick={() => setSection("posts")}>笔记 <small>{posts.length}</small></button>
               <button type="button" aria-pressed={section === "bookmarks"} onClick={() => setSection("bookmarks")}>收藏 {profile.show_bookmarks ? <small>{bookmarks.length}</small> : <LockKeyhole size={13}/>}</button>
