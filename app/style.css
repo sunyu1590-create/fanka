@@ -74,6 +74,9 @@
 .card-back-copy strong{font-size:16px;line-height:1.35;letter-spacing:-.02em}
 .card-back-copy em{font-size:10px;font-style:normal;margin-top:5px}
 .card-flip-back:has(img) .card-back-copy{color:#fff}
+.card-flip-back img[data-failed]{display:none}
+.card-flip-back:has(img:not([data-failed]))::after{background:linear-gradient(transparent 24%,rgba(9,10,11,.88))}
+.card-flip-back:has(img:not([data-failed])) .card-back-copy{color:#fff}
 .flip-in-place.is-detail-source{visibility:hidden}
 .flip-confirm{position:relative;min-height:min(560px,75dvh);background:#171717;color:white;justify-content:center;align-items:center;gap:24px}
 .flip-confirm .card-number{top:23px;left:24px}

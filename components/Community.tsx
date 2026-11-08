@@ -54,6 +54,8 @@ import { REPORT_REASONS } from "@/lib/report-validation";
 import { animationCoordinator } from "@/lib/animation-coordinator";
 import { readPublicCache, schedulePublicCacheWrite } from "@/lib/public-content-cache";
 import { feedImageSource } from "@/lib/feed-images";
+import { deleteCardStateSnapshot, loadCardStateSnapshot, saveCardStateSnapshot } from "@/lib/card-state-cache";
+import { cachedPostNeedsRefresh, normalizeCachedPost } from "@/lib/card-media";
 import { appendUniqueById } from "@/lib/feed-collection";
 import {
   announceNativeReady,
@@ -166,6 +168,23 @@ const initial: State = {
   },
   viewed: [],
 };
+
+function normalizeSavedState(value: unknown): Partial<State> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const saved = value as Partial<State>;
+  const revealed = Object.fromEntries(
+    Object.entries(saved.revealed || {})
+      .filter(([, post]) => post && typeof post === "object")
+      .map(([id, post]) => [id, normalizeCachedPost(post as Post)]),
+  );
+  return {
+    ...saved,
+    revealed,
+    comments: [],
+    opened: saved.opened && typeof saved.opened === "object" ? saved.opened : {},
+    rarityTiers: saved.rarityTiers && typeof saved.rarityTiers === "object" ? saved.rarityTiers : {},
+  };
+}
 const membershipPlans = [
   { id: "plus", name: "Plus", price: 12, dailyFlips: 9 },
   { id: "pro", name: "Pro", price: 16, dailyFlips: 13 },
@@ -353,6 +372,7 @@ export default function Community() {
   const [messageConversation, setMessageConversation] = useState<string | null>(null);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
+  const accountIdRef = useRef<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const adminEntryPending = useRef(false);
   const [reportPostId, setReportPostId] = useState<string | null>(null);
@@ -361,6 +381,7 @@ export default function Community() {
   const [reportNote, setReportNote] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const cloudHydrated = useRef(false);
+  const hydrationSequence = useRef(0);
   const pullStart = useRef<number | null>(null);
   const nativeBackHandler = useRef<() => boolean>(() => false);
   const nativeNavigationHandler = useRef<(payload: Record<string, unknown>) => boolean>(() => false);
@@ -446,6 +467,7 @@ export default function Community() {
   const ratingBusy = useRef(false);
   const [state, setState] = useState<State>(initial),
     [ready, setReady] = useState(false),
+    [accountReady, setAccountReady] = useState(false),
     [tab, setTabState] = useState("today"),
     [detail, setDetail] = useState<number | null>(null),
     [detailReady, setDetailReady] = useState(false),
@@ -505,6 +527,8 @@ export default function Community() {
     [notice, setNotice] = useState(""),
     [noticeId, setNoticeId] = useState(0),
     [noticeLeaving, setNoticeLeaving] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const [modalClosing, setModalClosing] = useState(false);
   const modalCloseTimer = useRef<number | null>(null);
   const noticeQueue = useRef<string[]>([]);
@@ -683,9 +707,9 @@ export default function Community() {
     const load = async () => {
       let loaded: State = initial;
       try {
-        const raw = localStorage.getItem("heika-demo-v1");
-        if (raw) {
-          const saved = JSON.parse(raw);
+        const rawSnapshot = await loadCardStateSnapshot<unknown>("heika-demo-v1");
+        const saved = normalizeSavedState(rawSnapshot);
+        if (saved) {
           loaded = {
             ...initial,
             ...saved,
@@ -696,11 +720,11 @@ export default function Community() {
             notifications: saved.notifications || initial.notifications,
             readingMode:
               saved.readingMode ||
-              (saved.compactReading ? "focus" : "standard"),
+              ((saved as Partial<State> & { compactReading?: boolean }).compactReading ? "focus" : "standard"),
           };
           const legacyOpened = [
             ...new Set<number>(Object.values(loaded.opened).flat()),
-          ].filter((id) => !loaded.revealed[id]);
+          ].filter((id) => !loaded.revealed[id] || cachedPostNeedsRefresh((rawSnapshot as Partial<State> | null)?.revealed?.[id]));
           if (legacyOpened.length) {
             const batches = Array.from({ length: Math.ceil(legacyOpened.length / 100) }, (_, index) => legacyOpened.slice(index * 100, (index + 1) * 100));
             const results = (await Promise.all(batches.map(async (ids) => {
@@ -753,14 +777,28 @@ export default function Community() {
     };
   }, []);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !accountReady) return;
     const timer = window.setTimeout(() => {
       const cachedState: Partial<State> = { ...state };
       delete cachedState.comments;
-      localStorage.setItem(storageKey, JSON.stringify(cachedState));
+      void saveCardStateSnapshot(storageKey, cachedState);
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [state, ready, storageKey]);
+  }, [state, ready, accountReady, storageKey]);
+  useEffect(() => {
+    if (!ready || !accountReady) return;
+    const persist = () => {
+      const cachedState: Partial<State> = { ...state };
+      delete cachedState.comments;
+      void saveCardStateSnapshot(storageKey, cachedState);
+    };
+    document.addEventListener("visibilitychange", persist);
+    window.addEventListener("pagehide", persist);
+    return () => {
+      document.removeEventListener("visibilitychange", persist);
+      window.removeEventListener("pagehide", persist);
+    };
+  }, [state, ready, accountReady, storageKey]);
   useEffect(() => () => {
     readingTimer.current.forEach(window.clearTimeout);
     if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
@@ -1044,9 +1082,9 @@ export default function Community() {
     setResetBusy(true);
     try {
       if (accountId) await cloudRequest("/api/v1/library-state", { action: "reset" });
-      localStorage.removeItem("heika-demo-v1");
-      localStorage.removeItem(storageKey);
-      if (accountId) localStorage.removeItem(`heika-user-${accountId}`);
+      await deleteCardStateSnapshot("heika-demo-v1");
+      await deleteCardStateSnapshot(storageKey);
+      if (accountId) await deleteCardStateSnapshot(`heika-user-${accountId}`);
       localStorage.removeItem("heika-theme");
       localStorage.removeItem("heika-font");
       localStorage.removeItem("heika-bottom-nav-style");
@@ -1727,6 +1765,9 @@ export default function Community() {
         },
       };
       setState(next);
+      const cacheState: Partial<State> = { ...next };
+      delete cacheState.comments;
+      void saveCardStateSnapshot(storageKey, cacheState);
       setViewerFlipped(true);
       setViewerRevealPhase("rarity");
       if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
@@ -2735,34 +2776,58 @@ export default function Community() {
     if (!ready) return;
     let alive = true;
     let cleanup = () => {};
+    const isCurrent = (sequence: number) => alive && hydrationSequence.current === sequence;
     void browserDb()
       .then(async (db) => {
         const hydrate = async () => {
+          const sequence = ++hydrationSequence.current;
           cloudHydrated.current = false;
           const {
             data: { user },
           } = await db.auth.getUser();
-          if (!alive) return;
+          if (!isCurrent(sequence)) return;
+          const nextAccountId = user?.id || null;
+          const identityChanged = accountIdRef.current !== nextAccountId;
+          accountIdRef.current = nextAccountId;
+          if (identityChanged) {
+            setAccountReady(false);
+            setState((previous) => ({ ...initial, cardIds: previous.cardIds, comments: [] }));
+          }
           setAccountId(user?.id || null);
           if (!user) {
             setIsAdmin(false);
             setExperienceSummary({ total: 0, membershipTier: "free", events: [] });
             setStorageKey("heika-demo-v1");
-            try {
-              const guest = JSON.parse(
-                localStorage.getItem("heika-demo-v1") || "null",
-              );
-              if (guest)
-                setState((s) => ({ ...initial, ...guest, cardIds: s.cardIds }));
-            } catch {}
+            if (identityChanged) {
+              const guest = normalizeSavedState(await loadCardStateSnapshot<unknown>("heika-demo-v1"));
+              if (!isCurrent(sequence)) return;
+              if (guest) setState((s) => ({ ...initial, ...guest, cardIds: guest.cardIds?.length ? guest.cardIds : s.cardIds, comments: [] }));
+            }
+            setAccountReady(true);
             return;
           }
+          const accountKey = `heika-user-${user.id}`;
+          const rawSnapshot = identityChanged
+            ? await loadCardStateSnapshot<unknown>(accountKey)
+            : stateRef.current;
+          if (!isCurrent(sequence)) return;
+          const accountSnapshot = normalizeSavedState(rawSnapshot) || {};
+          setStorageKey(accountKey);
+          if (identityChanged) {
+            setState((previous) => ({
+              ...initial,
+              ...accountSnapshot,
+              cardIds: accountSnapshot.cardIds?.length ? accountSnapshot.cardIds : previous.cardIds,
+              comments: [],
+            }));
+          }
+          setAccountReady(true);
           void cloudRequest("/api/v1/progression").then((summary) => {
-            if (alive && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+            if (isCurrent(sequence) && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
           }).catch(() => {});
           try {
             const data = await cloudRequest("/api/v1/library-state");
-            if (!alive || !data) return;
+            if (!isCurrent(sequence) || !data) return;
             const hasAdminAccess = data.profile?.role === "admin";
             setIsAdmin(hasAdminAccess);
             if (adminEntryPending.current) {
@@ -2770,18 +2835,12 @@ export default function Community() {
               if (hasAdminAccess) setTab("moderation");
               else toast("当前账号没有管理员权限。");
             }
-            setStorageKey(`heika-user-${user.id}`);
-            setState((previous) => {
-              let local;
-              try {
-                local = JSON.parse(
-                  localStorage.getItem(`heika-user-${user.id}`) || "null",
-                );
-              } catch {}
+            const applyCloudState = (recovered: Post[]) => setState((previous) => {
               const s: State = {
                 ...initial,
-                ...local,
+                ...previous,
                 cardIds: previous.cardIds,
+                comments: [],
               };
               const saved = [
                 ...new Set<number>([
@@ -2818,7 +2877,14 @@ export default function Community() {
                 profileDetails: hydrateProfileDetails(data.profileDetails),
                 saved,
                 opened,
-                rarityTiers,
+                rarityTiers: {
+                  ...rarityTiers,
+                  ...Object.fromEntries(recovered.filter((post) => post.rarityTier).map((post) => [post.id, post.rarityTier!])),
+                },
+                revealed: {
+                  ...s.revealed,
+                  ...Object.fromEntries(recovered.map((post) => [post.id, normalizeCachedPost(post)])),
+                },
                 own: [
                   ...new Map(
                     [...s.own.filter((p) => !p.cloudId), ...data.own].map(
@@ -2887,9 +2953,39 @@ export default function Community() {
                   : {}),
               };
             });
+            const openedIds = [...new Set<number>((data.interactions || [])
+              .filter((row: { opened_at?: string; posts?: { client_id?: number } | null }) => row.opened_at && row.posts?.client_id)
+              .map((row: { posts: { client_id: number } }) => Number(row.posts.client_id))
+              .filter((id: number) => Number.isSafeInteger(id) && id > 0))];
+            const cachedRevealed = accountSnapshot.revealed || {};
+            const staleMediaIds = new Set<number>(openedIds.filter((id) =>
+              cachedPostNeedsRefresh((rawSnapshot as Partial<State> | null)?.revealed?.[id]),
+            ));
+            const missingIds = openedIds.filter((id) => !cachedRevealed[id] || staleMediaIds.has(id));
+            const recovered: Post[] = [];
+            for (let offset = 0; offset < missingIds.length; offset += 100) {
+              try {
+                const response = await fetch("/api/demo/cards", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ ids: missingIds.slice(offset, offset + 100) }),
+                  signal: AbortSignal.timeout(12000),
+                });
+                const result = await response.json();
+                if (isCurrent(sequence) && response.ok && Array.isArray(result.data?.items)) {
+                  recovered.push(...result.data.items as Post[]);
+                }
+              } catch {
+                // Keep the durable local snapshot available when the network is offline.
+              }
+              if (!isCurrent(sequence)) return;
+            }
+            applyCloudState(recovered);
             cloudHydrated.current = true;
           } catch (e) {
-            toast(e instanceof Error ? e.message : "云端同步失败");
+            if (isCurrent(sequence)) toast(e instanceof Error ? e.message : "云端同步失败");
+          } finally {
+            if (isCurrent(sequence)) setAccountReady(true);
           }
         };
         await hydrate();
@@ -2898,9 +2994,10 @@ export default function Community() {
         );
         cleanup = () => data.subscription.unsubscribe();
       })
-      .catch(() => {});
+      .catch(() => { if (alive) setAccountReady(true); });
     return () => {
       alive = false;
+      hydrationSequence.current += 1;
       cleanup();
     };
   }, [ready]);
@@ -2936,7 +3033,7 @@ export default function Community() {
     state.notifications,
     state.interests,
   ]);
-  if (!ready)
+  if (!ready || !accountReady)
     return (
       <main className="app editorial-skeleton" aria-label="正在加载内容">
         <div className="skeleton-brand" />
