@@ -226,6 +226,22 @@ test("cloud-opened cards fetch their content before the authenticated home is sh
   await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
 });
 
+test("a failed stable card image is re-requested when network connectivity returns", async ({ page }) => {
+  await enterApp(page);
+  const retry = await page.evaluate(() => {
+    const image = document.createElement("img");
+    image.dataset.failed = "true";
+    image.src = "/api/v1/media?path=public%2Foffline.webp&redirect=1&variant=card";
+    document.body.append(image);
+    window.dispatchEvent(new Event("online"));
+    const result = { src: image.src, failed: image.dataset.failed };
+    image.remove();
+    return result;
+  });
+  expect(new URL(retry.src).searchParams.has("recovery")).toBe(true);
+  expect(retry.failed).toBeUndefined();
+});
+
 test("discovery feed renders its local cache after a restart when the network is unavailable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await enterApp(page);
