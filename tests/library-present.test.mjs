@@ -54,6 +54,9 @@ test("legacy card snapshots normalize stable media URLs and identify incomplete 
   assert.equal(normalizeCachedPost({
     title: "旧内容", body: "正文", image: legacy.image, images: [legacy.image],
   }).images, undefined);
+  const temporary = { title: "本地预览", body: "正文", image: "blob:https://heika.invalid/preview" };
+  assert.equal(cachedPostNeedsRefresh(temporary), true);
+  assert.equal(normalizeCachedPost(temporary).image, undefined);
   assert.equal(cachedPostNeedsRefresh({ title: "标题", body: "正文" }), false);
 });
 

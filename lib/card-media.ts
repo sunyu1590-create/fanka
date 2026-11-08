@@ -28,23 +28,27 @@ function isExpiringStorageUrl(source: string) {
   }
 }
 
+function isTemporaryUrl(source: string) {
+  return /^(blob|file|content):/i.test(source);
+}
+
 export function cachedPostNeedsRefresh(value: unknown) {
   if (!value || typeof value !== "object") return true;
   const post = value as { title?: unknown; body?: unknown; image?: unknown; images?: unknown };
   if (typeof post.title !== "string" || !post.title || typeof post.body !== "string") return true;
   const sources = [post.image, ...(Array.isArray(post.images) ? post.images : [])];
-  return sources.some((source) => typeof source === "string" && isExpiringStorageUrl(source));
+  return sources.some((source) => typeof source === "string" && (isExpiringStorageUrl(source) || isTemporaryUrl(source)));
 }
 
 /** Repairs snapshots written before card images had stable, cacheable media URLs. */
 export function normalizeCachedPost<T extends { image?: string; images?: string[] }>(post: T): T {
-  const images = (post.images || []).filter((source) => !isExpiringStorageUrl(source));
+  const images = (post.images || []).filter((source) => !isExpiringStorageUrl(source) && !isTemporaryUrl(source));
   const stable = (post.images || []).find((source) => mediaUrl(source));
   const normalizedImages = images.map(stableCardMediaSource);
   if (stable && !normalizedImages.includes(stableCardMediaSource(stable))) {
     normalizedImages.unshift(stableCardMediaSource(stable));
   }
-  const image = isExpiringStorageUrl(post.image || "")
+  const image = isExpiringStorageUrl(post.image || "") || isTemporaryUrl(post.image || "")
     ? stableCardMediaSource(stable || normalizedImages[0] || "") || undefined
     : post.image
       ? stableCardMediaSource(post.image)
