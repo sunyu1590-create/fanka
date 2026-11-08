@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-async function enterApp(page: import("@playwright/test").Page, options: { role?: "user" | "admin"; openedIds?: number[] } = {}) {
+async function enterApp(page: import("@playwright/test").Page, options: {
+  role?: "user" | "admin";
+  openedIds?: number[];
+  holdFirstLibraryState?: { onStarted: () => void; wait: Promise<void> };
+} = {}) {
   await page.addInitScript(() => { Math.random = () => 0.999; });
   await page.route("**/api/client-config", (route) => route.fulfill({
     status: 200,
@@ -48,13 +52,22 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
       id: "acceptance-user", aud: "authenticated", role: "authenticated", email: "acceptance@example.test",
       app_metadata: { provider: "email", providers: ["email"] }, user_metadata: {}, created_at: "2026-11-01T00:00:00.000Z",
     } }));
-    await page.route("**/api/v1/library-state", (route) => route.fulfill({ json: { data: {
-      profile: { nickname: "验收用户", bio: "", avatar_url: null, role }, prefs: null,
-      bookmarks: [], interactions: (options.openedIds || []).map((id) => ({
-        opened_at: "2026-11-08T08:00:00.000Z", posts: { client_id: id },
-        rating: null, rarity_tier: "ordinary", liked: false, viewed_at: null, skipped_at: null,
-      })), interests: [], own: [],
-    } } }));
+    let libraryStateRequests = 0;
+    await page.route("**/api/v1/library-state", async (route) => {
+      if (libraryStateRequests++ === 0 && options.holdFirstLibraryState) {
+        options.holdFirstLibraryState.onStarted();
+        await options.holdFirstLibraryState.wait;
+        await route.abort("internetdisconnected").catch(() => {});
+        return;
+      }
+      await route.fulfill({ json: { data: {
+        profile: { nickname: "验收用户", bio: "", avatar_url: null, role }, prefs: null,
+        bookmarks: [], interactions: (options.openedIds || []).map((id) => ({
+          opened_at: "2026-11-08T08:00:00.000Z", posts: { client_id: id },
+          rating: null, rarity_tier: "ordinary", liked: false, viewed_at: null, skipped_at: null,
+        })), interests: [], own: [],
+      } } });
+    });
     await page.route("**/api/v1/admin/reports**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/posts**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/message-reports**", (route) => route.fulfill({ json: { data: [] } }));
@@ -224,6 +237,23 @@ test("cloud-opened cards fetch their content before the authenticated home is sh
   await card.click();
   await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
   await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
+});
+
+test("network recovery during the first cloud hydration retries the opened-card sync", async ({ page }) => {
+  let releaseFirstRequest = () => {};
+  let firstRequestStarted = () => {};
+  const firstRequest = new Promise<void>((resolve) => { firstRequestStarted = resolve; });
+  const firstRequestGate = new Promise<void>((resolve) => { releaseFirstRequest = resolve; });
+  await enterApp(page, { role: "user", openedIds: [1], holdFirstLibraryState: { onStarted: firstRequestStarted, wait: firstRequestGate } });
+  await firstRequest;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+  await page.getByRole("button", { name: "首页" }).click();
+  const card = page.locator('.candidate-feed-card[data-card-id="1"]');
+  await expect(card).toHaveClass(/is-unlocked/);
+  await expect(card.locator(".card-back-copy strong")).toHaveText("浏览器验收内容 1");
+  await expect(card.locator(".card-back-copy")).toContainText("阅读");
+  releaseFirstRequest();
 });
 
 test("a failed stable card image is re-requested when network connectivity returns", async ({ page }) => {
