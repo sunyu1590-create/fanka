@@ -14,7 +14,8 @@ export type PublicCacheRead<T> = {
   stale: boolean;
 };
 
-const DATABASE = "heika-public-content-v1";
+const DATABASE = "heika-public-content-v2";
+const LEGACY_DATABASES = ["heika-public-content-v1"];
 const STORE = "entries";
 // Keep public feed/detail data locally for smooth revisits and offline fallback.
 // Image bytes are handled by the browser/WebView HTTP cache, not this IndexedDB store.
@@ -27,12 +28,33 @@ let databasePromise: Promise<IDBDatabase | null> | undefined;
 const pendingWrites = new Map<string, PendingWrite>();
 let flushScheduled = false;
 let flushInFlight: Promise<void> | null = null;
+let legacyCacheCleanup: Promise<void> | null = null;
+
+function deleteDatabase(name: string) {
+  return new Promise<void>((resolve) => {
+    try {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = request.onerror = request.onblocked = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+function removeLegacyPublicCaches() {
+  if (legacyCacheCleanup) return legacyCacheCleanup;
+  legacyCacheCleanup = (async () => {
+    if (typeof indexedDB === "undefined") return;
+    await Promise.all(LEGACY_DATABASES.map(deleteDatabase));
+  })();
+  return legacyCacheCleanup;
+}
 
 function openDatabase(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
   if (databasePromise) return databasePromise;
 
-  databasePromise = new Promise<IDBDatabase | null>((resolve) => {
+  databasePromise = removeLegacyPublicCaches().then(() => new Promise<IDBDatabase | null>((resolve) => {
     let request: IDBOpenDBRequest;
     try {
       request = indexedDB.open(DATABASE, 1);
@@ -52,8 +74,25 @@ function openDatabase(): Promise<IDBDatabase | null> {
     };
     request.onerror = () => resolve(null);
     request.onblocked = () => resolve(null);
-  }).catch(() => null);
+  })).catch(() => null);
   return databasePromise ?? Promise.resolve(null);
+}
+
+export async function clearPublicContentCache() {
+  pendingWrites.clear();
+  await flushInFlight?.catch(() => undefined);
+  const existingDatabase = await databasePromise?.catch(() => null);
+  existingDatabase?.close();
+  databasePromise = undefined;
+  legacyCacheCleanup = null;
+  if (typeof indexedDB === "undefined") return;
+  await Promise.all([DATABASE, ...LEGACY_DATABASES].map(deleteDatabase));
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("heika-clear-public-cache", () => {
+    void clearPublicContentCache();
+  });
 }
 
 export async function readPublicCache<T>(

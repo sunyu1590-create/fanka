@@ -164,7 +164,7 @@ test("discovery feed renders its local cache after a restart when the network is
   await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
   await expect.poll(() => page.evaluate(async () => {
     const database = await new Promise<IDBDatabase | null>((resolve) => {
-      const request = indexedDB.open("heika-public-content-v1", 1);
+      const request = indexedDB.open("heika-public-content-v2", 1);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => resolve(null);
     });

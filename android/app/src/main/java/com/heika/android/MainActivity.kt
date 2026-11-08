@@ -242,6 +242,15 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private fun createWebView(restoredState: Bundle?, firstUrl: String) {
         val container = root ?: return
         val view = WebViewCore.create(this)
+        val migrationPrefs = getSharedPreferences(APP_MIGRATION_PREFS, MODE_PRIVATE)
+        val lastCacheRefreshVersion = migrationPrefs.getInt(WEB_CACHE_VERSION_KEY, 0)
+        if (lastCacheRefreshVersion < BuildConfig.VERSION_CODE) {
+            // Refresh downloadable WebView resources after app upgrades while
+            // preserving cookies, localStorage, drafts, and account state.
+            view.clearCache(true)
+            migrationPrefs.edit().putInt(WEB_CACHE_VERSION_KEY, BuildConfig.VERSION_CODE).apply()
+            diagnostics.record("web_cache_refreshed_for_app_version", BuildConfig.VERSION_CODE.toLong())
+        }
         webView = view
         container.addView(view, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -417,6 +426,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 diagnostics.recordFirstContentVisible()
                 val committedHost = url.toUri().host?.lowercase() ?: "unknown"
                 diagnostics.record("web_page_committed_$committedHost")
+                installNativeAboutCompatibilityHook(view)
                 recoveringFromUntrustedNavigation = false
                 if (!bridgeSupported) {
                     cancelLoadTimeout()
@@ -595,6 +605,34 @@ class MainActivity : androidx.activity.ComponentActivity() {
         view.removeAllViews()
         view.destroy()
         webView = null
+    }
+
+    private fun installNativeAboutCompatibilityHook(view: WebView) {
+        // The site and APK can be deployed separately. Keep the app-specific
+        // About screen reachable while the live site is one deployment behind.
+        val script = """
+            (() => {
+              if (window.__heikaNativeAboutCompat) return;
+              window.__heikaNativeAboutCompat = true;
+              document.addEventListener('click', (event) => {
+                const target = event.target instanceof Element
+                  ? event.target.closest('button, a, [role="button"]') : null;
+                const label = (target?.innerText || target?.textContent || '').replace(/\s+/g, '');
+                if (!target || !label.startsWith('关于黑卡')) return;
+                const bridge = window.HeikaNative;
+                if (!bridge || typeof bridge.postMessage !== 'function') return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                bridge.postMessage(JSON.stringify({
+                  version: 1,
+                  id: 'native-about-' + Date.now().toString(36),
+                  type: 'app.about.open',
+                  payload: { source: 'native-compat' }
+                }));
+              }, true);
+            })();
+        """.trimIndent()
+        runCatching { view.evaluateJavascript(script, null) }
     }
 
     private fun detachRendererLostWebView(view: WebView) {
@@ -1077,8 +1115,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
         content.addView(action("通知与权限", if (!permissionGranted) "Android 通知权限未授权" else if (notificationsEnabled) "系统通知已开启" else "系统通知已关闭") {
             openNotificationSettings()
         })
-        content.addView(action("清理网页缓存", "仅删除可重新下载的网页图片和静态资源；登录、草稿与收藏保留。") {
-            runCatching { webView?.clearCache(true) }
+        content.addView(action("清理网页缓存", "清理可重新下载的网页资源与公开内容缓存；登录、草稿与收藏保留。") {
+            runCatching {
+                webView?.clearCache(true)
+                webView?.evaluateJavascript("window.dispatchEvent(new Event('heika-clear-public-cache'))", null)
+            }
                 .onSuccess { Toast.makeText(this, "网页缓存已清理", Toast.LENGTH_SHORT).show() }
                 .onFailure { Toast.makeText(this, "缓存清理失败", Toast.LENGTH_SHORT).show() }
         })
@@ -1125,6 +1166,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val EXTRA_NOTIFICATION_ID = "com.heika.android.extra.MESSAGE_ID"
         const val NOTIFICATION_PREFS = "heika_notification_permissions"
         const val NOTIFICATION_PERMISSION_ASKED = "post_notifications_asked"
+        const val APP_MIGRATION_PREFS = "heika_app_migrations"
+        const val WEB_CACHE_VERSION_KEY = "web_cache_version"
         const val NATIVE_ABOUT_TAG = "heika_native_about"
         const val LOAD_TIMEOUT_MS = 20_000L
         const val BACK_RESPONSE_TIMEOUT_MS = 280L

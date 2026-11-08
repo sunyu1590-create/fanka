@@ -16,8 +16,8 @@ android {
         applicationId = "com.heika.community"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "2.2.2"
+        versionCode = 9
+        versionName = "2.2.3"
         buildConfigField("String", "WEB_APP_URL", "\"$normalizedWebUrl\"")
         buildConfigField("String", "WEB_APP_ORIGIN", "\"${webUri.scheme}://${webUri.rawAuthority}\"")
         buildConfigField("String", "WEB_APP_HOSTS", "\"moonclean.shop,www.moonclean.shop,fanka-two.vercel.app\"")
