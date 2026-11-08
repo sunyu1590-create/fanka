@@ -7,6 +7,15 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.40.0",
+    date: "2026.11.08",
+    notes: [
+      { category: "新功能", text: "发现页升级为 Glass Editorial 2.0，加入紧凑品牌导航、真实分类导航和图片优先的编辑式内容卡片。" },
+      { category: "体验优化", text: "支持双列与单列浏览、页内搜索展开、真实作者头像、社区评分和快速点赞反馈；AI 空间、关注流、筛选、详情与翻卡入口保持可用。" },
+      { category: "问题修复", text: "改用缩略图懒加载与稳定列排布，补齐纯文字作品、图片重试和点赞失败回滚；适配浅色、深色、窄屏、WebView 与桌面布局。" },
+    ],
+  },
+  {
     version: "2.39.2",
     date: "2026.11.08",
     notes: [

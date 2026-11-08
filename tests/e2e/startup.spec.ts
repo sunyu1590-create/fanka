@@ -45,8 +45,8 @@ test("signed-in cache is restored before cloud data and repeated auth focus does
   expect(libraryReads).toBe(1);
   await page.getByRole("button", { name: "打开设置", exact: true }).click();
   await page.getByRole("button", { name: /隐私与安全.*作品可见范围/ }).click();
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "退出账号" }).click();
+  await page.getByRole("alertdialog", { name: "退出账号" }).getByRole("button", { name: "退出登录" }).click();
   await expect(page.locator(".messaging-preferences-empty")).toBeVisible();
   await pendingLibrary!.fulfill({ json: { data: {
     profile: { nickname: "迟到旧账号", bio: "", avatar_url: null, role: "admin" },

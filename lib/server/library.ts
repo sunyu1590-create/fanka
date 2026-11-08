@@ -35,16 +35,16 @@ export type LibraryRow = {
   is_demo: boolean;
   status?: "draft" | "pending_review" | "published" | "hidden";
   interest_tags: { name: string } | null;
-  profiles: { nickname: string } | null;
+  profiles: { nickname: string; avatar_url?: string | null } | null;
   post_media?: PostMediaRow[];
   post_like_stats?: { like_count?: number } | { like_count?: number }[] | null;
   post_topics?: { interest_tags: { name: string } | null }[];
 };
 
 export const libraryFields =
-  "id,client_id,title,body,channel,content_type,resource_data,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
+  "id,client_id,title,body,channel,content_type,resource_data,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
 export const libraryFeedFields =
-  "id,client_id,title,body_excerpt,channel,content_type,resource_data,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
+  "id,client_id,title,body_excerpt,channel,content_type,resource_data,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
 
 export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partial = false) {
   const media = (row.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order);
@@ -106,6 +106,7 @@ export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partia
     videos: videos.length ? videos : undefined,
     author: row.profiles?.nickname || "黑卡编辑部",
     authorId: row.author_id || undefined,
+    authorAvatar: row.profiles?.avatar_url || undefined,
     seriesId: row.series_id || undefined,
     seriesTitle: row.post_series?.title || undefined,
     date: row.created_at.slice(0, 10),

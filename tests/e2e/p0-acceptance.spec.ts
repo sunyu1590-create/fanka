@@ -92,7 +92,7 @@ function fixturePost(id: number, withImage = true, failedImage = false) {
   return {
     id, cloudId: `cloud-post-${id}`, status: "published", tag: "生活", topics: ["生活"], title: `浏览器验收内容 ${id}`,
     body: "用于本地浏览器验收的内容正文。", cover: "安静观察日常",
-    author: "验收账号", date: "2026-11-01",
+    author: "验收账号", authorId: "acceptance-author", authorAvatar: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23c9a54b'/%3E%3C/svg%3E", date: "2026-11-01", likeCount: 12,
     ...(withImage ? { image: failedImage ? "https://example.test/broken-cover.jpg" : images[0], images: failedImage ? ["https://example.test/broken-cover.jpg"] : images } : {}),
     isDemo: true,
   };
@@ -118,14 +118,16 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
       expect((await page.locator(".app").boundingBox())!.x, `desktop content should clear the rail at ${width}px`).toBeGreaterThanOrEqual(220);
     } else {
       expect(navigation!.y, `tablet and phone navigation should stay at the bottom at ${width}px`).toBeGreaterThan(700);
-      expect(navigation!.width, `tablet and phone navigation should span the viewport at ${width}px`).toBeGreaterThanOrEqual(width - 1);
+      const expectedWidth = width <= 360 ? width - 12 : Math.min(520, width - 24);
+      expect(navigation!.width, `floating navigation width at ${width}px`).toBeCloseTo(expectedWidth, 0);
+      expect(navigation!.x, `floating navigation should be centered at ${width}px`).toBeCloseTo((width - expectedWidth) / 2, 0);
       if (width >= 768) {
         const centers = await page.locator(".bottom-nav button").evaluateAll((buttons) => buttons.map((button) => {
           const box = button.getBoundingClientRect();
           return box.left + box.width / 2;
         }));
         for (const [index, expected] of [0.1, 0.3, 0.5, 0.7, 0.9].entries()) {
-          expect(centers[index], `navigation button ${index + 1} should stay in its tablet slot at ${width}px`).toBeCloseTo(width * expected, -1);
+          expect(Math.abs(centers[index] - (navigation!.x + navigation!.width * expected)), `navigation button ${index + 1} should stay in its tablet slot at ${width}px`).toBeLessThanOrEqual(12);
         }
       }
     }
@@ -383,6 +385,108 @@ test("detail transition choices persist and animate image changes without blocki
   await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-image-zoom/);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("heika-detail-transition"))).toBe("image-zoom");
+});
+
+test("Glass Editorial discovery keeps live feed controls, media states, rating, likes and search", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  const discoveryRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/demo/cards" && url.searchParams.get("mode") === "discover") discoveryRequests.push(url.search);
+  });
+  let failLikeUpdate = false;
+  await page.route("**/api/v1/ratings**", (route) => route.fulfill({ json: { data: {} } }));
+  await page.route("**/api/v1/search**", (route) => route.fulfill({ json: { data: { items: [fixturePost(2)], total: 1, page: 1, limit: 12 } } }));
+  await enterApp(page, { role: "user" });
+  await page.route("**/api/v1/library-state", async (route) => {
+    if (route.request().method() !== "POST") { await route.fallback(); return; }
+    const body = route.request().postDataJSON() as { action?: string };
+    if (failLikeUpdate && body.action === "like") {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await route.fulfill({ status: 500, json: { error: "点赞保存失败" } });
+      return;
+    }
+    await route.fulfill({ json: { data: {} } });
+  });
+  const textPost = { ...fixturePost(2), image: undefined, images: undefined, thumbnailImages: undefined };
+  const brokenPost = { ...fixturePost(3), image: "/broken-cover.png", images: ["/broken-cover.png"], thumbnailImages: ["/broken-cover.png"] };
+  await page.route("**/api/demo/cards**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("mode") !== "discover") return route.continue();
+    await route.fulfill({ json: { data: { items: [fixturePost(1), textPost, brokenPost], total: 3, page: 1, limit: 24 } } });
+  });
+  await page.route("**/broken-cover.png**", (route) => route.fulfill({ status: 404, contentType: "image/png", body: "" }));
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  const feed = page.locator(".stable-editorial-feed");
+  const firstCard = page.locator(".heika-discovery-card").first();
+  await expect(firstCard).toBeVisible();
+  const discoverBackground = () => page.locator(".app.app-discover").evaluate((app) => getComputedStyle(app).getPropertyValue("--bg").trim());
+  expect(await discoverBackground()).toBe("#0D0F12");
+  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  expect(await discoverBackground()).toBe("#FAF9F6");
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  await expect(page.locator(".demo-pill")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "推荐" })).toHaveAttribute("aria-selected", "true");
+  await expect(firstCard.locator(".discovery-rating-label")).toContainText("待评级");
+  await expect(firstCard.locator(".discovery-author-name")).toHaveText("验收账号");
+  await expect(firstCard.locator(".discovery-author-avatar img")).toBeVisible();
+  await expect(firstCard.locator(".discovery-like-count")).toHaveText("12");
+  const coverImage = firstCard.locator(".discovery-cover-open img");
+  await expect.poll(() => coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  const naturalRatio = await coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth / image.naturalHeight);
+  const renderedRatio = await coverImage.evaluate((image: HTMLImageElement) => image.getBoundingClientRect().width / image.getBoundingClientRect().height);
+  expect(Math.abs(renderedRatio - naturalRatio)).toBeLessThan(0.03);
+  const textCard = page.locator('.heika-discovery-card[data-discover-id="2"]');
+  await expect(textCard.locator(".discovery-cover.is-text-only")).toContainText("用于本地浏览器验收的内容正文");
+  const brokenCard = page.locator('.heika-discovery-card[data-discover-id="3"]');
+  await expect(brokenCard.locator(".discovery-image-error")).toBeVisible();
+  const brokenSizeBefore = await brokenCard.locator(".discovery-cover").boundingBox();
+  await brokenCard.getByRole("button", { name: "重试" }).click();
+  await expect(brokenCard.locator(".discovery-image-error")).toBeVisible();
+  const brokenSizeAfter = await brokenCard.locator(".discovery-cover").boundingBox();
+  expect(Math.abs((brokenSizeBefore?.height || 0) - (brokenSizeAfter?.height || 0))).toBeLessThanOrEqual(1);
+
+  const requestsBeforeLayout = discoveryRequests.length;
+  await page.getByRole("button", { name: "浏览设置" }).click();
+  await page.getByRole("button", { name: "单列浏览" }).click();
+  await expect(feed).toHaveClass(/single-column/);
+  expect(discoveryRequests.length).toBe(requestsBeforeLayout);
+  await page.getByRole("button", { name: "浏览设置" }).click();
+  await page.getByRole("button", { name: "双列瀑布流" }).click();
+  await expect(feed).not.toHaveClass(/single-column/);
+  expect(discoveryRequests.length).toBe(requestsBeforeLayout);
+
+  const categoryRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/demo/cards" && url.searchParams.get("mode") === "discover" && url.searchParams.get("tag") === "科技";
+  });
+  await page.getByRole("tab", { name: "科技" }).click();
+  await categoryRequest;
+  await page.getByRole("tab", { name: "推荐" }).click();
+  await expect(firstCard).toBeVisible();
+
+  await firstCard.getByRole("button", { name: "点赞" }).click();
+  await expect(firstCard.getByRole("button", { name: "取消点赞" })).toHaveAttribute("aria-pressed", "true");
+  failLikeUpdate = true;
+  await firstCard.getByRole("button", { name: "取消点赞" }).click();
+  await expect(firstCard.getByRole("button", { name: "点赞" })).toHaveAttribute("aria-pressed", "false");
+  await expect(firstCard.getByRole("button", { name: "取消点赞" })).toHaveAttribute("aria-pressed", "true");
+  failLikeUpdate = false;
+
+  await page.evaluate(() => window.scrollTo({ top: 180, behavior: "instant" }));
+  await page.waitForTimeout(30);
+  const scrollBeforeDetail = await page.evaluate(() => window.scrollY);
+  await firstCard.locator(".discovery-cover-open").click();
+  await expect(page.locator(".detail")).toBeVisible();
+  await page.getByRole("button", { name: "返回" }).click();
+  await expect(page.locator(".detail")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollBeforeDetail);
+
+  await page.getByRole("button", { name: "搜索内容或用户" }).click();
+  await page.getByRole("textbox", { name: "搜索内容或用户" }).fill("浏览器验收");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await expect(page.locator(".search-post-result").first()).toContainText("浏览器验收内容 2");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test("report sheet and admin queue use the same theme tokens for signed-in accounts", async ({ page }) => {
