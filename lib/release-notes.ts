@@ -7,6 +7,15 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.40.2",
+    date: "2026.11.08",
+    notes: [
+      { category: "体验优化", text: "将最近翻开的卡移回发现页顶部，并仅在全部分类的为你推荐流中展示。" },
+      { category: "体验优化", text: "把推荐偏好和浏览布局收进发现页更多菜单，移除消息与二级页面长期显示的登录同步状态。" },
+      { category: "体验优化", text: "统一底部五入口的磨砂玻璃样式，以小圆角方块标记当前页面；发布入口回归居中常规尺寸。" },
+    ],
+  },
+  {
     version: "2.40.1",
     date: "2026.11.08",
     notes: [

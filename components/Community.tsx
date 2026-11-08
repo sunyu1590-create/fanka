@@ -34,7 +34,6 @@ import {
   History,
   ImagePlus,
   Video as VideoIcon,
-  Settings2,
   LayoutGrid,
   List,
 } from "lucide-react";
@@ -3422,8 +3421,10 @@ export default function Community() {
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
     >
-      {id === "messages" && <><span className="sr-only">私聊</span><InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} /></>}
-      <Icon size={21} strokeWidth={1.8} />
+      <span className="bottom-nav-icon">
+        {id === "messages" && <InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} />}
+        <Icon size={21} strokeWidth={1.8} />
+      </span>
       <span>{label}</span>
     </button>
   );
@@ -3870,13 +3871,14 @@ export default function Community() {
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand"><span className="brand-symbol" aria-hidden="true">◇</span><span>黑卡</span><i>HEIKA</i></span>}
         {tab === "discover" && !secondaryTitle ? <div className="discover-top-actions">
           <button type="button" className={`topline-action${discoverSearchOpen ? " selected" : ""}`} aria-label={discoverSearchOpen ? "关闭搜索" : "搜索内容或用户"} aria-expanded={discoverSearchOpen} onClick={() => { setSearchDraft(searchTerm); setDiscoverSearchOpen((open) => !open); setDiscoverSettingsOpen(false); }}><Search size={19} strokeWidth={1.8}/></button>
-          <button type="button" className={`topline-action${discoverSettingsOpen ? " selected" : ""}`} aria-label="浏览设置" aria-expanded={discoverSettingsOpen} aria-controls="discover-quick-settings" onClick={() => { setDiscoverSettingsOpen((open) => !open); setDiscoverSearchOpen(false); }}><Settings2 size={19} strokeWidth={1.8}/></button>
+          <button type="button" className={`topline-action${discoverSettingsOpen ? " selected" : ""}`} aria-label="更多" aria-expanded={discoverSettingsOpen} aria-controls="discover-quick-settings" onClick={() => { setDiscoverSettingsOpen((open) => !open); setDiscoverSearchOpen(false); }}><MoreHorizontal size={21} strokeWidth={1.8}/></button>
           {discoverSettingsOpen && <div className="discover-quick-settings" id="discover-quick-settings" role="group" aria-label="发现页浏览设置">
-            <span>内容布局</span>
+            <span>浏览方式</span>
             <button type="button" aria-pressed={state.discoverLayout === "waterfall"} className={state.discoverLayout === "waterfall" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "waterfall" })); setDiscoverSettingsOpen(false); }}><LayoutGrid size={16}/><span>双列瀑布流</span></button>
             <button type="button" aria-pressed={state.discoverLayout === "single"} className={state.discoverLayout === "single" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "single" })); setDiscoverSettingsOpen(false); }}><List size={16}/><span>单列浏览</span></button>
+            <RecommendationControls accountId={accountId} onLogin={() => { setDiscoverSettingsOpen(false); setTab("messages"); }} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
           </div>}
-        </div> : tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : tab !== "discover" ? <span className="demo-pill">{accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}</span> : null}
+        </div> : tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : null}
       </header>
       {tab === "today" && (
         <section
@@ -4044,10 +4046,18 @@ export default function Community() {
               </button>
             ))}
           </div>
+          {sort === "精选" && category === "全部" && latestOpenedPost && (
+            <section className="recent-flip-section" aria-labelledby="recent-flip-title">
+              <div className="recent-flip-heading">
+                <div><small>RECENTLY REVEALED</small><h2 id="recent-flip-title">最近翻开的卡</h2></div>
+                <span>随时回来继续阅读</span>
+              </div>
+              {renderCandidate(latestOpenedPost, -1, true)}
+            </section>
+          )}
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.slice(0, 8).map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
-          <RecommendationControls accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
           {topicEvents.length > 0 && <section className="topic-events-section" aria-labelledby="topic-events-title"><div className="topic-events-heading"><div><small>COMMUNITY / OPEN CALL</small><h2 id="topic-events-title">本期话题共创</h2></div><span>{topicEvents.length} 个进行中</span></div><div className="topic-event-list">{topicEvents.map((event) => <article className="topic-event-card" key={event.id}><div className="topic-event-mark">#{event.topic}</div><div className="topic-event-copy"><h3>{event.title}</h3><p>{event.description}</p><small>{event.participantCount} 人参与 · {event.postCount} 篇内容 · 截止 {new Date(event.ends_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</small></div><button type="button" className={event.joined ? "joined" : ""} onClick={() => void joinTopicEvent(event)}>{event.joined ? "继续创作" : "加入共创"}</button></article>)}</div></section>}
           <div className="discover-sort" role="group" aria-label="发现排序">
             {["精选", "最新", "高分", "关注"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => { if (sort !== option) { setPublicFeed([]); setFeedPostIds([]); setFeedPage(0); setFeedTotal(0); setFeedHasMore(false); feedCursor.current = null; setFeedLoadedTag(null); setFeedLoadedSort(null); setPage(12); setSort(option); } }}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
@@ -4058,15 +4068,6 @@ export default function Community() {
             <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
           </div>
           {feed(list)}
-          {category === "全部" && latestOpenedPost && (
-            <section className="recent-flip-section" aria-labelledby="recent-flip-title">
-              <div className="recent-flip-heading">
-                <div><small>RECENTLY REVEALED</small><h2 id="recent-flip-title">最近翻开的卡</h2></div>
-                <span>随时回来继续阅读</span>
-              </div>
-              {renderCandidate(latestOpenedPost, -1, true)}
-            </section>
-          )}
           </div>
           <AISpace hidden={discoverChannel !== "ai"} accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
         </section>
@@ -4436,7 +4437,7 @@ export default function Community() {
       )}
       <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
         {nav.slice(0, 2).map(renderNavButton)}
-        <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><Plus size={22} /></button>
+        <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><span className="bottom-nav-icon"><Plus size={21} strokeWidth={1.8} /></span><span>发布</span></button>
         {nav.slice(2).map(renderNavButton)}
       </nav>
       {viewerId !== null && (
