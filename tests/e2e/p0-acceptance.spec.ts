@@ -65,7 +65,7 @@ function fixturePost(id: number) {
   return {
     id, cloudId: `cloud-post-${id}`, status: "published", tag: "生活", topics: ["生活"], title: `浏览器验收内容 ${id}`,
     body: "用于本地浏览器验收的内容正文。", cover: "安静观察日常",
-    author: "验收账号", date: "2026-11-01",
+    author: "验收账号", authorId: "acceptance-author", authorAvatar: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23c9a54b'/%3E%3C/svg%3E", date: "2026-11-01",
     image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E",
     images: ["data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E"],
     isDemo: true,
@@ -88,7 +88,7 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
   await enterApp(page);
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   const light = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim());
-  expect(light).toBe("#F8F7F4");
+  expect(light).toBe("#FAF9F6");
 
   await page.evaluate(() => localStorage.setItem("heika-theme", "dark"));
   await page.reload();
@@ -184,6 +184,80 @@ test("discovery feed renders its local cache after a restart when the network is
   await page.getByRole("button", { name: "发现" }).click();
   await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
   await expect(page.locator(".editorial-feed .post-card").first()).toContainText("浏览器验收内容");
+});
+
+test("discovery editorial controls preserve the feed and use live categories, ratings, and authors", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  const discoveryRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/demo/cards" && url.searchParams.get("mode") === "discover") {
+      discoveryRequests.push(url.search);
+    }
+  });
+  await page.route("**/api/v1/ratings**", (route) => route.fulfill({ json: { data: {} } }));
+  await page.route("**/api/v1/library-state", (route) => route.fulfill({ json: { data: { saved: true } } }));
+  await page.route("**/api/v1/search**", (route) => route.fulfill({ json: { data: { items: [fixturePost(2)], total: 1, page: 1, limit: 12 } } }));
+  await enterApp(page);
+  const textPost = { ...fixturePost(2), image: undefined, images: undefined };
+  const brokenPost = { ...fixturePost(3), image: "/broken-cover.png", images: ["/broken-cover.png"] };
+  await page.route("**/api/demo/cards**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("mode") !== "discover") return route.continue();
+    await route.fulfill({ json: { data: { items: [fixturePost(1), textPost, brokenPost], total: 3, page: 1, limit: 24 } } });
+  });
+  await page.route("**/broken-cover.png", (route) => route.fulfill({ status: 404, contentType: "image/png", body: "" }));
+  await page.getByRole("button", { name: "发现" }).click();
+  const feed = page.locator(".editorial-feed");
+  const firstCard = page.locator(".heika-discovery-card").first();
+  await expect(firstCard).toBeVisible();
+  await expect(page.locator(".demo-pill")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "推荐" })).toHaveAttribute("aria-selected", "true");
+  await expect(firstCard.locator(".discovery-rating-label")).toContainText("待评级");
+  await expect(firstCard.locator(".discovery-author-name")).toHaveText("验收账号");
+  await expect(firstCard.locator(".discovery-author-avatar img")).toBeVisible();
+  const coverImage = firstCard.locator(".discovery-cover-open img");
+  await expect.poll(() => coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  const naturalRatio = await coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth / image.naturalHeight);
+  const renderedRatio = await coverImage.evaluate((image: HTMLImageElement) => image.getBoundingClientRect().width / image.getBoundingClientRect().height);
+  expect(Math.abs(renderedRatio - naturalRatio)).toBeLessThan(0.03);
+  const textCard = page.locator(".heika-discovery-card").nth(1);
+  await expect(textCard.locator(".discovery-cover.is-text-only")).toContainText("用于本地浏览器验收的内容正文");
+  const brokenCard = page.locator(".heika-discovery-card").nth(2);
+  await expect(brokenCard.locator(".discovery-image-error")).toBeVisible();
+  const brokenSizeBefore = await brokenCard.locator(".discovery-cover").boundingBox();
+  await brokenCard.getByRole("button", { name: "重试" }).click();
+  await expect(brokenCard.locator(".discovery-image-error")).toBeVisible();
+  const brokenSizeAfter = await brokenCard.locator(".discovery-cover").boundingBox();
+  expect(Math.abs((brokenSizeBefore?.height || 0) - (brokenSizeAfter?.height || 0))).toBeLessThanOrEqual(1);
+
+  const requestsBeforeLayout = discoveryRequests.length;
+  await page.getByRole("button", { name: "浏览设置" }).click();
+  await page.getByRole("button", { name: "单列浏览" }).click();
+  await expect(feed).toHaveClass(/single-column/);
+  expect(discoveryRequests.length).toBe(requestsBeforeLayout);
+  await page.getByRole("button", { name: "浏览设置" }).click();
+  await page.getByRole("button", { name: "双列瀑布流" }).click();
+  await expect(feed).not.toHaveClass(/single-column/);
+  expect(discoveryRequests.length).toBe(requestsBeforeLayout);
+
+  const categoryRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/demo/cards" && url.searchParams.get("mode") === "discover" && url.searchParams.get("tag") === "科技";
+  });
+  await page.getByRole("tab", { name: "科技" }).click();
+  await categoryRequest;
+  await page.getByRole("tab", { name: "推荐" }).click();
+  await expect(firstCard).toBeVisible();
+
+  await firstCard.getByRole("button", { name: "点赞" }).click();
+  await expect(firstCard.getByRole("button", { name: "取消点赞" })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "搜索内容或用户" }).click();
+  await page.getByRole("textbox", { name: "搜索内容或用户" }).fill("浏览器验收");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await expect(page.locator(".search-post-result").first()).toContainText("浏览器验收内容 2");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test("native flip and detail transitions preserve card ratio and animate the shared image with transforms", async ({ page }) => {
@@ -300,7 +374,7 @@ test("native card transition uses the typed prepare, open, close, and release pr
   await page.getByRole("button", { name: "发现" }).click();
   const card = page.locator(".editorial-feed .post-card").first();
   await expect(card).toBeVisible();
-  await expect.poll(() => card.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => card.locator(".discovery-cover-open img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await card.click();
   await expect(page.locator(".detail")).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as Window & { __heikaNativeRequests?: { type: string }[] }).__heikaNativeRequests?.some((entry) => entry.type === "card.transition.start"))).toBe(true);
@@ -376,7 +450,7 @@ test("report sheet and admin queue use the same theme tokens for signed-in accou
   await page.getByRole("button", { name: /举报与内容审核/ }).click();
   await expect(page.getByRole("heading", { name: /管理后台/ })).toBeVisible();
   await expect(page.getByText("当前没有符合条件的举报。" )).toBeVisible();
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#F8F7F4");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#FAF9F6");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });

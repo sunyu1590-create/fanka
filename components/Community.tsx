@@ -27,6 +27,9 @@ import {
   Sparkles,
   Crown,
   ShieldCheck,
+  Settings2,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 const Messages = dynamic(() => import("./Messages"), {
@@ -36,6 +39,7 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
   loading: () => <div className="empty">正在加载审核队列…</div>,
 });
 import EditorialArticle from "./EditorialArticle";
+import DiscoveryPostCard from "./DiscoveryPostCard";
 import AccountProfile from "./AccountProfile";
 import type { ProfileDetails } from "./AccountProfile";
 import PublicProfile from "./PublicProfile";
@@ -53,7 +57,6 @@ import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experie
 import { REPORT_REASONS } from "@/lib/report-validation";
 import { animationCoordinator } from "@/lib/animation-coordinator";
 import { readPublicCache, schedulePublicCacheWrite } from "@/lib/public-content-cache";
-import { feedImageSource } from "@/lib/feed-images";
 import {
   announceNativeReady,
   cancelNativeCardTransition,
@@ -277,7 +280,8 @@ const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
-  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("fixed");
+  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("glass");
+  const [discoverSettingsOpen, setDiscoverSettingsOpen] = useState(false);
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
   const [fontReady, setFontReady] = useState(false);
@@ -943,6 +947,31 @@ export default function Community() {
       ratingBusy.current = false;
     }
   };
+  const togglePostLike = async (postId: number) => {
+    if (likeBusy) return;
+    const wasLiked = Boolean(state.liked?.includes(postId));
+    const nextLiked = !wasLiked;
+    setLikeBusy(true);
+    update((current) => ({
+      ...current,
+      liked: nextLiked
+        ? [...new Set([...(current.liked || []), postId])]
+        : (current.liked || []).filter((id) => id !== postId),
+    }));
+    try {
+      await cloudRequest("/api/v1/library-state", { action: "like", id: postId, value: nextLiked });
+    } catch {
+      update((current) => ({
+        ...current,
+        liked: wasLiked
+          ? [...new Set([...(current.liked || []), postId])]
+          : (current.liked || []).filter((id) => id !== postId),
+      }));
+      toast("点赞暂未同步，已恢复原状态");
+    } finally {
+      setLikeBusy(false);
+    }
+  };
   const displayNotice = (msg: string) => {
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
@@ -1002,7 +1031,7 @@ export default function Community() {
       setState({ ...initial, cardIds: state.cardIds });
       setTheme("dark");
       setFontChoice("oppo");
-      setBottomNavStyle("fixed");
+      setBottomNavStyle("glass");
       setSelectedCalendarDate("");
       setTab("today");
       setDetail(null);
@@ -2545,42 +2574,17 @@ export default function Community() {
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
     : [];
   const postCard = (p: Post, source: "today" | "discover" = "discover") => (
-    <button
-      className="post-card editorial-post"
+    <DiscoveryPostCard
       key={p.id}
-      data-discover-id={p.id}
-      onPointerDown={(event) => prewarmNativeCardTransition(p.id, event.currentTarget)}
-      onClick={(event) => openPost(p.id, source, event.currentTarget)}
-    >
-      <div
-        className="post-cover editorial-cover"
-        style={{ background: coverColor(p.tag) }}
-      >
-        {(p.image || p.images?.[0]) && (
-          <img
-            src={feedImageSource(p.image || p.images?.[0])}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            fetchPriority="low"
-            onError={(e) => {
-              e.currentTarget.dataset.failed = "true";
-            }}
-          />
-        )}
-        <span>{p.cover}</span>
-      </div>
-      <div className="post-meta">
-        <small>{p.tag}</small>
-        <b>{p.title}</b>
-        <p className="post-summary">{p.body.slice(0, 100)}</p>
-        {communityRatings[p.id]?.count ? <span className={`post-card-rarity rarity-${cardRarity(communityRatings[p.id].average, communityRatings[p.id].count).replaceAll(" ", "")}`}><Star size={11} fill="currentColor"/> {cardRarity(communityRatings[p.id].average, communityRatings[p.id].count)} · {communityRatings[p.id].average.toFixed(1)}</span> : null}
-        <div>
-          <span>{p.author}</span>
-          <span>{state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
-        </div>
-      </div>
-    </button>
+      post={p}
+      rating={communityRatings[p.id]}
+      liked={Boolean(state.liked?.includes(p.id))}
+      likeBusy={likeBusy}
+      onLike={() => void togglePostLike(p.id)}
+      onPointerDown={(element) => prewarmNativeCardTransition(p.id, element)}
+      onOpen={(element) => openPost(p.id, source, element)}
+      onAuthorOpen={setAuthorProfile}
+    />
   );
   const feed = (items: Post[]) => (
     <>
@@ -2588,16 +2592,27 @@ export default function Community() {
         className="text-button feed-refresh"
         onClick={() => void refreshFeed()}
       >
-        刷新内容 ↻
+        <RefreshCw size={14} /> 刷新内容
       </button>
-      {feedError && (
-        <button className="soft-button" onClick={() => void refreshFeed()}>
-          {feedError}
-        </button>
+      {feedError && items.length > 0 && (
+        <div className="feed-inline-error" role="status">
+          <span>{feedError}</span>
+          <button className="text-button" onClick={() => void refreshFeed()}>重试</button>
+        </div>
       )}
       {items.length ? (
         <div className={`masonry editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`}>
           {items.map((item) => postCard(item))}
+        </div>
+      ) : feedLoading || (tab === "discover" && feedLoadedTag !== category && !feedError) ? (
+        <div className="discover-loading" role="status" aria-live="polite">
+          <span>正在整理发现内容…</span>
+          <div><i/><i/><i/><i/></div>
+        </div>
+      ) : feedError ? (
+        <div className="empty discover-feed-error" role="alert">
+          <span>{feedError}</span>
+          <button className="text-button" onClick={() => void refreshFeed()}>重试</button>
         </div>
       ) : (
         <div className="empty">这里暂时没有内容，试试其他话题。</div>
@@ -3002,11 +3017,17 @@ export default function Community() {
     );
   return (
     <main className={`app${secondaryTitle ? " has-secondary-header" : ""}`}>
-      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}`}>
-        {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand">黑卡 <i>HEIKA</i></span>}
-        <span className="demo-pill">
-          {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
-        </span>
+      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "discover" && !secondaryTitle ? " is-discover-topline" : ""}`}>
+        {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand"><span className="brand-symbol" aria-hidden="true">◇</span><span>黑卡</span><i>HEIKA</i></span>}
+        {tab === "discover" && !secondaryTitle && <div className="discover-top-actions">
+          <button type="button" className="topline-action" aria-label="搜索内容或用户" onClick={openSearch}><Search size={19} strokeWidth={1.8}/></button>
+          <button type="button" className={`topline-action${discoverSettingsOpen ? " selected" : ""}`} aria-label="浏览设置" aria-expanded={discoverSettingsOpen} aria-controls="discover-quick-settings" onClick={() => setDiscoverSettingsOpen((open) => !open)}><Settings2 size={19} strokeWidth={1.8}/></button>
+          {discoverSettingsOpen && <div className="discover-quick-settings" id="discover-quick-settings" role="group" aria-label="发现页浏览设置">
+            <span>内容布局</span>
+            <button type="button" aria-pressed={state.discoverLayout === "waterfall"} className={state.discoverLayout === "waterfall" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "waterfall" })); setDiscoverSettingsOpen(false); }}><LayoutGrid size={16}/><span>双列瀑布流</span></button>
+            <button type="button" aria-pressed={state.discoverLayout === "single"} className={state.discoverLayout === "single" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "single" })); setDiscoverSettingsOpen(false); }}><List size={16}/><span>单列浏览</span></button>
+          </div>}
+        </div>}
       </header>
       {tab === "today" && (
         <section
@@ -3145,17 +3166,16 @@ export default function Community() {
         </section>
       )}
       {tab === "discover" && (
-        <section className="page editorial-home">
-          <button className="search search-launch" onClick={openSearch}><Search size={18}/><span>搜索内容或用户</span><kbd>⌕</kbd></button>
-          <div className="discover-topic-list" aria-label="精选话题">
-            {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
-          </div>
-          <div className="filters editorial-filters">
+        <section className="page editorial-home discover-page">
+          <div className="discover-category-nav" role="tablist" aria-label="发现内容分类">
             {["全部", ...tags].map((t) => (
               <button
                 key={t}
                 className={category === t ? "selected" : ""}
+                role="tab"
+                aria-selected={category === t}
                 onClick={() => {
+                  if (category === t) return;
                   setCategory(t);
                   setPublicFeed([]);
                   setFeedPage(0);
@@ -3169,6 +3189,14 @@ export default function Community() {
               </button>
             ))}
           </div>
+          {!!topicChoices.length && <div className="discover-topic-list" aria-label="精选话题">
+            {topicChoices.slice(0, 8).map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
+          </div>}
+          <div className="section-head editorial-section-head discover-feed-heading">
+            <h2>{category === "全部" ? "为你推荐" : category}</h2>
+            <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
+          </div>
+          {feed(list)}
           {latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">
               <div className="recent-flip-heading">
@@ -3178,11 +3206,6 @@ export default function Community() {
               {renderCandidate(latestOpenedPost)}
             </section>
           )}
-          <div className="section-head editorial-section-head">
-            <h2>{category === "全部" ? "为你推荐" : category}</h2>
-            <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
-          </div>
-          {feed(list)}
         </section>
       )}
       {tab === "topic" && !topicSummary && (
@@ -3252,7 +3275,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.44</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.45</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -3329,8 +3352,8 @@ export default function Community() {
           <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
           <div className="eyebrow">HEIKA / RELEASE NOTES</div>
           <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.44</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.44</strong><small>2026.11.02</small></div><ul><li>密码找回支持通过 Supabase 一次性邮件链接验证身份并返回设置新密码。</li><li>保留验证码输入与 60 秒重发倒计时。</li></ul></div>
+          <p className="lead">黑卡 HEIKA · 版本 1.45</p>
+          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.45</strong><small>2026.11.08</small></div><ul><li>发现页采用 Glass Editorial 2.0：精简品牌导航、分类导航与内容优先的瀑布流卡片。</li><li>卡片支持真实分类、社区评分、作者头像、即时点赞反馈与图片重试；浏览布局可在页头快速切换。</li><li>移动端采用深灰悬浮导航，桌面端保留侧栏导航与宽屏内容布局。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
           <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
