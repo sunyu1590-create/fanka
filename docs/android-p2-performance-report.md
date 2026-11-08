@@ -5,7 +5,7 @@
 - 本次以仓库远端 `main` 的 `2cc2d607`（2026-11-08）为起点。该提交包含现有 Android WebView 容器、P0/P1 原生桥接和发现页图片优化；本阶段没有重写业务页。
 - Android 配置沿用 `applicationId com.heika.community`、versionCode `8`、versionName `2.2.2`、JDK 17、AGP 8.10.1、Kotlin 2.1.20、compile/target SDK 35。CI 使用 Gradle 8.11.1。
 - Android WebView 启动地址固定为 `https://moonclean.shop/`；Bridge 与 WebView 精确允许 `moonclean.shop`、`www.moonclean.shop` 和仓库既有文档记录的备用 `fanka-two.vercel.app`，Actions 不再接受任意 URL 覆写。
-- 本地容器没有 Android SDK、Gradle、adb 或模拟器，无法在本地构建或采集 Android 冷启动、PSS、帧率及 WebView 崩溃数据。原 P2 提交的 GitHub Actions run #24 已完成 Android 编译和 APK 构建；本次 P0/原生能力改动仍需当前 PR 的新一轮 Android CI 验证。
+- 本地容器没有 Android SDK、Gradle、adb 或模拟器，无法在本地构建或采集 Android 冷启动、PSS、帧率及 WebView 崩溃数据。当前分支 GitHub Actions run #31 已完成 Web 与 Android 校验并产出 APK；设备性能数据仍待 Android 设备验证。
 
 ## 代码审查结果
 
@@ -22,7 +22,7 @@
 
 - 已复核启动代码：`bridgeSupported` 表示当前 Android WebView 是否支持 WebMessageListener，并不表示网站脚本一定成功完成 Bridge 握手。之前 `onPageCommitVisible` 在该值为 true 时不关闭遮罩；若页面脚本未发出 `bridge.ready`，网页即使已经提交也会一直被遮挡，最终落入 20 秒“暂时无法连接”提示。
 - 已改为仅在精确允许的三个 HEIKA HTTPS origin 内导航和注入 Bridge。首屏提交后若 2 秒内没有 Bridge ready，会记录 `web_bridge_ready_timeout` 并显示已提交的网页；真实主文档网络错误、HTTP 错误与 SSL 错误仍显示重试页，并增加只含 host/错误码的阶段日志。
-- Vercel 只读核验：`moonclean.shop` 已验证并绑定到 `fanka` 项目；生产域名请求返回 HTTP 200、`server: Vercel`，正文为 HEIKA Next.js 首页。当前未观察到重定向到其他 origin。该结果排除了域名完全不可达，但不能替代用户手机上的运营商网络与 WebView 真机验证；P0 修复仍针对有代码证据的“Bridge 等待遮罩”根因，并保留主文档网络错误页。
+- Vercel 只读核验：`moonclean.shop` 已验证并绑定到 `fanka` 项目；请求返回 HTTP 200，首页与 Next.js 主 JS 包均可读取。当前分支 SHA `73bbd5d` 的 Vercel 部署状态为 READY，但 `target=null` 且只有预览别名；PR 未合并前生产代码不会包含本分支改动。线上探测未观察到跨 origin 重定向。该结果不替代用户手机上的运营商网络与 WebView 真机验证。
 
 ## 同机 Web 端基线
 
@@ -45,16 +45,17 @@
 
 ## 验证
 
-- `npm test`：27/27 通过，包含启动可信域、Bridge 超时恢复及原生通知/分享/Photo Picker 回归测试。
+- `npm test`：28/28 通过，包含启动可信域、Bridge 超时恢复、原生通知/分享/Photo Picker 和桌面快捷入口回归测试。
 - `npm run typecheck`：通过。
 - `npm run build`：通过；Next.js 报告现存 ESLint warning（未使用变量、Hook 依赖和部分 `<img>`），没有构建错误。
 - `CI=1 npx playwright test --reporter=line`：7/7 通过。
 - `git diff --check`：通过。
 - `CI=1 npm run test:e2e -- --reporter=line`：7/7 通过。
-- GitHub Actions run #27：Web validation 通过；Android Kotlin 编译最初发现两个旧引用问题，本地已修复（`WebResourceError.errorCode` 属性访问和 Bridge app origin 参数），当前原生能力改动尚待重新触发完整 workflow 验证。
+- GitHub Actions run #31：Web validation、Android lint、单测任务、Kotlin/Java 编译、Debug/Release APK 组装及 Artifact 上传全部成功。构建对应 commit `73bbd5d3f0cb14095304427b384533fcbcd17a8d`。
 - GitHub Actions run #24：此前 P2 基线提交的 Web validation 与 Android build 两个 job 均通过；Android lint、Android 单测任务、Kotlin/Java debug 编译、debug/release assemble 和 Artifact 上传均成功。该 APK 对应旧 SHA，不包含本次 P0 修复。
 - 中间 run #22 因提交时 Community 文件被截断而在 TypeScript 阶段失败；已恢复完整文件并重新应用改动，最终 run #24 全部通过。
 - APK Artifact：[`heika-android-v2.2.2-12679cd5…`](https://github.com/sunyu1590-create/fanka/actions/runs/42441265970/artifacts/13601253064)，包含 `HEIKA-debug.apk`、`HEIKA-release-unsigned.apk` 与 `BUILD-METADATA.txt`，保留至 2026-11-22 11:08 CST。元数据记录构建 SHA `12679cd5bdaea712caeaf7829e8fa8d49988b657`；Release 产物未配置签名时不是正式可安装发布包。
+- 最新 APK Artifact：[`heika-android-v2.2.2-5d5e4bb5…`](https://github.com/sunyu1590-create/fanka/actions/runs/42446201137/artifacts/13604061103)，包含 `HEIKA-debug.apk`、`HEIKA-release-unsigned.apk` 与 `BUILD-METADATA.txt`，保留至 2026-11-22 04:20 UTC。Debug APK 可用于安装验证；Release APK 未签名，不是正式发布包。
 - Pull Request：[PR #3](https://github.com/sunyu1590-create/fanka/pull/3)。
 
 ## 未验证风险
