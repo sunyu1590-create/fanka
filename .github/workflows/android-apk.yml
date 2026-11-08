@@ -55,8 +55,6 @@ jobs:
     name: Build Android APKs
     needs: web-validation
     runs-on: ubuntu-latest
-    env:
-      HEIKA_WEB_URL: ${{ vars.HEIKA_WEB_URL || 'https://moonclean.shop/' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -72,11 +70,11 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Android static and unit checks
-        run: gradle --no-daemon -p android -PheikaWebUrl="$HEIKA_WEB_URL" :app:lintDebug :app:testDebugUnitTest
+        run: gradle --no-daemon -p android :app:lintDebug :app:testDebugUnitTest
       - name: Android debug compilation check
-        run: gradle --no-daemon -p android -PheikaWebUrl="$HEIKA_WEB_URL" :app:compileDebugKotlin :app:compileDebugJavaWithJavac
+        run: gradle --no-daemon -p android :app:compileDebugKotlin :app:compileDebugJavaWithJavac
       - name: Assemble debug and release APKs
-        run: gradle --no-daemon -p android -PheikaWebUrl="$HEIKA_WEB_URL" :app:assembleDebug :app:assembleRelease
+        run: gradle --no-daemon -p android :app:assembleDebug :app:assembleRelease
       - name: Prepare APK artifacts
         id: metadata
         run: |

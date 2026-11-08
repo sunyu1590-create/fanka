@@ -27,6 +27,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -238,7 +239,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val nativeBridge = NativeBridge(view, trustedOrigin, diagnostics, object : NativeBridge.Callbacks {
             override fun onWebReady() {
                 diagnostics.recordFirstInteractive()
-                clearOverlay()
+                cancelLoadTimeout()
+                if (overlay?.tag == LOADING_MASK_TAG) dismissLoadingMask() else clearOverlay()
                 bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "foreground"))
                 dispatchNextNavigation()
             }
@@ -358,10 +360,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 super.onPageCommitVisible(view, url)
                 if (!isTrustedUrl(url.toUri())) return
                 webContentCommitted = true
-                cancelLoadTimeout()
-                clearOverlay()
                 diagnostics.recordFirstContentVisible()
-                if (!bridgeSupported) dispatchNextNavigation()
+                if (!bridgeSupported) {
+                    cancelLoadTimeout()
+                    dismissLoadingMask()
+                    dispatchNextNavigation()
+                }
             }
 
             override fun onReceivedError(
@@ -703,10 +707,47 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     private fun showLoading() {
         val container = root ?: return
+        if (overlay?.tag == LOADING_MASK_TAG && overlay?.parent === container) return
         clearOverlay()
-        val progress = ProgressBar(this).apply { isIndeterminate = true }
-        overlay = progress
-        container.addView(progress, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
+        val mask = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.rgb(13, 16, 18))
+            isClickable = true
+            isFocusable = true
+            tag = LOADING_MASK_TAG
+        }
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.ic_heika)
+            contentDescription = getString(R.string.app_name)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        mask.addView(logo, LinearLayout.LayoutParams(dp(84), dp(84)))
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleSmall).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(213, 180, 92))
+        }
+        mask.addView(progress, LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+            topMargin = dp(22)
+        })
+        overlay = mask
+        container.addView(mask, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        mask.alpha = 0f
+        mask.animate().alpha(1f).setDuration(SPLASH_MASK_ENTER_MS).start()
+    }
+
+    private fun dismissLoadingMask() {
+        val mask = overlay?.takeIf { it.tag == LOADING_MASK_TAG } ?: return
+        overlay = null
+        mask.animate().cancel()
+        mask.animate()
+            .alpha(0f)
+            .setDuration(SPLASH_MASK_EXIT_MS)
+            .withEndAction { (mask.parent as? ViewGroup)?.removeView(mask) }
+            .start()
     }
 
     private fun showLoadError() {
@@ -753,7 +794,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun clearOverlay() {
-        overlay?.let { root?.removeView(it) }
+        overlay?.let {
+            it.animate().cancel()
+            root?.removeView(it)
+        }
         overlay = null
     }
 
@@ -777,6 +821,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val NAVIGATION_ACK_TIMEOUT_MS = 5_000L
         const val RENDERER_RESTART_WINDOW_MS = 60_000L
         const val MAX_AUTOMATIC_RENDERER_RESTARTS = 1
+        const val LOADING_MASK_TAG = "heika-native-loading-mask"
+        const val SPLASH_MASK_ENTER_MS = 120L
+        const val SPLASH_MASK_EXIT_MS = 180L
         const val MAX_PENDING_NAVIGATIONS = 20
         const val MAX_SEEN_NAVIGATION_IDS = 128
         const val MAX_ROUTE_LENGTH = 2_048

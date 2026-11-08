@@ -5,20 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val configuredWebUrl = providers.gradleProperty("heikaWebUrl")
-    .orElse("https://moonclean.shop/")
-    .get()
-val webUri = URI(configuredWebUrl)
-require(webUri.scheme == "https" && webUri.host != null && webUri.userInfo == null) {
-    "heikaWebUrl must be an HTTPS URL without credentials"
-}
-require(webUri.path.isNullOrEmpty() || webUri.path == "/") {
-    "heikaWebUrl must point to the site root"
-}
-require(webUri.query == null && webUri.fragment == null) {
-    "heikaWebUrl must not contain a query or fragment"
-}
-val normalizedWebUrl = if (configuredWebUrl.endsWith("/")) configuredWebUrl else "$configuredWebUrl/"
+val webUri = URI("https://moonclean.shop/")
+val normalizedWebUrl = webUri.toString()
 
 android {
     namespace = "com.heika.android"
