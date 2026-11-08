@@ -93,7 +93,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .card-back-copy { color: var(--ink); }
 .card-back-copy small, .card-back-copy em { color: var(--action); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .card-flip-back:not(:has(img:not([data-failed]))) .card-back-copy { color: var(--ink); }
-.card-flip-back:has(img)::after { background: linear-gradient(transparent 24%, rgba(9,10,11,.88)); }
+.card-flip-back:has(img:not([data-failed]))::after { background: linear-gradient(transparent 24%, rgba(9,10,11,.88)); }
 
 /* Discover and content surfaces */
 .search { margin: 30px 0 20px; background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; }

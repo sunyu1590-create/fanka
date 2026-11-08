@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { libraryFields, present } from "../lib/server/library.ts";
 import { feedImageSource } from "../lib/feed-images.ts";
+import { normalizeCachedPost, stableCardMediaSource, cachedPostNeedsRefresh } from "../lib/card-media.ts";
 import { createFeedThumbnail } from "../lib/server/feed-thumbnail.ts";
 import sharp from "sharp";
 
@@ -25,6 +26,38 @@ test("content mapper retains category, topics, and ordered media", () => {
   assert.equal(post.id, 17);
   assert.match(post.images[0], /first\.webp/);
   assert.match(post.images[1], /second\.webp/);
+});
+
+test("content mapper replaces an expiring storage URL with the stable media reference", () => {
+  const post = present({
+    id: "post-2", client_id: 18, title: "冷启动", body: "完整正文", cover_text: null,
+    image_url: "https://project.supabase.co/storage/v1/object/sign/post-covers/user-1/photo.webp?token=expires",
+    author_id: "user-1", created_at: "2026-11-01T10:00:00.000Z", is_demo: false, status: "published",
+    interest_tags: { name: "生活" }, profiles: { nickname: "作者" },
+    post_media: [{ storage_path: "user-1/photo.webp", sort_order: 0 }], post_topics: [],
+  });
+  assert.equal(post.image, "/api/v1/media?path=user-1%2Fphoto.webp&redirect=1&variant=card");
+  assert.equal(post.images[0], post.image);
+  assert.doesNotMatch(post.image, /token=|supabase\.co/);
+});
+
+test("legacy card snapshots normalize stable media URLs and identify incomplete records", () => {
+  const legacy = {
+    id: 18, title: "标题", body: "正文",
+    image: "https://project.supabase.co/storage/v1/object/sign/post-covers/u/p.webp?token=expired",
+    images: ["/api/v1/media?path=u%2Fp.webp&redirect=1"],
+  };
+  assert.equal(cachedPostNeedsRefresh(legacy), true);
+  const restored = normalizeCachedPost(legacy);
+  assert.equal(restored.image, stableCardMediaSource(legacy.images[0]));
+  assert.equal(restored.images?.[0], restored.image);
+  assert.equal(normalizeCachedPost({
+    title: "旧内容", body: "正文", image: legacy.image, images: [legacy.image],
+  }).images, undefined);
+  const temporary = { title: "本地预览", body: "正文", image: "blob:https://heika.invalid/preview" };
+  assert.equal(cachedPostNeedsRefresh(temporary), true);
+  assert.equal(normalizeCachedPost(temporary).image, undefined);
+  assert.equal(cachedPostNeedsRefresh({ title: "标题", body: "正文" }), false);
 });
 
 test("discovery feed uses a server thumbnail for private uploaded media", () => {

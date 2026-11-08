@@ -11,16 +11,16 @@ export async function GET(req:NextRequest){
       const path=req.nextUrl.searchParams.get('path');
       if(!path||path.length>300||path.includes('..'))throw new ApiError(400,'图片路径无效');
       const variant=req.nextUrl.searchParams.get('variant');
-      if(variant&&variant!=='feed')throw new ApiError(400,'图片尺寸无效');
+      if(variant&&variant!=='feed'&&variant!=='card')throw new ApiError(400,'图片尺寸无效');
       let mediaQuery=db.from('post_media').select('post_id,posts!inner(status)').eq('storage_path',path);
-      if(variant==='feed')mediaQuery=mediaQuery.eq('posts.status','published');
+      if(variant==='feed'||variant==='card')mediaQuery=mediaQuery.eq('posts.status','published');
       const {data:media,error:mediaError}=await mediaQuery.single();
       dbError(mediaError);
       if(!media)throw new ApiError(404,'图片不存在');
       const {data,error}=await db.storage.from('post-covers').createSignedUrl(path,600);
       dbError(error);
       if(!data?.signedUrl)throw new ApiError(404,'图片不存在');
-      if(variant==='feed'){
+      if(variant==='feed'||variant==='card'){
         try{
           const original=await fetch(data.signedUrl,{signal:AbortSignal.timeout(10000)});
           if(!original.ok)throw new Error('原图读取失败');
@@ -28,12 +28,21 @@ export async function GET(req:NextRequest){
           if(contentLength>5*1024*1024)throw new Error('原图超过处理限制');
           const bytes=Buffer.from(await original.arrayBuffer());
           if(bytes.byteLength>5*1024*1024)throw new Error('原图超过处理限制');
-          const thumbnail=await createFeedThumbnail(bytes);
-          const responseBytes=new Uint8Array(thumbnail.byteLength);
-          responseBytes.set(thumbnail);
-          return new NextResponse(responseBytes,{headers:{'Content-Type':'image/webp','Cache-Control':'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800','X-Content-Type-Options':'nosniff'}});
+          const contentType=(original.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+          if(!['image/jpeg','image/png','image/webp'].includes(contentType))throw new Error('图片格式无效');
+          let output=new Uint8Array(bytes.byteLength),outputType=contentType;
+          output.set(bytes);
+          try{const thumbnail=await createFeedThumbnail(bytes);output=new Uint8Array(thumbnail.byteLength);output.set(thumbnail);outputType='image/webp'}
+          catch(error){console.warn('[media] card thumbnail fallback',error instanceof Error?error.name:'unknown')}
+          const responseBytes=new Uint8Array(output.byteLength);
+          responseBytes.set(output);
+          const cacheControl=variant==='card'
+            ? 'public, max-age=86400, stale-while-revalidate=604800, s-maxage=86400'
+            : 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800';
+          return new NextResponse(responseBytes,{headers:{'Content-Type':outputType,'Cache-Control':cacheControl,'X-Content-Type-Options':'nosniff'}});
         }catch(error){
-          // Keep published images visible if optimization fails for an unusual or legacy file.
+          if(variant==='card')throw new ApiError(502,'图片暂时无法读取');
+          // Keep published feed images visible if optimization fails for an unusual or legacy file.
           console.warn('[media] feed thumbnail fallback',error instanceof Error?error.name:'unknown');
           return NextResponse.redirect(data.signedUrl,302);
         }

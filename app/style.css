@@ -68,12 +68,13 @@
 .card-prompt{position:absolute;bottom:14px;left:13px;font-size:10px;color:#bbb}
 .card-flip-back{transform:rotateY(180deg);background:#e7e4dd;color:#171717}
 .card-flip-back img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.card-flip-back:has(img)::after{content:'';position:absolute;inset:35% 0 0;background:linear-gradient(transparent,#131313c9)}
+.card-flip-back:has(img:not([data-failed]))::after{content:'';position:absolute;inset:35% 0 0;background:linear-gradient(transparent,#131313c9)}
 .card-back-copy{position:absolute;z-index:1;left:13px;right:13px;bottom:13px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left}
 .card-back-copy small{font-size:10px;letter-spacing:.06em}
 .card-back-copy strong{font-size:16px;line-height:1.35;letter-spacing:-.02em}
 .card-back-copy em{font-size:10px;font-style:normal;margin-top:5px}
 .card-flip-back:has(img) .card-back-copy{color:#fff}
+.card-flip-back img[data-failed]{display:none}
 .flip-in-place.is-detail-source{visibility:hidden}
 .flip-confirm{position:relative;min-height:min(560px,75dvh);background:#171717;color:white;justify-content:center;align-items:center;gap:24px}
 .flip-confirm .card-number{top:23px;left:24px}

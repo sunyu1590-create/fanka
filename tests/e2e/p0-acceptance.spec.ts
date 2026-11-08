@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-async function enterApp(page: import("@playwright/test").Page, options: { role?: "user" | "admin" } = {}) {
+async function enterApp(page: import("@playwright/test").Page, options: {
+  role?: "user" | "admin";
+  openedIds?: number[];
+  holdFirstLibraryState?: { onStarted: () => void; wait: Promise<void> };
+} = {}) {
   await page.addInitScript(() => { Math.random = () => 0.999; });
   await page.route("**/api/client-config", (route) => route.fulfill({
     status: 200,
@@ -13,7 +17,11 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
   await page.route("**/api/demo/cards**", async (route) => {
     const request = route.request();
     if (request.method() === "POST") {
-      const body = request.postDataJSON() as { id?: number };
+      const body = request.postDataJSON() as { id?: number; ids?: number[] };
+      if (Array.isArray(body.ids)) {
+        await route.fulfill({ json: { data: { items: body.ids.map(fixturePost) } } });
+        return;
+      }
       await route.fulfill({ json: { data: fixturePost(Number(body.id) || 1) } });
       return;
     }
@@ -44,10 +52,22 @@ async function enterApp(page: import("@playwright/test").Page, options: { role?:
       id: "acceptance-user", aud: "authenticated", role: "authenticated", email: "acceptance@example.test",
       app_metadata: { provider: "email", providers: ["email"] }, user_metadata: {}, created_at: "2026-11-01T00:00:00.000Z",
     } }));
-    await page.route("**/api/v1/library-state", (route) => route.fulfill({ json: { data: {
-      profile: { nickname: "验收用户", bio: "", avatar_url: null, role }, prefs: null,
-      bookmarks: [], interactions: [], interests: [], own: [],
-    } } }));
+    let libraryStateRequests = 0;
+    await page.route("**/api/v1/library-state", async (route) => {
+      if (libraryStateRequests++ === 0 && options.holdFirstLibraryState) {
+        options.holdFirstLibraryState.onStarted();
+        await options.holdFirstLibraryState.wait;
+        await route.abort("internetdisconnected").catch(() => {});
+        return;
+      }
+      await route.fulfill({ json: { data: {
+        profile: { nickname: "验收用户", bio: "", avatar_url: null, role }, prefs: null,
+        bookmarks: [], interactions: (options.openedIds || []).map((id) => ({
+          opened_at: "2026-11-08T08:00:00.000Z", posts: { client_id: id },
+          rating: null, rarity_tier: "ordinary", liked: false, viewed_at: null, skipped_at: null,
+        })), interests: [], own: [],
+      } } });
+    });
     await page.route("**/api/v1/admin/reports**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/posts**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/message-reports**", (route) => route.fulfill({ json: { data: [] } }));
@@ -155,6 +175,101 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   await page.getByRole("button", { name: "返回" }).click();
   await expect(page.locator(".flip-overlay")).toHaveCount(0);
   expect(Math.abs((await page.evaluate(() => window.scrollY)) - beforeDetailScroll)).toBeLessThanOrEqual(2);
+});
+
+test("account card snapshots restore matching title, body, and media across repeated cold page starts", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await enterApp(page, { role: "user" });
+  await page.getByRole("button", { name: "首页" }).click();
+  const card = page.locator('.candidate-feed-card[data-card-id="1"]');
+  await expect(card).toBeVisible();
+  await card.click();
+  await page.getByRole("button", { name: "确认翻开" }).click();
+  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
+  await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
+  await page.locator(".flip-close").click();
+
+  await expect.poll(() => page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase | null>((resolve) => {
+      const request = indexedDB.open("heika-opened-card-state-v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    });
+    if (!database) return false;
+    return await new Promise<boolean>((resolve) => {
+      const request = database.transaction("snapshots").objectStore("snapshots").get("heika-user-acceptance-user");
+      request.onsuccess = () => resolve(request.result?.value?.revealed?.[1]?.title === "浏览器验收内容 1");
+      request.onerror = () => resolve(false);
+    });
+  })).toBe(true);
+
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  for (let start = 0; start < 20; start++) {
+    await page.reload();
+    await expect(navigation).toBeVisible();
+    const restoredCard = page.locator('.candidate-feed-card[data-card-id="1"]');
+    await expect(restoredCard).toHaveClass(/is-unlocked/);
+    await expect(restoredCard.locator(".card-back-copy strong")).toHaveText("浏览器验收内容 1");
+  }
+
+  await page.unroute("**/api/demo/cards**");
+  await page.route("**/api/demo/cards**", (route) => route.abort());
+  await page.unroute("**/api/v1/library-state");
+  await page.route("**/api/v1/library-state", (route) => route.abort());
+  await page.reload();
+  await expect(navigation).toBeVisible();
+  await expect(page.locator('.candidate-feed-card[data-card-id="1"] .card-back-copy strong')).toHaveText("浏览器验收内容 1");
+
+  await card.click();
+  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
+  await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
+  await expect(page.locator(".flip-window-revealed img")).toHaveAttribute("src", /^data:image\/svg\+xml,/);
+});
+
+test("cloud-opened cards fetch their content before the authenticated home is shown", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await enterApp(page, { role: "user", openedIds: [1] });
+  await page.getByRole("button", { name: "首页" }).click();
+  const card = page.locator('.candidate-feed-card[data-card-id="1"]');
+  await expect(card).toHaveClass(/is-unlocked/);
+  await expect(card.locator(".card-back-copy strong")).toHaveText("浏览器验收内容 1");
+  await card.click();
+  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
+  await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
+});
+
+test("network recovery during the first cloud hydration retries the opened-card sync", async ({ page }) => {
+  let releaseFirstRequest = () => {};
+  let firstRequestStarted = () => {};
+  const firstRequest = new Promise<void>((resolve) => { firstRequestStarted = resolve; });
+  const firstRequestGate = new Promise<void>((resolve) => { releaseFirstRequest = resolve; });
+  await enterApp(page, { role: "user", openedIds: [1], holdFirstLibraryState: { onStarted: firstRequestStarted, wait: firstRequestGate } });
+  await firstRequest;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+  await page.getByRole("button", { name: "首页" }).click();
+  const card = page.locator('.candidate-feed-card[data-card-id="1"]');
+  await expect(card).toHaveClass(/is-unlocked/);
+  await expect(card.locator(".card-back-copy strong")).toHaveText("浏览器验收内容 1");
+  await expect(card.locator(".card-back-copy")).toContainText("阅读");
+  releaseFirstRequest();
+});
+
+test("a failed stable card image is re-requested when network connectivity returns", async ({ page }) => {
+  await enterApp(page);
+  const retry = await page.evaluate(() => {
+    const image = document.createElement("img");
+    image.dataset.failed = "true";
+    image.src = "/api/v1/media?path=public%2Foffline.webp&redirect=1&variant=card";
+    document.body.append(image);
+    window.dispatchEvent(new Event("online"));
+    const result = { src: image.src, failed: image.dataset.failed };
+    image.remove();
+    return result;
+  });
+  expect(new URL(retry.src).searchParams.has("recovery")).toBe(true);
+  expect(retry.failed).toBeUndefined();
 });
 
 test("discovery feed renders its local cache after a restart when the network is unavailable", async ({ page }) => {
