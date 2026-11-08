@@ -2792,9 +2792,56 @@ export default function Community() {
     let alive = true;
     let cleanup = () => {};
     const isCurrent = (sequence: number) => alive && hydrationSequence.current === sequence;
+    let guestRecoverySequence = 0;
+    let localIdentityReady = false;
+    let pendingOnlineRestore = false;
+    let hydrateAccount = () => {};
+    const recoverOnNetworkRestore = () => {
+      document.querySelectorAll<HTMLImageElement>('img[data-failed="true"]').forEach((image) => {
+        const source = image.getAttribute("src");
+        if (!source) return;
+        try {
+          const url = new URL(source, window.location.href);
+          if (url.pathname !== "/api/v1/media" || !url.searchParams.has("path")) return;
+          url.searchParams.set("recovery", String(Date.now()));
+          delete image.dataset.failed;
+          image.src = url.href;
+        } catch { /* Leave unsupported image sources in their fallback state. */ }
+      });
+      if (!localIdentityReady) {
+        pendingOnlineRestore = true;
+        return;
+      }
+      const currentAccountId = accountIdRef.current;
+      if (currentAccountId) {
+        const accountKey = `heika-user-${currentAccountId}`;
+        if (!cloudHydrated.current || (staleCardMedia.current.key === accountKey && staleCardMedia.current.ids.size)) {
+          hydrateAccount();
+        }
+        return;
+      }
+      if (staleCardMedia.current.key !== "heika-demo-v1" || !staleCardMedia.current.ids.size) return;
+      const recoverySequence = ++guestRecoverySequence;
+      const ids = [...staleCardMedia.current.ids];
+      void fetch("/api/demo/cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+        signal: AbortSignal.timeout(12000),
+      }).then((response) => response.json().then((result) => ({ response, result })))
+        .then(({ response, result }) => {
+          if (!alive || recoverySequence !== guestRecoverySequence || accountIdRef.current || !response.ok || !Array.isArray(result.data?.items)) return;
+          const recovered = result.data.items as Post[];
+          setState((previous) => ({
+            ...previous,
+            revealed: { ...previous.revealed, ...Object.fromEntries(recovered.map((post) => [post.id, normalizeCachedPost(post)])) },
+            rarityTiers: { ...previous.rarityTiers, ...Object.fromEntries(recovered.filter((post) => post.rarityTier).map((post) => [post.id, post.rarityTier!])) },
+          }));
+          for (const post of recovered) staleCardMedia.current.ids.delete(post.id);
+        }).catch(() => {});
+    };
     void browserDb()
       .then(async (db) => {
-        let guestRecoverySequence = 0;
         const hydrate = async () => {
           const sequence = ++hydrationSequence.current;
           cloudHydrated.current = false;
@@ -2804,10 +2851,13 @@ export default function Community() {
           if (!isCurrent(sequence)) return;
           const nextAccountId = user?.id || null;
           const identityChanged = accountIdRef.current !== nextAccountId;
+          const restoreNeeded = identityChanged || !localIdentityReady;
           accountIdRef.current = nextAccountId;
           if (identityChanged) {
+            localIdentityReady = false;
             setAccountReady(false);
-            setState((previous) => ({ ...initial, cardIds: previous.cardIds, comments: [] }));
+            stateRef.current = { ...initial, cardIds: stateRef.current.cardIds, comments: [] };
+            setState(stateRef.current);
             staleCardMedia.current = {
               key: user ? `heika-user-${user.id}` : "heika-demo-v1",
               ids: new Set(),
@@ -2818,18 +2868,26 @@ export default function Community() {
             setIsAdmin(false);
             setExperienceSummary({ total: 0, membershipTier: "free", events: [] });
             setStorageKey("heika-demo-v1");
-            if (identityChanged) {
+            if (restoreNeeded) {
               const rawGuest = await loadCardStateSnapshot<unknown>("heika-demo-v1");
               if (!isCurrent(sequence)) return;
               staleCardMedia.current = { key: "heika-demo-v1", ids: new Set(cachedStateNeedingCardRefresh(rawGuest)) };
               const guest = normalizeSavedState(rawGuest);
-              if (guest) setState((s) => ({ ...initial, ...guest, cardIds: guest.cardIds?.length ? guest.cardIds : s.cardIds, comments: [] }));
+              if (guest) {
+                stateRef.current = { ...initial, ...guest, cardIds: guest.cardIds?.length ? guest.cardIds : stateRef.current.cardIds, comments: [] };
+                setState(stateRef.current);
+              }
             }
+            localIdentityReady = true;
             setAccountReady(true);
+            if (pendingOnlineRestore && navigator.onLine) {
+              pendingOnlineRestore = false;
+              queueMicrotask(recoverOnNetworkRestore);
+            }
             return;
           }
           const accountKey = `heika-user-${user.id}`;
-          const rawSnapshot = identityChanged
+          const rawSnapshot = restoreNeeded
             ? await loadCardStateSnapshot<unknown>(accountKey)
             : stateRef.current;
           if (!isCurrent(sequence)) return;
@@ -2841,15 +2899,21 @@ export default function Community() {
             };
           }
           setStorageKey(accountKey);
-          if (identityChanged) {
-            setState((previous) => ({
+          if (restoreNeeded) {
+            stateRef.current = {
               ...initial,
               ...accountSnapshot,
-              cardIds: accountSnapshot.cardIds?.length ? accountSnapshot.cardIds : previous.cardIds,
+              cardIds: accountSnapshot.cardIds?.length ? accountSnapshot.cardIds : stateRef.current.cardIds,
               comments: [],
-            }));
+            };
+            setState(stateRef.current);
           }
+          localIdentityReady = true;
           setAccountReady(true);
+          if (pendingOnlineRestore && navigator.onLine) {
+            pendingOnlineRestore = false;
+            queueMicrotask(recoverOnNetworkRestore);
+          }
           void cloudRequest("/api/v1/progression").then((summary) => {
             if (isCurrent(sequence) && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
           }).catch(() => {});
@@ -3020,47 +3084,7 @@ export default function Community() {
             if (isCurrent(sequence)) setAccountReady(true);
           }
         };
-        await hydrate();
-        const recoverOnNetworkRestore = () => {
-          document.querySelectorAll<HTMLImageElement>('img[data-failed="true"]').forEach((image) => {
-            const source = image.getAttribute("src");
-            if (!source) return;
-            try {
-              const url = new URL(source, window.location.href);
-              if (url.pathname !== "/api/v1/media" || !url.searchParams.has("path")) return;
-              url.searchParams.set("recovery", String(Date.now()));
-              delete image.dataset.failed;
-              image.src = url.href;
-            } catch { /* Leave unsupported image sources in their fallback state. */ }
-          });
-          const currentAccountId = accountIdRef.current;
-          if (currentAccountId) {
-            const accountKey = `heika-user-${currentAccountId}`;
-            if (!cloudHydrated.current || (staleCardMedia.current.key === accountKey && staleCardMedia.current.ids.size)) {
-              void hydrate();
-            }
-            return;
-          }
-          if (staleCardMedia.current.key !== "heika-demo-v1" || !staleCardMedia.current.ids.size) return;
-          const recoverySequence = ++guestRecoverySequence;
-          const ids = [...staleCardMedia.current.ids];
-          void fetch("/api/demo/cards", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ids }),
-            signal: AbortSignal.timeout(12000),
-          }).then((response) => response.json().then((result) => ({ response, result })))
-            .then(({ response, result }) => {
-              if (!alive || recoverySequence !== guestRecoverySequence || accountIdRef.current || !response.ok || !Array.isArray(result.data?.items)) return;
-              const recovered = result.data.items as Post[];
-              setState((previous) => ({
-                ...previous,
-                revealed: { ...previous.revealed, ...Object.fromEntries(recovered.map((post) => [post.id, normalizeCachedPost(post)])) },
-                rarityTiers: { ...previous.rarityTiers, ...Object.fromEntries(recovered.filter((post) => post.rarityTier).map((post) => [post.id, post.rarityTier!])) },
-              }));
-              for (const post of recovered) staleCardMedia.current.ids.delete(post.id);
-            }).catch(() => {});
-        };
+        hydrateAccount = () => { void hydrate(); };
         window.addEventListener("online", recoverOnNetworkRestore);
         const { data } = db.auth.onAuthStateChange(() =>
           queueMicrotask(() => void hydrate()),
@@ -3069,7 +3093,7 @@ export default function Community() {
           data.subscription.unsubscribe();
           window.removeEventListener("online", recoverOnNetworkRestore);
         };
-        if (accountIdRef.current && navigator.onLine && !cloudHydrated.current) void hydrate();
+        await hydrate();
       })
       .catch(() => { if (alive) setAccountReady(true); });
     return () => {
