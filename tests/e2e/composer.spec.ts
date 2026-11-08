@@ -18,7 +18,7 @@ async function enter(page:Page, loggedIn=false) {
   });
   await page.route("**/api/demo/cards**",route=>route.fulfill({json:{data:[]}}));
   await page.goto("/");
-  if(loggedIn) await expect(page.locator(".demo-pill")).toContainText("已登录");
+  if(loggedIn) await expect(page.locator(".demo-pill")).toHaveCount(0);
   const skip=page.getByRole("button",{name:/先随便看看/});
   if(await skip.isVisible()) await skip.click();
   await page.getByRole("button",{name:"发布内容",exact:true}).click();

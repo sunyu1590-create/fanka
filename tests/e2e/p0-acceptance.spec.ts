@@ -116,20 +116,22 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
       expect(navigation!.width, `desktop rail width at ${width}px`).toBeCloseTo(220, 0);
       expect(navigation!.height, `desktop rail should fill the screen at ${width}px`).toBeGreaterThanOrEqual(844);
       expect((await page.locator(".app").boundingBox())!.x, `desktop content should clear the rail at ${width}px`).toBeGreaterThanOrEqual(220);
+    } else if (width >= 768) {
+      expect(navigation!.y, `tablet navigation should stay fixed at the bottom at ${width}px`).toBeGreaterThan(700);
+      expect(navigation!.width, `tablet navigation should span the viewport at ${width}px`).toBeCloseTo(width, 0);
+      expect(navigation!.x, `tablet navigation should align to the viewport at ${width}px`).toBe(0);
+      const centers = await page.locator(".bottom-nav button").evaluateAll((buttons) => buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        return box.left + box.width / 2;
+      }));
+      for (const [index, expected] of [0.1, 0.3, 0.5, 0.7, 0.9].entries()) {
+        expect(Math.abs(centers[index] - (navigation!.x + navigation!.width * expected)), `navigation button ${index + 1} should stay in its tablet slot at ${width}px`).toBeLessThanOrEqual(12);
+      }
     } else {
       expect(navigation!.y, `tablet and phone navigation should stay at the bottom at ${width}px`).toBeGreaterThan(700);
-      const expectedWidth = width <= 360 ? width - 12 : Math.min(520, width - 24);
+      const expectedWidth = Math.min(520, width - 24);
       expect(navigation!.width, `floating navigation width at ${width}px`).toBeCloseTo(expectedWidth, 0);
       expect(navigation!.x, `floating navigation should be centered at ${width}px`).toBeCloseTo((width - expectedWidth) / 2, 0);
-      if (width >= 768) {
-        const centers = await page.locator(".bottom-nav button").evaluateAll((buttons) => buttons.map((button) => {
-          const box = button.getBoundingClientRect();
-          return box.left + box.width / 2;
-        }));
-        for (const [index, expected] of [0.1, 0.3, 0.5, 0.7, 0.9].entries()) {
-          expect(Math.abs(centers[index] - (navigation!.x + navigation!.width * expected)), `navigation button ${index + 1} should stay in its tablet slot at ${width}px`).toBeLessThanOrEqual(12);
-        }
-      }
     }
   }
 
@@ -429,7 +431,8 @@ test("Glass Editorial discovery keeps live feed controls, media states, rating, 
   await expect(page.getByRole("tab", { name: "推荐" })).toHaveAttribute("aria-selected", "true");
   await expect(firstCard.locator(".discovery-rating-label")).toContainText("待评级");
   await expect(firstCard.locator(".discovery-author-name")).toHaveText("验收账号");
-  await expect(firstCard.locator(".discovery-author-avatar img")).toBeVisible();
+  await expect(firstCard.locator(".discovery-author-avatar")).toHaveCount(0);
+  await expect(firstCard.locator(".discovery-author")).toHaveRole("button");
   await expect(firstCard.locator(".discovery-like-count")).toHaveText("12");
   const coverImage = firstCard.locator(".discovery-cover-open img");
   await expect.poll(() => coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
@@ -447,11 +450,11 @@ test("Glass Editorial discovery keeps live feed controls, media states, rating, 
   expect(Math.abs((brokenSizeBefore?.height || 0) - (brokenSizeAfter?.height || 0))).toBeLessThanOrEqual(1);
 
   const requestsBeforeLayout = discoveryRequests.length;
-  await page.getByRole("button", { name: "浏览设置" }).click();
+  await page.getByRole("button", { name: "更多" }).click();
   await page.getByRole("button", { name: "单列浏览" }).click();
   await expect(feed).toHaveClass(/single-column/);
   expect(discoveryRequests.length).toBe(requestsBeforeLayout);
-  await page.getByRole("button", { name: "浏览设置" }).click();
+  await page.getByRole("button", { name: "更多" }).click();
   await page.getByRole("button", { name: "双列瀑布流" }).click();
   await expect(feed).not.toHaveClass(/single-column/);
   expect(discoveryRequests.length).toBe(requestsBeforeLayout);
