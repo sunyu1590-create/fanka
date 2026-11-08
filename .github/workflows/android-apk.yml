@@ -28,6 +28,12 @@ on:
       - "lib/**"
       - "tests/**"
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "构建指定分支或标签；留空时使用 GitHub 最新默认分支"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -40,8 +46,15 @@ jobs:
   web-validation:
     name: Validate Web bridge and business app
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.resolve-source.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.source_ref || github.event.repository.default_branch) || github.sha }}
+      - name: Resolve checked out source
+        id: resolve-source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -55,8 +68,12 @@ jobs:
     name: Build Android APKs
     needs: web-validation
     runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: ${{ needs.web-validation.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.web-validation.outputs.source_sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -90,13 +107,13 @@ jobs:
           Application: HEIKA
           Version name: $version_name
           Version code: $version_code
-          Commit SHA: $GITHUB_SHA
+          Commit SHA: $SOURCE_SHA
           Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           Release APK: unsigned; for build inspection only, not a signed release package
           EOF
       - uses: actions/upload-artifact@v4
         with:
-          name: heika-android-v${{ steps.metadata.outputs.version_name }}-${{ github.sha }}
+          name: heika-android-v${{ steps.metadata.outputs.version_name }}-${{ needs.web-validation.outputs.source_sha }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 14
