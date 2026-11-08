@@ -22,6 +22,10 @@ Web 业务继续由现有 Next.js 应用承担；只有受精确 HTTPS origin �
 
 Web `<input type=file accept="image/*">` 使用 AndroidX Photo Picker；多选最多 9 个，与现有发布上限一致。图片/视频混选时使用 Photo Picker 的混合模式；其他文件类型回退到 `ACTION_OPEN_DOCUMENT`。没有新增广泛媒体读取权限，选择结果仍交给现有 Web 上传接口和草稿逻辑处理。
 
+## 本地快捷入口与离线缓存
+
+长按 Android 桌面应用图标会显示「今日翻卡」快捷入口，使用现有受信 `https://moonclean.shop/` 路由回到首页今日卡片，不复制翻卡业务逻辑。发现流和公开详情继续使用现有 IndexedDB 缓存（8 MiB 总上限、单条 768 KiB、最多 7 天）；缓存数据可在页面 Shell 与资源可用时离线恢复。应用不宣称已下载原图，也不保证首次访问/已淘汰内容可离线阅读。
+
 ## 页面加载恢复
 
 Bridge 使用 `WebViewCompat.addWebMessageListener` 的精确 origin 规则。即使某个受信页面未完成 Bridge 握手，`onPageCommitVisible` 后也只等待 2 秒；然后记录 `web_bridge_ready_timeout` 并展示已提交页面。此降级不允许未知域名调用 Android 能力。

@@ -30,3 +30,12 @@ test("native sharing and image selection use Android system UI", async () => {
   assert.match(activity, /PickMultipleVisualMedia\(9\)/);
   assert.match(inbox, /!hasNativeBridge\(\)[\s\S]*?Notification\.permission/);
 });
+
+test("Android exposes the existing today deck as a launcher shortcut", async () => {
+  const manifest = await read("android/app/src/main/AndroidManifest.xml");
+  const shortcuts = await read("android/app/src/main/res/xml/shortcuts.xml");
+
+  assert.match(manifest, /android\.app\.shortcuts/);
+  assert.match(shortcuts, /android:shortcutId="today_flip"/);
+  assert.match(shortcuts, /android:data="https:\/\/moonclean\.shop\/"/);
+});
