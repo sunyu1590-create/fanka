@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.webkit.WebView
 import androidx.core.net.toUri
 import androidx.webkit.JavaScriptReplyProxy
@@ -36,6 +37,7 @@ internal class NativeBridge(
     }
     private var currentProxy: JavaScriptReplyProxy? = null
     private var ready = false
+    private var disposed = false
 
     data class PendingReply(val requestType: String, val proxy: JavaScriptReplyProxy)
 
@@ -60,7 +62,9 @@ internal class NativeBridge(
                     diagnostics.recordBridgeFailure()
                     return@addWebMessageListener
                 }
-                mainHandler.post { handleMessage(raw, replyProxy) }
+                mainHandler.postAtTime({
+                    if (!disposed) handleMessage(raw, replyProxy)
+                }, this, SystemClock.uptimeMillis())
             }
             true
         }.getOrElse {
@@ -70,13 +74,25 @@ internal class NativeBridge(
     }
 
     fun onPageStarted() {
+        if (disposed) return
         ready = false
         currentProxy = null
         pending.clear()
     }
 
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        mainHandler.removeCallbacksAndMessages(this)
+        runCatching { WebViewCompat.removeWebMessageListener(webView, JS_OBJECT_NAME) }
+        pending.clear()
+        completed.clear()
+        currentProxy = null
+        ready = false
+    }
+
     fun sendEvent(type: String, payload: JSONObject = JSONObject()): Boolean {
-        if (!ready) return false
+        if (disposed || !ready) return false
         val proxy = currentProxy ?: return false
         val message = JSONObject()
             .put("version", PROTOCOL_VERSION)
@@ -106,6 +122,7 @@ internal class NativeBridge(
     }
 
     private fun handleMessage(raw: String, replyProxy: JavaScriptReplyProxy) {
+        if (disposed) return
         val request = try {
             JSONObject(raw)
         } catch (_: Exception) {
@@ -192,6 +209,7 @@ internal class NativeBridge(
     }
 
     private fun complete(id: String, requestType: String, ok: Boolean, data: JSONObject) {
+        if (disposed) return
         val saved = pending.remove(id)
         val proxy = saved?.proxy ?: currentProxy
         val response = JSONObject()

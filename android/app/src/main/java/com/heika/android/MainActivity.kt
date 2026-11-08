@@ -484,6 +484,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val view = webView ?: return
         cardTransition?.clearAll()
         cardTransition = null
+        bridge?.dispose()
+        bridge = null
         cancelLoadTimeout()
         view.stopLoading()
         view.webChromeClient = null
@@ -492,14 +494,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
         view.removeAllViews()
         view.destroy()
         webView = null
-        bridge = null
     }
 
     private fun detachRendererLostWebView(view: WebView) {
+        bridge?.dispose()
+        bridge = null
         (view.parent as? ViewGroup)?.removeView(view)
         view.destroy()
         if (webView === view) webView = null
-        bridge = null
         pendingFileCallback?.onReceiveValue(null)
         pendingFileCallback = null
     }
