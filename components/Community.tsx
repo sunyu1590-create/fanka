@@ -434,6 +434,7 @@ export default function Community() {
     scrollPositions = useRef<Record<string, number>>({});
   const discoverScrollPositions = useRef<Record<"community" | "ai", number>>({ community: 0, ai: 0 });
   const sharedPostHandled = useRef<string | null>(null);
+  const sharedProfileHandled = useRef<string | null>(null);
   const searchCursorRef = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
   const [publicBookmarks, setPublicBookmarks] = useState(false);
@@ -443,6 +444,7 @@ export default function Community() {
   const [chatConversationOpen, setChatConversationOpen] = useState(false);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountReady, setAccountReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [adminRole, setAdminRole] = useState<"member" | "admin" | "content_manager" | "reviewer">("member");
   const adminEntryPending = useRef(false);
@@ -724,6 +726,13 @@ export default function Community() {
   const openMineFeature = (feature: "monthly-recap" | "card-chain", returnTab: "mine" | "exploration-center" = "mine") => { scrollPositions.current[returnTab] = window.scrollY; setSecondaryReturnTab(returnTab); setTab(feature); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
   const returnToSecondaryTab = () => { const destination = secondaryReturnTab; setTab(destination); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[destination] || 0, behavior: "instant" })); };
   const closeSearch = () => setTab(searchReturnTab || "discover");
+  const closeAuthorProfile = () => {
+    setAuthorProfile(null);
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("profile")) return;
+    url.searchParams.delete("profile");
+    window.history.replaceState(window.history.state, "", url);
+  };
   const openMyContent = (returnTab: "mine" | "settings" = "mine") => {
     scrollPositions.current[returnTab] = window.scrollY;
     setMyContentReturnTab(returnTab);
@@ -1651,6 +1660,12 @@ export default function Community() {
   };
   const openPostRef = useRef(openPost);
   openPostRef.current = openPost;
+  useEffect(() => {
+    const sharedId = new URLSearchParams(location.search).get("profile");
+    if (!ready || !sharedId || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sharedId) || sharedProfileHandled.current === sharedId) return;
+    sharedProfileHandled.current = sharedId;
+    setAuthorProfile(sharedId);
+  }, [ready]);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
     if (!ready || !sharedId || detail !== null || sharedPostHandled.current === sharedId) return;
@@ -3513,6 +3528,7 @@ export default function Community() {
           cloudHydrated.current = false;
           setPublicBookmarksLoaded(false);
           setAccountId(user?.id || null);
+          setAccountReady(true);
           if (!user) {
             setIsStaff(false);
             setAdminRole("member");
@@ -3679,6 +3695,7 @@ export default function Community() {
           const id = user?.id || null;
           if (id === currentUserId && event !== "USER_UPDATED") return;
           currentUserId = id;
+          setAccountReady(false);
           const version = ++generation;
           clearTimeout(hydrationTimer);
           // Defer beyond the auth lock; microtasks can run while it is still held.
@@ -4755,10 +4772,18 @@ export default function Community() {
       {authorProfile && (
         <PublicProfile
           id={authorProfile}
+          currentUserId={accountId}
+          accountReady={accountReady}
           layout={profileLayout}
-          onClose={() => setAuthorProfile(null)}
+          onClose={closeAuthorProfile}
+          onOpenMine={() => {
+            closeAuthorProfile();
+            setTab("mine");
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          }}
+          onNotice={toast}
           onSelectPost={(id) => {
-            setAuthorProfile(null);
+            closeAuthorProfile();
             if (all.some((post) => post.id === id)) {
               requestAnimationFrame(() => openPostRef.current(id, "discover"));
               return;
@@ -4774,7 +4799,7 @@ export default function Community() {
               .catch(() => toast("内容加载失败，请稍后重试"));
           }}
           onMessage={(id) => {
-            setAuthorProfile(null);
+            closeAuthorProfile();
             setMessagePeer(id);
             setTab("messages");
             imageSwitchSequence.current += 1;

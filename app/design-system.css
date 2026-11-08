@@ -5557,7 +5557,7 @@ img, video, canvas, iframe { max-width:100%; }
 /* Bottom navigation 3.0: four compact destinations with a separate compose control. */
 .bottom-nav-shell {
   position:fixed;
-  z-index:200;
+  z-index:20;
   left:50%;
   bottom:calc(8px + env(safe-area-inset-bottom));
   width:min(520px,calc(100vw - 24px));
