@@ -63,6 +63,7 @@ import {
   prepareNativeCardTransition,
   releaseNativeCardTransition,
   getNativeNotificationStatus,
+  openNativeAbout,
   openNativeNotificationSettings,
   requestNativeNotificationPermission,
   shareViaNative,
@@ -525,6 +526,12 @@ export default function Community() {
   };
   const setTab = (next: string) => {
     if (next === tab) return;
+    if (next === "about" && hasNativeBridge()) {
+      void openNativeAbout().then((opened) => {
+        if (!opened) startPageTransition(() => setTabState("about"));
+      });
+      return;
+    }
     if (next === "messages") setMessagesTabVisited(true);
     startPageTransition(() => setTabState(next));
   };
@@ -3313,7 +3320,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.44</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>{hasNativeBridge() ? "Android APP" : "版本 1.44"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}

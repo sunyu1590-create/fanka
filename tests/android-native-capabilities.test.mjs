@@ -39,3 +39,15 @@ test("Android exposes the existing today deck as a launcher shortcut", async () 
   assert.match(shortcuts, /android:shortcutId="today_flip"/);
   assert.match(shortcuts, /android:data="https:\/\/moonclean\.shop\/"/);
 });
+
+test("Android About opens the native screen and browser About stays on the website", async () => {
+  const bridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
+  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
+  const community = await read("components/Community.tsx");
+
+  assert.match(bridge, /"app\.about\.open" -> callbacks\.onAboutOpenRequest/);
+  assert.match(activity, /text = "ANDROID APP  ·  \$\{BuildConfig\.VERSION_NAME\} \(\$\{BuildConfig\.VERSION_CODE\}\)"/);
+  assert.match(activity, /webView\?\.clearCache\(true\)/);
+  assert.match(community, /next === "about" && hasNativeBridge\(\)[\s\S]*?openNativeAbout\(\)/);
+  assert.match(community, /黑卡 HEIKA · 版本 1\.44/);
+});

@@ -31,6 +31,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -292,6 +293,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
             override fun onSystemShareRequest(requestId: String, payload: JSONObject) {
                 shareFromNative(requestId, payload)
+            }
+
+            override fun onAboutOpenRequest(requestId: String) {
+                showNativeAbout()
+                bridge?.completeRequest(requestId, "app.about.open", true, JSONObject().put("opened", true))
             }
 
             override fun onPageState(path: String) {
@@ -698,6 +704,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun dispatchSystemBack() {
+        if (overlay?.tag == NATIVE_ABOUT_TAG) {
+            clearOverlay()
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastBackAt < BACK_DEBOUNCE_MS || backRequestId != null) return
         lastBackAt = now
@@ -973,6 +983,127 @@ class MainActivity : androidx.activity.ComponentActivity() {
         overlay = null
     }
 
+    private fun showNativeAbout() {
+        val container = root ?: return
+        clearOverlay()
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(13, 16, 18))
+            tag = NATIVE_ABOUT_TAG
+        }
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            addView(TextView(this@MainActivity).apply {
+                text = "‹"
+                textSize = 30f
+                setTextColor(Color.rgb(213, 180, 92))
+                setOnClickListener { clearOverlay() }
+            }, LinearLayout.LayoutParams(dp(44), dp(48)))
+            addView(TextView(this@MainActivity).apply {
+                text = "关于黑卡"
+                textSize = 17f
+                setTextColor(Color.WHITE)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+        }
+        page.addView(header)
+        val scroll = ScrollView(this)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(18), dp(24), dp(36))
+        }
+        val brand = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(18), 0, dp(26))
+        }
+        brand.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_heika)
+            contentDescription = getString(R.string.app_name)
+        }, LinearLayout.LayoutParams(dp(72), dp(72)))
+        brand.addView(TextView(this).apply {
+            text = "黑卡 HEIKA"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        brand.addView(TextView(this).apply {
+            text = "ANDROID APP  ·  ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+            textSize = 11f
+            setTextColor(Color.rgb(213, 180, 92))
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        brand.addView(TextView(this).apply {
+            text = "每一次翻开，都是一次新的发现。"
+            textSize = 14f
+            setTextColor(Color.rgb(179, 184, 187))
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        content.addView(brand)
+
+        fun sectionLabel(label: String) = TextView(this).apply {
+            text = label
+            textSize = 12f
+            setTextColor(Color.rgb(213, 180, 92))
+            setPadding(0, dp(18), 0, dp(8))
+        }
+        fun action(title: String, description: String, onClick: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(24, 28, 31))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.rgb(49, 54, 58))
+            }
+            addView(TextView(this@MainActivity).apply { text = title; textSize = 15f; setTextColor(Color.WHITE) })
+            addView(TextView(this@MainActivity).apply {
+                text = description
+                textSize = 12f
+                setTextColor(Color.rgb(160, 168, 172))
+                setPadding(0, dp(5), 0, 0)
+            })
+            setOnClickListener { onClick() }
+        }
+        content.addView(sectionLabel("应用"))
+        content.addView(action("检查更新", "当前发布渠道未提供自动更新检查。") {
+            Toast.makeText(this, "暂未接入自动更新服务", Toast.LENGTH_SHORT).show()
+        })
+        content.addView(sectionLabel("系统与存储"))
+        val notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        val permissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        content.addView(action("通知与权限", if (!permissionGranted) "Android 通知权限未授权" else if (notificationsEnabled) "系统通知已开启" else "系统通知已关闭") {
+            openNotificationSettings()
+        })
+        content.addView(action("清理网页缓存", "仅删除可重新下载的网页图片和静态资源；登录、草稿与收藏保留。") {
+            runCatching { webView?.clearCache(true) }
+                .onSuccess { Toast.makeText(this, "网页缓存已清理", Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(this, "缓存清理失败", Toast.LENGTH_SHORT).show() }
+        })
+        content.addView(sectionLabel("黑卡 HEIKA"))
+        content.addView(TextView(this).apply {
+            text = "由独立开发者持续维护。内容服务连接 moonclean.shop；应用原生能力由 Android 安全桥接提供。"
+            textSize = 12f
+            setTextColor(Color.rgb(160, 168, 172))
+            setLineSpacing(dp(3).toFloat(), 1f)
+        })
+        content.addView(TextView(this).apply {
+            text = "© HEIKA"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(112, 120, 124))
+            setPadding(0, dp(28), 0, 0)
+        })
+        scroll.addView(content)
+        page.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        overlay = page
+        container.addView(page, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        page.alpha = 0f
+        page.animate().alpha(1f).setDuration(SPLASH_MASK_EXIT_MS).start()
+    }
+
     private fun cancelLoadTimeout() {
         loadTimeout?.let(mainHandler::removeCallbacks)
         loadTimeout = null
@@ -994,6 +1125,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val EXTRA_NOTIFICATION_ID = "com.heika.android.extra.MESSAGE_ID"
         const val NOTIFICATION_PREFS = "heika_notification_permissions"
         const val NOTIFICATION_PERMISSION_ASKED = "post_notifications_asked"
+        const val NATIVE_ABOUT_TAG = "heika_native_about"
         const val LOAD_TIMEOUT_MS = 20_000L
         const val BACK_RESPONSE_TIMEOUT_MS = 280L
         const val BACK_DEBOUNCE_MS = 250L

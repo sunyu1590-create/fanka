@@ -24,7 +24,7 @@ Web `<input type=file accept="image/*">` 使用 AndroidX Photo Picker；多选�
 
 ## 本地快捷入口与离线缓存
 
-长按 Android 桌面应用图标会显示「今日翻卡」快捷入口，使用现有受信 `https://moonclean.shop/` 路由回到首页今日卡片，不复制翻卡业务逻辑。发现流和公开详情继续使用现有 IndexedDB 缓存（8 MiB 总上限、单条 768 KiB、最多 7 天）；缓存数据可在页面 Shell 与资源可用时离线恢复。应用不宣称已下载原图，也不保证首次访问/已淘汰内容可离线阅读。
+长按 Android 桌面应用图标会显示「今日翻卡」快捷入口，使用现有受信 `https://moonclean.shop/` 路由回到首页今日卡片，不复制翻卡业务逻辑。发现流和公开详情继续使用现有 IndexedDB 缓存（256 MiB 总上限、单条 768 KiB、最多 7 天）；缓存数据可在页面 Shell 与资源可用时离线恢复。图片仍由 WebView HTTP 缓存管理，Android WebView 没有公开接口配置固定 512 MiB 图片缓存配额。应用不宣称已下载原图，也不保证首次访问/已淘汰内容可离线阅读。
 
 ## 页面加载恢复
 

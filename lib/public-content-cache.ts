@@ -16,7 +16,9 @@ export type PublicCacheRead<T> = {
 
 const DATABASE = "heika-public-content-v1";
 const STORE = "entries";
-const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+// Keep public feed/detail data locally for smooth revisits and offline fallback.
+// Image bytes are handled by the browser/WebView HTTP cache, not this IndexedDB store.
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 const MAX_RECORD_BYTES = 768 * 1024;
 const MAX_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_FRESH_MS = 24 * 60 * 60 * 1000;

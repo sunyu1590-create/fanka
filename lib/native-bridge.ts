@@ -215,6 +215,14 @@ export async function shareViaNative(data: { title: string; text: string; url: s
   }
 }
 
+export async function openNativeAbout(): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("app.about.open");
+    return response.ok === true && response.data?.opened === true;
+  } catch { return false; }
+}
+
 export async function prepareNativeCardTransition(
   transactionId: string,
   rect: NativeTransitionRect,

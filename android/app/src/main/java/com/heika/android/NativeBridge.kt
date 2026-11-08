@@ -27,6 +27,7 @@ internal class NativeBridge(
         fun onNotificationStatusRequest(requestId: String)
         fun onNotificationSettingsRequest(requestId: String)
         fun onSystemShareRequest(requestId: String, payload: JSONObject)
+        fun onAboutOpenRequest(requestId: String)
         fun onPageState(path: String)
         fun onBackResult(requestId: String, consumed: Boolean)
         fun onNavigationAck(requestId: String, accepted: Boolean)
@@ -168,6 +169,7 @@ internal class NativeBridge(
                     .put("notifications.openSettings", true)
                     .put("system.filePicker", true)
                     .put("system.share", true)
+                    .put("app.about.open", true)
                     .put("navigation.events", true),
             )
             "notifications.requestPermission" -> {
@@ -180,6 +182,7 @@ internal class NativeBridge(
                 val payload = request.optJSONObject("payload") ?: JSONObject()
                 callbacks.onSystemShareRequest(id, payload)
             }
+            "app.about.open" -> callbacks.onAboutOpenRequest(id)
             "page.state" -> {
                 val path = request.optJSONObject("payload")?.optString("path").orEmpty()
                 if (!isSafePagePath(path)) {
@@ -295,6 +298,7 @@ internal class NativeBridge(
             "notifications.status",
             "notifications.openSettings",
             "system.share",
+            "app.about.open",
             "page.state",
             "system.back.result",
             "navigation.ack",
