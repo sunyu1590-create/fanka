@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.webkit.WebView
 import androidx.core.net.toUri
 import androidx.webkit.JavaScriptReplyProxy
@@ -15,13 +16,18 @@ import java.util.UUID
 
 internal class NativeBridge(
     private val webView: WebView,
-    private val trustedOrigin: Uri,
+    private val appOrigin: Uri,
+    private val trustedOrigins: Set<Uri>,
     private val diagnostics: Diagnostics,
     private val callbacks: Callbacks,
 ) {
     interface Callbacks {
         fun onWebReady()
         fun onPermissionRequest(requestId: String)
+        fun onNotificationStatusRequest(requestId: String)
+        fun onNotificationSettingsRequest(requestId: String)
+        fun onSystemShareRequest(requestId: String, payload: JSONObject)
+        fun onAboutOpenRequest(requestId: String)
         fun onPageState(path: String)
         fun onBackResult(requestId: String, consumed: Boolean)
         fun onNavigationAck(requestId: String, accepted: Boolean)
@@ -36,6 +42,7 @@ internal class NativeBridge(
     }
     private var currentProxy: JavaScriptReplyProxy? = null
     private var ready = false
+    private var disposed = false
 
     data class PendingReply(val requestType: String, val proxy: JavaScriptReplyProxy)
 
@@ -49,9 +56,9 @@ internal class NativeBridge(
             WebViewCompat.addWebMessageListener(
                 webView,
                 JS_OBJECT_NAME,
-                setOf(originString(trustedOrigin)),
+                trustedOrigins.mapTo(LinkedHashSet(), ::originString),
             ) { _, message, sourceOrigin, isMainFrame, replyProxy ->
-                if (!isMainFrame || !sameOrigin(sourceOrigin, trustedOrigin)) {
+                if (!isMainFrame || trustedOrigins.none { sameOrigin(sourceOrigin, it) }) {
                     diagnostics.recordBridgeFailure()
                     return@addWebMessageListener
                 }
@@ -60,7 +67,9 @@ internal class NativeBridge(
                     diagnostics.recordBridgeFailure()
                     return@addWebMessageListener
                 }
-                mainHandler.post { handleMessage(raw, replyProxy) }
+                mainHandler.postAtTime({
+                    if (!disposed) handleMessage(raw, replyProxy)
+                }, this, SystemClock.uptimeMillis())
             }
             true
         }.getOrElse {
@@ -70,13 +79,25 @@ internal class NativeBridge(
     }
 
     fun onPageStarted() {
+        if (disposed) return
         ready = false
         currentProxy = null
         pending.clear()
     }
 
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        mainHandler.removeCallbacksAndMessages(this)
+        runCatching { WebViewCompat.removeWebMessageListener(webView, JS_OBJECT_NAME) }
+        pending.clear()
+        completed.clear()
+        currentProxy = null
+        ready = false
+    }
+
     fun sendEvent(type: String, payload: JSONObject = JSONObject()): Boolean {
-        if (!ready) return false
+        if (disposed || !ready) return false
         val proxy = currentProxy ?: return false
         val message = JSONObject()
             .put("version", PROTOCOL_VERSION)
@@ -88,12 +109,17 @@ internal class NativeBridge(
         return safePost(proxy, message)
     }
 
+    fun isReady(): Boolean = ready && !disposed
+
     fun replyPermission(requestId: String, granted: Boolean, enabled: Boolean) {
         complete(
             requestId,
             "notifications.requestPermission",
             true,
-            JSONObject().put("granted", granted).put("enabled", enabled),
+            JSONObject()
+                .put("granted", granted)
+                .put("enabled", enabled)
+                .put("permission", if (granted) "granted" else "denied"),
         )
     }
 
@@ -106,6 +132,7 @@ internal class NativeBridge(
     }
 
     private fun handleMessage(raw: String, replyProxy: JavaScriptReplyProxy) {
+        if (disposed) return
         val request = try {
             JSONObject(raw)
         } catch (_: Exception) {
@@ -138,13 +165,24 @@ internal class NativeBridge(
                 true,
                 JSONObject()
                     .put("notifications.permission", true)
+                    .put("notifications.status", true)
+                    .put("notifications.openSettings", true)
                     .put("system.filePicker", true)
+                    .put("system.share", true)
+                    .put("app.about.open", true)
                     .put("navigation.events", true),
             )
             "notifications.requestPermission" -> {
                 pending[id] = PendingReply(type, replyProxy)
                 callbacks.onPermissionRequest(id)
             }
+            "notifications.status" -> callbacks.onNotificationStatusRequest(id)
+            "notifications.openSettings" -> callbacks.onNotificationSettingsRequest(id)
+            "system.share" -> {
+                val payload = request.optJSONObject("payload") ?: JSONObject()
+                callbacks.onSystemShareRequest(id, payload)
+            }
+            "app.about.open" -> callbacks.onAboutOpenRequest(id)
             "page.state" -> {
                 val path = request.optJSONObject("payload")?.optString("path").orEmpty()
                 if (!isSafePagePath(path)) {
@@ -192,6 +230,7 @@ internal class NativeBridge(
     }
 
     private fun complete(id: String, requestType: String, ok: Boolean, data: JSONObject) {
+        if (disposed) return
         val saved = pending.remove(id)
         val proxy = saved?.proxy ?: currentProxy
         val response = JSONObject()
@@ -215,11 +254,11 @@ internal class NativeBridge(
         if ('#' in path || '\\' in path) return false
         if (!SAFE_PAGE_PATH.matches(path)) return false
         return runCatching {
-            val uri = "${originString(trustedOrigin)}$path".toUri()
+            val uri = "${originString(appOrigin)}$path".toUri()
             val post = uri.getQueryParameter("post")
             val numericPostId = post?.toLongOrNull()
             if (post != null && (!POST_ID.matches(post) || numericPostId == null || numericPostId > MAX_SAFE_JS_INTEGER)) return false
-            sameOrigin(uri, trustedOrigin) && uri.userInfo == null
+            trustedOrigins.any { sameOrigin(uri, it) } && uri.userInfo == null
         }.getOrDefault(false)
     }
 
@@ -256,6 +295,10 @@ internal class NativeBridge(
             "bridge.ready",
             "capabilities.get",
             "notifications.requestPermission",
+            "notifications.status",
+            "notifications.openSettings",
+            "system.share",
+            "app.about.open",
             "page.state",
             "system.back.result",
             "navigation.ack",

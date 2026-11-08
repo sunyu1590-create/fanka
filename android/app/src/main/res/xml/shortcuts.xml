@@ -1,0 +1,14 @@
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="today_flip"
+        android:enabled="true"
+        android:icon="@drawable/ic_heika"
+        android:shortcutShortLabel="@string/shortcut_today_short"
+        android:shortcutLongLabel="@string/shortcut_today_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="https://moonclean.shop/"
+            android:targetPackage="com.heika.community"
+            android:targetClass="com.heika.android.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -54,6 +54,7 @@ import { REPORT_REASONS } from "@/lib/report-validation";
 import { animationCoordinator } from "@/lib/animation-coordinator";
 import { readPublicCache, schedulePublicCacheWrite } from "@/lib/public-content-cache";
 import { feedImageSource } from "@/lib/feed-images";
+import { appendUniqueById } from "@/lib/feed-collection";
 import {
   announceNativeReady,
   cancelNativeCardTransition,
@@ -61,7 +62,11 @@ import {
   installNativeBridge,
   prepareNativeCardTransition,
   releaseNativeCardTransition,
+  getNativeNotificationStatus,
+  openNativeAbout,
+  openNativeNotificationSettings,
   requestNativeNotificationPermission,
+  shareViaNative,
   subscribeNativeEvent,
   startNativeCardTransition,
   waitForNativeCardTransition,
@@ -412,7 +417,29 @@ export default function Community() {
     ),
     [notificationPermission, setNotificationPermission] = useState<
       "default" | "granted" | "denied" | "unsupported"
-    >("default");
+    >("default"),
+    [systemNotificationsEnabled, setSystemNotificationsEnabled] = useState<boolean | null>(null);
+  const refreshNativeNotificationStatus = useCallback(async () => {
+    if (!hasNativeBridge()) return null;
+    try {
+      const status = await getNativeNotificationStatus();
+      if (!status) return null;
+      setNotificationPermission(status.permission ?? (status.granted ? "granted" : "denied"));
+      setSystemNotificationsEnabled(status.enabled);
+      return status;
+    } catch {
+      return null;
+    }
+  }, []);
+  const systemNotificationLabel = systemNotificationsEnabled === null
+    ? "正在检查"
+    : notificationPermission === "default"
+      ? "尚未请求"
+      : notificationPermission === "denied"
+        ? "未授权"
+        : systemNotificationsEnabled
+          ? "已开启"
+          : "系统已关闭";
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
     ratingPulseTimer = useRef<number | null>(null);
@@ -499,6 +526,12 @@ export default function Community() {
   };
   const setTab = (next: string) => {
     if (next === tab) return;
+    if (next === "about" && hasNativeBridge()) {
+      void openNativeAbout().then((opened) => {
+        if (!opened) startPageTransition(() => setTabState("about"));
+      });
+      return;
+    }
     if (next === "messages") setMessagesTabVisited(true);
     startPageTransition(() => setTabState(next));
   };
@@ -741,7 +774,6 @@ export default function Community() {
   }, []);
   useEffect(() => {
     if (hasNativeBridge()) {
-      setNotificationPermission("default");
       return;
     }
     if (!("Notification" in window)) {
@@ -749,7 +781,22 @@ export default function Community() {
       return;
     }
     setNotificationPermission(Notification.permission);
-  }, []);
+  }, [refreshNativeNotificationStatus]);
+  useEffect(() => {
+    if (!hasNativeBridge()) return;
+    const onLifecycle = (payload: Record<string, unknown>) => {
+      if (payload.state === "foreground") void refreshNativeNotificationStatus();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshNativeNotificationStatus();
+    };
+    const unsubscribe = subscribeNativeEvent("app.lifecycle", onLifecycle);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      unsubscribe();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshNativeNotificationStatus]);
   const loadPublicFeed = useCallback(async (requestedPage = 1, reset = false, requestedTag = category) => {
     if (publicFeedLoading.current && !reset) return;
     if (reset) feedController.current?.abort();
@@ -771,7 +818,7 @@ export default function Community() {
           requestSequence !== feedRequestSequence.current || networkApplied) return;
       cacheApplied = true;
       const { items, total } = entry.value;
-      setPublicFeed((current) => reset ? items : [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
+      setPublicFeed((current) => reset ? items : appendUniqueById(current, items));
       setFeedTotal(Number(total) || items.length);
       setFeedPage(requestedPage);
       setFeedHasMore(requestedPage * 24 < (Number(total) || 0));
@@ -788,7 +835,7 @@ export default function Community() {
       if (!Array.isArray(items)) throw new Error("内容格式无效");
       if (controller.signal.aborted) return;
       networkApplied = true;
-      setPublicFeed((current) => reset ? items : [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
+      setPublicFeed((current) => reset ? items : appendUniqueById(current, items));
       const total = Array.isArray(payload) ? items.length : Number(payload.total) || 0;
       setFeedTotal(total);
       setFeedPage(requestedPage);
@@ -815,8 +862,12 @@ export default function Community() {
     if (feedLoadedTag === wantedTag && (publicFeed.length || feedPage > 0)) return;
     void loadPublicFeed(1, true, wantedTag);
   }, [ready, tab, category, feedLoadedTag, publicFeed.length, feedPage, loadPublicFeed]);
-  const missingMineIds = [...new Set([...state.saved, ...(state.liked || [])])].filter((id) => !all.some((post) => post.id === id));
-  const missingMineIdsKey = missingMineIds.join(",");
+  const missingMineIdsKey = useMemo(() => {
+    const availableIds = new Set(all.map((post) => post.id));
+    return [...new Set([...state.saved, ...(state.liked || [])])]
+      .filter((id) => !availableIds.has(id))
+      .join(",");
+  }, [all, state.saved, state.liked]);
   useEffect(() => {
     if (tab !== "mine" || !missingMineIdsKey) return;
     const controller = new AbortController();
@@ -830,7 +881,7 @@ export default function Community() {
     })).then((results) => {
       if (controller.signal.aborted) return;
       const items = results.flat();
-      setPublicFeed((current) => [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
+      setPublicFeed((current) => appendUniqueById(current, items));
     }).catch(() => {});
     return () => controller.abort();
   }, [tab, missingMineIdsKey]);
@@ -1765,13 +1816,24 @@ export default function Community() {
       return;
     }
     if (hasNativeBridge()) {
+      if (notificationPermission === "denied" || (notificationPermission === "granted" && systemNotificationsEnabled === false)) {
+        const opened = await openNativeNotificationSettings();
+        if (!opened) toast("无法打开 Android 通知设置");
+        else toast("请在系统设置中允许黑卡通知，然后返回此页");
+        return;
+      }
       try {
         const result = await requestNativeNotificationPermission();
-        if (!result?.granted || !result.enabled) {
+        if (!result?.granted) {
           setNotificationPermission("denied");
+          setSystemNotificationsEnabled(false);
           return toast("请在 Android 系统设置中允许黑卡通知");
         }
         setNotificationPermission("granted");
+        setSystemNotificationsEnabled(result.enabled);
+        if (!result.enabled) {
+          return toast("Android 系统通知已关闭，请在系统设置中开启");
+        }
         update((s) => ({
           ...s,
           notifications: { ...s.notifications, [key]: true },
@@ -2452,7 +2514,13 @@ export default function Community() {
     }
     await loadPublicFeed(1, true, tab === "discover" ? category : "全部");
   };
-  const ratingIdsKey = [...new Set(all.map((post) => post.id))].filter((id) => !loadedRatingIds.current.has(id)).sort((a, b) => a - b).join(",");
+  const ratingIdsKey = useMemo(
+    () => [...new Set(all.map((post) => post.id))]
+      .filter((id) => !loadedRatingIds.current.has(id))
+      .sort((a, b) => a - b)
+      .join(","),
+    [all],
+  );
   useEffect(() => {
     if (!ready || !ratingIdsKey) return;
     const controller = new AbortController();
@@ -3252,7 +3320,7 @@ export default function Community() {
               <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
               <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
               <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>版本 1.44</small><ChevronRight size={16}/></button>
+              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>{hasNativeBridge() ? "Android APP" : "版本 1.44"}</small><ChevronRight size={16}/></button>
             </div>
           </div>
           {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
@@ -3316,9 +3384,16 @@ export default function Community() {
           {settingsDetail === "notifications" && (
             <div className="preference-notifications">
               <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
-              <p>开启你关心的提醒。浏览器通知仍需系统许可。</p>
+              <p>{hasNativeBridge() ? "Android 系统授权与黑卡内部提醒偏好分别管理。" : "开启你关心的提醒。浏览器通知仍需系统许可。"}</p>
+              {hasNativeBridge() && <div className="permission-state" role="status">
+                <span>Android 系统通知：{systemNotificationLabel}</span>
+                <button type="button" className="soft-button" onClick={async () => {
+                  if (!(await openNativeNotificationSettings())) toast("无法打开 Android 通知设置");
+                }}>管理系统权限</button>
+                <small>Android 后台推送服务尚未接通；此处开关仅保存黑卡提醒偏好。</small>
+              </div>}
               {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
-              {notificationPermission === "denied" && <div className="permission-state">{hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}</div>}
+              {!hasNativeBridge() && notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
             </div>
           )}
         </section>
@@ -4051,8 +4126,20 @@ export default function Community() {
               <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
               <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => {
                 const shareData = { title: post.title, text: post.body, url: `${location.origin}/?post=${post.id}` };
-                if (navigator.share) void navigator.share(shareData).catch(() => {});
-                else void navigator.clipboard?.writeText(shareData.url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
+                void (async () => {
+                  if (await shareViaNative(shareData)) return;
+                  if (navigator.share) {
+                    try { await navigator.share(shareData); }
+                    catch (error) {
+                      if (!(error instanceof DOMException && error.name === "AbortError")) toast("分享失败");
+                    }
+                    return;
+                  }
+                  try {
+                    await navigator.clipboard?.writeText(shareData.url);
+                    toast("链接已复制");
+                  } catch { toast("复制失败"); }
+                })();
               }}><Share2 size={20} /></button>
             </form>
           </div>
@@ -4245,14 +4332,20 @@ export default function Community() {
                 <div className="eyebrow">PREFERENCES</div>
                 <h2>通知设置</h2>
                 <p className="settings-note">
-                  通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。
+                  {hasNativeBridge() ? "Android 系统授权与黑卡内部提醒偏好分别管理。后台推送服务尚未接通，开关只保存账号提醒偏好。" : "通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。"}
                 </p>
+                {hasNativeBridge() && <div className="permission-state" role="status">
+                  Android 系统通知：{systemNotificationLabel}
+                  <button type="button" className="soft-button" onClick={async () => {
+                    if (!(await openNativeNotificationSettings())) toast("无法打开 Android 通知设置");
+                  }}>管理系统权限</button>
+                </div>}
                 {notificationPermission === "unsupported" && (
                   <div className="permission-state">此浏览器不支持通知。</div>
                 )}
-                {notificationPermission === "denied" && (
+                {!hasNativeBridge() && notificationPermission === "denied" && (
                   <div className="permission-state">
-                    {hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}
+                    浏览器通知权限已拒绝，请在站点设置中重新允许。
                   </div>
                 )}
                 <div className="switch-list">

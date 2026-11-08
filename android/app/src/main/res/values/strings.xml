@@ -3,4 +3,6 @@
     <string name="load_failed_title">暂时无法连接</string>
     <string name="load_failed_message">请检查网络连接后重试。</string>
     <string name="retry">重新加载</string>
+    <string name="shortcut_today_short">今日翻卡</string>
+    <string name="shortcut_today_long">打开黑卡，继续今天的翻卡探索</string>
 </resources>

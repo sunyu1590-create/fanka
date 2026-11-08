@@ -25,13 +25,17 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.provider.Settings
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -49,6 +53,9 @@ import kotlin.math.max
 class MainActivity : androidx.activity.ComponentActivity() {
     private val diagnostics get() = (application as HeikaApplication).diagnostics
     private val trustedOrigin = BuildConfig.WEB_APP_ORIGIN.toUri()
+    private val trustedOrigins = BuildConfig.WEB_APP_HOSTS.split(',')
+        .mapNotNull { host -> runCatching { Uri.Builder().scheme("https").authority(host.trim()).build() }.getOrNull() }
+        .toSet()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var root: FrameLayout? = null
     private var webView: WebView? = null
@@ -71,6 +78,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var navigationTimeout: Runnable? = null
     private var lastBackAt = 0L
     private var loadTimeout: Runnable? = null
+    private var bridgeFallbackTimeout: Runnable? = null
     private var recoveringFromUntrustedNavigation = false
     private var frameMetricsListener: Window.OnFrameMetricsAvailableListener? = null
 
@@ -93,9 +101,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val callback = pendingFileCallback
-        pendingFileCallback = null
-        if (callback == null) return@registerForActivityResult
         val data = result.data
         val selected = if (result.resultCode == Activity.RESULT_OK && data != null) {
             val clip = data.clipData
@@ -105,7 +110,21 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 else -> null
             }
         } else null
-        callback.onReceiveValue(selected)
+        deliverPickedFiles(selected)
+    }
+
+    private val singlePhotoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> deliverPickedFiles(uri?.let { arrayOf(it) }) }
+
+    private val multiPhotoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(9),
+    ) { uris -> deliverPickedFiles(uris.takeIf { it.isNotEmpty() }?.toTypedArray()) }
+
+    private fun deliverPickedFiles(uris: Array<Uri>?) {
+        val callback = pendingFileCallback
+        pendingFileCallback = null
+        callback?.onReceiveValue(uris)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -191,6 +210,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         cardTransition?.clearAll()
         cardTransition = null
         loadTimeout?.let(mainHandler::removeCallbacks)
+        cancelBridgeFallbackTimeout()
         backTimeout?.let(mainHandler::removeCallbacks)
         navigationTimeout?.let(mainHandler::removeCallbacks)
         pendingFileCallback?.onReceiveValue(null)
@@ -235,15 +255,50 @@ class MainActivity : androidx.activity.ComponentActivity() {
             )
         }
 
-        val nativeBridge = NativeBridge(view, trustedOrigin, diagnostics, object : NativeBridge.Callbacks {
+        val nativeBridge = NativeBridge(view, trustedOrigin, trustedOrigins, diagnostics, object : NativeBridge.Callbacks {
             override fun onWebReady() {
                 diagnostics.recordFirstInteractive()
-                clearOverlay()
+                cancelLoadTimeout()
+                cancelBridgeFallbackTimeout()
+                if (overlay?.tag == LOADING_MASK_TAG) dismissLoadingMask() else clearOverlay()
                 bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "foreground"))
                 dispatchNextNavigation()
             }
 
             override fun onPermissionRequest(requestId: String) = requestNotificationPermission(requestId)
+
+            override fun onNotificationStatusRequest(requestId: String) {
+                val permissionState = notificationPermissionState()
+                val enabled = NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()
+                bridge?.completeRequest(
+                    requestId,
+                    "notifications.status",
+                    true,
+                    JSONObject()
+                        .put("granted", permissionState == "granted")
+                        .put("enabled", enabled)
+                        .put("permission", permissionState),
+                )
+            }
+
+            override fun onNotificationSettingsRequest(requestId: String) {
+                val opened = openNotificationSettings()
+                bridge?.completeRequest(
+                    requestId,
+                    "notifications.openSettings",
+                    true,
+                    JSONObject().put("opened", opened),
+                )
+            }
+
+            override fun onSystemShareRequest(requestId: String, payload: JSONObject) {
+                shareFromNative(requestId, payload)
+            }
+
+            override fun onAboutOpenRequest(requestId: String) {
+                showNativeAbout()
+                bridge?.completeRequest(requestId, "app.about.open", true, JSONObject().put("opened", true))
+            }
 
             override fun onPageState(path: String) {
                 lastSafeRoute = BuildConfig.WEB_APP_URL.trimEnd('/') + path
@@ -344,8 +399,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     }
                     return
                 }
-                recoveringFromUntrustedNavigation = false
+                diagnostics.record("web_navigation_start_${uri.host?.lowercase()?.replace(Regex("[^a-z0-9.-]"), "_") ?: "unknown"}")
                 cancelLoadTimeout()
+                cancelBridgeFallbackTimeout()
                 showLoading()
                 loadTimeout = Runnable {
                     diagnostics.record("web_load_timeout")
@@ -358,10 +414,26 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 super.onPageCommitVisible(view, url)
                 if (!isTrustedUrl(url.toUri())) return
                 webContentCommitted = true
-                cancelLoadTimeout()
-                clearOverlay()
                 diagnostics.recordFirstContentVisible()
-                if (!bridgeSupported) dispatchNextNavigation()
+                val committedHost = url.toUri().host?.lowercase() ?: "unknown"
+                diagnostics.record("web_page_committed_$committedHost")
+                recoveringFromUntrustedNavigation = false
+                if (!bridgeSupported) {
+                    cancelLoadTimeout()
+                    dismissLoadingMask()
+                    dispatchNextNavigation()
+                } else if (bridge?.isReady() != true) {
+                    cancelBridgeFallbackTimeout()
+                    bridgeFallbackTimeout = Runnable {
+                        bridgeFallbackTimeout = null
+                        if (webContentCommitted && bridge?.isReady() != true) {
+                            diagnostics.record("web_bridge_ready_timeout")
+                            cancelLoadTimeout()
+                            dismissLoadingMask()
+                            dispatchNextNavigation()
+                        }
+                    }.also { mainHandler.postDelayed(it, BRIDGE_READY_TIMEOUT_MS) }
+                }
             }
 
             override fun onReceivedError(
@@ -372,7 +444,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 super.onReceivedError(view, request, error)
                 diagnostics.recordResourceFailure()
                 if (recoveringFromUntrustedNavigation && !isTrustedUrl(request.url)) return
-                if (request.isForMainFrame) showLoadError()
+                if (request.isForMainFrame) {
+                    diagnostics.record("web_main_frame_error", error.errorCode.toLong())
+                    showLoadError()
+                }
             }
 
             override fun onReceivedHttpError(
@@ -383,7 +458,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 super.onReceivedHttpError(view, request, errorResponse)
                 if (recoveringFromUntrustedNavigation && !isTrustedUrl(request.url)) return
                 if (request.isForMainFrame && errorResponse.statusCode >= 400) {
-                    diagnostics.record("web_http_error", errorResponse.statusCode.toLong())
+                    diagnostics.record("web_main_frame_http_error", errorResponse.statusCode.toLong())
                     showLoadError()
                 }
             }
@@ -430,6 +505,32 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 pendingFileCallback?.onReceiveValue(null)
                 pendingFileCallback = filePathCallback
                 val multiple = fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+                val accepted = fileChooserParams.acceptTypes
+                    .flatMap { it.split(',') }
+                    .map { it.trim().lowercase() }
+                    .filter { it.isNotEmpty() }
+                val imageOnly = accepted.isNotEmpty() && accepted.all { it.startsWith("image/") }
+                val videoOnly = accepted.isNotEmpty() && accepted.all { it.startsWith("video/") }
+                val imageOrVideo = accepted.isNotEmpty() && accepted.all { it.startsWith("image/") || it.startsWith("video/") }
+                if (imageOnly || videoOnly || imageOrVideo) {
+                    val mediaType = when {
+                        imageOnly -> ActivityResultContracts.PickVisualMedia.ImageOnly
+                        videoOnly -> ActivityResultContracts.PickVisualMedia.VideoOnly
+                        else -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                    }
+                    return try {
+                        val request = PickVisualMediaRequest(mediaType)
+                        if (multiple) multiPhotoPickerLauncher.launch(request)
+                        else singlePhotoPickerLauncher.launch(request)
+                        true
+                    } catch (_: Exception) {
+                        launchDocumentPicker(multiple)
+                    }
+                }
+                return launchDocumentPicker(multiple)
+            }
+
+            private fun launchDocumentPicker(multiple: Boolean): Boolean {
                 val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
                     type = "*/*"
@@ -484,6 +585,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val view = webView ?: return
         cardTransition?.clearAll()
         cardTransition = null
+        bridge?.dispose()
+        bridge = null
         cancelLoadTimeout()
         view.stopLoading()
         view.webChromeClient = null
@@ -492,35 +595,119 @@ class MainActivity : androidx.activity.ComponentActivity() {
         view.removeAllViews()
         view.destroy()
         webView = null
-        bridge = null
     }
 
     private fun detachRendererLostWebView(view: WebView) {
+        bridge?.dispose()
+        bridge = null
         (view.parent as? ViewGroup)?.removeView(view)
         view.destroy()
         if (webView === view) webView = null
-        bridge = null
         pendingFileCallback?.onReceiveValue(null)
         pendingFileCallback = null
     }
 
     private fun requestNotificationPermission(requestId: String) {
         val enabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) {
-            bridge?.replyPermission(requestId, enabled, enabled)
-            return
-        }
         if (pendingPermissionRequest != null) {
             bridge?.failRequest(requestId, "notifications.requestPermission", "permission_request_in_progress")
             return
         }
+        when (notificationPermissionState()) {
+            "granted" -> {
+                bridge?.replyPermission(requestId, true, enabled)
+                return
+            }
+            "denied" -> {
+                bridge?.replyPermission(requestId, false, enabled)
+                return
+            }
+        }
         pendingPermissionRequest = requestId
-        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(NOTIFICATION_PERMISSION_ASKED, true)
+            .apply()
+        try {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } catch (_: Exception) {
+            pendingPermissionRequest = null
+            bridge?.failRequest(requestId, "notifications.requestPermission", "permission_dialog_unavailable")
+        }
+    }
+
+    private fun notificationPermissionState(): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) return "granted"
+        return if (getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
+                .getBoolean(NOTIFICATION_PERMISSION_ASKED, false)
+        ) "denied" else "default"
+    }
+
+    private fun openNotificationSettings(): Boolean = try {
+        startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+        )
+        true
+    } catch (_: ActivityNotFoundException) {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun shareFromNative(requestId: String, payload: JSONObject) {
+        val rawUrl = payload.optString("url")
+        val uri = runCatching { rawUrl.toUri() }.getOrNull()
+        if (uri == null || !isTrustedUrl(uri) || safeRoute(uri) == null) {
+            bridge?.completeRequest(
+                requestId,
+                "system.share",
+                false,
+                JSONObject().put("code", "invalid_share_url"),
+            )
+            return
+        }
+        val cleanTitle = payload.optString("title", "黑卡 HEIKA")
+            .filterNot(Char::isISOControl)
+            .trim()
+            .take(120)
+            .ifEmpty { "黑卡 HEIKA" }
+        val cleanText = payload.optString("text")
+            .filterNot(Char::isISOControl)
+            .trim()
+            .take(2_000)
+        val shareText = listOf(cleanText, uri.toString()).filter(String::isNotEmpty).joinToString("\n")
+        try {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TITLE, cleanTitle)
+                putExtra(Intent.EXTRA_TEXT, shareText)
+            }
+            startActivity(Intent.createChooser(intent, "分享黑卡内容"))
+            bridge?.completeRequest(
+                requestId,
+                "system.share",
+                true,
+                JSONObject().put("shared", true),
+            )
+        } catch (_: ActivityNotFoundException) {
+            bridge?.completeRequest(
+                requestId,
+                "system.share",
+                false,
+                JSONObject().put("code", "share_unavailable"),
+            )
+        }
     }
 
     private fun dispatchSystemBack() {
+        if (overlay?.tag == NATIVE_ABOUT_TAG) {
+            clearOverlay()
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastBackAt < BACK_DEBOUNCE_MS || backRequestId != null) return
         lastBackAt = now
@@ -680,10 +867,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     private fun isTrustedUrl(uri: Uri): Boolean =
         uri.scheme.equals("https", ignoreCase = true) &&
-            uri.host.equals(trustedOrigin.host, ignoreCase = true) &&
-            (uri.port == -1 && trustedOrigin.port == -1 ||
-                uri.port == trustedOrigin.port || uri.port == 443 && trustedOrigin.port == -1) &&
-            uri.userInfo == null
+            uri.userInfo == null && trustedOrigins.any { origin ->
+                uri.host.equals(origin.host, ignoreCase = true) &&
+                    (uri.port == -1 && origin.port == -1 ||
+                        uri.port == origin.port || uri.port == 443 && origin.port == -1)
+            }
 
     private fun openExternal(uri: Uri) {
         val allowed = uri.scheme.equals("https", true) || uri.scheme.equals("http", true) ||
@@ -701,10 +889,47 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     private fun showLoading() {
         val container = root ?: return
+        if (overlay?.tag == LOADING_MASK_TAG && overlay?.parent === container) return
         clearOverlay()
-        val progress = ProgressBar(this).apply { isIndeterminate = true }
-        overlay = progress
-        container.addView(progress, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
+        val mask = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.rgb(13, 16, 18))
+            isClickable = true
+            isFocusable = true
+            tag = LOADING_MASK_TAG
+        }
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.ic_heika)
+            contentDescription = getString(R.string.app_name)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        mask.addView(logo, LinearLayout.LayoutParams(dp(84), dp(84)))
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleSmall).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(213, 180, 92))
+        }
+        mask.addView(progress, LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+            topMargin = dp(22)
+        })
+        overlay = mask
+        container.addView(mask, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        mask.alpha = 0f
+        mask.animate().alpha(1f).setDuration(SPLASH_MASK_ENTER_MS).start()
+    }
+
+    private fun dismissLoadingMask() {
+        val mask = overlay?.takeIf { it.tag == LOADING_MASK_TAG } ?: return
+        overlay = null
+        mask.animate().cancel()
+        mask.animate()
+            .alpha(0f)
+            .setDuration(SPLASH_MASK_EXIT_MS)
+            .withEndAction { (mask.parent as? ViewGroup)?.removeView(mask) }
+            .start()
     }
 
     private fun showLoadError() {
@@ -751,13 +976,142 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun clearOverlay() {
-        overlay?.let { root?.removeView(it) }
+        overlay?.let {
+            it.animate().cancel()
+            root?.removeView(it)
+        }
         overlay = null
+    }
+
+    private fun showNativeAbout() {
+        val container = root ?: return
+        clearOverlay()
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(13, 16, 18))
+            tag = NATIVE_ABOUT_TAG
+        }
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            addView(TextView(this@MainActivity).apply {
+                text = "‹"
+                textSize = 30f
+                setTextColor(Color.rgb(213, 180, 92))
+                setOnClickListener { clearOverlay() }
+            }, LinearLayout.LayoutParams(dp(44), dp(48)))
+            addView(TextView(this@MainActivity).apply {
+                text = "关于黑卡"
+                textSize = 17f
+                setTextColor(Color.WHITE)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+        }
+        page.addView(header)
+        val scroll = ScrollView(this)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(18), dp(24), dp(36))
+        }
+        val brand = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(18), 0, dp(26))
+        }
+        brand.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_heika)
+            contentDescription = getString(R.string.app_name)
+        }, LinearLayout.LayoutParams(dp(72), dp(72)))
+        brand.addView(TextView(this).apply {
+            text = "黑卡 HEIKA"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        brand.addView(TextView(this).apply {
+            text = "ANDROID APP  ·  ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+            textSize = 11f
+            setTextColor(Color.rgb(213, 180, 92))
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        brand.addView(TextView(this).apply {
+            text = "每一次翻开，都是一次新的发现。"
+            textSize = 14f
+            setTextColor(Color.rgb(179, 184, 187))
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        content.addView(brand)
+
+        fun sectionLabel(label: String) = TextView(this).apply {
+            text = label
+            textSize = 12f
+            setTextColor(Color.rgb(213, 180, 92))
+            setPadding(0, dp(18), 0, dp(8))
+        }
+        fun action(title: String, description: String, onClick: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(24, 28, 31))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.rgb(49, 54, 58))
+            }
+            addView(TextView(this@MainActivity).apply { text = title; textSize = 15f; setTextColor(Color.WHITE) })
+            addView(TextView(this@MainActivity).apply {
+                text = description
+                textSize = 12f
+                setTextColor(Color.rgb(160, 168, 172))
+                setPadding(0, dp(5), 0, 0)
+            })
+            setOnClickListener { onClick() }
+        }
+        content.addView(sectionLabel("应用"))
+        content.addView(action("检查更新", "当前发布渠道未提供自动更新检查。") {
+            Toast.makeText(this, "暂未接入自动更新服务", Toast.LENGTH_SHORT).show()
+        })
+        content.addView(sectionLabel("系统与存储"))
+        val notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        val permissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        content.addView(action("通知与权限", if (!permissionGranted) "Android 通知权限未授权" else if (notificationsEnabled) "系统通知已开启" else "系统通知已关闭") {
+            openNotificationSettings()
+        })
+        content.addView(action("清理网页缓存", "仅删除可重新下载的网页图片和静态资源；登录、草稿与收藏保留。") {
+            runCatching { webView?.clearCache(true) }
+                .onSuccess { Toast.makeText(this, "网页缓存已清理", Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(this, "缓存清理失败", Toast.LENGTH_SHORT).show() }
+        })
+        content.addView(sectionLabel("黑卡 HEIKA"))
+        content.addView(TextView(this).apply {
+            text = "由独立开发者持续维护。内容服务连接 moonclean.shop；应用原生能力由 Android 安全桥接提供。"
+            textSize = 12f
+            setTextColor(Color.rgb(160, 168, 172))
+            setLineSpacing(dp(3).toFloat(), 1f)
+        })
+        content.addView(TextView(this).apply {
+            text = "© HEIKA"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(112, 120, 124))
+            setPadding(0, dp(28), 0, 0)
+        })
+        scroll.addView(content)
+        page.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        overlay = page
+        container.addView(page, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        page.alpha = 0f
+        page.animate().alpha(1f).setDuration(SPLASH_MASK_EXIT_MS).start()
     }
 
     private fun cancelLoadTimeout() {
         loadTimeout?.let(mainHandler::removeCallbacks)
         loadTimeout = null
+    }
+
+    private fun cancelBridgeFallbackTimeout() {
+        bridgeFallbackTimeout?.let(mainHandler::removeCallbacks)
+        bridgeFallbackTimeout = null
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -769,12 +1123,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val SEEN_NAVIGATION_IDS_KEY = "heika_seen_navigation_ids_v1"
         const val EXTRA_NOTIFICATION_ROUTE = "com.heika.android.extra.ROUTE"
         const val EXTRA_NOTIFICATION_ID = "com.heika.android.extra.MESSAGE_ID"
+        const val NOTIFICATION_PREFS = "heika_notification_permissions"
+        const val NOTIFICATION_PERMISSION_ASKED = "post_notifications_asked"
+        const val NATIVE_ABOUT_TAG = "heika_native_about"
         const val LOAD_TIMEOUT_MS = 20_000L
         const val BACK_RESPONSE_TIMEOUT_MS = 280L
         const val BACK_DEBOUNCE_MS = 250L
         const val NAVIGATION_ACK_TIMEOUT_MS = 5_000L
+        const val BRIDGE_READY_TIMEOUT_MS = 2_000L
         const val RENDERER_RESTART_WINDOW_MS = 60_000L
         const val MAX_AUTOMATIC_RENDERER_RESTARTS = 1
+        const val LOADING_MASK_TAG = "heika-native-loading-mask"
+        const val SPLASH_MASK_ENTER_MS = 120L
+        const val SPLASH_MASK_EXIT_MS = 180L
         const val MAX_PENDING_NAVIGATIONS = 20
         const val MAX_SEEN_NAVIGATION_IDS = 128
         const val MAX_ROUTE_LENGTH = 2_048

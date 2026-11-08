@@ -1,10 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { browserDb } from "@/lib/browser-db";
+import { hasNativeBridge } from "@/lib/native-bridge";
 export default function InboxBadge({ enabled = false }: { enabled?: boolean }) {
   const notify = useRef(enabled);
   notify.current = enabled;
   const previous = useRef<number | null>(null);
+  const previousUser = useRef<string | null>(null);
   const [count, setCount] = useState(0);
   useEffect(() => {
     let alive = true;
@@ -15,8 +17,14 @@ export default function InboxBadge({ enabled = false }: { enabled?: boolean }) {
         const refresh = async () => {
           const { data: session } = await db.auth.getSession();
           if (!session.session) {
+            previous.current = null;
+            previousUser.current = null;
             if (alive) setCount(0);
             return;
+          }
+          if (previousUser.current !== session.session.user.id) {
+            previousUser.current = session.session.user.id;
+            previous.current = null;
           }
           const { data } = await db.rpc("dm_unread_counts");
           if (alive && data) {
@@ -29,6 +37,7 @@ export default function InboxBadge({ enabled = false }: { enabled?: boolean }) {
               previous.current !== null &&
               total > previous.current &&
               notify.current &&
+              !hasNativeBridge() &&
               document.visibilityState !== "visible" &&
               "Notification" in window &&
               Notification.permission === "granted"

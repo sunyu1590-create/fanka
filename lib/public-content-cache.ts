@@ -16,7 +16,9 @@ export type PublicCacheRead<T> = {
 
 const DATABASE = "heika-public-content-v1";
 const STORE = "entries";
-const MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+// Keep public feed/detail data locally for smooth revisits and offline fallback.
+// Image bytes are handled by the browser/WebView HTTP cache, not this IndexedDB store.
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 const MAX_RECORD_BYTES = 768 * 1024;
 const MAX_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_FRESH_MS = 24 * 60 * 60 * 1000;
@@ -24,6 +26,7 @@ const DEFAULT_FRESH_MS = 24 * 60 * 60 * 1000;
 let databasePromise: Promise<IDBDatabase | null> | undefined;
 const pendingWrites = new Map<string, PendingWrite>();
 let flushScheduled = false;
+let flushInFlight: Promise<void> | null = null;
 
 function openDatabase(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
@@ -90,7 +93,7 @@ export async function readPublicCache<T>(
 
 export function schedulePublicCacheWrite<T>(key: string, value: T) {
   pendingWrites.set(key, { key, value });
-  if (flushScheduled || typeof window === "undefined") return;
+  if (flushScheduled || flushInFlight || typeof window === "undefined") return;
   flushScheduled = true;
   const flush = () => { void flushWrites(); };
   if (typeof window.requestIdleCallback === "function") {
@@ -112,55 +115,83 @@ export async function removePublicCache(key: string) {
 }
 
 async function flushWrites() {
+  if (flushInFlight) return flushInFlight;
   flushScheduled = false;
   if (!pendingWrites.size) return;
-  const queued = [...pendingWrites.values()];
-  pendingWrites.clear();
-  const writes: CacheRecord[] = [];
-  let writeBytes = 0;
-  for (const item of queued) {
-    let serialized: string;
-    try {
-      serialized = JSON.stringify(item.value);
-    } catch {
-      continue;
-    }
-    const bytes = new Blob([serialized]).size;
-    if (bytes > MAX_RECORD_BYTES || writeBytes + bytes > MAX_TOTAL_BYTES) continue;
-    writeBytes += bytes;
-    const now = Date.now();
-    writes.push({ key: item.key, value: item.value, savedAt: now, accessedAt: now, bytes });
-  }
-  if (!writes.length) return;
-  const database = await openDatabase();
-  if (!database) return;
 
-  try {
-    const transaction = database.transaction(STORE, "readwrite");
-    const store = transaction.objectStore(STORE);
-    const readAll = store.getAll() as IDBRequest<CacheRecord[]>;
-    readAll.onsuccess = () => {
-      const records = readAll.result || [];
-      const replaced = new Set(writes.map((record) => record.key));
-      let totalBytes = records.reduce((sum, record) => sum + (replaced.has(record.key) ? 0 : record.bytes), 0);
-      totalBytes += writes.reduce((sum, record) => sum + record.bytes, 0);
-      for (const record of records) {
-        if (Date.now() - record.savedAt > MAX_STALE_MS) {
-          store.delete(record.key);
-          totalBytes -= record.bytes;
-        }
+  flushInFlight = flushPendingWrites().finally(() => {
+    flushInFlight = null;
+    if (pendingWrites.size) schedulePendingFlush();
+  });
+  return flushInFlight;
+}
+
+function schedulePendingFlush() {
+  if (flushScheduled || flushInFlight || typeof window === "undefined") return;
+  flushScheduled = true;
+  const flush = () => { void flushWrites(); };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(flush, { timeout: 1_500 });
+  } else {
+    globalThis.setTimeout(flush, 250);
+  }
+}
+
+async function flushPendingWrites() {
+  while (pendingWrites.size) {
+    const queued = [...pendingWrites.values()];
+    pendingWrites.clear();
+    const writes: CacheRecord[] = [];
+    let writeBytes = 0;
+    for (const item of queued) {
+      let serialized: string;
+      try {
+        serialized = JSON.stringify(item.value);
+      } catch {
+        continue;
       }
-      const evictionCandidates = records
-        .filter((record) => !replaced.has(record.key) && Date.now() - record.savedAt <= MAX_STALE_MS)
-        .sort((left, right) => left.accessedAt - right.accessedAt);
-      for (const record of evictionCandidates) {
-        if (totalBytes <= MAX_TOTAL_BYTES) break;
-        store.delete(record.key);
-        totalBytes -= record.bytes;
-      }
-      for (const record of writes) store.put(record);
-    };
-  } catch {
-    return;
+      const bytes = new Blob([serialized]).size;
+      if (bytes > MAX_RECORD_BYTES || writeBytes + bytes > MAX_TOTAL_BYTES) continue;
+      writeBytes += bytes;
+      const now = Date.now();
+      writes.push({ key: item.key, value: item.value, savedAt: now, accessedAt: now, bytes });
+    }
+    if (!writes.length) continue;
+    const database = await openDatabase();
+    if (!database) return;
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(STORE, "readwrite");
+        const store = transaction.objectStore(STORE);
+        const readAll = store.getAll() as IDBRequest<CacheRecord[]>;
+        readAll.onsuccess = () => {
+          const records = readAll.result || [];
+          const replaced = new Set(writes.map((record) => record.key));
+          let totalBytes = records.reduce((sum, record) => sum + (replaced.has(record.key) ? 0 : record.bytes), 0);
+          totalBytes += writes.reduce((sum, record) => sum + record.bytes, 0);
+          for (const record of records) {
+            if (Date.now() - record.savedAt > MAX_STALE_MS) {
+              store.delete(record.key);
+              if (!replaced.has(record.key)) totalBytes -= record.bytes;
+            }
+          }
+          const evictionCandidates = records
+            .filter((record) => !replaced.has(record.key) && Date.now() - record.savedAt <= MAX_STALE_MS)
+            .sort((left, right) => left.accessedAt - right.accessedAt);
+          for (const record of evictionCandidates) {
+            if (totalBytes <= MAX_TOTAL_BYTES) break;
+            store.delete(record.key);
+            totalBytes -= record.bytes;
+          }
+          for (const record of writes) store.put(record);
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      });
+    } catch {
+      // A failed IndexedDB write only disables this optional cache batch.
+    }
   }
 }

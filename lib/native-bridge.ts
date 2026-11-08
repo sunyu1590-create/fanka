@@ -1,6 +1,7 @@
 export type NativePermissionResult = {
   granted: boolean;
   enabled: boolean;
+  permission?: "default" | "granted" | "denied";
 };
 
 export type NativeTransitionRect = {
@@ -175,7 +176,51 @@ export async function requestNativeNotificationPermission(): Promise<NativePermi
   return {
     granted: response.data?.granted === true,
     enabled: response.data?.enabled === true,
+    permission: normalizeNotificationPermission(response.data?.permission),
   };
+}
+
+export async function getNativeNotificationStatus(): Promise<NativePermissionResult | null> {
+  if (!hasNativeBridge()) return null;
+  const response = await request("notifications.status");
+  if (!response.ok) throw new Error("无法读取 Android 通知权限状态");
+  return {
+    granted: response.data?.granted === true,
+    enabled: response.data?.enabled === true,
+    permission: normalizeNotificationPermission(response.data?.permission),
+  };
+}
+
+export async function openNativeNotificationSettings(): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("notifications.openSettings");
+    return response.ok === true && response.data?.opened === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function shareViaNative(data: { title: string; text: string; url: string }): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("system.share", {
+      title: data.title.slice(0, 120),
+      text: data.text.slice(0, 2_000),
+      url: data.url,
+    });
+    return response.ok === true && response.data?.shared === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function openNativeAbout(): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("app.about.open");
+    return response.ok === true && response.data?.opened === true;
+  } catch { return false; }
 }
 
 export async function prepareNativeCardTransition(
@@ -273,4 +318,8 @@ function isTransitionRect(rect: NativeTransitionRect) {
   return [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) &&
     rect.width > 0 && rect.height > 0 && rect.width <= 2_000 && rect.height <= 2_000 &&
     Math.abs(rect.left) <= 10_000 && Math.abs(rect.top) <= 10_000;
+}
+
+function normalizeNotificationPermission(value: unknown): NativePermissionResult["permission"] {
+  return value === "default" || value === "granted" || value === "denied" ? value : undefined;
 }
