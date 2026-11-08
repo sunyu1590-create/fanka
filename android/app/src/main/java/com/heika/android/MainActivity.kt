@@ -25,6 +25,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.provider.Settings
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -33,6 +34,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -98,9 +100,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val callback = pendingFileCallback
-        pendingFileCallback = null
-        if (callback == null) return@registerForActivityResult
         val data = result.data
         val selected = if (result.resultCode == Activity.RESULT_OK && data != null) {
             val clip = data.clipData
@@ -110,7 +109,21 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 else -> null
             }
         } else null
-        callback.onReceiveValue(selected)
+        deliverPickedFiles(selected)
+    }
+
+    private val singlePhotoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> deliverPickedFiles(uri?.let { arrayOf(it) }) }
+
+    private val multiPhotoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(9),
+    ) { uris -> deliverPickedFiles(uris.takeIf { it.isNotEmpty() }?.toTypedArray()) }
+
+    private fun deliverPickedFiles(uris: Array<Uri>?) {
+        val callback = pendingFileCallback
+        pendingFileCallback = null
+        callback?.onReceiveValue(uris)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -241,7 +254,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             )
         }
 
-        val nativeBridge = NativeBridge(view, trustedOrigins, diagnostics, object : NativeBridge.Callbacks {
+        val nativeBridge = NativeBridge(view, trustedOrigin, trustedOrigins, diagnostics, object : NativeBridge.Callbacks {
             override fun onWebReady() {
                 diagnostics.recordFirstInteractive()
                 cancelLoadTimeout()
@@ -252,6 +265,34 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
 
             override fun onPermissionRequest(requestId: String) = requestNotificationPermission(requestId)
+
+            override fun onNotificationStatusRequest(requestId: String) {
+                val permissionState = notificationPermissionState()
+                val enabled = NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()
+                bridge?.completeRequest(
+                    requestId,
+                    "notifications.status",
+                    true,
+                    JSONObject()
+                        .put("granted", permissionState == "granted")
+                        .put("enabled", enabled)
+                        .put("permission", permissionState),
+                )
+            }
+
+            override fun onNotificationSettingsRequest(requestId: String) {
+                val opened = openNotificationSettings()
+                bridge?.completeRequest(
+                    requestId,
+                    "notifications.openSettings",
+                    true,
+                    JSONObject().put("opened", opened),
+                )
+            }
+
+            override fun onSystemShareRequest(requestId: String, payload: JSONObject) {
+                shareFromNative(requestId, payload)
+            }
 
             override fun onPageState(path: String) {
                 lastSafeRoute = BuildConfig.WEB_APP_URL.trimEnd('/') + path
@@ -398,7 +439,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 diagnostics.recordResourceFailure()
                 if (recoveringFromUntrustedNavigation && !isTrustedUrl(request.url)) return
                 if (request.isForMainFrame) {
-                    diagnostics.record("web_main_frame_error", error.errorCode().toLong())
+                    diagnostics.record("web_main_frame_error", error.errorCode.toLong())
                     showLoadError()
                 }
             }
@@ -458,6 +499,32 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 pendingFileCallback?.onReceiveValue(null)
                 pendingFileCallback = filePathCallback
                 val multiple = fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+                val accepted = fileChooserParams.acceptTypes
+                    .flatMap { it.split(',') }
+                    .map { it.trim().lowercase() }
+                    .filter { it.isNotEmpty() }
+                val imageOnly = accepted.isNotEmpty() && accepted.all { it.startsWith("image/") }
+                val videoOnly = accepted.isNotEmpty() && accepted.all { it.startsWith("video/") }
+                val imageOrVideo = accepted.isNotEmpty() && accepted.all { it.startsWith("image/") || it.startsWith("video/") }
+                if (imageOnly || videoOnly || imageOrVideo) {
+                    val mediaType = when {
+                        imageOnly -> ActivityResultContracts.PickVisualMedia.ImageOnly
+                        videoOnly -> ActivityResultContracts.PickVisualMedia.VideoOnly
+                        else -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                    }
+                    return try {
+                        val request = PickVisualMediaRequest(mediaType)
+                        if (multiple) multiPhotoPickerLauncher.launch(request)
+                        else singlePhotoPickerLauncher.launch(request)
+                        true
+                    } catch (_: Exception) {
+                        launchDocumentPicker(multiple)
+                    }
+                }
+                return launchDocumentPicker(multiple)
+            }
+
+            private fun launchDocumentPicker(multiple: Boolean): Boolean {
                 val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
                     type = "*/*"
@@ -536,18 +603,98 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     private fun requestNotificationPermission(requestId: String) {
         val enabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) {
-            bridge?.replyPermission(requestId, enabled, enabled)
-            return
-        }
         if (pendingPermissionRequest != null) {
             bridge?.failRequest(requestId, "notifications.requestPermission", "permission_request_in_progress")
             return
         }
+        when (notificationPermissionState()) {
+            "granted" -> {
+                bridge?.replyPermission(requestId, true, enabled)
+                return
+            }
+            "denied" -> {
+                bridge?.replyPermission(requestId, false, enabled)
+                return
+            }
+        }
         pendingPermissionRequest = requestId
-        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
+            .edit()
+            .putBoolean(NOTIFICATION_PERMISSION_ASKED, true)
+            .apply()
+        try {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } catch (_: Exception) {
+            pendingPermissionRequest = null
+            bridge?.failRequest(requestId, "notifications.requestPermission", "permission_dialog_unavailable")
+        }
+    }
+
+    private fun notificationPermissionState(): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) return "granted"
+        return if (getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
+                .getBoolean(NOTIFICATION_PERMISSION_ASKED, false)
+        ) "denied" else "default"
+    }
+
+    private fun openNotificationSettings(): Boolean = try {
+        startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+        )
+        true
+    } catch (_: ActivityNotFoundException) {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun shareFromNative(requestId: String, payload: JSONObject) {
+        val rawUrl = payload.optString("url")
+        val uri = runCatching { rawUrl.toUri() }.getOrNull()
+        if (uri == null || !isTrustedUrl(uri) || safeRoute(uri) == null) {
+            bridge?.completeRequest(
+                requestId,
+                "system.share",
+                false,
+                JSONObject().put("code", "invalid_share_url"),
+            )
+            return
+        }
+        val cleanTitle = payload.optString("title", "黑卡 HEIKA")
+            .filterNot(Char::isISOControl)
+            .trim()
+            .take(120)
+            .ifEmpty { "黑卡 HEIKA" }
+        val cleanText = payload.optString("text")
+            .filterNot(Char::isISOControl)
+            .trim()
+            .take(2_000)
+        val shareText = listOf(cleanText, uri.toString()).filter(String::isNotEmpty).joinToString("\n")
+        try {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TITLE, cleanTitle)
+                putExtra(Intent.EXTRA_TEXT, shareText)
+            }
+            startActivity(Intent.createChooser(intent, "分享黑卡内容"))
+            bridge?.completeRequest(
+                requestId,
+                "system.share",
+                true,
+                JSONObject().put("shared", true),
+            )
+        } catch (_: ActivityNotFoundException) {
+            bridge?.completeRequest(
+                requestId,
+                "system.share",
+                false,
+                JSONObject().put("code", "share_unavailable"),
+            )
+        }
     }
 
     private fun dispatchSystemBack() {
@@ -845,6 +992,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val SEEN_NAVIGATION_IDS_KEY = "heika_seen_navigation_ids_v1"
         const val EXTRA_NOTIFICATION_ROUTE = "com.heika.android.extra.ROUTE"
         const val EXTRA_NOTIFICATION_ID = "com.heika.android.extra.MESSAGE_ID"
+        const val NOTIFICATION_PREFS = "heika_notification_permissions"
+        const val NOTIFICATION_PERMISSION_ASKED = "post_notifications_asked"
         const val LOAD_TIMEOUT_MS = 20_000L
         const val BACK_RESPONSE_TIMEOUT_MS = 280L
         const val BACK_DEBOUNCE_MS = 250L

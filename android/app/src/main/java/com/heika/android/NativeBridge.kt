@@ -16,6 +16,7 @@ import java.util.UUID
 
 internal class NativeBridge(
     private val webView: WebView,
+    private val appOrigin: Uri,
     private val trustedOrigins: Set<Uri>,
     private val diagnostics: Diagnostics,
     private val callbacks: Callbacks,
@@ -23,6 +24,9 @@ internal class NativeBridge(
     interface Callbacks {
         fun onWebReady()
         fun onPermissionRequest(requestId: String)
+        fun onNotificationStatusRequest(requestId: String)
+        fun onNotificationSettingsRequest(requestId: String)
+        fun onSystemShareRequest(requestId: String, payload: JSONObject)
         fun onPageState(path: String)
         fun onBackResult(requestId: String, consumed: Boolean)
         fun onNavigationAck(requestId: String, accepted: Boolean)
@@ -111,7 +115,10 @@ internal class NativeBridge(
             requestId,
             "notifications.requestPermission",
             true,
-            JSONObject().put("granted", granted).put("enabled", enabled),
+            JSONObject()
+                .put("granted", granted)
+                .put("enabled", enabled)
+                .put("permission", if (granted) "granted" else "denied"),
         )
     }
 
@@ -157,12 +164,21 @@ internal class NativeBridge(
                 true,
                 JSONObject()
                     .put("notifications.permission", true)
+                    .put("notifications.status", true)
+                    .put("notifications.openSettings", true)
                     .put("system.filePicker", true)
+                    .put("system.share", true)
                     .put("navigation.events", true),
             )
             "notifications.requestPermission" -> {
                 pending[id] = PendingReply(type, replyProxy)
                 callbacks.onPermissionRequest(id)
+            }
+            "notifications.status" -> callbacks.onNotificationStatusRequest(id)
+            "notifications.openSettings" -> callbacks.onNotificationSettingsRequest(id)
+            "system.share" -> {
+                val payload = request.optJSONObject("payload") ?: JSONObject()
+                callbacks.onSystemShareRequest(id, payload)
             }
             "page.state" -> {
                 val path = request.optJSONObject("payload")?.optString("path").orEmpty()
@@ -235,7 +251,7 @@ internal class NativeBridge(
         if ('#' in path || '\\' in path) return false
         if (!SAFE_PAGE_PATH.matches(path)) return false
         return runCatching {
-            val uri = "${originString(trustedOrigin)}$path".toUri()
+            val uri = "${originString(appOrigin)}$path".toUri()
             val post = uri.getQueryParameter("post")
             val numericPostId = post?.toLongOrNull()
             if (post != null && (!POST_ID.matches(post) || numericPostId == null || numericPostId > MAX_SAFE_JS_INTEGER)) return false
@@ -276,6 +292,9 @@ internal class NativeBridge(
             "bridge.ready",
             "capabilities.get",
             "notifications.requestPermission",
+            "notifications.status",
+            "notifications.openSettings",
+            "system.share",
             "page.state",
             "system.back.result",
             "navigation.ack",

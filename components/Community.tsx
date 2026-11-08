@@ -62,7 +62,10 @@ import {
   installNativeBridge,
   prepareNativeCardTransition,
   releaseNativeCardTransition,
+  getNativeNotificationStatus,
+  openNativeNotificationSettings,
   requestNativeNotificationPermission,
+  shareViaNative,
   subscribeNativeEvent,
   startNativeCardTransition,
   waitForNativeCardTransition,
@@ -413,7 +416,29 @@ export default function Community() {
     ),
     [notificationPermission, setNotificationPermission] = useState<
       "default" | "granted" | "denied" | "unsupported"
-    >("default");
+    >("default"),
+    [systemNotificationsEnabled, setSystemNotificationsEnabled] = useState<boolean | null>(null);
+  const refreshNativeNotificationStatus = useCallback(async () => {
+    if (!hasNativeBridge()) return null;
+    try {
+      const status = await getNativeNotificationStatus();
+      if (!status) return null;
+      setNotificationPermission(status.permission ?? (status.granted ? "granted" : "denied"));
+      setSystemNotificationsEnabled(status.enabled);
+      return status;
+    } catch {
+      return null;
+    }
+  }, []);
+  const systemNotificationLabel = systemNotificationsEnabled === null
+    ? "正在检查"
+    : notificationPermission === "default"
+      ? "尚未请求"
+      : notificationPermission === "denied"
+        ? "未授权"
+        : systemNotificationsEnabled
+          ? "已开启"
+          : "系统已关闭";
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
     ratingPulseTimer = useRef<number | null>(null);
@@ -742,7 +767,6 @@ export default function Community() {
   }, []);
   useEffect(() => {
     if (hasNativeBridge()) {
-      setNotificationPermission("default");
       return;
     }
     if (!("Notification" in window)) {
@@ -750,7 +774,22 @@ export default function Community() {
       return;
     }
     setNotificationPermission(Notification.permission);
-  }, []);
+  }, [refreshNativeNotificationStatus]);
+  useEffect(() => {
+    if (!hasNativeBridge()) return;
+    const onLifecycle = (payload: Record<string, unknown>) => {
+      if (payload.state === "foreground") void refreshNativeNotificationStatus();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshNativeNotificationStatus();
+    };
+    const unsubscribe = subscribeNativeEvent("app.lifecycle", onLifecycle);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      unsubscribe();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshNativeNotificationStatus]);
   const loadPublicFeed = useCallback(async (requestedPage = 1, reset = false, requestedTag = category) => {
     if (publicFeedLoading.current && !reset) return;
     if (reset) feedController.current?.abort();
@@ -1770,13 +1809,24 @@ export default function Community() {
       return;
     }
     if (hasNativeBridge()) {
+      if (notificationPermission === "denied" || (notificationPermission === "granted" && systemNotificationsEnabled === false)) {
+        const opened = await openNativeNotificationSettings();
+        if (!opened) toast("无法打开 Android 通知设置");
+        else toast("请在系统设置中允许黑卡通知，然后返回此页");
+        return;
+      }
       try {
         const result = await requestNativeNotificationPermission();
-        if (!result?.granted || !result.enabled) {
+        if (!result?.granted) {
           setNotificationPermission("denied");
+          setSystemNotificationsEnabled(false);
           return toast("请在 Android 系统设置中允许黑卡通知");
         }
         setNotificationPermission("granted");
+        setSystemNotificationsEnabled(result.enabled);
+        if (!result.enabled) {
+          return toast("Android 系统通知已关闭，请在系统设置中开启");
+        }
         update((s) => ({
           ...s,
           notifications: { ...s.notifications, [key]: true },
@@ -3327,9 +3377,16 @@ export default function Community() {
           {settingsDetail === "notifications" && (
             <div className="preference-notifications">
               <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
-              <p>开启你关心的提醒。浏览器通知仍需系统许可。</p>
+              <p>{hasNativeBridge() ? "Android 系统授权与黑卡内部提醒偏好分别管理。" : "开启你关心的提醒。浏览器通知仍需系统许可。"}</p>
+              {hasNativeBridge() && <div className="permission-state" role="status">
+                <span>Android 系统通知：{systemNotificationLabel}</span>
+                <button type="button" className="soft-button" onClick={async () => {
+                  if (!(await openNativeNotificationSettings())) toast("无法打开 Android 通知设置");
+                }}>管理系统权限</button>
+                <small>Android 后台推送服务尚未接通；此处开关仅保存黑卡提醒偏好。</small>
+              </div>}
               {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
-              {notificationPermission === "denied" && <div className="permission-state">{hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}</div>}
+              {!hasNativeBridge() && notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
             </div>
           )}
         </section>
@@ -4062,8 +4119,20 @@ export default function Community() {
               <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
               <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => {
                 const shareData = { title: post.title, text: post.body, url: `${location.origin}/?post=${post.id}` };
-                if (navigator.share) void navigator.share(shareData).catch(() => {});
-                else void navigator.clipboard?.writeText(shareData.url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
+                void (async () => {
+                  if (await shareViaNative(shareData)) return;
+                  if (navigator.share) {
+                    try { await navigator.share(shareData); }
+                    catch (error) {
+                      if (!(error instanceof DOMException && error.name === "AbortError")) toast("分享失败");
+                    }
+                    return;
+                  }
+                  try {
+                    await navigator.clipboard?.writeText(shareData.url);
+                    toast("链接已复制");
+                  } catch { toast("复制失败"); }
+                })();
               }}><Share2 size={20} /></button>
             </form>
           </div>
@@ -4256,14 +4325,20 @@ export default function Community() {
                 <div className="eyebrow">PREFERENCES</div>
                 <h2>通知设置</h2>
                 <p className="settings-note">
-                  通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。
+                  {hasNativeBridge() ? "Android 系统授权与黑卡内部提醒偏好分别管理。后台推送服务尚未接通，开关只保存账号提醒偏好。" : "通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。"}
                 </p>
+                {hasNativeBridge() && <div className="permission-state" role="status">
+                  Android 系统通知：{systemNotificationLabel}
+                  <button type="button" className="soft-button" onClick={async () => {
+                    if (!(await openNativeNotificationSettings())) toast("无法打开 Android 通知设置");
+                  }}>管理系统权限</button>
+                </div>}
                 {notificationPermission === "unsupported" && (
                   <div className="permission-state">此浏览器不支持通知。</div>
                 )}
-                {notificationPermission === "denied" && (
+                {!hasNativeBridge() && notificationPermission === "denied" && (
                   <div className="permission-state">
-                    {hasNativeBridge() ? "Android 通知权限已关闭，请在系统设置中重新允许。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}
+                    浏览器通知权限已拒绝，请在站点设置中重新允许。
                   </div>
                 )}
                 <div className="switch-list">
