@@ -118,19 +118,21 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
       expect((await page.locator(".app").boundingBox())!.x, `desktop content should clear the rail at ${width}px`).toBeGreaterThanOrEqual(220);
     } else if (width >= 768) {
       expect(navigation!.y, `tablet navigation should stay fixed at the bottom at ${width}px`).toBeGreaterThan(700);
-      expect(navigation!.width, `tablet navigation should span the viewport at ${width}px`).toBeCloseTo(width, 0);
-      expect(navigation!.x, `tablet navigation should align to the viewport at ${width}px`).toBe(0);
+      const expectedWidth = Math.min(620, width - 24);
+      expect(navigation!.width, `tablet glass bar width at ${width}px`).toBeCloseTo(expectedWidth, 0);
+      expect(navigation!.x, `tablet glass bar should be centered at ${width}px`).toBeCloseTo((width - expectedWidth) / 2, 0);
+      const capsule = await page.locator(".bottom-nav").boundingBox();
       const centers = await page.locator(".bottom-nav button").evaluateAll((buttons) => buttons.map((button) => {
         const box = button.getBoundingClientRect();
         return box.left + box.width / 2;
       }));
       expect(centers).toHaveLength(4);
-      const midpoint = navigation!.x + navigation!.width / 2;
-      expect(Math.abs((centers[0] + centers[3]) / 2 - midpoint), `outer navigation items should balance at ${width}px`).toBeLessThanOrEqual(2);
-      expect(Math.abs((centers[1] + centers[2]) / 2 - midpoint), `inner navigation items should balance at ${width}px`).toBeLessThanOrEqual(2);
+      for (const [index, ratio] of [0.125, 0.375, 0.625, 0.875].entries()) {
+        expect(Math.abs(centers[index] - (capsule!.x + capsule!.width * ratio)), `navigation item ${index + 1} should stay evenly spaced in its glass capsule at ${width}px`).toBeLessThanOrEqual(8);
+      }
       const compose = await page.locator(".bottom-nav-shell>.compose").boundingBox();
       expect(compose).not.toBeNull();
-      expect(Math.abs(compose!.x + compose!.width / 2 - (navigation!.x + navigation!.width / 2)), `compose button should remain centered at ${width}px`).toBeLessThanOrEqual(2);
+      expect(compose!.x, `compose button should sit on the right at ${width}px`).toBeGreaterThan(capsule!.x + capsule!.width);
       for (const button of await page.locator(".bottom-nav button").all()) {
         const bounds = await button.boundingBox();
         const separated = bounds!.x + bounds!.width <= compose!.x - 2 || compose!.x + compose!.width <= bounds!.x - 2;
@@ -138,11 +140,14 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
       }
     } else {
       expect(navigation!.y, `tablet and phone navigation should stay at the bottom at ${width}px`).toBeGreaterThan(700);
-      const expectedWidth = Math.min(520, width - 24);
+      const expectedWidth = width <= 360 ? width - 16 : width - 24;
       expect(navigation!.width, `floating navigation width at ${width}px`).toBeCloseTo(expectedWidth, 0);
       expect(navigation!.x, `floating navigation should be centered at ${width}px`).toBeCloseTo((width - expectedWidth) / 2, 0);
       expect(await page.locator(".bottom-nav button").count()).toBe(4);
       await expect(page.locator(".bottom-nav-shell>.compose svg")).toBeVisible();
+      const capsule = await page.locator(".bottom-nav").boundingBox();
+      const compose = await page.locator(".bottom-nav-shell>.compose").boundingBox();
+      expect(compose!.x).toBeGreaterThan(capsule!.x + capsule!.width);
     }
   }
 

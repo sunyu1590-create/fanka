@@ -7,6 +7,13 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.40.5",
+    date: "2026.11.08",
+    notes: [
+      { category: "体验优化", text: "调整底部导航布局：四个入口采用独立液体玻璃胶囊，发布加号置于右侧独立圆钮，延续浅深主题与桌面侧栏适配。" },
+    ],
+  },
+  {
     version: "2.40.4",
     date: "2026.11.08",
     notes: [

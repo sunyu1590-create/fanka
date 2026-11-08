@@ -4440,11 +4440,14 @@ export default function Community() {
         </div>
       )}
       <div className={`bottom-nav-shell${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`}>
-      <nav className="bottom-nav" aria-label="主导航">
-        {nav.slice(0, 2).map(renderNavButton)}
-        {nav.slice(2).map(renderNavButton)}
-      </nav>
-      <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><span className="bottom-nav-icon"><Plus size={23} strokeWidth={1.8} /></span><span>发布</span></button>
+        <nav className="bottom-nav" aria-label="主导航">
+          {nav.slice(0, 2).map(renderNavButton)}
+          {nav.slice(2).map(renderNavButton)}
+        </nav>
+        <button type="button" className="compose" aria-label="发布内容" onClick={() => void openComposer()}>
+          <span className="bottom-nav-icon"><Plus size={25} strokeWidth={1.8} /></span>
+          <span>发布</span>
+        </button>
       </div>
       {viewerId !== null && (
         <div
