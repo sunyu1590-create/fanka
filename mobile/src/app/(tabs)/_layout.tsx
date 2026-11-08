@@ -17,6 +17,7 @@ const items: Record<string, { label: string; icon: string }> = {
 function NativeTabBar({ state, descriptors, navigateToTab }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  if (state.routes[state.index]?.name === "publish") return null;
   return <Animated.View entering={FadeIn.duration(180)} style={{ position: "absolute", left: 12, right: 12, bottom: Math.max(insets.bottom, 8), minHeight: 64, flexDirection: "row", alignItems: "center", justifyContent: "space-around", paddingHorizontal: 5, paddingVertical: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line, borderRadius: 22, shadowColor: "#000000", shadowOpacity: 0.11, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 10 }}>
     {state.routes.map((route, index) => {
       const item = items[route.name];

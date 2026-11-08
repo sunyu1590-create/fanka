@@ -5,6 +5,7 @@ import InAppDialogHost from '../components/InAppDialogHost';
 import './style.css';
 import './design-system.css';
 import './settings.css';
+import './composer.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',

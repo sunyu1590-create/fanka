@@ -1,3 +1,4 @@
+import { NativeMarkdown } from "../../components/NativeMarkdown";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View, type ScaledSize } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -184,7 +185,7 @@ export default function PostScreen() {
         <View style={{ width: 30, height: 30, alignItems: "center", justifyContent: "center", backgroundColor: colors.raised, overflow: "hidden" }}>{post.profiles?.avatar_url ? <NativeImage uri={post.profiles.avatar_url} label="作者头像" style={{ width: 30, height: 30 }} /> : <Text style={{ color: colors.action, fontSize: 11, fontWeight: "700" }}>{(post.profiles?.nickname || "探").slice(0, 1)}</Text>}</View>
         <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "600" }}>{post.profiles?.nickname || "黑卡探索者"}</Text><Text style={{ color: colors.subtle, fontSize: 10 }}>· {post.created_at ? new Date(post.created_at).toLocaleDateString("zh-CN") : ""}</Text>
       </Pressable>
-      <Text selectable style={{ color: colors.ink, fontSize: 15, lineHeight: 25, marginTop: 13 }}>{post.body}</Text>
+      <View style={{marginTop:13}}><NativeMarkdown source={post.body}/></View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 18, paddingVertical: 13, borderBottomWidth: 1, borderColor: colors.line }}>
         <MotionPressable accessibilityRole="button" accessibilityLabel={`${liked ? "取消赞" : "点赞"}`} onPress={() => void toggleLike()} style={{ minHeight: 42, flexDirection: "row", alignItems: "center", gap: 6 }}><Text style={{ color: liked ? colors.danger : colors.muted, fontSize: 20 }}>{liked ? "♥" : "♡"}</Text><Text style={{ color: liked ? colors.danger : colors.muted, fontSize: 12 }}>赞</Text></MotionPressable>
         <MotionPressable accessibilityRole="button" onPress={() => void toggleBookmark()} style={{ minHeight: 42, flexDirection: "row", alignItems: "center", gap: 6 }}><Text style={{ color: saved ? colors.gold : colors.muted, fontSize: 18 }}>{saved ? "◆" : "◇"}</Text><Text style={{ color: saved ? colors.gold : colors.muted, fontSize: 12 }}>{saved ? "已收藏" : "收藏"}</Text></MotionPressable>

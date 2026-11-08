@@ -346,7 +346,9 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   await page.getByRole("textbox", { name: "标题" }).fill("浏览器验收草稿");
   await page.getByRole("textbox", { name: "正文" }).focus();
   await expect(page.getByRole("textbox", { name: "正文" })).toBeFocused();
-  await expect(page.getByRole("region", { name: "选择话题" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Markdown 工具栏" })).toBeVisible();
+  await page.getByRole("button", { name: /# 话题/ }).click();
+  await expect(page.getByRole("dialog", { name: "选择话题" })).toBeVisible();
 });
 
 test("detail transition choices persist and animate image changes without blocking rapid navigation", async ({ page }) => {

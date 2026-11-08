@@ -7,7 +7,7 @@ import { safeResourceLink } from "@/lib/ai-resources";
 import ChoiceSelect from "./ChoiceSelect";
 
 type Version = { id: string; version_label: string; changelog: string; created_at: string };
-type Props = { postId: string; contentType: string; resourceData: Record<string, unknown>; accountId: string | null; onLogin: () => void; onNotice: (message: string) => void };
+type Props = { preview?: boolean; postId: string; contentType: string; resourceData: Record<string, unknown>; accountId: string | null; onLogin: () => void; onNotice: (message: string) => void };
 
 const labels: Record<string, string> = {
   functionality: "功能说明", platforms: "兼容平台", run_mode: "运行方式", use_cases: "适用场景", tutorial: "使用教程",
@@ -17,7 +17,7 @@ const labels: Record<string, string> = {
 };
 const copyableKeys = new Set(["prompt", "installation", "configuration", "steps", "example", "tutorial"]);
 
-export default function AIResourceDetails({ postId, contentType, resourceData, accountId, onLogin, onNotice }: Props) {
+export default function AIResourceDetails({ preview = false, postId, contentType, resourceData, accountId, onLogin, onNotice }: Props) {
   const [versions, setVersions] = useState<Version[]>([]);
   const [feedbackKind, setFeedbackKind] = useState("broken_link");
   const [feedback, setFeedback] = useState("");
@@ -26,12 +26,13 @@ export default function AIResourceDetails({ postId, contentType, resourceData, a
   const fields = useMemo(() => Object.entries(resourceData || {}).filter(([, value]) => (typeof value === "string" && value.trim()) || (Array.isArray(value) && value.length)), [resourceData]);
 
   useEffect(() => {
+    if (preview) return;
     let active = true;
     void cloudFetch(`/api/v1/ai-space/${postId}/versions`, { cache: "no-store" }).then((response) => response.json()).then((result) => {
       if (active && Array.isArray(result.data?.items)) setVersions(result.data.items as Version[]);
     }).catch(() => {});
     return () => { active = false; };
-  }, [postId]);
+  }, [postId, preview]);
 
   const copy = async (key: string, value: string) => {
     try { await navigator.clipboard.writeText(value); setCopiedKey(key); onNotice("已复制到剪贴板"); window.setTimeout(() => setCopiedKey(""), 1600); }
@@ -63,6 +64,6 @@ export default function AIResourceDetails({ postId, contentType, resourceData, a
       </div>;
     })}</dl>
     {!!versions.length && <details className="ai-resource-version-history"><summary><History size={15}/> 版本记录 · {versions.length}</summary><ol>{versions.map((version) => <li key={version.id}><strong>{version.version_label}</strong><span>{version.changelog || "资源更新"}</span><time>{new Date(version.created_at).toLocaleDateString("zh-CN")}</time></li>)}</ol></details>}
-    <details className="ai-resource-feedback"><summary><Flag size={15}/> 报告资源失效或风险</summary><label>反馈类型<ChoiceSelect label="反馈类型" value={feedbackKind} onChange={setFeedbackKind} options={[{value:"broken_link",label:"链接失效"},{value:"outdated",label:"内容过时"},{value:"unsafe",label:"存在安全风险"},{value:"other",label:"其他问题"}]}/></label><textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} maxLength={1000} placeholder="说明需要核查的链接或内容，至少 3 个字"/><button type="button" className="soft-button" disabled={sending || feedback.trim().length < 3} onClick={() => void sendFeedback()}>{sending ? "提交中…" : "提交反馈"}</button></details>
+    {!preview && <details className="ai-resource-feedback"><summary><Flag size={15}/> 报告资源失效或风险</summary><label>反馈类型<ChoiceSelect label="反馈类型" value={feedbackKind} onChange={setFeedbackKind} options={[{value:"broken_link",label:"链接失效"},{value:"outdated",label:"内容过时"},{value:"unsafe",label:"存在安全风险"},{value:"other",label:"其他问题"}]}/></label><textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} maxLength={1000} placeholder="说明需要核查的链接或内容，至少 3 个字"/><button type="button" className="soft-button" disabled={sending || feedback.trim().length < 3} onClick={() => void sendFeedback()}>{sending ? "提交中…" : "提交反馈"}</button></details>}
   </section>;
 }

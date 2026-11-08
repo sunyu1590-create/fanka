@@ -62,6 +62,7 @@ const ExplorationRecap = dynamic(() => import("./ExplorationFeatures").then((mod
 import type { User } from "@supabase/supabase-js";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { browserDb, browserDbConfig } from "@/lib/browser-db";
+import { ComposerSheet, ComposerTextEditor, ComposerMediaStrip } from "./ComposerPanels";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
 import { validateComposerFiles } from "@/lib/composer-validation";
 import { compressUploadImage } from "@/lib/image-compression";
@@ -571,6 +572,12 @@ export default function Community() {
       | "report"
       | null
     >(null),
+    [composerPanel, setComposerPanel] = useState<"topics" | "settings" | "preview" | null>(null),
+    [composerMediaId, setComposerMediaId] = useState<string | null>(null),
+    [draftSyncError, setDraftSyncError] = useState(""),
+    [composerMediaLoadFailed,setComposerMediaLoadFailed] = useState(false),
+    [draftRetry, setDraftRetry] = useState(0),
+    [draftCloudSynced, setDraftCloudSynced] = useState(false),
     [title, setTitle] = useState(""),
     [body, setBody] = useState(""),
     [pollQuestion, setPollQuestion] = useState(""),
@@ -789,6 +796,13 @@ export default function Community() {
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastDraftPayload = useRef("");
   const draftSaveTimer = useRef<number | null>(null);
+  const draftCloudQueue = useRef<Promise<void>>(Promise.resolve());
+  const composerSession = useRef(0);
+  const draftRevision = useRef(0);
+  const composerDraftRef = useRef<Post | null>(null);
+  const composerCloudDrafts = useRef(new Map<string, Post>());
+  const flushComposerDraft = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => { composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.clear(); }, [accountId]);
   const publishInFlight = useRef(false);
   const videoCompressionSequence = useRef(0);
   const videoCompressionAbort = useRef<AbortController | null>(null);
@@ -2209,6 +2223,7 @@ export default function Community() {
     const form = new FormData(); form.set("file", image.file); form.set(composerRevisionMode ? "revision_post_id" : "post_id", postId); form.set("sort_order", String(sortOrder)); form.set("upload_id", image.id);
     const response = await fetch("/api/v1/media", { method: "POST", headers: { Authorization: `Bearer ${session.session.access_token}` }, body: form });
     const result = await response.json(); if (!response.ok) throw new Error(result.error || "图片上传失败");
+    if (!result.data?.path) throw new Error("图片上传未完成，请重试");
     return { ...image, path: result.data.path, status: "ready", sortOrder };
   };
   const uploadVideoToPost = async (video: ComposerVideo, postId: string, sortOrder: number): Promise<ComposerVideo> => {
@@ -2308,12 +2323,15 @@ export default function Community() {
   };
   const publish = async () => {
     if (publishInFlight.current) return;
-    if (!title.trim()) { setComposerValidation("title"); toast("请先填写标题"); document.querySelector<HTMLInputElement>(".composer-title-field input")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    if (!title.trim()) { setComposerValidation("title"); toast("请先填写标题"); document.querySelector<HTMLTextAreaElement>(".composer-title-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!body.trim()) { setComposerValidation("body"); toast("请先填写正文"); document.querySelector<HTMLTextAreaElement>(".composer-body-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     setComposerValidation("");
-    const pollDraft = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
+    const pollDraft = writeChannel === "community" ? { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) } : { question:"", options:[] as string[] };
     if ((pollDraft.question || pollDraft.options.length) && (!pollDraft.question || pollDraft.options.length < 2 || pollDraft.options.length > 4)) return toast("投票需要填写问题，并设置 2–4 个选项");
-    if (!accountId) return toast("请先在消息页面登录，当前输入会保留");
+    if (composerMediaLoadFailed) return toast("附件列表尚未恢复，请先重试读取附件");
+    if (!writeTag.trim()) return toast("请选择内容分类");
+    if (!accountId) { await flushComposerDraft.current().catch(()=>{}); return toast("请先在消息页面登录，当前输入会保留"); }
+    if (composerImages.some(image=>!image.external&&!image.path&&!image.file)) return toast("有图片文件未恢复，请替换后再提交");
     if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
     if (composerVideo?.status === "compressing") return toast("视频正在优化，请稍后发布");
     if (composerVideo?.status === "uploading") return toast("视频正在上传，请稍后发布");
@@ -2392,14 +2410,15 @@ export default function Community() {
       setAiResourceFields({});
       setComposerValidation("");
       const owner = accountId || "guest";
-      localStorage.removeItem(`heika-compose-${owner}`);
+      if (writeChannel === "community") localStorage.removeItem(`heika-compose-${owner}`);
       localStorage.removeItem(`heika-compose-${writeChannel}-${owner}`);
-      await clearDraftFiles(owner).catch(() => {});
+      await clearDraftFiles(`${owner}:${writeChannel}`).catch(() => {});
       if (accountId) {
-        localStorage.removeItem("heika-compose-guest");
+        if (writeChannel === "community") localStorage.removeItem("heika-compose-guest");
         localStorage.removeItem(`heika-compose-${writeChannel}-guest`);
-        await clearDraftFiles("guest").catch(() => {});
+        await clearDraftFiles(`guest:${writeChannel}`).catch(() => {});
       }
+      composerCloudDrafts.current.delete(`${owner}:${writeChannel}`); composerDraftRef.current = null;
       lastDraftPayload.current = "";
       toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : "内容已提交人工审核，通过后将公开展示");
     } catch (e) {
@@ -2410,13 +2429,20 @@ export default function Community() {
       setIsPublishing(false);
     }
   };
+  const composerMediaUrl = async (path:string) => {
+    try { const db=await browserDb();const result=await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path,3600);return result.data?.signedUrl || ""; } catch { return ""; }
+  };
   const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community") => {
+    composerImages.forEach(image=>{if(image.url.startsWith("blob:"))URL.revokeObjectURL(image.url);});
+    composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false);
     videoCompressionAbort.current?.abort();
     videoCompressionAbort.current = null;
     videoCompressionSequence.current += 1;
     if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
     const stored = !post ? state.own.find((item) => item.status === "draft" && (item.channel || "community") === requestedChannel) : undefined;
     const initialPost = post || stored;
+    composerDraftRef.current = initialPost || null;
+    if (initialPost?.status === "draft") composerCloudDrafts.current.set(`${accountId || "guest"}:${requestedChannel}`,initialPost);
     const revisionPayload = initialPost?.pendingRevision?.payload;
     const channel = initialPost?.channel === "ai" ? "ai" : initialPost ? "community" : requestedChannel;
     const initialResourceData = revisionPayload?.resourceData || initialPost?.resourceData || {};
@@ -2443,7 +2469,7 @@ export default function Community() {
     lastDraftPayload.current = "";
     if (initialPost?.cloudId) {
       try {
-        const data = await cloudRequest(`/api/v1/posts/${initialPost.cloudId}`) as { post_media?: { storage_path: string; sort_order: number }[] } | null;
+        const data = await cloudRequest(`/api/v1/posts/${initialPost.cloudId}`) as { image_url?:string|null; post_media?: { storage_path: string; sort_order: number }[] } | null;
         const pollResponse = await cloudFetch(`/api/v1/posts/${initialPost.cloudId}/poll`, { cache: "no-store" });
         if (revisionPayload) {
           setPollQuestion(revisionPayload.poll?.question || "");
@@ -2457,27 +2483,26 @@ export default function Community() {
         }
         const revisionMedia = revisionPayload?.mediaPaths?.map((storage_path, sort_order) => ({ storage_path, sort_order }));
         const mediaToLoad = revisionMedia || data?.post_media || [];
-        if (mediaToLoad.length || revisionPayload?.coverUrl) {
-          const db = await browserDb();
+        if (mediaToLoad.length || revisionPayload?.coverUrl || data?.image_url) {
           const orderedMedia = mediaToLoad.slice().sort((a,b) => a.sort_order-b.sort_order);
           const imageMedia = orderedMedia.filter((item) => !isVideoMediaPath(item.storage_path));
           const videoMedia = orderedMedia.find((item) => isVideoMediaPath(item.storage_path));
           const images = await Promise.all(imageMedia.map(async (item, index) => {
-            const signed = await db.storage.from(mediaBucketForPath(item.storage_path)).createSignedUrl(item.storage_path, 3600);
-            return signed.data?.signedUrl ? { id: `saved-${index}-${item.storage_path}`, path: item.storage_path, url: signed.data.signedUrl, status: "ready" as const, sortOrder: index } : null;
+            const url = await composerMediaUrl(item.storage_path);
+            return {id:`saved-${index}-${item.storage_path}`,path:item.storage_path,url:url || "/image-not-loaded.svg",status:"ready" as const,sortOrder:index};
           }));
           if (videoMedia) {
-            const signed = await db.storage.from(mediaBucketForPath(videoMedia.storage_path)).createSignedUrl(videoMedia.storage_path, 3600);
-            if (signed.data?.signedUrl) {
+            const url = await composerMediaUrl(videoMedia.storage_path);
+            {
               const extension = videoMedia.storage_path.toLowerCase().split(".").pop();
-              setComposerVideo({ id: videoMedia.storage_path.split("/").pop()!.replace(/\.(?:mp4|webm)$/i, ""), path: videoMedia.storage_path, url: signed.data.signedUrl, name: `已上传视频.${extension}`, size: 0, type: extension === "webm" ? "video/webm" : "video/mp4", status: "ready", progress: 100, existing: true });
+              setComposerVideo({ id: videoMedia.storage_path.split("/").pop()!.replace(/\.(?:mp4|webm)$/i, ""), path: videoMedia.storage_path, url, name: `已上传视频.${extension}`, size: 0, type: extension === "webm" ? "video/webm" : "video/mp4", status: "ready", progress: 100, existing: true });
             }
           }
-          const externalCover = revisionPayload ? revisionPayload.coverUrl : initialPost.image;
+          const externalCover = revisionPayload ? revisionPayload.coverUrl : data?.image_url;
           const external = externalCover ? [{ id: "legacy-cover", url: externalCover, status: "ready" as const, external: true }] : [];
           setComposerImages([...external, ...images.filter((image): image is NonNullable<typeof image> => Boolean(image))]);
         }
-      } catch { toast("已恢复草稿文字，图片列表暂时无法读取"); }
+      } catch { setComposerMediaLoadFailed(true);toast("已恢复草稿文字，附件列表读取失败，请重试读取后提交"); }
     }
     const owner = accountId || "guest";
     if (!initialPost || initialPost.status === "draft") {
@@ -2485,7 +2510,7 @@ export default function Community() {
         const ownRaw = localStorage.getItem(`heika-compose-${channel}-${owner}`);
         const legacyRaw = channel === "community" ? localStorage.getItem(`heika-compose-${owner}`) : null;
         const raw = ownRaw || legacyRaw || (accountId && channel === "community" ? localStorage.getItem("heika-compose-guest") : null);
-        const fileOwner = ownRaw || !accountId ? owner : "guest";
+        const fileOwner = ownRaw || legacyRaw || !accountId ? owner : "guest";
         if (raw) {
           const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; channel?: "community" | "ai"; contentType?: AiContentType; resourceData?: Record<string,string>; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
           setTitle(saved.title || "");
@@ -2498,28 +2523,26 @@ export default function Community() {
           setPollQuestion(saved.poll?.question || "");
           setPollOptions(saved.poll?.options?.length ? [...saved.poll.options, "", ""].slice(0, 4) : ["", ""]);
           if (saved.images?.length || saved.video) {
-            const db = await browserDb();
-            const files = await loadDraftFiles(fileOwner);
+            const files = await loadDraftFiles(`${fileOwner}:${channel}`).then(async files => files.length ? files : loadDraftFiles(fileOwner)).catch(()=>[]);
             if (saved.video) {
               const videoFile = files.find((item) => item.id === saved.video!.id)?.file;
               if (saved.video.path) {
-                const { data } = await db.storage.from(mediaBucketForPath(saved.video.path)).createSignedUrl(saved.video.path, 3600);
-                if (data?.signedUrl) setComposerVideo({ id: saved.video.id, path: saved.video.path, url: data.signedUrl, name: saved.video.name || "已上传视频", size: saved.video.size || videoFile?.size || 0, type: saved.video.type || videoFile?.type || "video/mp4", status: "ready", progress: 100, existing: saved.video.existing });
+                const signedUrl = await composerMediaUrl(saved.video.path);
+                if (signedUrl || !videoFile) setComposerVideo({ id: saved.video.id, path: saved.video.path, url: signedUrl, name: saved.video.name || "已上传视频", size: saved.video.size || videoFile?.size || 0, type: saved.video.type || videoFile?.type || "video/mp4", status: "ready", progress: 100, existing: saved.video.existing });
                 else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
               } else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
             }
             if (saved.images?.length) {
               const restored = await Promise.all(saved.images.map(async (image, index) => {
               if (image.path) {
-                const { data } = await db.storage.from(mediaBucketForPath(image.path)).createSignedUrl(image.path, 3600);
-                if (data?.signedUrl) return { id: image.id, path: image.path, url: data.signedUrl, status: "ready" as const, sortOrder: index };
+                const signedUrl = await composerMediaUrl(image.path);
                 const file = files.find((item) => item.id === image.id)?.file;
-                return file ? { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const, sortOrder: index } : null;
+                return { id:image.id,path:image.path,file,url:signedUrl || (file?URL.createObjectURL(file):"/image-not-loaded.svg"),status:"ready" as const,sortOrder:index };
               }
               if (image.external && image.url) return { id: image.id, url: image.url, status: "ready" as const, external: true };
               const file = files.find((item) => item.id === image.id)?.file;
               if (file) return { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const };
-              return null;
+              return {id:image.id,url:image.url || "/image-not-loaded.svg",status:"failed" as const};
             }));
             setComposerImages(restored.filter((image): image is NonNullable<typeof image> => Boolean(image?.url)));
             }
@@ -2534,40 +2557,49 @@ export default function Community() {
   };
   useEffect(() => {
     if (modal !== "write") return;
-    const timer = window.setTimeout(() => {
-      draftSaveTimer.current = null;
-      if (publishInFlight.current) return;
-      if (!title && !body && !composerImages.length && !composerVideo && !pollQuestion && !pollOptions.some(Boolean)) return;
-      const persist = async () => {
-        const owner = accountId || "guest";
-        if (publishInFlight.current) return;
-        await saveDraftFiles(owner, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
-        if (publishInFlight.current) return;
-        const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
-        const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
-        localStorage.setItem(`heika-compose-${writeChannel}-${owner}`, JSON.stringify(draftData));
-        if (writeChannel === "community") localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData));
-        setDraftSaved(true);
+    const generation = composerSession.current;
+    const revision = ++draftRevision.current;
+    const currentSession = () => composerSession.current === generation;
+    setDraftCloudSynced(false);
+    const persist = async () => {
+      if (publishInFlight.current || !currentSession() || (!title && !body && !composerImages.length && !composerVideo && !pollQuestion && !pollOptions.some(Boolean))) return;
+      const owner = accountId || "guest";
+      const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
+      const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
+      localStorage.setItem(`heika-compose-${writeChannel}-${owner}`, JSON.stringify(draftData));
+      if (writeChannel === "community") localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData));
+      await saveDraftFiles(`${owner}:${writeChannel}`, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
+      if (!currentSession()) return;
+      setDraftSaved(true); setDraftSyncError("");
+      if (!accountId || composerEditingPublished || composerMediaLoadFailed) return;
+      // Serialize snapshots: an older response cannot finish after a newer save.
+      draftCloudQueue.current = draftCloudQueue.current.catch(() => {}).then(async () => {
+        if (!currentSession() || publishInFlight.current || draftRevision.current !== revision) return;
+        setDraftSaving(true);
+        try {
         if (accountId && !composerEditingPublished) {
           const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex, writeChannel, writeContentType, aiResourceFields });
-          let cloudDraft = state.own.find((item) => item.id === editing && item.status === "draft" && (item.channel || "community") === writeChannel);
+          let cloudDraft = composerDraftRef.current || composerCloudDrafts.current.get(`${owner}:${writeChannel}`) || state.own.find((item) => item.id === editing && item.status === "draft" && (item.channel || "community") === writeChannel);
           if (lastDraftPayload.current !== signature || !cloudDraft) {
-            lastDraftPayload.current = signature;
             setDraftSaving(true);
             try {
               const cover = composerImages[coverIndex];
               const saved = writeChannel === "ai"
                 ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: cloudDraft?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields, coverUrl: cover?.external ? cover.url : null }) as Post | null
                 : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId ? cloudDraft.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
-              if (saved) { cloudDraft = saved; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] })); }
-            } catch { setDraftSaved(false); toast("云端草稿保存失败，已保留本机草稿"); }
-            finally { setDraftSaving(false); }
+              if (saved?.cloudId) composerCloudDrafts.current.set(`${owner}:${writeChannel}`,saved);
+              if (!currentSession()) return;
+              if (!saved?.cloudId) throw new Error("云端草稿暂时不可用");
+              cloudDraft = saved; composerDraftRef.current = saved; lastDraftPayload.current = signature; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] }));
+            } catch { throw new Error("同步失败，本机草稿已保留"); }
+            finally { /* The queue clears saving after all media has settled. */ }
           }
           if (cloudDraft?.cloudId) {
             const cover = composerImages[coverIndex];
             const storageImages = composerImages.filter((image) => !image.external);
             const ordered = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
             for (const [index, image] of ordered.entries()) {
+              if (!currentSession()) return;
               if (image.external) continue;
               const needsUpload = Boolean(image.file && !image.path);
               const needsReorder = Boolean(image.path && image.sortOrder !== index);
@@ -2576,24 +2608,127 @@ export default function Community() {
               setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading" } : item));
               try {
                 const synced = await uploadImageToPost(image, cloudDraft.cloudId, index);
-                setComposerImages((items) => items.map((item) => item.id === image.id ? synced : item));
+                if (currentSession()) setComposerImages((items) => items.map((item) => item.id === image.id ? synced : item));
               } catch (error) {
-                setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
-                toast(error instanceof Error ? error.message : "图片上传失败，可重试");
+                if (currentSession()) setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
+                throw error;
               } finally { draftMediaBusy.current.delete(image.id); }
             }
           }
         }
-      };
-      void persist().catch(() => toast("本机草稿保存失败，请检查设备存储空间"));
-    }, 500);
+          if (currentSession() && draftRevision.current === revision && !composerEditingPublished && !composerVideo && !composerImages.some(image=>image.status !== "ready" || (!image.external && !image.path))) setDraftCloudSynced(true);
+        } catch (error) { if (currentSession()) setDraftSyncError(error instanceof Error ? error.message : "同步失败，本机草稿已保留"); }
+        finally { if (currentSession()) setDraftSaving(false); }
+      });
+    };
+    flushComposerDraft.current = persist;
+    const save = () => { void persist().catch(() => { if (currentSession()) setDraftSyncError("本机保存失败，请重试"); }); };
+    const timer = window.setTimeout(save, 500);
     draftSaveTimer.current = timer;
-    return () => { window.clearTimeout(timer); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
-  // Including state.own and the per-render upload helper would restart cloud autosave after each synchronized draft update.
+    window.addEventListener("pagehide",save);
+    return () => { window.clearTimeout(timer); window.removeEventListener("pagehide",save); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
+  // UI-only panels are excluded so opening a sheet does not restart autosave.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished, writeChannel, writeContentType, aiResourceFields]);
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished, writeChannel, writeContentType, aiResourceFields, draftRetry, composerMediaLoadFailed]);
+  const reloadComposerMedia = async () => {
+    const old=composerDraftRef.current || state.own.find(item=>item.id===editing);
+    if(!old?.cloudId)return;
+    setUploadingImages(true);
+    try {
+      const data=await cloudRequest(`/api/v1/posts/${old.cloudId}`) as {image_url?:string|null;post_media?:{storage_path:string;sort_order:number}[]}|null;
+      if(!data)throw new Error("附件读取失败，请检查登录和网络后重试");
+      const media=(old.pendingRevision?.payload.mediaPaths?.map((storage_path,sort_order)=>({storage_path,sort_order})) || data.post_media || []).slice().sort((a,b)=>a.sort_order-b.sort_order);
+      const images=await Promise.all(media.filter(item=>!isVideoMediaPath(item.storage_path)).map(async(item,index)=>({id:`saved-${index}-${item.storage_path}`,path:item.storage_path,url:(await composerMediaUrl(item.storage_path)) || "/image-not-loaded.svg",status:"ready" as const,sortOrder:index})));
+      const external=old.pendingRevision?old.pendingRevision.payload.coverUrl:data.image_url;
+      setComposerImages(current=>[...(external&&!current.some(image=>image.external)?[{id:"legacy-cover",url:external,external:true,status:"ready" as const}]:[]),...images,...current.filter(image=>!images.some(item=>item.path===image.path))]);
+      const video=media.find(item=>isVideoMediaPath(item.storage_path));
+      if(video)setComposerVideo({id:video.storage_path,path:video.storage_path,url:await composerMediaUrl(video.storage_path),name:"已上传视频",size:0,type:video.storage_path.endsWith("webm")?"video/webm":"video/mp4",status:"ready",progress:100,existing:true});
+      setComposerMediaLoadFailed(false);
+    } catch(error) { toast(error instanceof Error?error.message:"附件读取失败，请重试"); } finally {setUploadingImages(false);}
+  };
+  const changeComposerTitle = useCallback((value: string) => { setTitle(value); setDraftSaved(false); setDraftCloudSynced(false); if(value.trim()) setComposerValidation(""); }, []);
+  const changeComposerBody = useCallback((value: string) => { setBody(value); setDraftSaved(false); setDraftCloudSynced(false); if(value.trim()) setComposerValidation(""); }, []);
+  const closeComposer = async () => {
+    if (isPublishing) return toast("内容正在提交，请稍候");
+    try { await flushComposerDraft.current(); }
+    catch { if (!await confirmInApp("本机草稿保存失败，仍要退出吗？", { title:"草稿尚未保存", confirmLabel:"退出编辑" })) return; }
+    setComposerPanel(null); setComposerMediaId(null); setModal(null);
+  };
+  const composerCloseRef = useRef(closeComposer);
+  const composerOverlayRef = useRef({ panel:composerPanel, media:composerMediaId });
+  composerCloseRef.current = closeComposer; composerOverlayRef.current = {panel:composerPanel,media:composerMediaId};
+  useEffect(() => {
+    if (modal !== "write") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden"; document.documentElement.classList.add("is-composing");
+    const viewport = window.visualViewport;
+    const resize = () => { document.documentElement.style.setProperty("--composer-height", `${viewport?.height || window.innerHeight}px`); document.documentElement.style.setProperty("--composer-top", `${viewport?.offsetTop || 0}px`); };
+    resize(); viewport?.addEventListener("resize",resize); viewport?.addEventListener("scroll",resize);
+    const footer=document.querySelector<HTMLElement>(".composer-footer");
+    const measureFooter=()=>document.documentElement.style.setProperty("--composer-footer-height",`${footer?.offsetHeight || 76}px`);
+    const footerObserver=typeof ResizeObserver!=="undefined"?new ResizeObserver(measureFooter):null;
+    if(footer)footerObserver?.observe(footer);measureFooter();
+    history.pushState({...history.state, heikaComposer:true}, "");
+    let consumed = false;
+    const back = (event: PopStateEvent) => {
+      event.stopImmediatePropagation();
+      if (composerOverlayRef.current.panel || composerOverlayRef.current.media) { setComposerPanel(null); setComposerMediaId(null); history.pushState({...history.state,heikaComposer:true},""); return; }
+      consumed = true; void composerCloseRef.current();
+    };
+    const escape = (event: KeyboardEvent) => { if(event.key === "Escape" && !composerOverlayRef.current.panel && !composerOverlayRef.current.media) void composerCloseRef.current(); };
+    const beforeUnload = (event: BeforeUnloadEvent) => { if (draftSaveTimer.current !== null || draftMediaBusy.current.size) { void flushComposerDraft.current(); event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("popstate",back,true); window.addEventListener("keydown",escape); window.addEventListener("beforeunload",beforeUnload);
+    return () => {
+      document.body.style.overflow = previousOverflow; document.documentElement.classList.remove("is-composing"); document.documentElement.style.removeProperty("--composer-height"); document.documentElement.style.removeProperty("--composer-top");
+      viewport?.removeEventListener("resize",resize); viewport?.removeEventListener("scroll",resize); footerObserver?.disconnect();document.documentElement.style.removeProperty("--composer-footer-height");
+      window.removeEventListener("popstate",back,true); window.removeEventListener("keydown",escape); window.removeEventListener("beforeunload",beforeUnload);
+      if (!consumed && history.state?.heikaComposer) { window.addEventListener("popstate",event=>event.stopImmediatePropagation(),{capture:true,once:true}); history.back(); }
+    };
+  }, [modal]);
+  const switchComposerChannel = async (channel: "community" | "ai") => {
+    if (channel === writeChannel || isPublishing) return;
+    if (draftSaving || uploadingImages || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在同步，请稍后切换");
+    const targetRaw = localStorage.getItem(`heika-compose-${channel}-${accountId || "guest"}`);
+    const hasTargetDraft = Boolean(targetRaw && (()=>{try{const draft=JSON.parse(targetRaw);return draft.title || draft.body || draft.images?.length || draft.video;}catch{return false;}})());
+    if ((title || body || writeTopics.length || composerImages.length || composerVideo || Object.values(aiResourceFields).some(Boolean)) && !await confirmInApp(hasTargetDraft ? "目标下已有草稿，切换后将恢复它。当前内容会先保留在原目标，不会被清空。" : "切换会保留标题、正文和附件。分类与话题需要重新选择，原目标的草稿会保留。", { title:"切换发布目标", confirmLabel:"切换目标" })) return;
+    try { await flushComposerDraft.current(); } catch { toast("请先重试保存草稿，再切换目标"); return; }
+    await draftCloudQueue.current;
+    if (hasTargetDraft) { await openComposer(undefined,channel); return; }
+    // Storage paths cannot belong to two posts. Re-upload a copied file under a fresh ID.
+    let images: ComposerImage[] = composerImages, video = composerVideo;
+    setUploadingImages(true);
+    try {
+      const clone = async (url:string,file:File|undefined,name:string,type:string) => { if(file) return file; const response=await fetch(url); if(!response.ok) throw new Error("附件复制失败，请检查网络后重试"); return new File([await response.blob()],name,{type}); };
+      images=await Promise.all(composerImages.map(async image=>image.external?image:{id:crypto.randomUUID(),url:image.url,file:await clone(image.url,image.file,"draft-image.jpg",image.file?.type || "image/jpeg"),status:"ready" as const}));
+      if(composerVideo) video={...composerVideo,id:crypto.randomUUID(),file:await clone(composerVideo.url,composerVideo.file,composerVideo.name,composerVideo.type),path:undefined,existing:false,status:"ready",progress:0};
+    } catch(error) { toast(error instanceof Error?error.message:"附件复制失败"); return; } finally { setUploadingImages(false); }
+    setComposerImages(images); setComposerVideo(video);
+    composerSession.current += 1; composerDraftRef.current = null; lastDraftPayload.current = "";
+    setEditing(null); setWriteChannel(channel); setWriteTag(channel === "ai" ? aiCategories.find(item=>item.kind === "category")?.name || "AI 知识" : communityCategories[0] || tags[0]); setWriteTopics([]); setDraftSaved(false); setDraftCloudSynced(false); setDraftSyncError("");
+  };
+  const reorderComposerImages = (from: number, to: number) => {
+    if (isPublishing || from === to || from < 0 || to < 0 || to >= composerImages.length) return;
+    const coverId = composerImages[coverIndex]?.id;
+    const next = [...composerImages]; const [image] = next.splice(from,1); next.splice(to,0,image);
+    setComposerImages(next); setCoverIndex(Math.max(0,next.findIndex(item=>item.id===coverId)));
+  };
+  const replaceComposerImage = async (id: string, file?: File) => {
+    if (!file || isPublishing || draftSaving) return;
+    const validation = validateComposerFiles([file],0); if(validation.error) return toast(validation.error);
+    setUploadingImages(true);
+    try {
+      const compressed=await compressUploadImage(file);
+      const image=composerImages.find(item=>item.id===id); if(!image) return;
+      const old=state.own.find(item=>item.id===editing);
+      if(image.path && old?.cloudId && !composerRevisionMode) await cloudRequest(`/api/v1/posts/${old.cloudId}/media`,{path:image.path},"DELETE");
+      const replacement: ComposerImage={id:crypto.randomUUID(),file:compressed,url:URL.createObjectURL(compressed),status:"ready"};
+      setComposerImages(items=>items.map(item=>item.id===id?replacement:item)); setComposerMediaId(replacement.id);
+      if(image.url.startsWith("blob:")) URL.revokeObjectURL(image.url);
+    } catch(error) { toast(error instanceof Error?error.message:"图片替换失败，请重试"); } finally { setUploadingImages(false); }
+  };
+
   const chooseComposerImages = async (files: FileList | null) => {
-    if (!files?.length) return;
+    if (!files?.length || uploadingImages || isPublishing) return;
     if (composerVideo) return toast("视频 Beta 暂不与图片混发，请先移除视频");
     const validation = validateComposerFiles(Array.from(files), composerImages.length);
     if (validation.error) toast(validation.error);
@@ -2637,43 +2772,50 @@ export default function Community() {
   };
   const retryComposerImage = async (imageId: string) => {
     const image = composerImages.find((item) => item.id === imageId);
-    if (!image?.file || !accountId) return toast("登录后可重试图片上传");
+    if (!accountId) return toast("登录后可重试图片上传");
+    if (!image?.file) return toast("本机图片文件未恢复，请点击图片重新替换");
+    if (draftMediaBusy.current.has(imageId)) return;
+    draftMediaBusy.current.add(imageId);
     setUploadingImages(true);
     setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "uploading" } : item));
     try {
       const old = state.own.find((item) => item.id === editing);
-      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
+      const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai" ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields }) as Post | null : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败");
       const synced = await uploadImageToPost(image, draft.cloudId, composerImages.indexOf(image));
       setEditing(draft.id); update((current) => ({ ...current, own: [draft, ...current.own.filter((item) => item.id !== draft.id)] }));
       setComposerImages((items) => items.map((item) => item.id === imageId ? synced : item));
       toast("图片已上传");
     } catch (error) { setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "failed" } : item)); toast(error instanceof Error ? error.message : "图片上传失败"); }
-    finally { setUploadingImages(false); }
+    finally { draftMediaBusy.current.delete(imageId); setUploadingImages(false); }
   };
   const discardComposerDraft = async () => {
     if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id)) || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在处理，请稍后再删除");
     if (!await confirmInApp("删除这份草稿及其图片？此操作无法撤销。", {title:"删除草稿",confirmLabel:"删除草稿",danger:true})) return;
-    let old = state.own.find((item) => item.id === editing);
-    if (accountId && !composerEditingPublished) {
+    if (draftSaveTimer.current !== null) { window.clearTimeout(draftSaveTimer.current);draftSaveTimer.current=null; }
+    await draftCloudQueue.current;
+    composerSession.current += 1;
+    let old = composerDraftRef.current || state.own.find((item) => item.id === editing);
+    if (accountId && !composerEditingPublished && old?.cloudId) {
       try {
-        const draft = await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
+        const draft = old;
         if (draft?.cloudId) {
           old = draft;
           for (const image of composerImages) if (image.file && !image.path) await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: draft.cloudId }, "DELETE");
           if (composerVideo?.path && !composerVideo.existing) await cloudRequest("/api/v1/media", { upload_id: composerVideo.id, file_type: composerVideo.type, post_id: draft.cloudId }, "DELETE");
-          await cloudRequest("/api/v1/library-state", { action: "delete", id: draft.id });
+          if (writeChannel === "ai") await cloudRequest(`/api/v1/posts/${draft.cloudId}`, {}, "DELETE"); else await cloudRequest("/api/v1/library-state", { action: "delete", id: draft.id });
           update((current) => ({ ...current, own: current.own.filter((item) => item.id !== draft.id) }));
         }
-      } catch (error) { toast(error instanceof Error ? error.message : "草稿删除失败"); return; }
+      } catch (error) { toast(error instanceof Error ? error.message : "草稿删除失败"); setDraftRetry(value=>value+1); return; }
     }
     const owner = accountId || "guest";
-    localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(owner).catch(() => {});
+    localStorage.removeItem(`heika-compose-${writeChannel}-${owner}`); if (writeChannel === "community") localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(`${owner}:${writeChannel}`).catch(() => {});
     composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
     if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
     videoCompressionAbort.current?.abort();
     videoCompressionAbort.current = null;
     videoCompressionSequence.current += 1;
+    composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.delete(`${owner}:${writeChannel}`);
     setComposerVideo(null); setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
   };
   const openTopic = async (name: string) => {
@@ -2826,7 +2968,7 @@ export default function Community() {
             : tab === "creator-center" || tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
             : null;
   const handleSecondaryBack = () => {
-    if (modal === "write") { setModal(null); return; }
+    if (modal === "write") { void closeComposer(); return; }
     if (tab === "settings" && settingsDetail) { closeSettingsDetail(); return; }
     if (tab === "settings" && settingsPersonalOpen) { setSettingsPersonalOpen(false); return; }
     if (tab === "settings") { setSettingsPersonalOpen(false); setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
@@ -4578,11 +4720,13 @@ export default function Community() {
         <div className={`modal-backdrop${modal === "write" ? " composer-backdrop" : ""}${modalClosing ? " is-closing" : ""}`} aria-hidden={modalClosing || undefined}>
           <div
             className={`modal ${modal === "write" ? "composer-modal" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
+            inert={modal === "write" && Boolean(composerPanel || composerMediaId)}
+            role={modal === "write" ? "dialog" : undefined} aria-modal={modal === "write" ? true : undefined} aria-label={modal === "write" ? "创作内容" : undefined}
           >
             {modal === "write" ? <header className="composer-topbar">
-              <button type="button" className="composer-back" onClick={() => setModal(null)} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
-              <strong>{editing ? "编辑内容" : "发布内容"}</strong>
-              <span className="composer-topbar-status">{draftSaving ? "保存中" : draftSaved ? "已保存" : "草稿"}</span>
+              <button type="button" className="composer-back" onClick={() => void closeComposer()} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
+              <strong>创作内容</strong>
+              <button type="button" className="composer-preview-button" onClick={() => setComposerPanel("preview")}>预览</button>
             </header> : <button
               className="close"
               aria-label="关闭"
@@ -4795,42 +4939,14 @@ export default function Community() {
             ) : (
               <div className="composer-workspace">
               <div className="composer-scroll">
-                {editing === null && <section className="composer-channel-picker" role="group" aria-label="发布内容类型"><strong>发布到</strong><div>{([["community", "社区作品"], ["ai", "AI 空间"]] as const).map(([value, label]) => <button type="button" key={value} className={writeChannel === value ? "selected" : ""} aria-pressed={writeChannel === value} onClick={() => { setWriteChannel(value); setWriteTag(value === "ai" ? aiCategories.find((item) => item.kind === "category")?.name || "AI 知识" : communityCategories[0] || tags[0]); setWriteTopics([]); setWriteContentType("knowledge_article"); setAiResourceFields({}); }}>{label}</button>)}</div></section>}
+                {!composerEditingPublished && <section className="composer-channel-picker" role="group" aria-label="发布内容类型"><strong>发布到</strong><div>{([["community", "社区作品"], ["ai", "AI 空间"]] as const).map(([value, label]) => <button type="button" key={value} className={writeChannel === value ? "selected" : ""} aria-pressed={writeChannel === value} onClick={() => void switchComposerChannel(value)}>{label}</button>)}</div></section>}
                 {writeChannel === "ai" && <section className="composer-ai-type"><label>AI 内容类型<ChoiceSelect label="AI 内容类型" value={writeContentType} onChange={(value) => setWriteContentType(value as AiContentType)} options={([["knowledge_article", "AI 知识文章"], ["agent", "Agent 智能体"], ["skill", "Skills 技能"], ["prompt", "Prompt 提示词"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"]] as const).map(([value,label]) => ({value,label}))}/></label><small>{writeContentType === "knowledge_article" ? "使用标准图文文章格式，支持 Markdown。" : "按类型填写结构化字段；发布后由管理员审核，并保留已发布版本。"}</small></section>}
-                <label className="composer-title-field">
-                  标题
-                  <input
-                    value={title}
-                    maxLength={80}
-                    aria-invalid={composerValidation === "title"}
-                    aria-describedby={composerValidation === "title" ? "composer-title-error composer-title-help" : "composer-title-help"}
-                    onChange={(e) => { setTitle(e.target.value); if (e.target.value.trim()) setComposerValidation(""); }}
-                    placeholder="为内容写一个标题"
-                  />
-                  <small className="composer-field-count">{title.length}/80</small>
-                  <small id="composer-title-help" className="composer-field-note">最多 80 字 · 发布后进入人工审核</small>
-                </label>
-                {composerValidation === "title" && <p id="composer-title-error" className="composer-field-error composer-title-error" role="alert">请填写标题。</p>}
-                <label className="composer-body-field">
-                  正文
-                  <textarea
-                    value={body}
-                    maxLength={5000}
-                    aria-invalid={composerValidation === "body"}
-                    aria-describedby={composerValidation === "body" ? "composer-body-error composer-body-help" : "composer-body-help"}
-                    onChange={(e) => { setBody(e.target.value); if (e.target.value.trim()) setComposerValidation(""); }}
-                    placeholder="写下你想分享的内容…"
-                    rows={7}
-                  />
-                  <small className="composer-field-count">{body.length}/5000</small>
-                  <small id="composer-body-help" className="composer-field-note">支持 Markdown · 最多 5000 字</small>
-                </label>
-                {composerValidation === "body" && <p id="composer-body-error" className="composer-field-error composer-body-error" role="alert">请填写正文。</p>}
+                <ComposerTextEditor title={title} body={body} error={composerValidation} onTitle={changeComposerTitle} onBody={changeComposerBody}/>
                 {writeChannel === "ai" && AI_EDITOR_FIELDS[writeContentType].length > 0 && <section className="composer-ai-resource-fields" aria-label="AI 资源信息"><div className="composer-section-heading"><span><strong>资源信息</strong><small>代码、安装命令和 Prompt 仅展示与复制，不会在服务器执行</small></span><span>{AI_EDITOR_FIELDS[writeContentType].filter((field) => field.required).length} 项必填</span></div>{AI_EDITOR_FIELDS[writeContentType].map((field) => <label key={field.key}>{field.label}{field.required && <i>必填</i>}{field.multiline ? <textarea value={aiResourceFields[field.key] || ""} maxLength={12000} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint} rows={field.key === "prompt" || field.key === "installation" || field.key === "steps" ? 6 : 3}/> : <input type={field.key.endsWith("_url") ? "url" : "text"} value={aiResourceFields[field.key] || ""} maxLength={1200} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint}/>}</label>)}</section>}
                 <section className="composer-media-picker" aria-label="选择图片或视频">
                   <div className="composer-media-choices" role="group" aria-label="媒体类型">
                     <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerVideo || composerImages.length >= 9 ? " disabled" : ""}`}>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={Boolean(composerVideo) || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploadingImages || Boolean(composerVideo) || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
                       <span className="composer-media-choice-icon"><ImagePlus size={20}/></span>
                       <span className="composer-media-choice-copy"><strong>图片</strong><small>{composerImages.length >= 9 ? "已达最多 9 张" : composerImages.length ? `已选 ${composerImages.length}/9 张 · 点此继续添加` : "JPG、PNG、WebP · 最多 9 张"}</small></span>
                       <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
@@ -4842,56 +4958,28 @@ export default function Community() {
                       <span className="composer-media-choice-mark">{composerVideo ? "已选" : "选择"}</span>
                     </label>}
                   </div>
-                  <p className="composer-media-hint">图片或视频可选其一，暂不支持同篇混发。视频会在设备支持时自动优化；压缩效果不明显时保留原画质。</p>
+                  <p className="composer-media-hint">{VIDEO_UPLOAD_BETA_ENABLED ? "图片与视频可选其一 · 视频 Beta 最大 50 MB" : "最多 9 张图片 · 自动优化上传"}</p>
                   {composerVideo && <section className="composer-video-section" aria-label="视频 Beta" aria-busy={composerVideo.status === "compressing" || composerVideo.status === "uploading"}>
                     <div className="composer-video-card">
-                      <video src={composerVideo.url} controls playsInline preload="metadata" aria-label="视频预览" />
+                      <video src={composerVideo.url || undefined} controls playsInline preload="metadata" aria-label="视频预览" />
                       <div className="composer-video-info"><strong>{composerVideo.name}</strong><small>{composerVideo.status === "compressing" ? `正在优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo.status === "failed" ? "上传失败，重新发布可重试" : composerVideo.status === "uploading" ? `正在上传 ${composerVideo.progress}%` : composerVideo.size ? `${(composerVideo.size / 1024 / 1024).toFixed(1)} MB · ${composerVideo.compressionNote || (composerVideo.path ? "已同步到草稿" : "等待上传")}` : "已同步到草稿"}</small></div>
                       <button type="button" className="composer-video-remove" onClick={() => void removeComposerVideo()}>{composerVideo.status === "compressing" ? "取消" : "移除"}</button>
                       {(composerVideo.status === "compressing" || composerVideo.status === "uploading") && <progress max={100} value={composerVideo.status === "compressing" ? composerVideo.compressionProgress || 0 : composerVideo.progress} aria-label={composerVideo.status === "compressing" ? `视频优化 ${composerVideo.compressionProgress || 0}%` : `视频上传 ${composerVideo.progress}%`} />}
                     </div>
                   </section>}
                 </section>
-                <details className="composer-advanced">
-                    <summary><span><strong>更多选项</strong><small>互动投票与 AI 辅助</small></span><ChevronDown size={17}/></summary>
-                  <div className="composer-advanced-content">
-                {writeChannel === "community" && <section className="composer-poll-editor" aria-label="添加投票">
-                  <div className="composer-section-heading"><span><strong>互动投票</strong><small>给帖子增加一个单选问题，读者可查看实时结果</small></span><span>{pollQuestion.trim() ? "已添加" : "可选"}</span></div>
-                  <input className="composer-poll-question" value={pollQuestion} maxLength={180} onChange={(event) => setPollQuestion(event.target.value)} placeholder="输入投票问题" aria-label="投票问题" />
-                  <div className="composer-poll-options">{pollOptions.map((option, index) => <div key={index}><span>{index + 1}</span><input value={option} maxLength={80} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`选项 ${index + 1}`} aria-label={`投票选项 ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label={`删除选项 ${index + 1}`} onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15}/></button>}</div>)}</div>
-                  {pollOptions.length < 4 && <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ""])}><Plus size={14}/>添加选项</button>}
-                </section>}
-                <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
-                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
-                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
-                </section>
-                  </div>
-                </details>
-                {composerImages.length > 0 && <section className="composer-media-section" aria-label="内容图片">
-                  <div className="composer-section-heading"><span><strong>图片内容</strong><small>最多 9 张 · JPG、PNG、WebP · 自动优化</small></span><span>{composerImages.length}/9</span></div>
-                  <div className="composer-image-grid">
-                    {composerImages.map((image, index) => (
-                      <figure className={`composer-image${coverIndex === index ? " is-cover" : ""}`} key={image.id}>
-                        <img src={image.url} alt={`第 ${index + 1} 张图片预览`} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} />
-                        {coverIndex === index && <span className="composer-cover-badge">封面</span>}
-                        {image.status === "uploading" && <span className="composer-image-state">上传中…</span>}
-                        {image.status === "failed" && <button type="button" className="composer-image-retry" disabled={uploadingImages} onClick={() => void retryComposerImage(image.id)}>上传失败 · 重试</button>}
-                        <div className="composer-image-tools">
-                          {coverIndex !== index && <button type="button" onClick={() => setCoverIndex(index)}>设为封面</button>}
-                          <button type="button" aria-label={`第 ${index + 1} 张前移`} disabled={!index} onClick={() => moveComposerImage(index, -1)}>←</button>
-                          <button type="button" aria-label={`第 ${index + 1} 张后移`} disabled={index === composerImages.length - 1} onClick={() => moveComposerImage(index, 1)}>→</button>
-                          <button type="button" aria-label={`移除第 ${index + 1} 张`} onClick={() => void removeComposerImage(index)}>移除</button>
-                        </div>
-                      </figure>
-                    ))}
-                  </div>
-                </section>}
-                <label className="composer-category-field">
-                  {writeChannel === "ai" ? "AI 分类" : "分类"}
-                  <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={setWriteTag} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
-                </label>
-                {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<ChoiceSelect label="加入作品系列" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入系列"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
-                <section className="composer-topic-section" aria-label="选择话题">
+                {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
+                <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("topics")}><span># 话题</span><small>{writeTopics.length ? writeTopics.map(topic=>`#${topic}`).join(" ") : "添加话题"}</small><ChevronRight size={16}/></button>
+                <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("settings")}><span>更多发布设置</span><small>{writeTag}{writeSeriesId ? " · 已选系列" : ""}{pollQuestion.trim() ? " · 已加投票" : ""}</small><ChevronRight size={16}/></button>
+                {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
+                <p className="fineprint">
+                  {accountId ? "草稿先保留在此设备；云端同步状态请查看底部提示。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
+                </p>
+              </div>
+              </div>
+            )}
+            {modal === "write" && composerPanel && <ComposerSheet title={composerPanel === "topics" ? "选择话题" : composerPanel === "settings" ? "更多发布设置" : "内容预览"} full={composerPanel === "preview"} onClose={() => setComposerPanel(null)}>
+              {composerPanel === "topics" ? <>                <section className="composer-topic-section" aria-label="选择话题">
                   <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
                   {writeTopics.length > 0 && <div className="composer-selected-topics" aria-label="已选话题">{writeTopics.map((topic) => <button type="button" key={topic} onClick={() => setWriteTopics((current) => current.filter((item) => item !== topic))}>#{topic}<span aria-hidden="true">×</span></button>)}</div>}
                   <label className="composer-topic-search"><Search size={16} /><input value={topicSearch} onChange={(event) => setTopicSearch(event.target.value)} placeholder="搜索话题" aria-label="搜索话题" /></label>
@@ -4908,14 +4996,29 @@ export default function Community() {
                     {!topicChoices.length && !topicSearch.trim() && <small className="composer-topic-empty">正在加载话题…</small>}
                   </div>
                 </section>
-                {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
-                <p className="fineprint">
-                  {accountId ? "草稿会自动同步到当前账号，发布后媒体与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
-                </p>
-              </div>
-              </div>
-            )}
-            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small><small>发布后进入人工审核</small></span><button className="primary-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+</> : composerPanel === "settings" ? <>                <label className="composer-category-field">
+                  {writeChannel === "ai" ? "AI 分类" : "分类"}
+                  <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={setWriteTag} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
+                </label>
+                {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<ChoiceSelect label="加入作品系列" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入系列"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
+                <div className="composer-advanced">
+                  <div className="composer-advanced-content">
+                {writeChannel === "community" && <section className="composer-poll-editor" aria-label="添加投票">
+                  <div className="composer-section-heading"><span><strong>互动投票</strong><small>给帖子增加一个单选问题，读者可查看实时结果</small></span><span>{pollQuestion.trim() ? "已添加" : "可选"}</span></div>
+                  <input className="composer-poll-question" value={pollQuestion} maxLength={180} onChange={(event) => setPollQuestion(event.target.value)} placeholder="输入投票问题" aria-label="投票问题" />
+                  <div className="composer-poll-options">{pollOptions.map((option, index) => <div key={index}><span>{index + 1}</span><input value={option} maxLength={80} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`选项 ${index + 1}`} aria-label={`投票选项 ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label={`删除选项 ${index + 1}`} onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15}/></button>}</div>)}</div>
+                  {pollOptions.length < 4 && <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ""])}><Plus size={14}/>添加选项</button>}
+                </section>}
+                <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
+                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
+                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
+                </section>
+                  </div>
+                </div>
+</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
+            </ComposerSheet>}
+            {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button className="primary-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}

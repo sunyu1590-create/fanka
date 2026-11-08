@@ -27,6 +27,7 @@ export async function writeCache<T>(key: string, value: T) {
 export type LocalDraft = {
   title: string; body: string; tag: string; topics: string[]; imageUris: string[];
   media?: Array<{ uri: string; id: string; type: string; name: string; path?: string }>;
+  coverImageId?: string;
   updatedAt: number;
 };
 

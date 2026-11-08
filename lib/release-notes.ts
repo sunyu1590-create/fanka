@@ -7,6 +7,15 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.39.2",
+    date: "2026.11.08",
+    notes: [
+      { category: "体验优化", text: "发布页改为沉浸式创作布局，标题、正文和媒体成为编辑主体；分类、话题及高级设置按需展开。" },
+      { category: "问题修复", text: "加强草稿本机保存、云端顺序同步与失败重试，切换发布目标时保留内容和附件。" },
+      { category: "体验优化", text: "发布预览复用实际 Markdown 和 AI 资源展示，并优化移动端、WebView 与桌面端布局。" },
+    ],
+  },
+  {
     version: "2.39.1",
     date: "2026.11.07",
     notes: [
