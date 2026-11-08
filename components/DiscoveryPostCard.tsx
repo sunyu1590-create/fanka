@@ -109,18 +109,10 @@ export default function DiscoveryPostCard({
             onClick={() => onAuthorOpen(post.authorId!)}
             aria-label={`查看作者 ${post.author}`}
           >
-            <span className="discovery-author-avatar" aria-hidden="true">
-              <span>{(post.author || "探").slice(0, 1)}</span>
-              {post.authorAvatar && <img src={post.authorAvatar} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}
-            </span>
             <span className="discovery-author-name">{post.author || "探索者"}</span>
           </button>
         ) : (
           <span className="discovery-author discovery-author-static">
-            <span className="discovery-author-avatar" aria-hidden="true">
-              <span>{(post.author || "探").slice(0, 1)}</span>
-              {post.authorAvatar && <img src={post.authorAvatar} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}
-            </span>
             <span className="discovery-author-name">{post.author || "探索者"}</span>
           </span>
         )}
@@ -133,7 +125,7 @@ export default function DiscoveryPostCard({
             disabled={likeBusy}
             onClick={onLike}
           >
-            <Heart size={16} fill={liked ? "currentColor" : "none"} aria-hidden="true" />
+            <Heart size={14} fill={liked ? "currentColor" : "none"} aria-hidden="true" />
           </button>
           {typeof post.likeCount === "number" && <span className="discovery-like-count" aria-label={`${post.likeCount} 个赞`}>{post.likeCount}</span>}
           <button

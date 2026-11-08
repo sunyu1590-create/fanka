@@ -7,6 +7,15 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.40.3",
+    date: "2026.11.08",
+    notes: [
+      { category: "体验优化", text: "清理品牌导航中的菱形装饰与消息页英文眉题，并为首页接入真实搜索和通知入口。" },
+      { category: "体验优化", text: "发现页作者信息改为纯文字，缩小点赞视觉尺寸，整理社区与 AI 空间切换控件及选中态。" },
+      { category: "问题修复", text: "底部导航选中背景覆盖图标与文字；发布按钮保留居中的金色加号且不再上浮，并让选择弹层的分隔线保持笔直。" },
+    ],
+  },
+  {
     version: "2.40.2",
     date: "2026.11.08",
     notes: [

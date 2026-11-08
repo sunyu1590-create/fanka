@@ -494,7 +494,6 @@ export default function Messages({
   if (!authReady)
     return (
       <section className="page messages-loading" aria-busy="true" aria-label="正在恢复消息状态">
-        <div className="eyebrow">MESSAGES / PRIVATE</div>
         <h1>消息。</h1>
         <div className="message-loading-placeholder"><i /><i /></div>
       </section>
@@ -534,7 +533,7 @@ export default function Messages({
   return (
     <section className={`page messages-page${active ? " is-chat-open" : ""}`}>
       <div className="messages-inbox-pane">
-      <div className="messages-title-row"><div><div className="eyebrow">MESSAGES / PRIVATE</div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0)} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
+      <div className="messages-title-row"><div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0)} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
       {!active && <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />}
       <div className="messages-inbox-switch" role="tablist" aria-label="消息列表类别">
         <button type="button" role="tab" aria-selected={inboxMode === "chats"} className={inboxMode === "chats" ? "selected" : ""} onClick={() => { setInboxMode("chats"); setQuery(""); setPeople([]); }}>会话 <small>{rooms.length}</small></button>
