@@ -7,6 +7,13 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.40.1",
+    date: "2026.11.08",
+    notes: [
+      { category: "问题修复", text: "修复多图上传重试被 Storage 行级安全策略拦截的问题；文件更新仅允许发生在上传者自己的作品图片目录中。" },
+    ],
+  },
+  {
     version: "2.40.0",
     date: "2026.11.08",
     notes: [
