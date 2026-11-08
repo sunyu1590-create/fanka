@@ -50,6 +50,9 @@ import kotlin.math.max
 class MainActivity : androidx.activity.ComponentActivity() {
     private val diagnostics get() = (application as HeikaApplication).diagnostics
     private val trustedOrigin = BuildConfig.WEB_APP_ORIGIN.toUri()
+    private val trustedOrigins = BuildConfig.WEB_APP_HOSTS.split(',')
+        .mapNotNull { host -> runCatching { Uri.Builder().scheme("https").authority(host.trim()).build() }.getOrNull() }
+        .toSet()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var root: FrameLayout? = null
     private var webView: WebView? = null
@@ -72,6 +75,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var navigationTimeout: Runnable? = null
     private var lastBackAt = 0L
     private var loadTimeout: Runnable? = null
+    private var bridgeFallbackTimeout: Runnable? = null
     private var recoveringFromUntrustedNavigation = false
     private var frameMetricsListener: Window.OnFrameMetricsAvailableListener? = null
 
@@ -192,6 +196,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         cardTransition?.clearAll()
         cardTransition = null
         loadTimeout?.let(mainHandler::removeCallbacks)
+        cancelBridgeFallbackTimeout()
         backTimeout?.let(mainHandler::removeCallbacks)
         navigationTimeout?.let(mainHandler::removeCallbacks)
         pendingFileCallback?.onReceiveValue(null)
@@ -236,10 +241,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
             )
         }
 
-        val nativeBridge = NativeBridge(view, trustedOrigin, diagnostics, object : NativeBridge.Callbacks {
+        val nativeBridge = NativeBridge(view, trustedOrigins, diagnostics, object : NativeBridge.Callbacks {
             override fun onWebReady() {
                 diagnostics.recordFirstInteractive()
                 cancelLoadTimeout()
+                cancelBridgeFallbackTimeout()
                 if (overlay?.tag == LOADING_MASK_TAG) dismissLoadingMask() else clearOverlay()
                 bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "foreground"))
                 dispatchNextNavigation()
@@ -346,8 +352,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     }
                     return
                 }
-                recoveringFromUntrustedNavigation = false
+                diagnostics.record("web_navigation_start_${uri.host?.lowercase()?.replace(Regex("[^a-z0-9.-]"), "_") ?: "unknown"}")
                 cancelLoadTimeout()
+                cancelBridgeFallbackTimeout()
                 showLoading()
                 loadTimeout = Runnable {
                     diagnostics.record("web_load_timeout")
@@ -361,10 +368,24 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 if (!isTrustedUrl(url.toUri())) return
                 webContentCommitted = true
                 diagnostics.recordFirstContentVisible()
+                val committedHost = url.toUri().host?.lowercase() ?: "unknown"
+                diagnostics.record("web_page_committed_$committedHost")
+                recoveringFromUntrustedNavigation = false
                 if (!bridgeSupported) {
                     cancelLoadTimeout()
                     dismissLoadingMask()
                     dispatchNextNavigation()
+                } else if (bridge?.isReady() != true) {
+                    cancelBridgeFallbackTimeout()
+                    bridgeFallbackTimeout = Runnable {
+                        bridgeFallbackTimeout = null
+                        if (webContentCommitted && bridge?.isReady() != true) {
+                            diagnostics.record("web_bridge_ready_timeout")
+                            cancelLoadTimeout()
+                            dismissLoadingMask()
+                            dispatchNextNavigation()
+                        }
+                    }.also { mainHandler.postDelayed(it, BRIDGE_READY_TIMEOUT_MS) }
                 }
             }
 
@@ -376,7 +397,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 super.onReceivedError(view, request, error)
                 diagnostics.recordResourceFailure()
                 if (recoveringFromUntrustedNavigation && !isTrustedUrl(request.url)) return
-                if (request.isForMainFrame) showLoadError()
+                if (request.isForMainFrame) {
+                    diagnostics.record("web_main_frame_error", error.errorCode().toLong())
+                    showLoadError()
+                }
             }
 
             override fun onReceivedHttpError(
@@ -387,7 +411,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 super.onReceivedHttpError(view, request, errorResponse)
                 if (recoveringFromUntrustedNavigation && !isTrustedUrl(request.url)) return
                 if (request.isForMainFrame && errorResponse.statusCode >= 400) {
-                    diagnostics.record("web_http_error", errorResponse.statusCode.toLong())
+                    diagnostics.record("web_main_frame_http_error", errorResponse.statusCode.toLong())
                     showLoadError()
                 }
             }
@@ -686,10 +710,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     private fun isTrustedUrl(uri: Uri): Boolean =
         uri.scheme.equals("https", ignoreCase = true) &&
-            uri.host.equals(trustedOrigin.host, ignoreCase = true) &&
-            (uri.port == -1 && trustedOrigin.port == -1 ||
-                uri.port == trustedOrigin.port || uri.port == 443 && trustedOrigin.port == -1) &&
-            uri.userInfo == null
+            uri.userInfo == null && trustedOrigins.any { origin ->
+                uri.host.equals(origin.host, ignoreCase = true) &&
+                    (uri.port == -1 && origin.port == -1 ||
+                        uri.port == origin.port || uri.port == 443 && origin.port == -1)
+            }
 
     private fun openExternal(uri: Uri) {
         val allowed = uri.scheme.equals("https", true) || uri.scheme.equals("http", true) ||
@@ -806,6 +831,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
         loadTimeout = null
     }
 
+    private fun cancelBridgeFallbackTimeout() {
+        bridgeFallbackTimeout?.let(mainHandler::removeCallbacks)
+        bridgeFallbackTimeout = null
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
@@ -819,6 +849,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val BACK_RESPONSE_TIMEOUT_MS = 280L
         const val BACK_DEBOUNCE_MS = 250L
         const val NAVIGATION_ACK_TIMEOUT_MS = 5_000L
+        const val BRIDGE_READY_TIMEOUT_MS = 2_000L
         const val RENDERER_RESTART_WINDOW_MS = 60_000L
         const val MAX_AUTOMATIC_RENDERER_RESTARTS = 1
         const val LOADING_MASK_TAG = "heika-native-loading-mask"

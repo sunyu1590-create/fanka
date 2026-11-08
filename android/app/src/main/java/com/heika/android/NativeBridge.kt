@@ -16,7 +16,7 @@ import java.util.UUID
 
 internal class NativeBridge(
     private val webView: WebView,
-    private val trustedOrigin: Uri,
+    private val trustedOrigins: Set<Uri>,
     private val diagnostics: Diagnostics,
     private val callbacks: Callbacks,
 ) {
@@ -51,9 +51,9 @@ internal class NativeBridge(
             WebViewCompat.addWebMessageListener(
                 webView,
                 JS_OBJECT_NAME,
-                setOf(originString(trustedOrigin)),
+                trustedOrigins.mapTo(LinkedHashSet(), ::originString),
             ) { _, message, sourceOrigin, isMainFrame, replyProxy ->
-                if (!isMainFrame || !sameOrigin(sourceOrigin, trustedOrigin)) {
+                if (!isMainFrame || trustedOrigins.none { sameOrigin(sourceOrigin, it) }) {
                     diagnostics.recordBridgeFailure()
                     return@addWebMessageListener
                 }
@@ -103,6 +103,8 @@ internal class NativeBridge(
             .toString()
         return safePost(proxy, message)
     }
+
+    fun isReady(): Boolean = ready && !disposed
 
     fun replyPermission(requestId: String, granted: Boolean, enabled: Boolean) {
         complete(
@@ -237,7 +239,7 @@ internal class NativeBridge(
             val post = uri.getQueryParameter("post")
             val numericPostId = post?.toLongOrNull()
             if (post != null && (!POST_ID.matches(post) || numericPostId == null || numericPostId > MAX_SAFE_JS_INTEGER)) return false
-            sameOrigin(uri, trustedOrigin) && uri.userInfo == null
+            trustedOrigins.any { sameOrigin(uri, it) } && uri.userInfo == null
         }.getOrDefault(false)
     }
 

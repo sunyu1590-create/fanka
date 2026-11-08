@@ -20,6 +20,7 @@ android {
         versionName = "2.2.2"
         buildConfigField("String", "WEB_APP_URL", "\"$normalizedWebUrl\"")
         buildConfigField("String", "WEB_APP_ORIGIN", "\"${webUri.scheme}://${webUri.rawAuthority}\"")
+        buildConfigField("String", "WEB_APP_HOSTS", "\"moonclean.shop,www.moonclean.shop,fanka-two.vercel.app\"")
         manifestPlaceholders["webHost"] = webUri.host
     }
 

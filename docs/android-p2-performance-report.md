@@ -4,7 +4,7 @@
 
 - 本次以仓库远端 `main` 的 `2cc2d607`（2026-11-08）为起点。该提交包含现有 Android WebView 容器、P0/P1 原生桥接和发现页图片优化；本阶段没有重写业务页。
 - Android 配置沿用 `applicationId com.heika.community`、versionCode `8`、versionName `2.2.2`、JDK 17、AGP 8.10.1、Kotlin 2.1.20、compile/target SDK 35。CI 使用 Gradle 8.11.1。
-- Android WebView 启动和受信 origin 已固定为 `https://moonclean.shop/`；Actions 不再接受可将其覆写到 Vercel 域名的仓库变量。
+- Android WebView 启动地址固定为 `https://moonclean.shop/`；Bridge 与 WebView 精确允许 `moonclean.shop`、`www.moonclean.shop` 和仓库既有文档记录的备用 `fanka-two.vercel.app`，Actions 不再接受任意 URL 覆写。
 - 本地容器没有 Android SDK、Gradle、adb 或模拟器，无法在本地构建或采集 Android 冷启动、PSS、帧率及 WebView 崩溃数据。GitHub Actions run #24 已完成 Android 编译和 APK 构建；设备指标仍待 Android 设备验证。
 
 ## 代码审查结果
@@ -17,6 +17,12 @@
 | 内容缓存 | IndexedDB 公共内容缓存，单条 768 KiB、总量 8 MiB、24 小时默认新鲜期、7 天最长期限、LRU 淘汰 | 写入改为单批串行，等待 IndexedDB 事务提交；修复替换过期条目时容量被重复扣减的问题 |
 | 列表与动画 | 发现流分页、缓存恢复；翻卡与详情共享动画；Native Card Transition；已有动画协调器 | 追加分页改用 Set 去重，收藏/评分派生 ID 按依赖缓存；保留视觉与业务规则 |
 | 构建 | 原工作流运行 Web 单测、类型检查、生产构建以及 Android debug/release assemble | 增加 Android lint、单元测试任务和 Kotlin/Java 编译任务；产物包含版本/Commit/run 元数据 |
+
+## 主页启动故障 P0 修复
+
+- 已复核启动代码：`bridgeSupported` 表示当前 Android WebView 是否支持 WebMessageListener，并不表示网站脚本一定成功完成 Bridge 握手。之前 `onPageCommitVisible` 在该值为 true 时不关闭遮罩；若线上最终 origin 与唯一配置的 apex 不同，或页面脚本未发出 `bridge.ready`，网页即使已经提交也会一直被遮挡，最终落入 20 秒“暂时无法连接”提示。
+- 已改为仅在精确允许的三个 HEIKA HTTPS origin 内导航和注入 Bridge。首屏提交后若 2 秒内没有 Bridge ready，会记录 `web_bridge_ready_timeout` 并显示已提交的网页；真实主文档网络错误、HTTP 错误与 SSL 错误仍显示重试页，并增加只含 host/错误码的阶段日志。
+- 本地网络出口代理对 `moonclean.shop` 返回 `403 CONNECT tunnel failed`，DNS 查询不可用，因此这里无法确认手机实际命中的最终重定向 host；允许名单基于仓库已有生产/备用域名记录。该修复同时保证未知域名仍不会获得原生 Bridge。
 
 ## 同机 Web 端基线
 
@@ -39,7 +45,7 @@
 
 ## 验证
 
-- `npm test`：23/23 通过，包含 Android 启动域名和分页去重测试。
+- `npm test`：25/25 通过，包含启动可信域与 Bridge 超时恢复回归测试。
 - `npm run typecheck`：通过。
 - `npm run build`：通过；Next.js 报告现存 ESLint warning（未使用变量、Hook 依赖和部分 `<img>`），没有构建错误。
 - `CI=1 npx playwright test --reporter=line`：7/7 通过。
