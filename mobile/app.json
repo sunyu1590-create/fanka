@@ -3,7 +3,7 @@
     "name": "黑卡 HEIKA",
     "slug": "heika-android",
     "scheme": "heika",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.heika.community",
-      "versionCode": 3,
+      "versionCode": 4,
       "allowBackup": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"

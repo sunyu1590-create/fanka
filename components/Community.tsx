@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import {
   Home,
   Compass,
@@ -429,10 +430,15 @@ export default function Community() {
     transitionBusy = useRef(false),
     pageTransition = useRef<PageTransitionHandle | null>(null),
     pageTransitionQueue = useRef<Array<() => void>>([]),
+    fallbackPageTimer = useRef<number | null>(null),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
   const discoverScrollPositions = useRef<Record<"community" | "ai", number>>({ community: 0, ai: 0 });
+  const discoverChannelBusy = useRef(false);
+  const queuedDiscoverChannel = useRef<"community" | "ai" | null>(null);
+  const discoverChannelTimer = useRef<number | null>(null);
+  const switchDiscoverChannelRef = useRef<(next: "community" | "ai") => void>(() => {});
   const sharedPostHandled = useRef<string | null>(null);
   const sharedProfileHandled = useRef<string | null>(null);
   const searchCursorRef = useRef<string | null>(null);
@@ -553,6 +559,8 @@ export default function Community() {
     [justFlippedId, setJustFlippedId] = useState<number | null>(null),
     [category, setCategory] = useState("全部"),
     [discoverChannel, setDiscoverChannel] = useState<"community" | "ai">("community"),
+    [outgoingDiscoverChannel, setOutgoingDiscoverChannel] = useState<"community" | "ai" | null>(null),
+    [discoverChannelPhase, setDiscoverChannelPhase] = useState<"primed" | "running" | null>(null),
     [searchDraft, setSearchDraft] = useState(""),
     [searchTerm, setSearchTerm] = useState(""),
     [searchKind, setSearchKind] = useState<"content" | "people">("content"),
@@ -679,6 +687,8 @@ export default function Community() {
   }, [presentNotice]);
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
+    if (fallbackPageTimer.current !== null) window.clearTimeout(fallbackPageTimer.current);
+    document.documentElement.classList.remove("heika-page-fallback");
   }, []);
   const [messagesTabVisited, setMessagesTabVisited] = useState(false);
   const [secondaryReturnTab, setSecondaryReturnTab] = useState("discover");
@@ -698,14 +708,20 @@ export default function Community() {
       startViewTransition?: (callback: () => void) => PageTransitionHandle;
     };
     if (!transitionDocument.startViewTransition) {
+      document.documentElement.classList.add("heika-page-fallback");
       updatePage();
+      if (fallbackPageTimer.current !== null) window.clearTimeout(fallbackPageTimer.current);
+      fallbackPageTimer.current = window.setTimeout(() => {
+        fallbackPageTimer.current = null;
+        document.documentElement.classList.remove("heika-page-fallback");
+      }, 260);
       return;
     }
     if (pageTransition.current) {
       pageTransitionQueue.current.push(updatePage);
       return;
     }
-    const transition = transitionDocument.startViewTransition(updatePage);
+    const transition = transitionDocument.startViewTransition(() => flushSync(updatePage));
     pageTransition.current = transition;
     void transition.finished.catch(() => {}).then(() => {
       if (pageTransition.current !== transition) return;
@@ -716,9 +732,13 @@ export default function Community() {
   };
   const setTab = (next: string) => {
     if (next === tab) return;
+    scrollPositions.current[tab] = window.scrollY;
     if (next === "messages") setMessagesTabVisited(true);
     startPageTransition(() => setTabState(next));
   };
+  useLayoutEffect(() => {
+    window.scrollTo({ top: scrollPositions.current[tab] || 0, behavior: "instant" });
+  }, [tab]);
   const openNotifications = (returnTab = "messages") => { setSecondaryReturnTab(returnTab); setTab("notifications"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
   const openMineSettings = () => { scrollPositions.current.mine = window.scrollY; setSettingsPersonalOpen(false); setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
   const openExplorationCenter = () => { scrollPositions.current.mine = window.scrollY; setTab("exploration-center"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
@@ -2909,11 +2929,42 @@ export default function Community() {
     }
   };
   const switchDiscoverChannel = (next: "community" | "ai") => {
+    if (discoverChannelBusy.current) {
+      queuedDiscoverChannel.current = next;
+      return;
+    }
     if (next === discoverChannel) return;
     discoverScrollPositions.current[discoverChannel] = window.scrollY;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setOutgoingDiscoverChannel(null);
+      setDiscoverChannelPhase(null);
+      setDiscoverChannel(next);
+      requestAnimationFrame(() => window.scrollTo({ top: discoverScrollPositions.current[next], behavior: "instant" }));
+      return;
+    }
+    discoverChannelBusy.current = true;
+    queuedDiscoverChannel.current = null;
+    setOutgoingDiscoverChannel(discoverChannel);
+    setDiscoverChannelPhase("primed");
     setDiscoverChannel(next);
-    requestAnimationFrame(() => window.scrollTo({ top: discoverScrollPositions.current[next], behavior: "instant" }));
+    requestAnimationFrame(() => {
+      setDiscoverChannelPhase("running");
+      window.scrollTo({ top: discoverScrollPositions.current[next], behavior: "instant" });
+    });
+    discoverChannelTimer.current = window.setTimeout(() => {
+      discoverChannelTimer.current = null;
+      setOutgoingDiscoverChannel(null);
+      setDiscoverChannelPhase(null);
+      discoverChannelBusy.current = false;
+      const queued = queuedDiscoverChannel.current;
+      queuedDiscoverChannel.current = null;
+      if (queued && queued !== next) requestAnimationFrame(() => switchDiscoverChannelRef.current(queued));
+    }, 260);
   };
+  switchDiscoverChannelRef.current = switchDiscoverChannel;
+  useEffect(() => () => {
+    if (discoverChannelTimer.current !== null) window.clearTimeout(discoverChannelTimer.current);
+  }, []);
   const openAiPost = (item: Post, source: Element | null) => {
     setPublicFeed((current) => current.some((post) => post.id === item.id) ? current : [...current, item]);
     setFeedPostIds((current) => current.includes(item.id) ? current : [...current, item.id]);
@@ -4042,7 +4093,8 @@ export default function Community() {
             {searchDraft && <button type="button" aria-label="清除搜索内容" onClick={() => setSearchDraft("")}><X size={15}/></button>}
             <button type="submit" className="discover-inline-search-submit" disabled={!searchDraft.trim()}>搜索</button>
           </form>}
-          <div className="discover-community-channel" hidden={discoverChannel !== "community"}>
+          <div className={`discover-channel-content${discoverChannelPhase ? ` is-${discoverChannelPhase}` : ""}`}>
+          <div className={`discover-community-channel discover-channel-panel${discoverChannel === "community" ? " is-active" : ""}${outgoingDiscoverChannel === "community" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "community" && outgoingDiscoverChannel !== "community"}>
           <div className="discover-category-nav" role="tablist" aria-label="发现内容分类">
             {["全部", ...(communityCategories.length ? communityCategories : tags)].map((t) => (
               <button
@@ -4090,7 +4142,10 @@ export default function Community() {
           </div>
           {feed(list)}
           </div>
-          <AISpace hidden={discoverChannel !== "ai"} accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
+          <div className={`discover-ai-channel discover-channel-panel${discoverChannel === "ai" ? " is-active" : ""}${outgoingDiscoverChannel === "ai" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "ai" && outgoingDiscoverChannel !== "ai"}>
+            <AISpace accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
+          </div>
+          </div>
         </section>
       )}
       {tab === "co-explore" && <CoExplore accountId={accountId} posts={publicFeed.length ? publicFeed : all} onLogin={() => setTab("messages")} onNotice={toast}/>}
@@ -4468,7 +4523,7 @@ export default function Community() {
       </div>
       {viewerId !== null && (
         <div
-          className="flip-overlay"
+          className={`flip-overlay${viewerPhase ? ` is-${viewerPhase}` : ""}`}
           onMouseDown={(e) => {
             if (e.target === e.currentTarget && flippingId === null)
               closeViewer();

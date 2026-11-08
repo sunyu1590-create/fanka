@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Linking, Switch, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Action, Notice, PageFrame } from "../components/MobileUi";
 import { api, useMobileSession } from "../lib/mobile-api";
 import { useTheme, type ThemeMode } from "../lib/theme";
 import { getNativeNotificationPermission, requestNativeNotificationPermission } from "../lib/native-notifications";
+import { MotionPressable as Pressable } from "../components/MotionPressable";
 
 type NotificationSettings = { commentsEnabled: boolean };
 const modes: Array<{ key: ThemeMode; label: string }> = [{ key: "system", label: "跟随系统" }, { key: "light", label: "浅色" }, { key: "dark", label: "深色" }];
@@ -21,8 +22,10 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     let active = true;
-    void getNativeNotificationPermission().then((permission) => { if (active) setSystemNotifications(permission); }).catch(() => { if (active) setSystemNotifications({ granted: false, canAskAgain: false }); });
-    return () => { active = false; };
+    const refresh = () => { void getNativeNotificationPermission().then((permission) => { if (active) setSystemNotifications(permission); }).catch(() => { if (active) setSystemNotifications({ granted: false, canAskAgain: false }); }); };
+    refresh();
+    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") refresh(); });
+    return () => { active = false; subscription.remove(); };
   }, []);
 
   useEffect(() => {
@@ -65,14 +68,17 @@ export default function SettingsScreen() {
     <SettingRow title="个人资料" subtitle="昵称、头像和公开资料" onPress={() => router.push("/profile-edit")} colors={colors} />
     <SettingRow title="账号安全" subtitle="登录、修改密码和备用恢复码" onPress={() => router.push("/account")} colors={colors} />
     <SettingRow title="通知中心" subtitle="点赞、评论、回复和系统通知" onPress={() => router.push("/notifications")} colors={colors} />
+    <SettingRow title="兴趣分类" subtitle="管理发现内容的兴趣方向" onPress={() => router.push("/interests")} colors={colors} />
     <Text style={{ color: colors.subtle, fontSize: 10, fontWeight: "700", letterSpacing: 1.4, marginTop: 15 }}>创作与管理</Text>
     <SettingRow title="创作者中心" subtitle="作品表现和每周成长任务" onPress={() => router.push("/creator")} colors={colors} />
     <SettingRow title="AI 工作台" subtitle="标题、提纲、润色和话题建议" onPress={() => router.push("/ai-workbench")} colors={colors} />
     {session ? <SettingRow title="管理员控制台" subtitle="仅管理员账号可访问" onPress={() => router.push("/admin")} colors={colors} /> : null}
     <Text style={{ color: colors.subtle, fontSize: 10, fontWeight: "700", letterSpacing: 1.4, marginTop: 15 }}>通知偏好</Text>
     <View style={{ minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderColor: colors.line }}><View style={{ flex: 1, paddingVertical: 8 }}><Text style={{ color: colors.ink, fontSize: 13, fontWeight: "600" }}>安卓系统通知</Text><Text style={{ color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 3 }}>{systemNotifications?.granted ? "应用打开时的新私信会显示系统提示" : "开启后可接收应用内生成的新私信提醒"}</Text></View>{systemNotifications ? <Pressable accessibilityRole="button" disabled={busy} onPress={() => systemNotifications.granted && !systemNotifications.canAskAgain ? void Linking.openSettings() : void enableSystemNotifications()} style={{ minWidth: 82, minHeight: 42, alignItems: "flex-end", justifyContent: "center" }}><Text style={{ color: systemNotifications.granted ? colors.action : colors.subtle, fontSize: 12, fontWeight: "700" }}>{systemNotifications.granted ? "已开启" : systemNotifications.canAskAgain ? "开启" : "系统设置"}</Text></Pressable> : <ActivityIndicator color={colors.action} />}</View>
-    <View style={{ minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderColor: colors.line }}><View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontSize: 13, fontWeight: "600" }}>评论与回复通知</Text><Text style={{ color: colors.muted, fontSize: 10, marginTop: 3 }}>服务端通知中心会记录相关动态</Text></View>{loading ? <ActivityIndicator color={colors.action} /> : <Pressable accessibilityRole="switch" accessibilityState={{ checked: notifications.commentsEnabled }} onPress={() => void saveComments(!notifications.commentsEnabled)} style={{ minWidth: 55, minHeight: 38, alignItems: "flex-end", justifyContent: "center" }}><Text style={{ color: notifications.commentsEnabled ? colors.action : colors.subtle, fontSize: 12, fontWeight: "700" }}>{notifications.commentsEnabled ? "开启" : "关闭"}</Text></Pressable>}</View>
+    <View style={{ minHeight: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderColor: colors.line }}><View style={{ flex: 1 }}><Text style={{ color: colors.ink, fontSize: 13, fontWeight: "600" }}>评论与回复通知</Text><Text style={{ color: colors.muted, fontSize: 10, marginTop: 3 }}>服务端通知中心会记录相关动态</Text></View>{loading ? <ActivityIndicator color={colors.action} /> : <Switch accessibilityLabel="评论与回复通知" value={notifications.commentsEnabled} onValueChange={(value) => void saveComments(value)} disabled={busy} trackColor={{ false: colors.line, true: colors.action }} thumbColor={colors.surface} />}</View>
     <Notice>{error}</Notice><Notice tone="success">{notice}</Notice>
+    <Text style={{ color: colors.subtle, fontSize: 10, fontWeight: "700", letterSpacing: 1.4, marginTop: 15 }}>黑卡</Text>
+    <SettingRow title="关于黑卡" subtitle="产品介绍、通知权限与缓存管理" onPress={() => router.push("/about")} colors={colors} />
     {session ? <Action title="退出登录" subtle onPress={() => router.push("/account")} /> : null}
     <Text style={{ color: colors.subtle, fontSize: 10, lineHeight: 16 }}>新私信在应用打开时可显示安卓系统提示；应用关闭后的实时推送需要服务器端配置 Firebase 推送凭据。</Text>
   </PageFrame>;

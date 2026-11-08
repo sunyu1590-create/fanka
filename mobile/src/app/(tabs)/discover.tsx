@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeInDown, LinearTransition } from "react-native-reanimated";
 import { useTheme } from "../../lib/theme";
@@ -8,6 +8,7 @@ import { readCache, writeCache } from "../../lib/local-store";
 import { mergePosts, normalizePosts, pairPosts, type NativePost } from "../../lib/native-posts";
 import { NativeImage } from "../../components/NativeImage";
 import { MotionPressable } from "../../components/MotionPressable";
+import { CategoryPickerSheet, type CategoryOption } from "../../components/CategoryPickerSheet";
 
 type FeedResponse = { items: unknown[]; total?: number | null; has_more?: boolean; next_cursor?: string | null };
 type Topic = { id: number; name: string; is_featured?: boolean };
@@ -17,6 +18,9 @@ export default function DiscoverScreen() {
   const { session, loading: authLoading } = useMobileSession();
   const [posts, setPosts] = useState<NativePost[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(true);
+  const [topicsError, setTopicsError] = useState("");
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [likedIds, setLikedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,13 +110,15 @@ export default function DiscoverScreen() {
     return () => { active = false; generation.current += 1; };
   }, [cacheKey, fetchFirstPage]);
 
-  useEffect(() => {
-    let active = true;
-    void api<{ items: Topic[] }>("/api/v1/categories?channel=community&kind=tag", session)
-      .then((data) => { if (active) setTopics((data.items || []).filter((topic) => topic.is_featured).slice(0, 10)); })
-      .catch(() => { if (active) setTopics([]); });
-    return () => { active = false; };
+  const loadTopics = useCallback(async () => {
+    setTopicsLoading(true); setTopicsError("");
+    try {
+      const data = await api<{ items: Topic[] }>("/api/v1/categories?channel=community&kind=tag", session);
+      setTopics((data.items || []).filter((topic) => topic.is_featured).slice(0, 10));
+    } catch (cause) { setTopics([]); setTopicsError(cause instanceof Error ? cause.message : "话题暂时无法加载"); }
+    finally { setTopicsLoading(false); }
   }, [session]);
+  useEffect(() => { void loadTopics(); }, [loadTopics]);
 
   useEffect(() => {
     if (!session) { setLikedIds([]); return; }
@@ -147,6 +153,7 @@ export default function DiscoverScreen() {
   };
 
   const openPost = (post: NativePost) => router.push({ pathname: "/post/[id]", params: { id: post.cloudId } } as never);
+  const topicOptions: CategoryOption[] = [{ id: "__all__", name: "全部" }, ...topics.map((topic) => ({ id: String(topic.id), name: topic.name }))];
   const renderCard = (post: NativePost, index: number) => <View key={post.cloudId} style={{ flex: 1, minWidth: 0, marginBottom: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderColor: colors.line }}>
     <MotionPressable onPress={() => openPost(post)} style={{ overflow: "hidden" }}>
       <NativeImage uri={post.image} label={post.title} resizeMode="cover" style={{ height: index % 3 === 1 ? 154 : 194, width: "100%", backgroundColor: colors.raised }} />
@@ -171,10 +178,10 @@ export default function DiscoverScreen() {
         <View><Text style={{ color: colors.subtle, fontSize: 9, fontWeight: "800", letterSpacing: 1.7 }}>DISCOVER / HEIKA</Text><Text style={{ color: colors.ink, fontSize: 25, fontWeight: "700", marginTop: 3 }}>发现</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="搜索内容和用户" onPress={() => router.push("/search")} style={{ width: 42, height: 42, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center" }}><Text style={{ color: colors.ink, fontSize: 20 }}>⌕</Text></Pressable>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 12 }}>
-        <TopicChip title="全部" selected={!selectedTopic} onPress={() => setSelectedTopic(null)} />
-        {topics.map((topic) => <TopicChip key={topic.id} title={topic.name} selected={selectedTopic?.id === topic.id} onPress={() => setSelectedTopic(topic)} />)}
-      </ScrollView>
+      <Pressable accessibilityRole="button" accessibilityLabel={`筛选分类，当前${selectedTopic?.name || "全部"}`} onPress={() => setCategoryPickerOpen(true)} style={{ minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingHorizontal: 11, backgroundColor: colors.raised }}>
+        <View><Text style={{ color: colors.subtle, fontSize: 9 }}>分类筛选</Text><Text style={{ color: colors.ink, fontSize: 12, fontWeight: "600", marginTop: 2 }}>{selectedTopic?.name || "全部内容"}</Text></View>
+        <Text style={{ color: colors.action, fontSize: 12 }}>选择话题　›</Text>
+      </Pressable>
     </View>
     <FlatList
       data={rows}
@@ -192,12 +199,8 @@ export default function DiscoverScreen() {
       ListEmptyComponent={loading || authLoading ? <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}><ActivityIndicator color={colors.action} /><Text style={{ color: colors.muted, fontSize: 13 }}>正在整理今日灵感…</Text></View> : <EmptyState colors={colors} error={error} retry={() => void fetchFirstPage(true)} />}
       ListFooterComponent={<View style={{ padding: 16, alignItems: "center" }}>{loadingMore ? <ActivityIndicator color={colors.action} /> : error ? <Pressable onPress={() => void fetchMore()}><Text style={{ color: colors.action, fontSize: 12 }}>加载失败，点击重试</Text></Pressable> : hasMore && posts.length ? <Text style={{ color: colors.subtle, fontSize: 10 }}>继续向下，发现更多内容</Text> : posts.length ? <Text style={{ color: colors.subtle, fontSize: 10 }}>已经看到这里了</Text> : null}</View>}
     />
+    <CategoryPickerSheet visible={categoryPickerOpen} title="筛选发现内容" description="选择一个分类话题" options={topicOptions} selectedIds={[selectedTopic ? String(selectedTopic.id) : "__all__"]} mode="single" loading={topicsLoading} error={topicsError} onRetry={() => void loadTopics()} onDismiss={() => setCategoryPickerOpen(false)} onConfirm={(ids) => { const id = ids[0]; setSelectedTopic(id && id !== "__all__" ? topics.find((topic) => String(topic.id) === id) || null : null); }} />
   </View>;
-}
-
-function TopicChip({ title, selected, onPress }: { title: string; selected: boolean; onPress: () => void }) {
-  const { colors } = useTheme();
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={{ minHeight: 34, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: selected ? colors.action : colors.line, backgroundColor: selected ? colors.actionSoft : colors.surface }}><Text style={{ color: selected ? colors.action : colors.muted, fontSize: 11, fontWeight: selected ? "700" : "500" }}>{title}</Text></Pressable>;
 }
 
 function EmptyState({ colors, error, retry }: { colors: ReturnType<typeof useTheme>["colors"]; error: string; retry: () => void }) {

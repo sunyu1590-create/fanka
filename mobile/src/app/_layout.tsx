@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppState } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getDb, MobileSessionProvider, useMobileSession } from "../lib/mobile-api";
 import { ThemeProvider, useTheme } from "../lib/theme";
@@ -12,7 +13,8 @@ import { prepareNativeNotifications, showIncomingMessageNotification } from "../
 
 function RootStack() {
   const { colors, isDark } = useTheme();
-  return <><StatusBar style={isDark ? "light" : "dark"} /><NativeNotificationBridge /><Stack screenOptions={{ headerShown: false, animation: "slide_from_right", contentStyle: { backgroundColor: colors.bg }, gestureEnabled: true, fullScreenGestureEnabled: true }} /></>;
+  const reducedMotion = useReducedMotion();
+  return <><StatusBar style={isDark ? "light" : "dark"} /><NativeNotificationBridge /><Stack screenOptions={{ headerShown: false, animation: reducedMotion ? "none" : "fade", animationDuration: 260, contentStyle: { backgroundColor: colors.bg }, gestureEnabled: true, fullScreenGestureEnabled: true }} /></>;
 }
 
 function NativeNotificationBridge() {

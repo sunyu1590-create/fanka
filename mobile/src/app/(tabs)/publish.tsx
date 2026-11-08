@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, BackHandler, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NativeMarkdown } from "../../components/NativeMarkdown";
 import { ComposerSheet } from "../../components/ComposerSheet";
 import { Action, Notice } from "../../components/MobileUi";
+import { MotionPressable as Pressable } from "../../components/MotionPressable";
 
 type Category = { id: number; name: string; is_featured?: boolean };
 type Topic = { id: number; name: string; postCount?: number };
@@ -307,7 +308,7 @@ export default function PublishScreen() {
         <Text style={{ color: colors.subtle, fontSize: 10, textAlign: "right" }}>{title.length}/80</Text>
       </Animated.View>
       <View style={{ marginTop: 8 }}><Text style={label(colors)}>正文</Text><TextInput ref={bodyInput} onFocus={()=>setBodyFocused(true)} onSelectionChange={event=>{bodySelection.current=event.nativeEvent.selection;}} value={body} onChangeText={setBody} maxLength={5000} multiline textAlignVertical="top" placeholder="写下你的观察、经验或想法" placeholderTextColor={colors.subtle} scrollEnabled={false} onContentSizeChange={event=>setBodyHeight(Math.max(190,event.nativeEvent.contentSize.height))} style={[input(colors), {height:bodyHeight,paddingHorizontal:0,paddingTop:13,lineHeight:26,fontSize:16}]} /><Text style={{ color: colors.subtle, fontSize: 10, textAlign: "right", marginTop: 4 }}>{body.length}/5000</Text></View>
-      {bodyFocused&&<View accessibilityRole="toolbar" style={{flexDirection:"row",gap:6,marginTop:8}}>{[["粗体","**","**"],["标题","\n## ",""],["引用","\n> ",""],["列表","\n- ",""],["链接","[","](https://)"]].map(([text,before,after])=><Pressable key={text} onPress={()=>formatBody(before,after)} style={{minHeight:36,paddingHorizontal:10,justifyContent:"center",backgroundColor:colors.surface,borderRadius:6}}><Text style={{color:colors.ink,fontSize:12}}>{text}</Text></Pressable>)}</View>}
+      {bodyFocused&&<View accessibilityRole="toolbar" style={{flexDirection:"row",gap:6,marginTop:8}}>{[["粗体","**","**"],["标题","\n## ",""],["引用","\n> ",""],["列表","\n- ",""],["链接","[","](https://)"]].map(([text,before,after])=><Pressable key={text} onPress={()=>formatBody(before,after)} style={{minHeight:36,paddingHorizontal:10,justifyContent:"center",backgroundColor:colors.surface,borderRadius:8}}><Text style={{color:colors.ink,fontSize:12}}>{text}</Text></Pressable>)}</View>}
       <View style={{ marginTop: 17, paddingTop: 15, borderTopWidth: 1, borderColor: colors.line }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={label(colors)}>图片</Text><Text style={{ color: colors.muted, fontSize: 10 }}>{images.length}/9　单张不超过 4 MB</Text></View>
         <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>点击图片预览与管理，首张图片作为封面。</Text>
@@ -318,13 +319,13 @@ export default function PublishScreen() {
 
           </Animated.View>)}
         </View> : null}
-        <Pressable accessibilityRole="button" onPress={() => void chooseImages()} disabled={busy} style={{ minHeight: 44, marginTop: 10, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, opacity: busy ? 0.6 : 1 }}><Text style={{ color: colors.action, fontSize: 12, fontWeight: "700" }}>{busy ? "正在准备…" : "＋　添加图片"}</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => void chooseImages()} disabled={busy} style={{ minHeight: 44, marginTop: 10, borderWidth: 1, borderRadius: 10, borderColor: colors.line, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, opacity: busy ? 0.6 : 1 }}><Text style={{ color: colors.action, fontSize: 12, fontWeight: "700" }}>{busy ? "正在准备…" : "＋　添加图片"}</Text></Pressable>
       </View>
       <Pressable onPress={()=>setPanel("topics")} style={{minHeight:52,flexDirection:"row",alignItems:"center",justifyContent:"space-between",borderTopWidth:1,borderColor:colors.line,marginTop:20}}><Text style={{color:colors.ink,fontSize:13}}># 话题</Text><Text numberOfLines={1} style={{color:colors.muted,fontSize:12,maxWidth:"70%"}}>{selectedTopics.length?selectedTopics.map(item=>`#${item}`).join(" "):"添加话题"}　›</Text></Pressable>
       <Pressable onPress={()=>setPanel("settings")} style={{minHeight:52,flexDirection:"row",alignItems:"center",justifyContent:"space-between",borderTopWidth:1,borderColor:colors.line}}><Text style={{color:colors.ink,fontSize:13}}>更多发布设置</Text><Text style={{color:colors.muted,fontSize:12}}>{category}　›</Text></Pressable>
       <Notice>{error}</Notice><Notice tone="success">{notice}</Notice>
     </ScrollView>
-    <View style={{flexDirection:"row",alignItems:"center",gap:16,paddingHorizontal:20,paddingTop:10,paddingBottom:Math.max(insets.bottom,10),borderTopWidth:1,borderColor:colors.line}}><Pressable style={{flex:1}} onPress={()=>void flushLocal.current().catch(()=>{})}><Text style={{color:colors.muted,fontSize:11}}>{localStatus}</Text><Text style={{color:colors.subtle,fontSize:10,marginTop:4}}>提交后进入人工审核</Text></Pressable><Pressable onPress={()=>void publish()} disabled={busy||loading} style={{minHeight:46,paddingHorizontal:20,justifyContent:"center",borderRadius:8,backgroundColor:colors.gold,opacity:(busy||loading)?0.5:1}}><Text style={{color:"#171714",fontSize:13,fontWeight:"700"}}>{busy?"正在提交…":"发布内容"}</Text></Pressable></View>
+    <View style={{flexDirection:"row",alignItems:"center",gap:16,paddingHorizontal:20,paddingTop:10,paddingBottom:Math.max(insets.bottom,10),borderTopWidth:1,borderColor:colors.line}}><Pressable style={{flex:1}} onPress={()=>void flushLocal.current().catch(()=>{})}><Text style={{color:colors.muted,fontSize:11}}>{localStatus}</Text><Text style={{color:colors.subtle,fontSize:10,marginTop:4}}>提交后进入人工审核</Text></Pressable><Pressable onPress={()=>void publish()} disabled={busy||loading} style={{minHeight:46,paddingHorizontal:20,justifyContent:"center",borderRadius:10,backgroundColor:colors.gold,opacity:(busy||loading)?0.5:1}}><Text style={{color:"#171714",fontSize:13,fontWeight:"700"}}>{busy?"正在提交…":"发布内容"}</Text></Pressable></View>
     {panel && <ComposerSheet title={panel==="topics"?"选择话题":panel==="settings"?"更多发布设置":"内容预览"} onClose={()=>setPanel(null)}>{panel==="topics"?<>      <View style={{ marginTop: 8, paddingTop: 15, borderTopWidth: 1, borderColor: colors.line }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}><Text style={label(colors)}>话题</Text><Text style={{ color: colors.muted, fontSize: 10 }}>{selectedTopics.length}/5</Text></View>
         <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>选择现有话题，帮助感兴趣的人找到内容。</Text>
@@ -344,5 +345,5 @@ export default function PublishScreen() {
 }
 
 const label = (colors: ReturnType<typeof useTheme>["colors"]) => ({ color: colors.ink, fontSize: 12, fontWeight: "700" as const });
-const input = (colors: ReturnType<typeof useTheme>["colors"]) => ({ minHeight: 46, paddingHorizontal: 12, backgroundColor: "transparent", borderWidth: 0, color: colors.ink, fontSize: 15 });
-const chip = (colors: ReturnType<typeof useTheme>["colors"]) => ({ minHeight: 34, paddingHorizontal: 12, justifyContent: "center" as const, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface });
+const input = (colors: ReturnType<typeof useTheme>["colors"]) => ({ minHeight: 46, paddingHorizontal: 12, backgroundColor: "transparent", borderWidth: 0, borderRadius: 10, color: colors.ink, fontSize: 15 });
+const chip = (colors: ReturnType<typeof useTheme>["colors"]) => ({ minHeight: 34, paddingHorizontal: 12, justifyContent: "center" as const, borderWidth: 1, borderRadius: 8, borderColor: colors.line, backgroundColor: colors.surface });

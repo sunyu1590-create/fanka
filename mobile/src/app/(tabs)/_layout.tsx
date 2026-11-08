@@ -3,7 +3,7 @@ import { Tabs } from "expo-router";
 import type { BottomTabBarProps } from "expo-router/build/layouts/Tabs";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import Animated, { FadeIn, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from "react-native-reanimated";
 import { useTheme } from "../../lib/theme";
 
 const items: Record<string, { label: string; icon: string }> = {
@@ -33,9 +33,10 @@ function NativeTabBar({ state, descriptors, navigateToTab }: BottomTabBarProps) 
 
 function TabButton({ label, icon, focused, central, color, background, onPress }: { label: string; icon: string; focused: boolean; central: boolean; color: string; background: string; onPress: () => void }) {
   const scale = useSharedValue(1);
+  const reducedMotion = useReducedMotion();
   const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return <Animated.View style={[{ flex: 1, alignItems: "center" }, style]}>
-    <Pressable accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: focused }} onPress={onPress} onPressIn={() => { scale.value = withSpring(0.94, { damping: 18, stiffness: 300 }); }} onPressOut={() => { scale.value = withSpring(1, { damping: 18, stiffness: 300 }); }} style={{ minWidth: 52, minHeight: 52, alignItems: "center", justifyContent: "center", gap: 2 }}>
+    <Pressable accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: focused }} onPress={onPress} onPressIn={() => { if (!reducedMotion) scale.value = withTiming(0.985, { duration: 120 }); }} onPressOut={() => { if (!reducedMotion) scale.value = withTiming(1, { duration: 120 }); }} style={{ minWidth: 52, minHeight: 52, alignItems: "center", justifyContent: "center", gap: 2 }}>
       <View style={central ? { width: 42, height: 42, borderRadius: 21, backgroundColor: background, alignItems: "center", justifyContent: "center" } : undefined}>
         <Text style={{ color, fontSize: central ? 28 : 23, lineHeight: central ? 36 : 27, fontWeight: central || focused ? "700" : "400" }}>{icon}</Text>
       </View>
@@ -46,7 +47,8 @@ function TabButton({ label, icon, focused, central, color, background, onPress }
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  return <Tabs screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg }, freezeOnBlur: true }} tabBar={(props) => <NativeTabBar {...props} />}>
+  const reducedMotion = useReducedMotion();
+  return <Tabs screenOptions={{ headerShown: false, animation: reducedMotion ? "none" : "fade", transitionSpec: { animation: "timing", config: { duration: 260 } }, sceneStyle: { backgroundColor: colors.bg }, freezeOnBlur: true }} tabBar={(props) => <NativeTabBar {...props} />}>
     <Tabs.Screen name="home" options={{ tabBarLabel: "首页" }} />
     <Tabs.Screen name="discover" options={{ tabBarLabel: "发现" }} />
     <Tabs.Screen name="publish" options={{ tabBarLabel: "发布" }} />

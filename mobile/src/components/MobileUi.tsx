@@ -4,6 +4,7 @@ import Animated, { FadeInDown, FadeOutUp, LinearTransition } from "react-native-
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useSegments } from "expo-router";
 import { useTheme } from "../lib/theme";
+import { MotionPressable } from "./MotionPressable";
 
 export const palette = {
   bg: "#F6F5F1", paper: "#FFFFFF", ink: "#202421", muted: "#7E8583",
@@ -49,10 +50,10 @@ export function Notice({ children, tone = "error" }: { children?: ReactNode; ton
 }
 
 export function Action({ title, onPress, disabled = false, subtle = false }: { title: string; onPress: () => void; disabled?: boolean; subtle?: boolean }) {
-  const { colors } = useTheme();
-  return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[ui.action, { backgroundColor: subtle ? colors.surface : colors.action, borderColor: colors.line, borderWidth: subtle ? 1 : 0 }, disabled && ui.disabled]}>
-    <Text style={[ui.actionText, subtle && { color: colors.ink }]}>{title}</Text>
-  </Pressable>;
+  const { colors, isDark } = useTheme();
+  return <MotionPressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[ui.action, { backgroundColor: subtle ? colors.surface : colors.action, borderColor: colors.line, borderWidth: subtle ? 1 : 0 }, disabled && ui.disabled]}>
+    <Text style={[ui.actionText, subtle ? { color: colors.ink } : isDark ? { color: colors.bg } : null]}>{title}</Text>
+  </MotionPressable>;
 }
 
 export function Row({ title, subtitle, accessory, onPress, style }: { title: string; subtitle?: string; accessory?: string; onPress?: () => void; style?: ViewStyle }) {
@@ -90,7 +91,7 @@ export const ui = StyleSheet.create({
   noticeSuccess: { backgroundColor: "#E8EFEA", borderLeftColor: palette.green },
   noticeQuiet: { backgroundColor: palette.paper, borderLeftColor: palette.line },
   noticeText: { color: palette.ink, fontSize: 13, lineHeight: 19 },
-  action: { minHeight: 46, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", backgroundColor: palette.green, borderRadius: 14 },
+  action: { minHeight: 46, paddingHorizontal: 16, alignItems: "center", justifyContent: "center", backgroundColor: palette.green, borderRadius: 10 },
   actionText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
   actionSubtle: { backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line },
   actionSubtleText: { color: palette.ink },

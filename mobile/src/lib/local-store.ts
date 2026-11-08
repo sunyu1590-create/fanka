@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeModules, Platform } from "react-native";
 
 const CACHE_PREFIX = "heika:native-cache:v1:";
+const CLEARABLE_PUBLIC_CACHE_PREFIX = CACHE_PREFIX + "feed:";
 const DRAFT_PREFIX = "heika:draft:v1:";
 const DRAFT_INDEX_PREFIX = "heika:draft-index:v1:";
 const OUTBOX_PREFIX = "heika:outbox:v1:";
@@ -9,6 +10,33 @@ type SecureStorage = { getItem(key: string): Promise<string | null>; setItem(key
 const secureStorage = () => Platform.OS === "android" ? NativeModules.HeikaSecureStorage as SecureStorage | undefined : undefined;
 
 type CachedValue<T> = { savedAt: number; value: T };
+const utf8Bytes = (value: string) => {
+  let bytes = 0;
+  for (const char of value) {
+    const code = char.codePointAt(0)!;
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+};
+
+export type TransientCacheStats = { entries: number; bytes: number };
+export async function getTransientCacheStats(): Promise<TransientCacheStats> {
+  const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(CLEARABLE_PUBLIC_CACHE_PREFIX));
+  const values = keys.length ? await AsyncStorage.multiGet(keys) : [];
+  return { entries: values.filter(([, value]) => value !== null).length, bytes: values.reduce((sum, [, value]) => sum + (value ? utf8Bytes(value) : 0), 0) };
+}
+
+/** Removes only the public discovery feed cache; all account-scoped and local user data is preserved. */
+export async function clearTransientCache(): Promise<TransientCacheStats> {
+  const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(CLEARABLE_PUBLIC_CACHE_PREFIX));
+  const values = keys.length ? await AsyncStorage.multiGet(keys) : [];
+  const removed = { entries: values.filter(([, value]) => value !== null).length, bytes: values.reduce((sum, [, value]) => sum + (value ? utf8Bytes(value) : 0), 0) };
+  if (keys.length) await AsyncStorage.multiRemove(keys);
+  const remaining = await getTransientCacheStats();
+  if (remaining.entries > 0) throw new Error("部分临时缓存未能清除，请重试");
+  return removed;
+}
+
 export async function readCache<T>(key: string, maxAgeMs: number): Promise<T | null> {
   try {
     const raw = await AsyncStorage.getItem(`${CACHE_PREFIX}${key}`);

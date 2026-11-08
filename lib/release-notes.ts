@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.40.7",
+    date: "2026.11.08",
+    notes: [
+      { category: "体验优化", text: "主页面与发现频道改用轻量叠化，发现频道指示器平滑滑动；翻卡时的背景模糊与恢复改为连续渐变。" },
+      { category: "体验优化", text: "统一发布与设置页的圆角和按钮反馈，适配深浅主题及减少动态效果偏好。" },
+    ],
+  },
+  {
     version: "2.40.6",
     date: "2026.11.08",
     notes: [
