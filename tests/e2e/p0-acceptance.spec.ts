@@ -109,7 +109,7 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
       content: document.documentElement.scrollWidth,
     }));
     expect(dimensions.content, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport + 1);
-    const navigation = await page.locator(".bottom-nav").boundingBox();
+    const navigation = await page.locator(".bottom-nav-shell").boundingBox();
     expect(navigation, `missing navigation at ${width}px`).not.toBeNull();
     if (width >= 1200) {
       expect(navigation!.x, `desktop rail should start at the left edge at ${width}px`).toBe(0);
@@ -124,14 +124,25 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
         const box = button.getBoundingClientRect();
         return box.left + box.width / 2;
       }));
-      for (const [index, expected] of [0.1, 0.3, 0.5, 0.7, 0.9].entries()) {
-        expect(Math.abs(centers[index] - (navigation!.x + navigation!.width * expected)), `navigation button ${index + 1} should stay in its tablet slot at ${width}px`).toBeLessThanOrEqual(12);
+      expect(centers).toHaveLength(4);
+      const midpoint = navigation!.x + navigation!.width / 2;
+      expect(Math.abs((centers[0] + centers[3]) / 2 - midpoint), `outer navigation items should balance at ${width}px`).toBeLessThanOrEqual(2);
+      expect(Math.abs((centers[1] + centers[2]) / 2 - midpoint), `inner navigation items should balance at ${width}px`).toBeLessThanOrEqual(2);
+      const compose = await page.locator(".bottom-nav-shell>.compose").boundingBox();
+      expect(compose).not.toBeNull();
+      expect(Math.abs(compose!.x + compose!.width / 2 - (navigation!.x + navigation!.width / 2)), `compose button should remain centered at ${width}px`).toBeLessThanOrEqual(2);
+      for (const button of await page.locator(".bottom-nav button").all()) {
+        const bounds = await button.boundingBox();
+        const separated = bounds!.x + bounds!.width <= compose!.x - 2 || compose!.x + compose!.width <= bounds!.x - 2;
+        expect(separated, `compose button should not cover a navigation target at ${width}px`).toBeTruthy();
       }
     } else {
       expect(navigation!.y, `tablet and phone navigation should stay at the bottom at ${width}px`).toBeGreaterThan(700);
       const expectedWidth = Math.min(520, width - 24);
       expect(navigation!.width, `floating navigation width at ${width}px`).toBeCloseTo(expectedWidth, 0);
       expect(navigation!.x, `floating navigation should be centered at ${width}px`).toBeCloseTo((width - expectedWidth) / 2, 0);
+      expect(await page.locator(".bottom-nav button").count()).toBe(4);
+      await expect(page.locator(".bottom-nav-shell>.compose svg")).toBeVisible();
     }
   }
 
