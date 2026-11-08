@@ -1816,31 +1816,9 @@ export default function Community() {
       return;
     }
     if (hasNativeBridge()) {
-      if (notificationPermission === "denied" || (notificationPermission === "granted" && systemNotificationsEnabled === false)) {
-        const opened = await openNativeNotificationSettings();
-        if (!opened) toast("无法打开 Android 通知设置");
-        else toast("请在系统设置中允许黑卡通知，然后返回此页");
-        return;
-      }
-      try {
-        const result = await requestNativeNotificationPermission();
-        if (!result?.granted) {
-          setNotificationPermission("denied");
-          setSystemNotificationsEnabled(false);
-          return toast("请在 Android 系统设置中允许黑卡通知");
-        }
-        setNotificationPermission("granted");
-        setSystemNotificationsEnabled(result.enabled);
-        if (!result.enabled) {
-          return toast("Android 系统通知已关闭，请在系统设置中开启");
-        }
-        update((s) => ({
-          ...s,
-          notifications: { ...s.notifications, [key]: true },
-        }));
-      } catch {
-        toast("无法请求系统通知权限，请稍后重试");
-      }
+      // These are account preferences. Keep them independent from Android's
+      // OS permission so the in-app inbox and unread badge remain usable.
+      update((s) => ({ ...s, notifications: { ...s.notifications, [key]: true } }));
       return;
     }
     if (notificationPermission === "unsupported" || !("Notification" in window))
@@ -3388,8 +3366,20 @@ export default function Community() {
               {hasNativeBridge() && <div className="permission-state" role="status">
                 <span>Android 系统通知：{systemNotificationLabel}</span>
                 <button type="button" className="soft-button" onClick={async () => {
+                  if (notificationPermission === "default") {
+                    try {
+                      const result = await requestNativeNotificationPermission();
+                      if (!result) return toast("无法读取 Android 通知权限");
+                      setNotificationPermission(result.permission ?? (result.granted ? "granted" : "denied"));
+                      setSystemNotificationsEnabled(result.enabled);
+                      if (!result.granted || !result.enabled) toast("Android 系统通知仍未开启");
+                    } catch {
+                      toast("无法请求 Android 通知权限");
+                    }
+                    return;
+                  }
                   if (!(await openNativeNotificationSettings())) toast("无法打开 Android 通知设置");
-                }}>管理系统权限</button>
+                }}>{notificationPermission === "default" ? "申请系统权限" : "管理系统权限"}</button>
                 <small>Android 后台推送服务尚未接通；此处开关仅保存黑卡提醒偏好。</small>
               </div>}
               {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}

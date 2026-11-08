@@ -50,4 +50,28 @@ test("Android About opens the native screen and browser About stays on the websi
   assert.match(activity, /webView\?\.clearCache\(true\)/);
   assert.match(community, /next === "about" && hasNativeBridge\(\)[\s\S]*?openNativeAbout\(\)/);
   assert.match(community, /黑卡 HEIKA · 版本 1\.44/);
+  assert.match(activity, /installNativeAboutCompatibilityHook\(view\)/);
+  assert.match(activity, /label\.startsWith\('关于黑卡'\)/);
+});
+
+test("Android internal notification preferences do not depend on OS permission", async () => {
+  const community = await read("components/Community.tsx");
+  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
+
+  assert.match(community, /These are account preferences[\s\S]*?notifications: \{ \.\.\.s\.notifications, \[key\]: true \}/);
+  assert.match(community, /申请系统权限/);
+  assert.match(activity, /NotificationManagerCompat\.from\(this@MainActivity\)\.areNotificationsEnabled\(\)/);
+});
+
+test("Android app upgrade refreshes only web resource and public content caches", async () => {
+  const gradle = await read("android/app/build.gradle.kts");
+  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
+  const cache = await read("lib/public-content-cache.ts");
+
+  assert.match(gradle, /versionCode = 9/);
+  assert.match(gradle, /versionName = "2\.2\.3"/);
+  assert.match(activity, /view\.clearCache\(true\)/);
+  assert.match(activity, /preserving cookies, localStorage, drafts, and account state/);
+  assert.match(cache, /heika-public-content-v2/);
+  assert.match(cache, /indexedDB\.deleteDatabase\(name\)/);
 });
