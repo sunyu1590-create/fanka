@@ -1,6 +1,6 @@
 {
   "name": "fanka",
-  "version": "2.40.5",
+  "version": "2.40.6",
   "private": true,
   "scripts": {
     "prebuild": "node scripts/sync-service-worker-version.mjs",

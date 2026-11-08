@@ -7,10 +7,20 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
-    version: "2.40.5",
+    version: "2.40.6",
     date: "2026.11.08",
     notes: [
       { category: "体验优化", text: "调整底部导航布局：四个入口采用独立液体玻璃胶囊，发布加号置于右侧独立圆钮，延续浅深主题与桌面侧栏适配。" },
+    ],
+  },
+  {
+    version: "2.40.5",
+    date: "2026.11.08",
+    notes: [
+      { category: "体验优化", text: "个人主页改为紧凑资料区、低对比兴趣标签、文字式统计和吸顶笔记/收藏分类，双列作品流为图片和文字内容分别排版。" },
+      { category: "问题修复", text: "修正本人公开主页误显示关注与私信操作的问题，保留原有关注、公开收藏和作品详情流程。" },
+      { category: "体验优化", text: "增加个人主页分享与账号标识操作，并适配深浅主题、移动端与桌面宽度。" },
+      { category: "问题修复", text: "详情页打开时将底栏置于阅读内容之后，避免遮挡评论发送等底部操作。" },
     ],
   },
   {
