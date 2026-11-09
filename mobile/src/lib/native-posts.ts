@@ -12,6 +12,11 @@ export type NativePost = {
   date: string;
   likeCount: number;
   viewCount: number;
+  ratingAverage: number;
+  ratingCount: number;
+  contentType: string;
+  resourceData: Record<string, unknown>;
+  saved: boolean;
   channel: "community" | "ai";
   isDemo: boolean;
   status?: string;
@@ -23,9 +28,15 @@ export function normalizePost(value: unknown): NativePost | null {
   const cloudId = typeof row.cloudId === "string" ? row.cloudId : typeof row.id === "string" ? row.id : "";
   const clientId = Number(row.id ?? row.client_id);
   if (!cloudId || !Number.isSafeInteger(clientId)) return null;
-  const images = Array.isArray(row.thumbnailImages) ? row.thumbnailImages.filter((image): image is string => typeof image === "string") : Array.isArray(row.images) ? row.images.filter((image): image is string => typeof image === "string") : [];
-  const image = typeof row.image === "string" ? row.image : typeof row.image_url === "string" ? row.image_url : images[0];
+  const thumbnails = Array.isArray(row.thumbnailImages) ? row.thumbnailImages.filter((image): image is string => typeof image === "string") : [];
+  const images = Array.isArray(row.images) ? row.images.filter((image): image is string => typeof image === "string") : thumbnails;
+  const image = thumbnails[0] || (typeof row.image === "string" ? row.image : typeof row.image_url === "string" ? row.image_url : images[0]);
   const date = typeof row.date === "string" ? row.date : typeof row.created_at === "string" ? row.created_at.slice(0, 10) : "";
+  const ratingAverage = Number(row.ratingAverage ?? row.rating_average);
+  const ratingCount = Number(row.ratingCount ?? row.rating_count);
+  const resourceData = row.resourceData && typeof row.resourceData === "object" && !Array.isArray(row.resourceData)
+    ? row.resourceData as Record<string, unknown>
+    : {};
   return {
     id: clientId,
     cloudId,
@@ -40,6 +51,11 @@ export function normalizePost(value: unknown): NativePost | null {
     date,
     likeCount: Math.max(0, Number(row.likeCount ?? row.like_count) || 0),
     viewCount: Math.max(0, Number(row.viewCount ?? row.view_count) || 0),
+    ratingAverage: Number.isFinite(ratingAverage) ? Math.max(0, ratingAverage) : 0,
+    ratingCount: Number.isFinite(ratingCount) ? Math.max(0, ratingCount) : 0,
+    contentType: typeof row.contentType === "string" ? row.contentType : typeof row.content_type === "string" ? row.content_type : "community_post",
+    resourceData,
+    saved: Boolean(row.saved),
     channel: row.channel === "ai" ? "ai" : "community",
     isDemo: Boolean(row.isDemo),
     status: typeof row.status === "string" ? row.status : undefined,

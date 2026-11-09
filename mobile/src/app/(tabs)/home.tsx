@@ -93,7 +93,7 @@ export default function HomeScreen() {
           const image = raw.image_url || (media[0] ? `${API_BASE}/api/v1/media?path=${encodeURIComponent(media[0].storage_path)}&redirect=1` : undefined);
           const rating = await api<{ average: number; count: number }>(`/api/v1/posts/${raw.client_id}/rating`, session).catch(() => ({ average: 0, count: 0 }));
           const rarity = rating.count < 5 ? "评分形成中" : rating.average >= 4.8 && rating.count >= 20 ? "SSS" : rating.average >= 4.5 && rating.count >= 10 ? "SS" : rating.average >= 4 && rating.count >= 5 ? "S" : "普通黑卡";
-          const post: NativePost = { id: raw.client_id, cloudId: raw.id, title: raw.title, body: raw.body || "", tag: raw.interest_tags?.name || "生活", topics: [], image, images: image ? [image] : [], author: raw.profiles?.nickname || "黑卡探索者", authorId: raw.author_id || undefined, date: "", likeCount: 0, viewCount: 0, channel: "community", isDemo: false };
+          const post: NativePost = { id: raw.client_id, cloudId: raw.id, title: raw.title, body: raw.body || "", tag: raw.interest_tags?.name || "生活", topics: [], image, images: image ? [image] : [], author: raw.profiles?.nickname || "黑卡探索者", authorId: raw.author_id || undefined, date: "", likeCount: 0, viewCount: 0, ratingAverage: rating.average, ratingCount: rating.count, contentType: "community_post", resourceData: {}, saved: false, channel: "community", isDemo: false };
           if (active) setRevealed((current) => ({ ...current, [card.slot]: { post, rarity, ratingCount: rating.count, ratingAverage: rating.average, xp: 0 } }));
         } catch { if (active) setError("已翻开的卡片暂时无法恢复，请检查网络后重试。"); }
         finally { hydration.current.delete(card.slot); }
@@ -127,7 +127,7 @@ export default function HomeScreen() {
       } catch { /* Opening the card remains valid if experience sync is temporarily unavailable. */ }
       const rating = await api<{ average: number; count: number }>(`/api/v1/posts/${raw.client_id}/rating`, session).catch(() => ({ average: 0, count: 0 }));
       const rarity = rating.count < 5 ? "评分形成中" : rating.average >= 4.8 && rating.count >= 20 ? "SSS" : rating.average >= 4.5 && rating.count >= 10 ? "SS" : rating.average >= 4 && rating.count >= 5 ? "S" : "普通黑卡";
-      const post: NativePost = { id: raw.client_id, cloudId: raw.id, title: raw.title, body: raw.body || "", tag: raw.interest_tags?.name || "生活", topics: [], image: firstImage, images: firstImage ? [firstImage] : [], author: raw.profiles?.nickname || "黑卡探索者", authorId: raw.author_id || undefined, date: "", likeCount: 0, viewCount: 0, channel: "community", isDemo: false };
+      const post: NativePost = { id: raw.client_id, cloudId: raw.id, title: raw.title, body: raw.body || "", tag: raw.interest_tags?.name || "生活", topics: [], image: firstImage, images: firstImage ? [firstImage] : [], author: raw.profiles?.nickname || "黑卡探索者", authorId: raw.author_id || undefined, date: "", likeCount: 0, viewCount: 0, ratingAverage: rating.average, ratingCount: rating.count, contentType: "community_post", resourceData: {}, saved: false, channel: "community", isDemo: false };
       setRevealed((current) => ({ ...current, [card.slot]: { post, rarity, ratingCount: rating.count, ratingAverage: rating.average, xp: experienceAward } }));
       setPhase((current) => ({ ...current, [card.slot]: "rarity" }));
       setSelected(card.slot - 1);

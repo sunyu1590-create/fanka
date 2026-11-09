@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
-import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
+import { libraryFeedFields, libraryFields, presentFeedMany, presentMany, type LibraryRow } from "@/lib/server/library";
 import { AI_CONTENT_TYPES, validateAiResourceData, safeResourceLink, type AiContentType } from "@/lib/ai-resources";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const queryText = safeQuery((params.get("q") || "").trim());
     const type = params.get("type");
     const sort = params.get("sort") || "latest";
+    const feedMode = params.get("feed") === "1";
     const categoryId = Number(params.get("category")) || null;
     const page = Math.max(1, Math.min(1000, Number(params.get("page")) || 1));
     const limit = Math.max(1, Math.min(24, Number(params.get("limit")) || 12));
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
         categoryIds = [categoryId, ...(children.data || []).map((item) => item.id)];
       }
     }
-    let request = db.from("posts").select(libraryFields, { count: "exact" }).eq("channel", "ai").eq("status", "published");
+    let request = db.from("posts").select(feedMode ? libraryFeedFields : libraryFields, { count: "exact" }).eq("channel", "ai").eq("status", "published");
     if (type) request = request.eq("content_type", type);
     if (categoryIds) request = request.in("tag_id", categoryIds);
     if (queryText) request = request.or(`title.ilike.%${queryText}%,body.ilike.%${queryText}%`);
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
     const ratingMap = new Map((ratings.data || []).map((item) => [item.post_id, item]));
     const likeMap = new Map((likes.data || []).map((item) => [item.post_id, item.like_count]));
     const savedSet = new Set((bookmarks.data || []).map((item) => item.post_id));
-    const presented = await presentMany(db, rows);
+    const presented = feedMode ? await presentFeedMany(db, rows) : await presentMany(db, rows);
     return {
       items: rows.map((row, index) => {
         const rating = ratingMap.get(row.id);

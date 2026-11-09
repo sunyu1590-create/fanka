@@ -41,7 +41,8 @@
         {
           "photosPermission": "允许 HEIKA 选择图片并发布作品。"
         }
-      ]
+      ],
+      "expo-image"
     ]
   }
 }

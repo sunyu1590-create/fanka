@@ -2,11 +2,27 @@ name: Build HEIKA Android APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - publish-vercel
+    paths:
+      - 'app/api/**'
+      - 'lib/server/**'
+      - 'lib/ai-resources.ts'
+      - 'mobile/**'
+      - '.github/workflows/build-android-apk.yml'
   push:
     branches:
+      - main
+      - publish-vercel
       - android/phase-one
       - android/phase-two
+      - 'codex/**'
     paths:
+      - 'app/api/**'
+      - 'lib/server/**'
+      - 'lib/ai-resources.ts'
       - 'mobile/**'
       - '.github/workflows/build-android-apk.yml'
 
@@ -26,10 +42,25 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: mobile/package-lock.json
-      - name: Install dependencies
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      - name: Install website dependencies
+        run: npm ci
+      - name: Check website API compatibility
+        run: |
+          npm run typecheck
+          npm test
+      - name: Install Android dependencies
         working-directory: mobile
         run: npm ci
+      - name: Check Android TypeScript
+        working-directory: mobile
+        run: npx tsc --noEmit
+      - name: Read configured Android version
+        working-directory: mobile
+        run: |
+          node -e 'const app = require("./app.json").expo; if (app.android.package !== "com.heika.community") process.exit(1); console.log(`APP_VERSION=${app.version}`); console.log(`APP_VERSION_CODE=${app.android.versionCode}`); console.log(`APP_ID=${app.android.package}`);' >> "$GITHUB_ENV"
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
@@ -39,23 +70,32 @@ jobs:
         env:
           CI: '1'
           EXPO_PUBLIC_API_BASE_URL: https://moonclean.shop
-        run: npx expo prebuild --platform android
-      - name: Build installable APK
+        run: npx expo prebuild --platform android --no-install
+      - name: Build Android APKs
         working-directory: mobile/android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
-      - name: Verify release APK
+        run: ./gradlew assembleDebug assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
+      - name: Verify and label APKs
         working-directory: mobile/android
         run: |
-          apk=app/build/outputs/apk/release/app-release.apk
-          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$apk"
-          badging="$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | head -n 1
-          printf '%s\n' "$badging" | grep -F "name='com.heika.community' versionCode='3' versionName='2.0.0'"
-          sha256sum "$apk"
+          mkdir -p ../artifacts
+          for variant in debug release; do
+            apk="app/build/outputs/apk/${variant}/app-${variant}.apk"
+            "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$apk"
+            badging="$("$ANDROID_HOME/build-tools/37.0.0/aapt" dump badging "$apk")"
+            printf '%s\n' "$badging" | head -n 1
+            printf '%s\n' "$badging" | grep -F "name='${APP_ID}' versionCode='${APP_VERSION_CODE}' versionName='${APP_VERSION}'"
+            artifact_variant="$variant"
+            if [ "$variant" = release ]; then artifact_variant="release-inspection"; fi
+            cp "$apk" "../artifacts/HEIKA-${artifact_variant}-v${APP_VERSION}-${GITHUB_SHA:0:7}.apk"
+            sha256sum "../artifacts/HEIKA-${artifact_variant}-v${APP_VERSION}-${GITHUB_SHA:0:7}.apk"
+          done
+          printf 'Website version: %s\nAndroid version: %s (%s)\nApplication ID: %s\nCommit SHA: %s\n' \
+            "$(node -p 'require("../../package.json").version')" "$APP_VERSION" "$APP_VERSION_CODE" "$APP_ID" "$GITHUB_SHA" > ../artifacts/BUILD-INFO.txt
+          printf 'Release signature: project debug key; inspection build only, not an official release.\n' >> ../artifacts/BUILD-INFO.txt
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
-          name: heika-android-preview-apk
-          path: mobile/android/app/build/outputs/apk/release/app-release.apk
+          name: HEIKA-Android-v${{ env.APP_VERSION }}-${{ github.sha }}
+          path: mobile/artifacts/*
           if-no-files-found: error
           retention-days: 30

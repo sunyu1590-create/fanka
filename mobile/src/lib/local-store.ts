@@ -3,6 +3,7 @@ import { NativeModules, Platform } from "react-native";
 
 const CACHE_PREFIX = "heika:native-cache:v1:";
 const CLEARABLE_PUBLIC_CACHE_PREFIX = CACHE_PREFIX + "feed:";
+const MAX_DISCOVERY_CACHE_ENTRIES = 12;
 const DRAFT_PREFIX = "heika:draft:v1:";
 const DRAFT_INDEX_PREFIX = "heika:draft-index:v1:";
 const OUTBOX_PREFIX = "heika:outbox:v1:";
@@ -50,6 +51,24 @@ export async function readCache<T>(key: string, maxAgeMs: number): Promise<T | n
 export async function writeCache<T>(key: string, value: T) {
   try { await AsyncStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify({ savedAt: Date.now(), value } satisfies CachedValue<T>)); }
   catch { /* Storage pressure must not block feed reads or writes. */ }
+}
+
+/** Stores one compact first-page snapshot and bounds the number of discovery snapshots retained. */
+export async function writeDiscoveryCache<T>(key: string, value: T) {
+  const storageKey = `${CLEARABLE_PUBLIC_CACHE_PREFIX}discover:${key}`;
+  try {
+    await AsyncStorage.setItem(storageKey, JSON.stringify({ savedAt: Date.now(), value } satisfies CachedValue<T>));
+    const keys = (await AsyncStorage.getAllKeys()).filter((item) => item.startsWith(`${CLEARABLE_PUBLIC_CACHE_PREFIX}discover:`));
+    if (keys.length <= MAX_DISCOVERY_CACHE_ENTRIES) return;
+    const entries = await AsyncStorage.multiGet(keys);
+    const ordered = entries
+      .map(([item, raw]) => {
+        try { return { key: item, savedAt: raw ? (JSON.parse(raw) as CachedValue<unknown>).savedAt : 0 }; }
+        catch { return { key: item, savedAt: 0 }; }
+      })
+      .sort((a, b) => b.savedAt - a.savedAt);
+    await AsyncStorage.multiRemove(ordered.slice(MAX_DISCOVERY_CACHE_ENTRIES).map((item) => item.key));
+  } catch { /* Storage pressure must not block feed reads or writes. */ }
 }
 
 export type LocalDraft = {
