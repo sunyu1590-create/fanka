@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { browserDb } from "@/lib/browser-db";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
+import { hasNativeBridge } from "@/lib/native-bridge";
 import type { NoticeOptions } from "./NoticeBanner";
 export default function InboxBadge({ enabled = false, inAppEnabled = true, onNotice, onOpenConversationPeer }: { enabled?: boolean; inAppEnabled?: boolean; onNotice?: (message: string, options?: NoticeOptions) => void; onOpenConversationPeer?: (id: string) => void }) {
   const notify = useRef(enabled);
@@ -38,6 +39,7 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
               total > previous.current &&
               notify.current &&
               document.visibilityState !== "visible" &&
+              !hasNativeBridge() &&
               "Notification" in window &&
               Notification.permission === "granted"
             )

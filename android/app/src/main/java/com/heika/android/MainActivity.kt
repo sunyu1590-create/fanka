@@ -44,6 +44,11 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.ViewModelProvider
+import com.heika.android.discovery.DiscoveryChannel
+import com.heika.android.discovery.DiscoveryPersonalization
+import com.heika.android.discovery.DiscoveryScreen
+import com.heika.android.discovery.DiscoveryViewModel
 import org.json.JSONObject
 import java.util.ArrayDeque
 import java.util.LinkedHashSet
@@ -81,6 +86,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var bridgeFallbackTimeout: Runnable? = null
     private var recoveringFromUntrustedNavigation = false
     private var frameMetricsListener: Window.OnFrameMetricsAvailableListener? = null
+    private var discoveryScreen: DiscoveryScreen? = null
+    private var discoveryViewModel: DiscoveryViewModel? = null
+    private var pendingDiscoverySession: Pair<String?, String?> = null to null
+    private var pendingDiscoveryPersonalization: Pair<String?, DiscoveryPersonalization> = null to DiscoveryPersonalization()
 
     private data class PendingNavigation(val id: String, val route: String)
 
@@ -175,6 +184,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     override fun onPause() {
         stopFrameMetrics()
+        discoveryScreen?.saveListState()
         bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "background"))
         cardTransition?.clearAll()
         webView?.onPause()
@@ -182,6 +192,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        discoveryScreen?.saveListState()
         webView?.let { view ->
             val state = Bundle()
             view.saveState(state)
@@ -207,6 +218,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     override fun onDestroy() {
         stopFrameMetrics()
+        discoveryScreen?.saveListState()
         cardTransition?.clearAll()
         cardTransition = null
         loadTimeout?.let(mainHandler::removeCallbacks)
@@ -215,6 +227,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
         navigationTimeout?.let(mainHandler::removeCallbacks)
         pendingFileCallback?.onReceiveValue(null)
         pendingFileCallback = null
+        discoveryScreen?.let { screen -> (screen.parent as? ViewGroup)?.removeView(screen) }
+        discoveryScreen = null
+        discoveryViewModel = null
+        pendingDiscoverySession = null to null
+        pendingDiscoveryPersonalization = null to DiscoveryPersonalization()
         releaseWebView()
         root = null
         super.onDestroy()
@@ -305,8 +322,34 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
 
             override fun onAboutOpenRequest(requestId: String) {
+                setNativeDiscoveryVisible(false, 0.0, "dark")
                 showNativeAbout()
                 bridge?.completeRequest(requestId, "app.about.open", true, JSONObject().put("opened", true))
+            }
+
+            override fun onDiscoveryVisibility(visible: Boolean, navigationTopCss: Double, theme: String, composeLeftCss: Double, composeTopCss: Double, composeWidthCss: Double, composeHeightCss: Double) {
+                setNativeDiscoveryVisible(visible, navigationTopCss, theme, composeLeftCss, composeTopCss, composeWidthCss, composeHeightCss)
+            }
+
+            override fun onDiscoverySession(userId: String?, accessToken: String?) {
+                pendingDiscoverySession = userId to accessToken
+                discoveryViewModel?.let { viewModel ->
+                    viewModel.setSession(userId, accessToken)
+                    val pendingPersonalization = pendingDiscoveryPersonalization
+                    if (pendingPersonalization.first == userId) {
+                        viewModel.setPersonalization(
+                            userId,
+                            pendingPersonalization.second.interests,
+                            pendingPersonalization.second.viewedIds.toList(),
+                            pendingPersonalization.second.personalRatings,
+                        )
+                    }
+                }
+            }
+
+            override fun onDiscoveryPersonalization(userId: String?, interests: List<String>, viewedIds: List<Long>, personalRatings: Map<Long, Int>) {
+                pendingDiscoveryPersonalization = userId to DiscoveryPersonalization(interests, viewedIds.toSet(), personalRatings)
+                discoveryViewModel?.setPersonalization(userId, interests, viewedIds, personalRatings)
             }
 
             override fun onPageState(path: String) {
@@ -393,6 +436,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
+                setNativeDiscoveryVisible(false, 0.0, "dark")
                 webContentCommitted = false
                 cardTransition?.clearAll()
                 bridge?.onPageStarted()
@@ -605,6 +649,113 @@ class MainActivity : androidx.activity.ComponentActivity() {
         view.removeAllViews()
         view.destroy()
         webView = null
+    }
+
+    private fun hideNativeDiscoveryKeyboard() {
+        discoveryScreen?.clearSearchFocus()
+        val inputMethod = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+        val token = discoveryScreen?.windowToken ?: root?.windowToken ?: return
+        inputMethod?.hideSoftInputFromWindow(token, 0)
+    }
+
+    private fun obtainDiscoveryViewModel(): DiscoveryViewModel {
+        discoveryViewModel?.let { return it }
+        return ViewModelProvider(this)[DiscoveryViewModel::class.java].also { viewModel ->
+            discoveryViewModel = viewModel
+            viewModel.setSession(pendingDiscoverySession.first, pendingDiscoverySession.second)
+            viewModel.setPersonalization(
+                pendingDiscoveryPersonalization.first,
+                pendingDiscoveryPersonalization.second.interests,
+                pendingDiscoveryPersonalization.second.viewedIds.toList(),
+                pendingDiscoveryPersonalization.second.personalRatings,
+            )
+        }
+    }
+
+    private fun setNativeDiscoveryVisible(
+        visible: Boolean,
+        navigationTopCss: Double,
+        theme: String,
+        composeLeftCss: Double = 0.0,
+        composeTopCss: Double = 0.0,
+        composeWidthCss: Double = 0.0,
+        composeHeightCss: Double = 0.0,
+    ) {
+        val container = root ?: return
+        if (!visible || navigationTopCss <= 0.0) {
+            discoveryScreen?.saveListState()
+            discoveryScreen?.visibility = View.GONE
+            return
+        }
+        if (overlay?.tag == NATIVE_ABOUT_TAG || overlay?.tag == LOADING_MASK_TAG) return
+        val density = resources.displayMetrics.density
+        val maxHeight = (container.height - container.paddingTop - container.paddingBottom).coerceAtLeast(0)
+        val topPx = (navigationTopCss * density).toInt().coerceIn(0, maxHeight)
+        if (topPx <= 0) return
+        val screen = discoveryScreen ?: DiscoveryScreen(
+            this,
+            this,
+            obtainDiscoveryViewModel(),
+            object : DiscoveryScreen.Listener {
+                override fun onOpenPost(channel: DiscoveryChannel, post: com.heika.android.discovery.DiscoveryPost) {
+                    hideNativeDiscoveryKeyboard()
+                    bridge?.sendEvent(
+                        "discovery.openPost",
+                        JSONObject()
+                            .put("id", post.id)
+                            .put("channel", if (channel == DiscoveryChannel.AI) "ai" else "community")
+                            .put("cloudId", post.cloudId),
+                    )
+                }
+
+                override fun onOpenAuthor(id: String) {
+                    if (CONVERSATION_ID.matches(id)) bridge?.sendEvent("discovery.openAuthor", JSONObject().put("id", id))
+                }
+
+                override fun onSearch(query: String) {
+                    hideNativeDiscoveryKeyboard()
+                    bridge?.sendEvent("discovery.search", JSONObject().put("query", query.take(60)))
+                }
+
+                override fun onLoginRequired() {
+                    hideNativeDiscoveryKeyboard()
+                    bridge?.sendEvent("discovery.login")
+                }
+
+                override fun onInteractionChanged(update: com.heika.android.discovery.DiscoveryInteractionUpdate) {
+                    bridge?.sendEvent(
+                        "discovery.interaction",
+                        JSONObject()
+                            .put("id", update.id)
+                            .put("channel", if (update.channel == DiscoveryChannel.AI) "ai" else "community")
+                            .put("cloudId", update.cloudId)
+                            .put("liked", update.liked)
+                            .put("saved", update.saved)
+                            .put("likeCount", update.likeCount),
+                    )
+                }
+            },
+        ).also { created ->
+            discoveryScreen = created
+            container.addView(created, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, topPx, Gravity.TOP))
+        }
+        screen.applyTheme(theme == "dark")
+        val params = screen.layoutParams as? FrameLayout.LayoutParams
+            ?: FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, topPx, Gravity.TOP)
+        if (params.height != topPx || params.width != ViewGroup.LayoutParams.MATCH_PARENT) {
+            params.width = ViewGroup.LayoutParams.MATCH_PARENT
+            params.height = topPx
+            params.gravity = Gravity.TOP
+            screen.layoutParams = params
+        }
+        screen.setNavigationCutout(
+            left = (composeLeftCss * density).toInt(),
+            top = (composeTopCss * density).toInt(),
+            width = (composeWidthCss * density).toInt(),
+            height = (composeHeightCss * density).toInt(),
+        )
+        screen.visibility = View.VISIBLE
+        screen.bringToFront()
     }
 
     private fun installNativeAboutCompatibilityHook(view: WebView) {

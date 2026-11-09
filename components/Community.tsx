@@ -86,6 +86,20 @@ import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOption
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 import MembershipCenter from "./MembershipCenter";
 import { baseDailyFlipAllowance } from "@/lib/membership-plans";
+import {
+  announceNativeReady,
+  getNativeNotificationStatus,
+  hasNativeBridge,
+  installNativeBridge,
+  openNativeAbout,
+  openNativeNotificationSettings,
+  requestNativeNotificationPermission,
+  reportNativePageState,
+  setNativeDiscoveryVisibility,
+  subscribeNativeEvent,
+  syncNativeDiscoveryPersonalization,
+  syncNativeDiscoverySession,
+} from "@/lib/native-bridge";
 const AboutHeika = dynamic(() => import("./AboutHeika"));
 const CacheManager = dynamic(() => import("./CacheManager"));
 const FeedbackForm = dynamic(() => import("./FeedbackForm"));
@@ -397,6 +411,14 @@ export default function Community() {
     if (savedProfileLayout === "masonry" || savedProfileLayout === "list")
       setProfileLayout(savedProfileLayout);
     setProfileLayoutLoaded(true);
+  }, []);
+  useEffect(() => {
+    const uninstall = installNativeBridge();
+    const readyFrame = requestAnimationFrame(announceNativeReady);
+    return () => {
+      cancelAnimationFrame(readyFrame);
+      uninstall();
+    };
   }, []);
   useEffect(() => {
     if (!themeReady) return;
@@ -1021,11 +1043,23 @@ export default function Community() {
     noticeRef.current = null;
   }, []);
   useEffect(() => {
-    if (!("Notification" in window)) {
-      setNotificationPermission("unsupported");
-      return;
-    }
-    setNotificationPermission(Notification.permission);
+    let active = true;
+    const refresh = async () => {
+      if (hasNativeBridge()) {
+        const status = await getNativeNotificationStatus().catch(() => null);
+        if (active && status) setNotificationPermission(status.permission || (status.granted ? "granted" : "default"));
+      } else if (active) {
+        setNotificationPermission("Notification" in window ? Notification.permission : "unsupported");
+      }
+    };
+    void refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, []);
   const loadPublicFeed = useCallback(async (requestedPage = 1, reset = false, requestedTag = category) => {
     if (publicFeedLoading.current && !reset) return;
@@ -1096,7 +1130,7 @@ export default function Community() {
     }
   }, [category, sort, state.interests, state.viewed, state.ratings, communityRatings]);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || hasNativeBridge()) return;
     let active = true;
     void Promise.all([
       cloudFetch("/api/v1/categories?channel=community&kind=category", { cache: "no-store" }).then((response) => response.json()),
@@ -1117,13 +1151,13 @@ export default function Community() {
     return () => window.removeEventListener("resize", updateColumns);
   }, []);
   useEffect(() => {
-    if (!ready || tab !== "discover" || discoverChannel !== "community") return;
+    if (!ready || tab !== "discover" || discoverChannel !== "community" || hasNativeBridge()) return;
     const wantedTag = category;
     if (feedLoadedTag === wantedTag && feedLoadedSort === sort && (publicFeed.length || feedPage > 0)) return;
     void loadPublicFeed(1, true, wantedTag);
   }, [ready, tab, discoverChannel, category, sort, feedLoadedTag, feedLoadedSort, publicFeed.length, feedPage, loadPublicFeed]);
   useEffect(() => {
-    if (tab !== "discover" || discoverChannel !== "community") return;
+    if (tab !== "discover" || discoverChannel !== "community" || hasNativeBridge()) return;
     let active = true;
     void cloudFetch("/api/v1/topic-events", { cache: "no-store" }).then((response) => response.json()).then((result) => {
       if (active && Array.isArray(result.data?.items)) setTopicEvents(result.data.items as TopicEvent[]);
@@ -1247,6 +1281,10 @@ export default function Community() {
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[settingsReturnTab] || 0, behavior: "instant" }));
   };
   const openAboutPage = () => {
+    if (hasNativeBridge()) {
+      void openNativeAbout();
+      return;
+    }
     scrollPositions.current.settings = window.scrollY;
     setTab("about");
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
@@ -1588,19 +1626,19 @@ export default function Community() {
       ? rect
       : null;
   };
-  const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null) => {
+  const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null, postOverride?: Post) => {
     if (source) detailSource.current = source;
     if (
       transitionBusy.current ||
       detail !== null ||
-      !all.some((p) => p.id === id)
+      !(postOverride || all.some((p) => p.id === id))
     )
       return;
     if (pageTransition.current) {
       const activeTransition = pageTransition.current;
       const resume = () => {
         if (pageTransition.current === activeTransition) pageTransition.current = null;
-        openPost(id, source, sourceElement);
+        openPost(id, source, sourceElement, postOverride);
       };
       void activeTransition.finished.then(resume, resume);
       return;
@@ -1645,7 +1683,7 @@ export default function Community() {
     const cachedDetail = detailPostCache.current.get(id);
     setDetailPostOverride(cachedDetail && Date.now() - cachedDetail.at < 45 * 60 * 1000
       ? cachedDetail.post
-      : all.find((post) => post.id === id) || null);
+      : postOverride || all.find((post) => post.id === id) || null);
     setDetailImageTransition(
       detailTransition === "image-zoom" && sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
         ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
@@ -1680,6 +1718,121 @@ export default function Community() {
   };
   const openPostRef = useRef(openPost);
   openPostRef.current = openPost;
+  useEffect(() => {
+    if (hasNativeBridge()) reportNativePageState(detail === null ? "/" : `/?post=${detail}`);
+  }, [detail]);
+  const openNativePost = async (id: number) => {
+    if (!Number.isSafeInteger(id) || id < 1) return;
+    let post = all.find((item) => item.id === id);
+    if (!post || post.isPartial) {
+      try {
+        const response = await cloudFetch("/api/demo/cards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.data || result.data.id !== id) throw new Error("这篇内容暂时不可用");
+        post = result.data as Post;
+        setPublicFeed((items) => items.some((item) => item.id === id) ? items : [...items, post!]);
+        setFeedPostIds((items) => items.includes(id) ? items : [...items, id]);
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "这篇内容暂时不可用");
+        return;
+      }
+    }
+    openPostRef.current(id, "discover", null, post);
+  };
+  const openNativePostRef = useRef<(id: number) => void>(() => {});
+  openNativePostRef.current = (id) => { void openNativePost(id); };
+  const openNativeAiPostRef = useRef<(id: number, cloudId: string) => void>(() => {});
+  openNativeAiPostRef.current = (id, cloudId) => {
+    if (!Number.isSafeInteger(id) || id < 1 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudId)) return;
+    void cloudFetch(`/api/v1/ai-space?postId=${encodeURIComponent(cloudId)}&limit=1`, { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json();
+        const item = (result.data?.items || []).find((candidate: Post) => candidate.id === id && candidate.cloudId === cloudId);
+        if (!response.ok || !item) throw new Error(result.error || "这项 AI 内容暂时不可用");
+        openAiPost(item, null);
+      })
+      .catch((error) => toast(error instanceof Error ? error.message : "这项 AI 内容暂时不可用"));
+  };
+  const nativeSearchRef = useRef<(query: string) => void>(() => {});
+  nativeSearchRef.current = (query) => {
+    const normalized = query.trim().slice(0, 60);
+    if (!normalized) return;
+    setSearchReturnTab("discover");
+    submitSearch(normalized);
+    setTab("search");
+  };
+  const nativeLoginRef = useRef<() => void>(() => {});
+  nativeLoginRef.current = () => setTab("messages");
+  const nativeAuthorRef = useRef<(id: string) => void>(() => {});
+  nativeAuthorRef.current = (id) => {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) setAuthorProfile(id);
+  };
+  useEffect(() => {
+    const cleanups = [
+      subscribeNativeEvent("discovery.openPost", (payload) => {
+        const id = Number(payload.id);
+        if (!Number.isSafeInteger(id) || id < 1) return false;
+        if (payload.channel === "ai") {
+          if (typeof payload.cloudId !== "string") return false;
+          openNativeAiPostRef.current(id, payload.cloudId);
+        } else {
+          openNativePostRef.current(id);
+        }
+        return true;
+      }),
+      subscribeNativeEvent("discovery.openAuthor", (payload) => {
+        if (typeof payload.id !== "string") return false;
+        nativeAuthorRef.current(payload.id);
+        return true;
+      }),
+      subscribeNativeEvent("discovery.search", (payload) => {
+        if (typeof payload.query !== "string") return false;
+        nativeSearchRef.current(payload.query);
+        return true;
+      }),
+      subscribeNativeEvent("discovery.login", () => {
+        nativeLoginRef.current();
+        return true;
+      }),
+      subscribeNativeEvent("discovery.interaction", (payload) => {
+        const id = Number(payload.id);
+        const liked = payload.liked;
+        const saved = payload.saved;
+        const likeCount = Number(payload.likeCount);
+        if (!Number.isSafeInteger(id) || id < 1 || typeof liked !== "boolean" || typeof saved !== "boolean" || !Number.isSafeInteger(likeCount) || likeCount < 0) return false;
+        update((current) => ({
+          ...current,
+          liked: liked ? [...new Set([...(current.liked || []), id])] : (current.liked || []).filter((item) => item !== id),
+          saved: saved ? [...new Set([id, ...current.saved])] : current.saved.filter((item) => item !== id),
+          savedFrom: saved ? { ...current.savedFrom, [id]: "discover" } : current.savedFrom,
+        }));
+        if (payload.channel === "community") {
+          setPublicFeed((items) => items.map((item) => item.id === id ? { ...item, likeCount, saved } : item));
+        }
+        return true;
+      }),
+      subscribeNativeEvent("navigation.open", (payload) => {
+        if (typeof payload.route !== "string") return false;
+        const route = payload.route;
+        if (route === "/") setTab("today");
+        else {
+          const postMatch = /^\/?\?post=([0-9]{1,16})$/.exec(route);
+          const conversationMatch = /^\/?\?conversation=([0-9a-f-]{36})$/i.exec(route);
+          if (postMatch) openNativePostRef.current(Number(postMatch[1]));
+          else if (conversationMatch) {
+            setMessagePeer(conversationMatch[1]);
+            setTab("messages");
+          } else return false;
+        }
+        return true;
+      }),
+    ];
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, []);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("profile");
     if (!ready || !sharedId || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sharedId) || sharedProfileHandled.current === sharedId) return;
@@ -2148,33 +2301,43 @@ export default function Community() {
   };
   const toggleNotification = async (key: "messages" | "comments" | "daily") => {
     if (key !== "messages") return toast("该功能正在完善中");
-    if (state.notifications[key]) {
-      update((s) => ({
-        ...s,
-        notifications: { ...s.notifications, [key]: false },
-      }));
-      toast("已保存至此设备");
-      return;
-    }
-    if (notificationPermission === "unsupported" || !("Notification" in window))
-      return toast("此浏览器不支持通知");
-    let permission = notificationPermission;
-    if (permission === "default") {
-      try {
-        permission = await Notification.requestPermission();
-      } catch {
-        return toast("无法请求浏览器通知权限");
-      }
-      setNotificationPermission(permission);
-    }
-    if (permission === "denied")
-      return toast("通知权限已关闭，请在浏览器设置中允许");
-    if (permission !== "granted") return toast("尚未获得浏览器通知权限");
     update((s) => ({
       ...s,
       notifications: { ...s.notifications, [key]: !s.notifications[key] },
     }));
-    toast("已保存至此设备");
+    toast("黑卡消息提醒偏好已更新");
+  };
+  const requestNotificationPermission = async () => {
+    if (hasNativeBridge()) {
+      try {
+        const result = await requestNativeNotificationPermission();
+        if (!result) throw new Error("Android 通知权限暂不可用");
+        setNotificationPermission(result.permission || (result.granted ? "granted" : "denied"));
+        toast(result.granted && result.enabled ? "Android 通知权限已开启；后台推送服务尚未接通" : "Android 通知权限尚未开启");
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "无法请求 Android 通知权限");
+      }
+      return;
+    }
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      toast("此浏览器不支持通知");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      toast(permission === "granted" ? "浏览器通知权限已开启" : "浏览器通知权限尚未开启");
+    } catch {
+      toast("无法请求浏览器通知权限");
+    }
+  };
+  const openNotificationSystemSettings = async () => {
+    if (hasNativeBridge()) {
+      if (!await openNativeNotificationSettings()) toast("无法打开 Android 通知设置");
+    } else {
+      toast("请在浏览器的网站权限中管理通知");
+    }
   };
   const clearTodayFlips = async () => {
     if (!opened.length) return toast("今天还没有翻开的卡片");
@@ -2968,7 +3131,7 @@ export default function Community() {
   const openAiPost = (item: Post, source: Element | null) => {
     setPublicFeed((current) => current.some((post) => post.id === item.id) ? current : [...current, item]);
     setFeedPostIds((current) => current.includes(item.id) ? current : [...current, item.id]);
-    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source)));
+    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source, item)));
   };
   useEffect(() => {
     const isDiscover = tab === "discover" && discoverChannel === "community" && modal !== "write";
@@ -3752,12 +3915,19 @@ export default function Community() {
           // Defer beyond the auth lock; microtasks can run while it is still held.
           hydrationTimer = setTimeout(() => { void hydrate(user, version); }, 0);
         };
+        const initialSessionTimer = window.setTimeout(() => {
+          void db.auth.getSession().then(({ data: sessionData }) => {
+            if (alive) syncNativeDiscoverySession(sessionData.session?.user.id || null, sessionData.session?.access_token || null);
+          }).catch(() => {});
+        }, 0);
         const { data } = db.auth.onAuthStateChange((event, session) => {
+          syncNativeDiscoverySession(session?.user.id || null, session?.access_token || null);
           scheduleHydration(event, session?.user || null);
         });
         cleanup = () => {
           generation += 1;
           clearTimeout(hydrationTimer);
+          clearTimeout(initialSessionTimer);
           data.subscription.unsubscribe();
         };
       })
@@ -3767,6 +3937,73 @@ export default function Community() {
       cleanup();
     };
   }, [ready, toast]);
+  useEffect(() => {
+    syncNativeDiscoveryPersonalization({
+      userId: accountId,
+      interests: state.interests,
+      viewedIds: state.viewed,
+      personalRatings: state.ratings,
+    });
+  }, [ready, accountId, state.interests, state.viewed, state.ratings]);
+  const nativeDiscoveryLayout = useRef<{ visible: boolean; top: number; theme: "light" | "dark"; composeLeft: number; composeTop: number; composeWidth: number; composeHeight: number }>({ visible: false, top: 0, theme: "dark", composeLeft: 0, composeTop: 0, composeWidth: 0, composeHeight: 0 });
+  const publishNativeDiscoveryRef = useRef<() => void>(() => {});
+  publishNativeDiscoveryRef.current = () => {
+    const root = document.documentElement;
+    const themeMode = root.dataset.theme === "light" ? "light" : "dark";
+    const visible = hasNativeBridge() && ready && tab === "discover" && detail === null && modal === null && authorProfile === null && !modalClosing;
+    let top = 0;
+    let composeLeft = 0;
+    let composeTop = 0;
+    let composeWidth = 0;
+    let composeHeight = 0;
+    if (visible) {
+      const shell = document.querySelector<HTMLElement>(".bottom-nav-shell");
+      const compose = shell?.querySelector<HTMLElement>(".compose");
+      if (shell && compose) {
+        const shellRect = shell.getBoundingClientRect();
+        const composeRect = compose.getBoundingClientRect();
+        top = Math.max(0, shellRect.top);
+        composeLeft = composeRect.left;
+        composeTop = composeRect.top;
+        composeWidth = composeRect.width;
+        composeHeight = composeRect.height;
+      }
+    }
+    if (visible && top > 0) root.dataset.heikaNativeDiscovery = "true";
+    else delete root.dataset.heikaNativeDiscovery;
+    const next = { visible: visible && top > 0, top, theme: themeMode, composeLeft, composeTop, composeWidth, composeHeight } as const;
+    const previous = nativeDiscoveryLayout.current;
+    if (previous.visible === next.visible && Math.abs(previous.top - next.top) < 0.5 && previous.theme === next.theme &&
+      Math.abs(previous.composeLeft - next.composeLeft) < 0.5 && Math.abs(previous.composeTop - next.composeTop) < 0.5 &&
+      Math.abs(previous.composeWidth - next.composeWidth) < 0.5 && Math.abs(previous.composeHeight - next.composeHeight) < 0.5) return;
+    nativeDiscoveryLayout.current = next;
+    setNativeDiscoveryVisibility(next.visible, next.top, next.theme, next.composeLeft, next.composeTop, next.composeWidth, next.composeHeight);
+  };
+  useEffect(() => {
+    publishNativeDiscoveryRef.current();
+  }, [ready, tab, detail, modal, authorProfile, modalClosing, theme]);
+  useEffect(() => {
+    if (!ready || !hasNativeBridge()) return;
+    const root = document.documentElement;
+    const shell = document.querySelector<HTMLElement>(".bottom-nav-shell");
+    const compose = shell?.querySelector<HTMLElement>(".compose");
+    const publish = () => publishNativeDiscoveryRef.current();
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(publish);
+    if (shell) resizeObserver?.observe(shell);
+    if (compose) resizeObserver?.observe(compose);
+    const themeObserver = new MutationObserver(publish);
+    themeObserver.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    window.addEventListener("resize", publish, { passive: true });
+    publish();
+    return () => {
+      resizeObserver?.disconnect();
+      themeObserver.disconnect();
+      window.removeEventListener("resize", publish);
+      delete root.dataset.heikaNativeDiscovery;
+      nativeDiscoveryLayout.current = { visible: false, top: 0, theme: "dark", composeLeft: 0, composeTop: 0, composeWidth: 0, composeHeight: 0 };
+      setNativeDiscoveryVisibility(false, 0, "dark");
+    };
+  }, [ready]);
   useEffect(() => {
     if (!accountId) return;
     let alive = true;
@@ -4143,7 +4380,7 @@ export default function Community() {
           {feed(list)}
           </div>
           <div className={`discover-ai-channel discover-channel-panel${discoverChannel === "ai" ? " is-active" : ""}${outgoingDiscoverChannel === "ai" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "ai" && outgoingDiscoverChannel !== "ai"}>
-            <AISpace accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
+            <AISpace accountId={accountId} hidden={hasNativeBridge()} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
           </div>
           </div>
         </section>
@@ -5001,15 +5238,13 @@ export default function Community() {
                 <div className="eyebrow">PREFERENCES</div>
                 <h2>通知设置</h2>
                 <p className="settings-note">
-                  通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。
+                  黑卡消息开关只管理站内提醒；系统授权单独管理。关闭页面后的后台推送服务尚未接通。
                 </p>
                 {notificationPermission === "unsupported" && (
-                  <div className="permission-state">此浏览器不支持通知。</div>
+                  <div className="permission-state">此浏览器不支持系统通知。</div>
                 )}
                 {notificationPermission === "denied" && (
-                  <div className="permission-state">
-                    浏览器通知权限已拒绝，请在站点设置中重新允许。
-                  </div>
+                  <div className="permission-state">{hasNativeBridge() ? "Android 通知权限已关闭，可前往系统设置开启。" : "浏览器通知权限已拒绝，请在站点设置中重新允许。"}</div>
                 )}
                 <div className="switch-list">
                   {(
@@ -5029,7 +5264,7 @@ export default function Community() {
                         role="switch"
                         aria-checked={state.notifications[key]}
                         aria-label={label}
-                        disabled={notificationPermission === "unsupported"}
+                        disabled={key !== "messages"}
                         className={`toggle-switch ${state.notifications[key] ? "on" : ""}`}
                         onClick={() => void toggleNotification(key)}
                       >
@@ -5038,6 +5273,15 @@ export default function Community() {
                     </div>
                   ))}
                 </div>
+                {notificationPermission === "denied" ? (
+                  <button className="secondary-button full" onClick={() => void openNotificationSystemSettings()}>
+                    {hasNativeBridge() ? "打开系统通知设置" : "查看浏览器通知设置"}
+                  </button>
+                ) : notificationPermission === "default" ? (
+                  <button className="secondary-button full" onClick={() => void requestNotificationPermission()}>
+                    {hasNativeBridge() ? "申请系统通知权限" : "允许此设备通知"}
+                  </button>
+                ) : null}
                 <button
                   className="primary-button full"
                   onClick={() => setModal(null)}
