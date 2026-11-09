@@ -1,4 +1,230 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíë~9N‹Z–‹­¦ëeŠw¬ÕÁ…­…”½´¹¡•¥­„¹…¹‘É½¥¹‘¥Í½Ù•Éä()¥µÁ½ÉÐ…¹‘É½¥¹…ÁÀ¹ÁÁ±¥…Ñ¥½¸)¥µÁ½ÉÐ…¹‘É½¥¹½Ì¹A…É•±…‰±”)¥µÁ½ÉÐ…¹‘É½¥‘à¹±¥™•å±”¹¹‘É½¥‘Y¥•Ý5½‘•°)¥µÁ½ÉÐ…¹‘É½¥‘à¹±¥™•å±”¹M…Ù•‘MÑ…Ñ•!…¹‘±”)¥µÁ½ÉÐ…¹‘É½¥‘à¹±¥™•å±”¹Ù¥•Ý5½‘•±M½Á”)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹)½ˆ)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹™±½Ü¹5ÕÑ…‰±•MÑ…Ñ•±½Ü)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹™±½Ü¹5ÕÑ…‰±•M¡…É•‘±½Ü)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹™±½Ü¹M¡…É•‘±½Ü)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹™±½Ü¹MÑ…Ñ•±½Ü)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹™±½Ü¹…ÍMÑ…Ñ•±½Ü)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹±…Õ¹ )¥µÁ½ÉÐ©…Ù„¹Í•ÕÉ¥Ñä¹5•ÍÍ…•¥•ÍÐ()¥¹Ñ•É¹…°±…ÍÌ¥Í½Ù•ÉåY¥•Ý5½‘•°¡…ÁÁ±¥…Ñ¥½¸èÁÁ±¥…Ñ¥½¸°ÁÉ¥Ù…Ñ”Ù…°Í…Ù•‘MÑ…Ñ”èM…Ù•‘MÑ…Ñ•!…¹‘±”¤€è¹‘É½¥‘Y¥•Ý5½‘•°¡…ÁÁ±¥…Ñ¥½¸¤ì(€€€ÁÉ¥Ù…Ñ”Ù…°É•Á½Í¥Ñ½Éä€ô¥Í½Ù•ÉåI•Á½Í¥Ñ½Éä¡…ÁÁ±¥…Ñ¥½¸¤(€€€ÁÉ¥Ù…Ñ”Ù…°ÁÉ•™•É•¹•Ì€ô…ÁÁ±¥…Ñ¥½¸¹•ÑM¡…É•‘AÉ•™•É•¹•Ì ‰¡•¥­„µ¹…Ñ¥Ù”µ‘¥Í½Ù•ÉäµÁÉ•™•É•¹•Ìˆ°€À¤(€€€ÁÉ¥Ù…Ñ”Ù…°µÕÑ…‰±•••‘Ì€ô5ÕÑ…‰±•MÑ…Ñ•±½Ü (€€€€€€€µ…Á=˜ (€€€€€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹=55U9%QdÑ¼É•ÍÑ½É•AÉ•™•É•¹•Ì¡¥Í½Ù•Éå¡…¹¹•°¹=55U9%Qd¤°(€€€€€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹$Ñ¼É•ÍÑ½É•AÉ•™•É•¹•Ì¡¥Í½Ù•Éå¡…¹¹•°¹$¤°(€€€€€€€€¤°(€€€€¤(€€€Ù…°™••‘ÌèMÑ…Ñ•±½Üñ5…Àñ¥Í½Ù•Éå¡…¹¹•°°¥Í½Ù•Éå••‘MÑ…Ñ”øø€ôµÕÑ…‰±•••‘Ì¹…ÍMÑ…Ñ•±½Ü ¤(€€€ÁÉ¥Ù…Ñ”Ù…°µÕÑ…‰±•%¹Ñ•É…Ñ¥½¹UÁ‘…Ñ•Ì€ô5ÕÑ…‰±•M¡…É•‘±½Üñ¥Í½Ù•Éå%¹Ñ•É…Ñ¥½¹UÁ‘…Ñ”ø¡•áÑÉ…	Õ™™•É…Á…¥Ñä€ô€ÄØ¤(€€€Ù…°¥¹Ñ•É…Ñ¥½¹UÁ‘…Ñ•ÌèM¡…É•‘±½Üñ¥Í½Ù•Éå%¹Ñ•É…Ñ¥½¹UÁ‘…Ñ”ø€ôµÕÑ…‰±•%¹Ñ•É…Ñ¥½¹UÁ‘…Ñ•Ì((€€€ÁÉ¥Ù…Ñ”Ù…ÈÕÉÉ•¹ÑUÍ•É%èMÑÉ¥¹œü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È…•ÍÍQ½­•¸èMÑÉ¥¹œü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…ÈÁ•ÉÍ½¹…±¥é…Ñ¥½¸€ôÉ•ÍÑ½É•A•ÉÍ½¹…±¥é…Ñ¥½¸ ‰Õ•ÍÐˆ¤(€€€ÁÉ¥Ù…Ñ”Ù…°•¹•É…Ñ¥½¸€ôµÕÑ…‰±•5…Á=˜ (€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹=55U9%QdÑ¼€À°(€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹$Ñ¼€À°(€€€€¤(€€€ÁÉ¥Ù…Ñ”Ù…°™••‘)½‰Ì€ôµÕÑ…‰±•5…Á=˜ñ¥Í½Ù•Éå¡…¹¹•°°)½ˆø ¤(€€€ÁÉ¥Ù…Ñ”Ù…°…Ñ•½Éå)½‰Ì€ôµÕÑ…‰±•5…Á=˜ñ¥Í½Ù•Éå¡…¹¹•°°)½ˆø ¤(€€€ÁÉ¥Ù…Ñ”Ù…°‰ÕÍå%¹Ñ•É…Ñ¥½¹Ì€ôµÕÑ…‰±•M•Ñ=˜ñMÑÉ¥¹œø ¤((€€€½Ù•ÉÉ¥‘”™Õ¸½¹±•…É• ¤ì(€€€€€€€™••‘)½‰Ì¹Ù…±Õ•Ì¹™½É… ¡)½ˆèé…¹•°¤(€€€€€€€…Ñ•½Éå)½‰Ì¹Ù…±Õ•Ì¹™½É… ¡)½ˆèé…¹•°¤(€€€€€€€É•Á½Í¥Ñ½Éä¹±½Í” ¤(€€€€€€€ÍÕÁ•È¹½¹±•…É• ¤(€€€ô((€€€¥¹¥Ðì(€€€€€€€±½…‘…Ñ•½É¥•Ì¡¥Í½Ù•Éå¡…¹¹•°¹=55U9%Qd¤(€€€€€€€±½…‘…Ñ•½É¥•Ì¡¥Í½Ù•Éå¡…¹¹•°¹$¤(€€€ô((€€€™Õ¸Í•ÑM•ÍÍ¥½¸¡ÕÍ•É%èMÑÉ¥¹œü°Ñ½­•¸èMÑÉ¥¹œü¤ì(€€€€€€€Ù…°¹½Éµ…±¥é•‘%€ôÕÍ•É%ü¹Ñ…­•%˜¡MÑÉ¥¹œèé¥Í9½Ñ	±…¹¬¤(€€€€€€€Ù…°¹½Éµ…±¥é•‘Q½­•¸€ôÑ½­•¸ü¹Ñ…­•%˜¡MÑÉ¥¹œèé¥Í9½Ñ	±…¹¬¤(€€€€€€€¥˜€¡¹½Éµ…±¥é•‘%€ôôÕÉÉ•¹ÑUÍ•É%€˜˜¹½Éµ…±¥é•‘Q½­•¸€ôô…•ÍÍQ½­•¸¤É•ÑÕÉ¸(€€€€€€€Ù…°ÁÉ•Ù¥½ÕÍUÍ•È€ôÕÉÉ•¹ÑUÍ•É%(€€€€€€€Ù…°Ñ½­•¹	•…µ•Ù…¥±…‰±”€ô…•ÍÍQ½­•¸¹¥Í9Õ±±=É	±…¹¬ ¤€˜˜€…¹½Éµ…±¥é•‘Q½­•¸¹¥Í9Õ±±=É	±…¹¬ ¤(€€€€€€€Ù…°¡…¹•‘½Õ¹Ð€ô¹½Éµ…±¥é•‘%€„ôÁÉ•Ù¥½ÕÍUÍ•È(€€€€€€€ÕÉÉ•¹ÑUÍ•É%€ô¹½Éµ…±¥é•‘%(€€€€€€€…•ÍÍQ½­•¸€ô¹½Éµ…±¥é•‘Q½­•¸(€€€€€€€¥˜€¡¡…¹•‘½Õ¹Ð¤ì(€€€€€€€€€€€™••‘)½‰Ì¹Ù…±Õ•Ì¹™½É… ¡)½ˆèé…¹•°¤(€€€€€€€€€€€™••‘)½‰Ì¹±•…È ¤(€€€€€€€€€€€•¹•É…Ñ¥½¸¹­•åÌ¹™½É… ì•¹•É…Ñ¥½¹m¥Ñt€ô•¹•É…Ñ¥½¸¹•ÑY…±Õ”¡¥Ð¤€¬€Äô(€€€€€€€€€€€¥˜€¡ÁÉ•Ù¥½ÕÍUÍ•È€„ô¹Õ±°¤Ù¥•Ý5½‘•±M½Á”¹±…Õ¹ ìÉ•Á½Í¥Ñ½Éä¹±•…ÉUÍ•É…¡”¡ÁÉ•Ù¥½ÕÍUÍ•È¤ô(€€€€€€€€€€€Á•ÉÍ½¹…±¥é…Ñ¥½¸€ôÉ•ÍÑ½É•A•ÉÍ½¹…±¥é…Ñ¥½¸¡¹½Éµ…±¥é•‘%€üè€‰Õ•ÍÐˆ¤(€€€€€€€€€€€Ù…°½±‘••‘Ì€ôµÕÑ…‰±•••‘Ì¹Ù…±Õ”(€€€€€€€€€€€µÕÑ…‰±•••‘Ì¹Ù…±Õ”€ô¥Í½Ù•Éå¡…¹¹•°¹•¹ÑÉ¥•Ì¹…ÍÍ½¥…Ñ•]¥Ñ ì¡…¹¹•°€´ø(€€€€€€€€€€€€€€€É•ÍÑ½É•AÉ•™•É•¹•Ì¡¡…¹¹•°¤¹½Áä (€€€€€€€€€€€€€€€€€€€…Ñ•½É¥•Ì€ô½±‘••‘Ím¡…¹¹•±tü¹…Ñ•½É¥•Ì¹½ÉµÁÑä ¤°(€€€€€€€€€€€€€€€€€€€Ñ…Ì€ô½±‘••‘Ím¡…¹¹•±tü¹Ñ…Ì¹½ÉµÁÑä ¤°(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€ô(€€€€€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹•¹ÑÉ¥•Ì¹™½É… ì¡…¹¹•°€´ø(€€€€€€€€€€€€€€€¥˜€¡ÍÑ…Ñ”¡¡…¹¹•°¤¹…Ñ•½É¥•Ì¹¥ÍµÁÑä ¤¤±½…‘…Ñ•½É¥•Ì¡¡…¹¹•°¤(€€€€€€€€€€€€€€€•±Í”É•™É•Í ¡¡…¹¹•°°ÕÍ•…¡”€ôÑÉÕ”¤(€€€€€€€€€€€ô(€€€€€€€ô•±Í”¥˜€¡Ñ½­•¹	•…µ•Ù…¥±…‰±”¤ì(€€€€€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹•¹ÑÉ¥•Ì¹™½É… ì¡…¹¹•°€´øÉ•™É•Í ¡¡…¹¹•°°ÕÍ•…¡”€ô™…±Í”¤ô(€€€€€€€ô(€€€ô((€€€™Õ¸Í•Ñ…Ñ•½Éä¡¡…¹¹•°è¥Í½Ù•Éå¡…¹¹•°°¹…µ”èMÑÉ¥¹œ¤ì(€€€€€€€ÕÁ‘…Ñ•AÉ•™•É•¹•Ì¡¡…¹¹•°¤ì¥Ð¹½Áä¡Í•±•Ñ•‘…Ñ•½Éä€ô¹…µ”°Í•±•Ñ•‘Q½Á¥Œ€ô¹Õ±°°Í•±•Ñ•‘½¹Ñ•¹ÑQåÁ”€ô¥˜€¡¡…¹¹•°€ôô¥Í½Ù•Éå¡…¹¹•°¹$¤¹Õ±°•±Í”¥Ð¹Í•±•Ñ•‘½¹Ñ•¹ÑQåÁ”¤ô(€€€€€€€É•™É•Í ¡¡…¹¹•°°ÕÍ•…¡”€ôÑÉÕ”°±•…É%Ñ•µÌ€ôÑÉÕ”¤(€€€ô((€€€™Õ¸Í•ÑQ½Á¥Œ¡¡…¹¹•°è¥Í½Ù•Éå¡…¹¹•°°Ñ½Á¥Œè¥Í½Ù•Éå…Ñ•½Éäü¤ì(€€€€€€€ÕÁ‘…Ñ•AÉ•™•É•¹•Ì¡¡…¹¹•°¤ì¥Ð¹½Áä¡Í•±•Ñ•‘Q½Á¥Œ€ôÑ½Á¥Œü¹¹…µ”¤ô(€€€€€€€É•™É•Í ¡¡…¹¹•°°ÕÍ•…¡”€ôÑÉÕ”°±•…É%Ñ•µÌ€ôÑÉÕ”¤(€€€ô((€€€™Õ¸Í•Ñ½¹Ñ•¹ÑQåÁ”¡¡…¹¹•°è¥Í½Ù•Éå¡…¹¹•°°½¹Ñ•¹ÑQåÁ”èMÑÉ¥¹œü¤ì(€€€€€€€¥˜€¡¡…¹¹•°€„ô¥Í½Ù•Éå¡…¹¹•°¹$¤É•ÑÕÉ¸(€€€€€€€ÕÁ‘…Ñ•AÉ•™•É•¹•Ì¡¡…¹¹•°¤ì¥Ð¹½Áä¡Í•±•Ñ•‘½¹Ñ•¹ÑQåÁ”€ô½¹Ñ•¹ÑQåÁ”ü¹Ñ…­•%˜¡MÑÉ¥¹œèé¥Í9½Ñ	±…¹¬¤¤ô(€€€€€€€É•™É•Í ¡¡…¹¹•°°ÕÍ•…¡”€ôÑÉÕ”°±•…É%Ñ•µÌ€ôÑÉÕ”¤(€€€ô((€€€™Õ¸Í•ÑM½ÉÐ¡¡…¹¹•°è¥Í½Ù•Éå¡…¹¹•°°Í½ÉÐè¥Í½Ù•ÉåM½ÉÐ¤ì(€€€€€€€ÕÁ‘…Ñ•AÉ•™•É•¹•Ì¡¡…¹¹•°¤ì¥Ð¹½Áä¡Í½ÉÐ€ôÍ½ÉÐ¤ô(€€€€€€€É•™É•Í ¡¡…¹¹•°°ÕÍ•…¡”€ôÑÉÕ”°±•…É%Ñ•µÌ€ôÑÉÕ”¤(€€€ô((€€€™Õ¸É•™É•Í ¡¡…¹¹•°è¥Í½Ù•Éå¡…¹¹•°°ÕÍ•…¡”è	½½±•…¸€ô™…±Í”°±•…É%Ñ•µÌè	½½±•…¸€ô™…±Í”¤ì(€€€€€€€Ù…°É•ÅÕ•ÍÑ•‘UÍ•È€ôÕÉÉ•¹ÑUÍ•É%(€€€€€€€Ù…°É•ÅÕ•ÍÑQ½­•¸€ô…•ÍÍQ½­•¸(€€€€€€€Ù…°É•ÅÕ•ÍÑA•ÉÍ½¹…±¥é…Ñ¥½¸€ôÁ•ÉÍ½¹…±¥é…Ñ¥½¸(€€€€€€€Ù…°µå•¹•É…Ñ¥½¸€ô•¹•É…Ñ¥½¸¹•ÑY…±Õ”¡¡…¹¹•°¤€¬€Ä(€€€€€€€•¹•É…Ñ¥½¹m¡…¹¹•±t€ôµå•¹•É…Ñ¥½¸(€€€€€€€™••‘)½‰Ím¡…¹¹•±tü¹…¹•° ¤(€€€€€€€™••‘)½‰Ím¡…¹¹•±t€ôÙ¥•Ý5½‘•±M½Á”¹±…Õ¹ ì(€€€€€€€€€€€Ù…°¥¹¥Ñ¥…±MÑ…Ñ”€ôÍÑ…Ñ”¡¡…¹¹•°¤(€€€€€€€€€€€Ù…°Í¹…ÁÍ¡½Ñ-•ä€ô…¡•-•ä¡¥¹¥Ñ¥…±MÑ…Ñ”°É•ÅÕ•ÍÑ•‘UÍ•È¤(€€€€€€€€€€€ÕÁ‘…Ñ”¡¡…¹¹•°¤ì¥Ð¹½Áä¡¥Ñ•µÌ€ô¥˜€¡±•…É%Ñ•µÌ¤•µÁÑå1¥ÍÐ ¤•±Í”¥Ð¹¥Ñ•µÌ°±½…‘¥¹œ€ô¥Ð¹¥Ñ•µÌ¹¥ÍµÁÑä ¤ñð±•…É%Ñ•µÌ°É•™É•Í¡¥¹œ€ôÑÉÕ”°•ÉÉ½È€ô¹Õ±°°ÕÉÍ½È€ô¹Õ±°°Á…”€ô€À°¡…Í5½É”€ôÑÉÕ”¤ô(€€€€€€€€€€€¥˜€¡ÕÍ•…¡”€˜˜€¡¥¹¥Ñ¥…±MÑ…Ñ”¹¥Ñ•µÌ¹¥ÍµÁÑä ¤ñð±•…É%Ñ•µÌ¤¤ì(€€€€€€€€€€€€€€€ÉÕ¹…Ñ¡¥¹œìÉ•Á½Í¥Ñ½Éä¹…¡•¡Í¹…ÁÍ¡½Ñ-•ä°¡…¹¹•°¤ô¹•Ñ=É9Õ±° ¤ü¹±•Ðì…¡•€´ø(€€€€€€€€€€€€€€€€€€€¥˜€¡•¹•É…Ñ¥½¹m¡…¹¹•±t€ôôµå•¹•É…Ñ¥½¸€˜˜ÕÉÉ•¹ÑUÍ•É%€ôôÉ•ÅÕ•ÍÑ•‘UÍ•È¤ì(€€€€€€€€€€€€€€€€€€€€€€€ÕÁ‘…Ñ”¡¡…¹¹•°¤ìÕÉÉ•¹Ð€´øÕÉÉ•¹Ð¹½Áä¡¥Ñ•µÌ€ô…¡•¹¥Ñ•µÌ°ÕÉÍ½È€ô…¡•¹ÕÉÍ½È°Á…”€ô…¡•¹Á…”°¡…Í5½É”€ô…¡•¹¡…Í5½É”°±½…‘¥¹œ€ô™…±Í”¤ô(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€€€€€ÑÉäì(€€€€€€€€€€€€€€€Ù…°ÅÕ•ÉåMÑ…Ñ”€ôÍÑ…Ñ”¡¡…¹¹•°¤(€€€€€€€€€€€€€€€Ù…°É•ÍÕ±Ð€ôÉ•Á½Í¥Ñ½Éä¹Á…”¡ÅÕ•Éå½È¡ÅÕ•ÉåMÑ…Ñ”°É•ÅÕ•ÍÑ•‘UÍ•È°É•ÅÕ•ÍÑQ½­•¸°É•ÅÕ•ÍÑA•ÉÍ½¹…±¥é…Ñ¥½¸¤¤(€€€€€€€€€€€€€€€¥˜€¡•¹•É…Ñ¥½¹m¡…¹¹•±t€„ôµå•¹•É…Ñ¥½¸ñðÕÉÉ•¹ÑUÍ•É%€„ôÉ•ÅÕ•ÍÑ•‘UÍ•È¤É•ÑÕÉ¹±…Õ¹ (€€€€€€€€€€€€€€€ÕÁ‘…Ñ”¡¡…¹¹•°¤ì(€€€€€€€€€€€€€€€€€€€¥Ð¹½Áä (€€€€€€€€€€€€€€€€€€€€€€€¥Ñ•µÌ€ôÉ•ÍÕ±Ð¹¥Ñ•µÌ°(€€€€€€€€€€€€€€€€€€€€€€€ÕÉÍ½È€ôÉ•ÍÕ±Ð¹ÕÉÍ½È°(€€€€€€€€€€€€€€€€€€€€€€€Á…”€ôÉ•ÍÕ±Ð¹Á…”°(€€€€€€€€€€€€€€€€€€€€€€€¡…Í5½É”€ôÉ•ÍÕ±Ð¹¡…Í5½É”°(€€€€€€€€€€€€€€€€€€€€€€€±½…‘¥¹œ€ô™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€É•™É•Í¡¥¹œ€ô™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€•ÉÉ½È€ô¹Õ±°°(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ÉÕ¹…Ñ¡¥¹œìÉ•Á½Í¥Ñ½Éä¹Í…Ù•M¹…ÁÍ¡½Ð¡…¡•-•ä¡ÅÕ•ÉåMÑ…Ñ”°É•ÅÕ•ÍÑ•‘UÍ•È¤°É•ÅÕ•ÍÑ•‘UÍ•È°É•ÍÕ±Ð°É•ÍÕ±Ð¹¥Ñ•µÌ¤ô(€€€€€€€€€€€ô…Ñ €¡•ÉÉ½Èèá•ÁÑ¥½¸¤ì(€€€€€€€€€€€€€€€¥˜€¡•ÉÉ½È¥Ì­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹…¹•±±…Ñ¥½¹á•ÁÑ¥½¸¤Ñ¡É½Ü•ÉÉ½È(€€€€€€€€€€€€€€€¥˜€¡•¹•É…Ñ¥½¹m¡…¹¹•±t€„ôµå•¹•É…Ñ¥½¸¤É•ÑÕÉ¹±…Õ¹ (€€€€€€€€€€€€€€€ÕÁ‘…Ñ”¡¡…¹¹•°¤ì(€€€€€€€€€€€€€€€€€€€¥Ð¹½Áä (€€€€€€€€€€€€€€€€€€€€€€€±½…‘¥¹œ€ô™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€É•™É•Í¡¥¹œ€ô™…±Í”°(€€€€€€€€€€€€€€€€€€€€€€€•ÉÉ½È€ô•ÉÉ½È¹µ•ÍÍ…”€üè€‹–*ƒ¢ö÷–’Ç¢Ò—¾ò3¢¾ß¦7¢¾Tˆ°(€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€ô(€€€ô((€€€™Õ¸±½…‘5½É”¡¡…¹¹•°è¥Í½Ù•Éå¡…¹¹•°¤ì(€€€€€€€Ù…°¥¹¥Ñ¥…°€ôÍÑ…Ñ”¡¡…¹¹•°¤(€€€€€€ƒ]øæÚ$z{-®éÜj×ull { it.stableKey == old.stableKey }?.let { publishInteraction(channel, it) }
+package com.heika.android.discovery
+
+import android.app.Application
+import android.os.Parcelable
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.security.MessageDigest
+
+internal class DiscoveryViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
+    private val repository = DiscoveryRepository(application)
+    private val preferences = application.getSharedPreferences("heika-native-discovery-preferences", 0)
+    private val mutableFeeds = MutableStateFlow(
+        mapOf(
+            DiscoveryChannel.COMMUNITY to restorePreferences(DiscoveryChannel.COMMUNITY),
+            DiscoveryChannel.AI to restorePreferences(DiscoveryChannel.AI),
+        ),
+    )
+    val feeds: StateFlow<Map<DiscoveryChannel, DiscoveryFeedState>> = mutableFeeds.asStateFlow()
+    private val mutableInteractionUpdates = MutableSharedFlow<DiscoveryInteractionUpdate>(extraBufferCapacity = 16)
+    val interactionUpdates: SharedFlow<DiscoveryInteractionUpdate> = mutableInteractionUpdates
+
+    private var currentUserId: String? = null
+    private var accessToken: String? = null
+    private var personalization = restorePersonalization("guest")
+    private val generation = mutableMapOf(
+        DiscoveryChannel.COMMUNITY to 0,
+        DiscoveryChannel.AI to 0,
+    )
+    private val feedJobs = mutableMapOf<DiscoveryChannel, Job>()
+    private val categoryJobs = mutableMapOf<DiscoveryChannel, Job>()
+    private val busyInteractions = mutableSetOf<String>()
+
+    override fun onCleared() {
+        feedJobs.values.forEach(Job::cancel)
+        categoryJobs.values.forEach(Job::cancel)
+        repository.close()
+        super.onCleared()
+    }
+
+    init {
+        loadCategories(DiscoveryChannel.COMMUNITY)
+        loadCategories(DiscoveryChannel.AI)
+    }
+
+    fun setSession(userId: String?, token: String?) {
+        val normalizedId = userId?.takeIf(String::isNotBlank)
+        val normalizedToken = token?.takeIf(String::isNotBlank)
+        if (normalizedId == currentUserId && normalizedToken == accessToken) return
+        val previousUser = currentUserId
+        val tokenBecameAvailable = accessToken.isNullOrBlank() && !normalizedToken.isNullOrBlank()
+        val changedAccount = normalizedId != previousUser
+        currentUserId = normalizedId
+        accessToken = normalizedToken
+        if (changedAccount) {
+            feedJobs.values.forEach(Job::cancel)
+            feedJobs.clear()
+            generation.keys.forEach { generation[it] = generation.getValue(it) + 1 }
+            if (previousUser != null) viewModelScope.launch { repository.clearUserCache(previousUser) }
+            personalization = restorePersonalization(normalizedId ?: "guest")
+            val oldFeeds = mutableFeeds.value
+            mutableFeeds.value = DiscoveryChannel.entries.associateWith { channel ->
+                restorePreferences(channel).copy(
+                    categories = oldFeeds[channel]?.categories.orEmpty(),
+                    tags = oldFeeds[channel]?.tags.orEmpty(),
+                )
+            }
+            DiscoveryChannel.entries.forEach { channel ->
+                if (state(channel).categories.isEmpty()) loadCategories(channel)
+                else refresh(channel, useCache = true)
+            }
+        } else if (tokenBecameAvailable) {
+            DiscoveryChannel.entries.forEach { channel -> refresh(channel, useCache = false) }
+        }
+    }
+
+    fun setCategory(channel: DiscoveryChannel, name: String) {
+        updatePreferences(channel) { it.copy(selectedCategory = name, selectedTopic = null, selectedContentType = if (channel == DiscoveryChannel.AI) null else it.selectedContentType) }
+        refresh(channel, useCache = true, clearItems = true)
+    }
+
+    fun setTopic(channel: DiscoveryChannel, topic: DiscoveryCategory?) {
+        updatePreferences(channel) { it.copy(selectedTopic = topic?.name) }
+        refresh(channel, useCache = true, clearItems = true)
+    }
+
+    fun setContentType(channel: DiscoveryChannel, contentType: String?) {
+        if (channel != DiscoveryChannel.AI) return
+        updatePreferences(channel) { it.copy(selectedContentType = contentType?.takeIf(String::isNotBlank)) }
+        refresh(channel, useCache = true, clearItems = true)
+    }
+
+    fun setSort(channel: DiscoveryChannel, sort: DiscoverySort) {
+        updatePreferences(channel) { it.copy(sort = sort) }
+        refresh(channel, useCache = true, clearItems = true)
+    }
+
+    fun refresh(channel: DiscoveryChannel, useCache: Boolean = false, clearItems: Boolean = false) {
+        val requestedUser = currentUserId
+        val requestToken = accessToken
+        val requestPersonalization = personalization
+        val myGeneration = generation.getValue(channel) + 1
+        generation[channel] = myGeneration
+        feedJobs[channel]?.cancel()
+        feedJobs[channel] = viewModelScope.launch {
+            val initialState = state(channel)
+            val snapshotKey = cacheKey(initialState, requestedUser)
+            update(channel) { it.copy(items = if (clearItems) emptyList() else it.items, loading = it.items.isEmpty() || clearItems, refreshing = true, error = null, cursor = null, page = 0, hasMore = true) }
+            if (useCache && (initialState.items.isEmpty() || clearItems)) {
+                runCatching { repository.cached(snapshotKey, channel) }.getOrNull()?.let { cached ->
+                    if (generation[channel] == myGeneration && currentUserId == requestedUser) {
+                        update(channel) { current -> current.copy(items = cached.items, cursor = cached.cursor, page = cached.page, hasMore = cached.hasMore, loading = false) }
+                    }
+                }
+            }
+            try {
+                val queryState = state(channel)
+                val result = repository.page(queryFor(queryState, requestedUser, requestToken, requestPersonalization))
+                if (generation[channel] != myGeneration || currentUserId != requestedUser) return@launch
+                update(channel) {
+                    it.copy(
+                        items = result.items,
+                        cursor = result.cursor,
+                        page = result.page,
+                        hasMore = result.hasMore,
+                        loading = false,
+                        refreshing = false,
+                        error = null,
+                    )
+                }
+                runCatching { repository.saveSnapshot(cacheKey(queryState, requestedUser), requestedUser, result, result.items) }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                if (generation[channel] != myGeneration) return@launch
+                update(channel) {
+                    it.copy(
+                        loading = false,
+                        refreshing = false,
+                        error = error.message ?: "åŠ è½½å¤±è´¥ï¼Œè¯·é‡è¯•",
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadMore(channel: DiscoveryChannel) {
+        val initial = state(channel)
+        if (initial.loading || initial.refreshing || !initial.hasMore || feedJobs[channel]?.isActive == true) return
+        val myGeneration = generation.getValue(channel)
+        val requestedUser = currentUserId
+        val token = accessToken
+        val currentPersonalization = personalization
+        feedJobs[channel] = viewModelScope.launch {
+            update(channel) { it.copy(loading = true, error = null) }
+            try {
+                val queryState = state(channel)
+                val result = repository.page(queryFor(queryState, requestedUser, token, currentPersonalization))
+                if (generation[channel] != myGeneration || currentUserId != requestedUser) return@launch
+                val combined = (queryState.items + result.items).distinctBy(DiscoveryPost::stableKey)
+                update(channel) {
+                    it.copy(items = combined, cursor = result.cursor, page = result.page, hasMore = result.hasMore, loading = false, error = null)
+                }
+                runCatching { repository.saveSnapshot(cacheKey(queryState, requestedUser), requestedUser, result, combined) }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                if (generation[channel] == myGeneration) update(channel) { it.copy(loading = false, error = error.message ?: "åŠ è½½æ›´å¤šå¤±è´¥") }
+            }
+        }
+    }
+
+    fun toggleLike(channel: DiscoveryChannel, post: DiscoveryPost) = toggle(channel, post, "like", !post.liked)
+
+    fun toggleSaved(channel: DiscoveryChannel, post: DiscoveryPost) = toggle(channel, post, "bookmark", !post.saved)
+
+    private fun toggle(channel: DiscoveryChannel, post: DiscoveryPost, action: String, value: Boolean) {
+        val token = accessToken
+        if (token.isNullOrBlank() || currentUserId.isNullOrBlank()) {
+            update(channel) { state -> state.copy(error = if (action == "bookmark") "ç™»å½•åŽå³å¯æ”¶è—å†…å®¹" else "ç™»å½•åŽå³å¯ä¸ºå†…å®¹ç‚¹èµž") }
+            return
+        }
+        val account = currentUserId
+        val operationKey = "$account:${post.stableKey}:$action"
+        if (!busyInteractions.add(operationKey)) return
+        val old = state(channel).items.firstOrNull { it.stableKey == post.stableKey } ?: post
+        update(channel) { state ->
+            state.copy(items = state.items.map { item ->
+                if (item.stableKey != post.stableKey) item
+                else when (action) {
+                    "like" -> item.copy(liked = value, likeCount = (item.likeCount + if (value) 1 else -1).coerceAtLeast(0))
+                    else -> item.copy(saved = value)
+                }
+            })
+        }
+        val optimistic = old.copy(
+            liked = if (action == "like") value else old.liked,
+            saved = if (action == "bookmark") value else old.saved,
+            likeCount = if (action == "like") (old.likeCount + if (value) 1 else -1).coerceAtLeast(0) else old.likeCount,
+        )
+        publishInteraction(channel, optimistic)
+        if (token.isNullOrBlank()) {
+            busyInteractions.remove(operationKey)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                repository.changeInteraction(post, action, value, token)
+                if (currentUserId == account) persistCurrent(channel)
+            } catch (error: Exception) {
+                if (currentUserId == account) {
+                    update(channel) { state ->
+                        state.copy(
+                            items = state.items.map { item ->
+                                if (item.stableKey != old.stableKey) item
+                                else if (action == "like") item.copy(liked = old.liked, likeCount = old.likeCount)
+                                else item.copy(saved = old.saved)
+                            },
+                            error = error.message,
+                        )
+                    }
+                    state(channel).items.firstOrNull { it.stableKey == old.stableKey }?.let { publishInteraction(channel, it) }
                 }
             } finally {
                 busyInteractions.remove(operationKey)
