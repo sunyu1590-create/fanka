@@ -40,20 +40,17 @@ test("Android exposes the existing today deck as a launcher shortcut", async () 
   assert.match(shortcuts, /android:data="https:\/\/moonclean\.shop\/"/);
 });
 
-test("Android About opens the native screen and browser About stays on the website", async () => {
-  const bridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
+test("Android About uses the shared website layout and browser keeps the same About page", async () => {
   const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
   const community = await read("components/Community.tsx");
   const webAbout = await read("components/AboutHeika.tsx");
 
-  assert.match(bridge, /"app\.about\.open" -> callbacks\.onAboutOpenRequest/);
-  assert.match(activity, /text = "ANDROID APP  ·  \$\{BuildConfig\.VERSION_NAME\} \(\$\{BuildConfig\.VERSION_CODE\}\)"/);
-  assert.match(activity, /webView\?\.clearCache\(true\)/);
-  assert.match(community, /const openAboutPage = \(\) => \{[\s\S]*?if \(hasNativeBridge\(\)\) \{\s*void openNativeAbout\(\)/);
+  assert.match(activity, /BuildConfig\.VERSION_NAME/);
+  assert.match(community, /const openAboutPage = \(\) => \{[\s\S]*?setTab\("about"\)/);
   assert.match(webAbout, /import \{ APP_VERSION \} from "@\/lib\/version"/);
-  assert.match(webAbout, /VERSION \{APP_VERSION\}/);
-  assert.match(activity, /installNativeAboutCompatibilityHook\(view\)/);
-  assert.match(activity, /label\.startsWith\('关于黑卡'\)/);
+  assert.match(webAbout, /VERSION \{appInfo\?\.versionName \|\| APP_VERSION\}/);
+  assert.match(webAbout, /appInfo\.versionCode/);
+  assert.doesNotMatch(community, /openNativeAbout/);
 });
 
 test("Android internal notification preferences do not depend on OS permission", async () => {
@@ -75,8 +72,8 @@ test("Android app upgrade refreshes only web resource and public content caches"
   const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
   const cache = await read("lib/public-content-cache.ts");
 
-  assert.match(gradle, /versionCode = 10/);
-  assert.match(gradle, /versionName = "2\.2\.4"/);
+  assert.match(gradle, /versionCode = 11/);
+  assert.match(gradle, /versionName = "2\.3\.6"/);
   assert.match(activity, /view\.clearCache\(true\)/);
   assert.match(activity, /preserving cookies, localStorage, drafts, and account state/);
   assert.match(cache, /heika-public-content-v2/);

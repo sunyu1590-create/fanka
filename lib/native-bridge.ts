@@ -11,6 +11,15 @@ export type NativeTransitionRect = {
   height: number;
 };
 
+export type NativeAppInfo = {
+  name: string;
+  platform: "android";
+  versionName: string;
+  versionCode: number;
+  website: string;
+  github: string;
+};
+
 type NativeMessage = {
   version: 1;
   id: string;
@@ -254,6 +263,31 @@ export async function openNativeNotificationSettings(): Promise<boolean> {
   }
 }
 
+export async function openNativeNotificationCenter(messagesEnabled = true): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("notifications.center.open", { messagesEnabled });
+    return response.ok === true && response.data?.opened === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function showNativeNotification(data: { title: string; body: string; route: string; notificationId?: string }): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("notifications.show", {
+      title: data.title.slice(0, 100),
+      body: data.body.slice(0, 240),
+      route: data.route,
+      notificationId: data.notificationId?.slice(0, 80),
+    });
+    return response.ok === true && response.data?.shown === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function shareViaNative(data: { title: string; text: string; url: string }): Promise<boolean> {
   if (!hasNativeBridge()) return false;
   try {
@@ -274,6 +308,25 @@ export async function openNativeAbout(): Promise<boolean> {
     const response = await request("app.about.open");
     return response.ok === true && response.data?.opened === true;
   } catch { return false; }
+}
+
+export async function getNativeAppInfo(): Promise<NativeAppInfo | null> {
+  if (!hasNativeBridge()) return null;
+  try {
+    const response = await request("capabilities.get");
+    const rawApp = response.data?.app;
+    if (response.ok !== true || !rawApp || typeof rawApp !== "object") return null;
+    const app = rawApp as Record<string, unknown>;
+    if (app.platform !== "android" || typeof app.versionName !== "string" || typeof app.versionCode !== "number") return null;
+    return {
+      name: typeof app.name === "string" ? app.name : "黑卡 HEIKA",
+      platform: "android",
+      versionName: app.versionName,
+      versionCode: app.versionCode,
+      website: typeof app.website === "string" ? app.website : "https://moonclean.shop/",
+      github: typeof app.github === "string" ? app.github : "https://github.com/sunyu1590-create/fanka",
+    };
+  } catch { return null; }
 }
 
 export async function prepareNativeCardTransition(

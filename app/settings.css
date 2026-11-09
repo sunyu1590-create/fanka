@@ -110,6 +110,11 @@
 .about-developer>strong { display: block; margin: 0 0 11px; font-size: 14px; }
 .about-section-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .about-section-heading>span { color: var(--muted); font-size: 12px; }
+.about-app-info>p { margin-bottom: 8px; }
+.about-app-update-status { color: var(--muted); font-size: 12px !important; }
+.about-app-links { display: flex; flex-wrap: wrap; gap: 18px; padding-top: 7px; }
+.about-app-links a { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-size: 13px; text-decoration: none; }
+.about-app-links a:hover { color: var(--accent); }
 .about-release { border-top: 1px solid var(--line); }
 .about-release summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 50px; cursor: pointer; list-style: none; }
 .about-release summary::-webkit-details-marker { display: none; }

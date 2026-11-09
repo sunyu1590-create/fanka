@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { browserDb } from "@/lib/browser-db";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
 import { hasNativeBridge } from "@/lib/native-bridge";
+import { showNativeNotification } from "@/lib/native-bridge";
 import type { NoticeOptions } from "./NoticeBanner";
 export default function InboxBadge({ enabled = false, inAppEnabled = true, onNotice, onOpenConversationPeer }: { enabled?: boolean; inAppEnabled?: boolean; onNotice?: (message: string, options?: NoticeOptions) => void; onOpenConversationPeer?: (id: string) => void }) {
   const notify = useRef(enabled);
@@ -59,17 +60,27 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
             { event: "*", schema: "public", table: "dm_messages" },
             (payload) => {
               if (payload.eventType === "INSERT") {
-                const row = payload.new as { sender_id?: string; body?: string; media_path?: string | null };
+              const row = payload.new as { id?: string; sender_id?: string; body?: string; media_path?: string | null };
                 const senderId = row.sender_id;
-                if (senderId && senderId !== signedInUserId && inApp.current && notify.current && document.visibilityState === "visible") {
+              if (senderId && senderId !== signedInUserId && inApp.current && notify.current) {
                   void db.from("profiles").select("nickname,avatar_url").eq("id", senderId).maybeSingle().then(({ data: sender }) => {
-                    if (!alive || document.visibilityState !== "visible" || !notify.current || !inApp.current) return;
-                    notice.current?.(row.media_path ? "向你发送了一张图片" : row.body || "你收到了一条新消息", {
+                  if (!alive || !notify.current || !inApp.current) return;
+                  const body = row.media_path ? "向你发送了一张图片" : row.body || "你收到了一条新消息";
+                  if (document.visibilityState === "visible") {
+                    notice.current?.(body, {
                       title: sender?.nickname || "新消息",
                       avatarUrl: sender?.avatar_url,
                       kind: "message",
                       onActivate: () => openPeer.current?.(senderId),
                     });
+                  } else if (hasNativeBridge() && /^[0-9a-f-]{36}$/i.test(senderId)) {
+                    void showNativeNotification({
+                      title: sender?.nickname || "黑卡 · 新私信",
+                      body,
+                      route: `/?conversation=${senderId}`,
+                      notificationId: row.id,
+                    });
+                  }
                   });
                 }
               }

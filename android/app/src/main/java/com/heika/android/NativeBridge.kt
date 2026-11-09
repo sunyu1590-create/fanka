@@ -26,6 +26,8 @@ internal class NativeBridge(
         fun onPermissionRequest(requestId: String)
         fun onNotificationStatusRequest(requestId: String)
         fun onNotificationSettingsRequest(requestId: String)
+        fun onNotificationCenterOpenRequest(requestId: String, payload: JSONObject)
+        fun onLocalNotificationRequest(requestId: String, payload: JSONObject)
         fun onSystemShareRequest(requestId: String, payload: JSONObject)
         fun onAboutOpenRequest(requestId: String)
         fun onPageState(path: String)
@@ -170,9 +172,17 @@ internal class NativeBridge(
                     .put("notifications.permission", true)
                     .put("notifications.status", true)
                     .put("notifications.openSettings", true)
+                    .put("notifications.center.open", true)
+                    .put("notifications.show", true)
                     .put("system.filePicker", true)
                     .put("system.share", true)
                     .put("app.about.open", true)
+                    .put("app.name", "黑卡 HEIKA")
+                    .put("app.platform", "android")
+                    .put("app.versionName", com.heika.android.BuildConfig.VERSION_NAME)
+                    .put("app.versionCode", com.heika.android.BuildConfig.VERSION_CODE)
+                    .put("app.website", "https://moonclean.shop/")
+                    .put("app.github", "https://github.com/sunyu1590-create/fanka")
                     .put("discovery.native", true)
                     .put("navigation.events", true),
             )
@@ -182,6 +192,8 @@ internal class NativeBridge(
             }
             "notifications.status" -> callbacks.onNotificationStatusRequest(id)
             "notifications.openSettings" -> callbacks.onNotificationSettingsRequest(id)
+            "notifications.center.open" -> callbacks.onNotificationCenterOpenRequest(id, request.optJSONObject("payload") ?: JSONObject())
+            "notifications.show" -> callbacks.onLocalNotificationRequest(id, request.optJSONObject("payload") ?: JSONObject())
             "system.share" -> {
                 val payload = request.optJSONObject("payload") ?: JSONObject()
                 callbacks.onSystemShareRequest(id, payload)
@@ -349,6 +361,8 @@ internal class NativeBridge(
             "notifications.requestPermission",
             "notifications.status",
             "notifications.openSettings",
+            "notifications.center.open",
+            "notifications.show",
             "system.share",
             "app.about.open",
             "page.state",

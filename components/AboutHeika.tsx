@@ -1,22 +1,38 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, BookOpen, Compass, Sparkles } from "lucide-react";
 import { APP_VERSION } from "@/lib/version";
 import { RELEASES } from "@/lib/release-notes";
+import { getNativeAppInfo, hasNativeBridge, type NativeAppInfo } from "@/lib/native-bridge";
 
 export default function AboutHeika({ onBack, onFeedback }: { onBack: () => void; onFeedback: () => void }) {
+  const [appInfo, setAppInfo] = useState<NativeAppInfo | null>(null);
+  useEffect(() => {
+    if (!hasNativeBridge()) return;
+    let active = true;
+    void getNativeAppInfo().then((value) => { if (active) setAppInfo(value); });
+    return () => { active = false; };
+  }, []);
   const categoryOrder = ["新功能", "体验优化", "问题修复"] as const;
   return <section className="page about-page about-heika-page">
     <button className="back settings-back" onClick={onBack}><ArrowLeft size={18}/> 设置</button>
     <header className="about-brand-block">
       <Image src="/icons/heika-192.png" alt="黑卡品牌标识" width={72} height={72} priority />
-      <p className="eyebrow">HEIKA · VERSION {APP_VERSION}</p>
+      <p className="eyebrow">HEIKA · VERSION {appInfo?.versionName || APP_VERSION}</p>
       <h1>黑卡 HEIKA</h1>
       <p className="about-slogan">翻开未知，遇见新的想法。</p>
       <span>探索 · 阅读 · 连接</span>
     </header>
+    {appInfo && <section className="about-section about-app-info">
+      <div className="about-section-heading"><h2>Android 应用</h2><span>ANDROID APP</span></div>
+      <p>{appInfo.name} · 版本 {appInfo.versionName}（构建 {appInfo.versionCode}）</p>
+      <p>{appInfo.versionName === "2.3.6" ? "2.3.6：接入原生通知中心和 Android 权限状态；关于页面沿用黑卡网页版布局并显示安装包版本。" : "此版本暂无单独更新说明。"}</p>
+      <p className="about-app-update-status">检查更新：当前发布渠道没有自动更新服务。</p>
+      <div className="about-app-links"><a href={appInfo.website} target="_blank" rel="noreferrer">官方网站 <ArrowUpRight size={15}/></a><a href={appInfo.github} target="_blank" rel="noreferrer">GitHub 项目 <ArrowUpRight size={15}/></a></div>
+    </section>}
     <section className="about-section about-introduction"><h2>认识黑卡</h2><p>黑卡是一个以探索、阅读和分享为核心的内容社区。</p><p>我们相信，发现不应该只是不断滑动屏幕，也可以是一次充满期待的主动选择。</p><p>在这里，你可以翻开未知的卡片，阅读感兴趣的知识与故事，分享自己的想法，也可以遇见与你拥有相同兴趣的人。</p><p>让探索成为习惯，让阅读重新拥有期待。</p></section>
     <section className="about-section"><h2>核心功能</h2><div className="about-feature-grid">
       <article><Compass size={19}/><h3>每日翻卡</h3><p>从候选卡片中选择每天想要翻开的五张，探索未知内容。</p></article>
