@@ -48,7 +48,8 @@ test("Android About uses the shared website layout and browser keeps the same Ab
   assert.match(activity, /BuildConfig\.VERSION_NAME/);
   assert.match(community, /const openAboutPage = \(\) => \{[\s\S]*?setTab\("about"\)/);
   assert.match(webAbout, /import \{ APP_VERSION \} from "@\/lib\/version"/);
-  assert.match(webAbout, /VERSION \{appInfo\?\.versionName \|\| APP_VERSION\}/);
+  assert.match(webAbout, /const versionLabel = appInfo/);
+  assert.match(webAbout, /nativeRuntime \? "HEIKA · ANDROID APP"/);
   assert.match(webAbout, /appInfo\.versionCode/);
   assert.doesNotMatch(community, /openNativeAbout/);
 });
