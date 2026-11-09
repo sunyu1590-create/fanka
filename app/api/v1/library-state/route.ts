@@ -137,6 +137,10 @@ export async function GET(req: NextRequest) {
         videos: Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.flatMap((path) => typeof path === "string" && /\.(?:mp4|webm)$/i.test(path) && revisionUrls.has(path) ? [revisionUrls.get(path)!] : []) : [],
       },
     }]));
+    const draftMediaById = new Map((own.data || [])
+      .filter((row) => row.status === "draft")
+      .map((row) => [row.id, ((row as unknown as LibraryRow).post_media || [])
+        .slice().sort((a, b) => a.sort_order - b.sort_order).map((media) => media.storage_path)]));
     return {
       profile: profile.data,
       profileDetails: details.data,
@@ -144,7 +148,11 @@ export async function GET(req: NextRequest) {
       bookmarks: bookmarks.data,
       interactions: interactions.data,
       interests: interests.data,
-      own: ownPosts.map((post) => ({ ...post, pendingRevision: post.cloudId ? revisionsByPost.get(post.cloudId) : undefined })),
+      own: ownPosts.map((post) => ({
+        ...post,
+        ...(post.status === "draft" ? { mediaPaths: draftMediaById.get(post.cloudId) || [] } : {}),
+        pendingRevision: post.cloudId ? revisionsByPost.get(post.cloudId) : undefined,
+      })),
     };
   });
 }
