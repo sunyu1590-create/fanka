@@ -28,6 +28,7 @@ test("Android notification permission, channel, app metadata, and local message 
   const app = await read("android/app/src/main/java/com/heika/android/HeikaApplication.kt");
   const manifest = await read("android/app/src/main/AndroidManifest.xml");
   const bridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
+  const webBridge = await read("lib/native-bridge.ts");
   const inbox = await read("components/InboxBadge.tsx");
   const gradle = await read("android/app/build.gradle.kts");
 
@@ -46,7 +47,8 @@ test("Android notification permission, channel, app metadata, and local message 
 test("Android About returns to the shared web layout and reads its installed version from native config", async () => {
   const about = await read("components/AboutHeika.tsx");
   const community = await read("components/Community.tsx");
-  const bridge = await read("lib/native-bridge.ts");
+  const webBridge = await read("lib/native-bridge.ts");
+  const nativeBridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
   const gradle = await read("android/app/build.gradle.kts");
 
   assert.match(about, /getNativeAppInfo\(\)/);
@@ -55,6 +57,9 @@ test("Android About returns to the shared web layout and reads its installed ver
   assert.match(about, /appInfo\.github/);
   assert.match(community, /const openAboutPage = \(\) => \{[\s\S]*?setTab\("about"\)/);
   assert.doesNotMatch(community, /const openAboutPage = \(\) => \{\s*if \(hasNativeBridge\(\)\) \{\s*void openNativeAbout/);
-  assert.match(bridge, /app\.versionCode/);
+  assert.match(nativeBridge, /app\.versionCode/);
+  assert.match(nativeBridge, /\.put\("app\.versionName"/);
+  assert.match(webBridge, /data\["app\.versionName"\]/);
+  assert.match(webBridge, /data\["app\.versionCode"\]/);
   assert.match(gradle, /versionName = "2\.3\.6"/);
 });

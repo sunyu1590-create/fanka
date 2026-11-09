@@ -87,7 +87,7 @@ internal class NativeNotificationRepository {
             connection.setRequestProperty("Content-Type", "application/json")
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         }
-        try {
+        return try {
             val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
             val payload = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
             if (connection.responseCode !in 200..299) {

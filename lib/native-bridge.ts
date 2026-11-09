@@ -314,17 +314,15 @@ export async function getNativeAppInfo(): Promise<NativeAppInfo | null> {
   if (!hasNativeBridge()) return null;
   try {
     const response = await request("capabilities.get");
-    const rawApp = response.data?.app;
-    if (response.ok !== true || !rawApp || typeof rawApp !== "object") return null;
-    const app = rawApp as Record<string, unknown>;
-    if (app.platform !== "android" || typeof app.versionName !== "string" || typeof app.versionCode !== "number") return null;
+    const data = response.data;
+    if (response.ok !== true || data?.["app.platform"] !== "android" || typeof data["app.versionName"] !== "string" || typeof data["app.versionCode"] !== "number") return null;
     return {
-      name: typeof app.name === "string" ? app.name : "黑卡 HEIKA",
+      name: typeof data["app.name"] === "string" ? data["app.name"] : "黑卡 HEIKA",
       platform: "android",
-      versionName: app.versionName,
-      versionCode: app.versionCode,
-      website: typeof app.website === "string" ? app.website : "https://moonclean.shop/",
-      github: typeof app.github === "string" ? app.github : "https://github.com/sunyu1590-create/fanka",
+      versionName: data["app.versionName"],
+      versionCode: data["app.versionCode"],
+      website: typeof data["app.website"] === "string" ? data["app.website"] : "https://moonclean.shop/",
+      github: typeof data["app.github"] === "string" ? data["app.github"] : "https://github.com/sunyu1590-create/fanka",
     };
   } catch { return null; }
 }
