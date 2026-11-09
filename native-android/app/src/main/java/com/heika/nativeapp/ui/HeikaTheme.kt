@@ -6,6 +6,17 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+
+object HeikaRadii {
+    val feedCard = 13.dp
+    val dailyCard = 15.dp
+    val categoryTag = 9.dp
+    val ratingTag = 11.dp
+    val control = 11.dp
+    val surface = 14.dp
+    val dialog = 18.dp
+}
 
 object HeikaPalette {
     val Gold = Color(0xFFD1B566)

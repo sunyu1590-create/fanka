@@ -8,7 +8,6 @@ import androidx.core.view.WindowCompat
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.toArgb
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.ui.HeikaImageCache
@@ -27,15 +26,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
+        // Native 3.0 draws edge-to-edge and applies safe drawing insets once at
+        // the Compose root. This keeps page content below status icons/cutouts.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             val theme by preferences.theme.collectAsState(initial = "dark")
             val loader by imageCache.loader.collectAsState()
             HeikaTheme(theme) {
-                val systemBarColor = androidx.compose.material3.MaterialTheme.colorScheme.background
                 SideEffect {
-                    window.statusBarColor = systemBarColor.toArgb()
-                    window.navigationBarColor = systemBarColor.toArgb()
+                    window.statusBarColor = android.graphics.Color.TRANSPARENT
+                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        window.isStatusBarContrastEnforced = false
+                        window.isNavigationBarContrastEnforced = false
+                    }
                     val controller = WindowCompat.getInsetsController(window, window.decorView)
                     controller.isAppearanceLightStatusBars = theme == "light"
                     controller.isAppearanceLightNavigationBars = theme == "light"

@@ -1,14 +1,17 @@
 package com.heika.nativeapp.feature.home
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,44 +22,61 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import coil3.request.crossfade
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.HeikaPalette
+import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 
 @Composable
@@ -64,61 +84,101 @@ fun HomeScreen(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
     onPost: (HeikaPost) -> Unit,
+    onPreviewActive: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BrandHeader(onSearch = onSearch, onNotifications = onNotifications)
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 19.dp, end = 19.dp, top = 14.dp, bottom = 126.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.surface)
-                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.58f), RoundedCornerShape(14.dp))
-                            .padding(horizontal = 17.dp, vertical = 15.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("今日已翻开 ${state.openedIds.size.coerceAtMost(state.allowance)} / ${state.allowance} 张", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.weight(1f))
-                        Text(if (state.remaining > 0) "还可翻开 ${state.remaining} 张" else "今天已经探索完成", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    }
-                    state.notice?.let { NoticeLine(it, isError = false) }
-                    state.error?.let { NoticeLine(it, isError = true, onRetry = viewModel::reload) }
-                    if (state.loading && state.candidateIds.isEmpty()) {
-                        Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                            Text("  正在恢复今日卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+    var preview by remember { mutableStateOf<DailyCardPreview?>(null) }
+    var closeRequest by remember { mutableIntStateOf(0) }
+    var containerOrigin by remember { mutableStateOf(Offset.Zero) }
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(preview?.id) { onPreviewActive(preview != null) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { onPreviewActive(false) }
+    }
+    BackHandler(enabled = preview != null) { closeRequest += 1 }
+
+    BoxWithConstraints(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .onGloballyPositioned { containerOrigin = it.positionInRoot() },
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            BrandHeader(onSearch = onSearch, onNotifications = onNotifications)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                state = gridState,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(start = 19.dp, end = 19.dp, top = 14.dp, bottom = 126.dp),
+                horizontalArrangement = Arrangement.spacedBy(13.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.58f), RoundedCornerShape(HeikaRadii.surface))
+                                .padding(horizontal = 17.dp, vertical = 15.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("今日已翻开 ${state.openedIds.size.coerceAtMost(state.allowance)} / ${state.allowance} 张", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.weight(1f))
+                            Text(if (state.remaining > 0) "还可翻开 ${state.remaining} 张" else "今天已经探索完成", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                         }
+                        state.notice?.let { NoticeLine(it, isError = false) }
+                        state.error?.let { NoticeLine(it, isError = true, onRetry = viewModel::reload) }
+                        if (state.loading && state.candidateIds.isEmpty()) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                                Text("  正在恢复今日卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(5.dp))
                     }
-                    Spacer(Modifier.height(5.dp))
+                }
+                itemsIndexed(state.candidateIds, key = { _, id -> "daily-$id" }) { index, id ->
+                    val opened = id in state.openedIds
+                    val post = state.posts[id]
+                    FlipCard(
+                        cardId = id,
+                        number = index + 1,
+                        post = post,
+                        opened = opened && preview?.id != id,
+                        opening = state.openingId == id,
+                        onClick = { bounds ->
+                            if (opened) {
+                                if (post != null) onPost(post) else viewModel.reload()
+                            } else if (state.openingId == null) {
+                                preview = DailyCardPreview(id, index + 1, bounds)
+                            }
+                        },
+                    )
                 }
             }
-            itemsIndexed(state.candidateIds, key = { _, id -> "daily-$id" }) { index, id ->
-                val opened = id in state.openedIds
-                val post = state.posts[id]
-                FlipCard(
-                    number = index + 1,
-                    post = post,
-                    opened = opened,
-                    opening = state.openingId == id,
-                    onClick = {
-                        if (opened && post != null) onPost(post) else viewModel.flip(id)
-                    },
-                )
-            }
+        }
+        preview?.let { selected ->
+            FlipPreviewOverlay(
+                preview = selected,
+                containerWidth = maxWidth,
+                containerHeight = maxHeight,
+                containerOrigin = containerOrigin,
+                opening = state.openingId == selected.id,
+                opened = selected.id in state.openedIds,
+                canConfirm = state.remaining > 0,
+                error = state.error,
+                closeRequest = closeRequest,
+                onConfirm = { viewModel.flip(selected.id) },
+                onDismiss = { preview = null },
+            )
         }
     }
 }
 
+private data class DailyCardPreview(val id: Int, val number: Int, val sourceBounds: Rect?)
+
 @Composable
-private fun FlipCard(number: Int, post: HeikaPost?, opened: Boolean, opening: Boolean, onClick: () -> Unit) {
+private fun FlipCard(cardId: Int, number: Int, post: HeikaPost?, opened: Boolean, opening: Boolean, onClick: (Rect?) -> Unit) {
+    var sourceBounds by remember(cardId) { mutableStateOf<Rect?>(null) }
     val rotation by animateFloatAsState(
         targetValue = if (opened) 180f else 0f,
         animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing),
@@ -128,11 +188,15 @@ private fun FlipCard(number: Int, post: HeikaPost?, opened: Boolean, opening: Bo
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(0.76f)
-            .shadow(3.dp, RoundedCornerShape(16.dp))
+            .shadow(3.dp, RoundedCornerShape(HeikaRadii.dailyCard))
             .graphicsLayer { rotationY = rotation; cameraDistance = 14 * density }
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, Color(0xFF79868A).copy(alpha = 0.75f), RoundedCornerShape(16.dp))
-            .clickable(enabled = !opening, onClick = onClick),
+            .clip(RoundedCornerShape(HeikaRadii.dailyCard))
+            .border(1.dp, Color(0xFF79868A).copy(alpha = 0.75f), RoundedCornerShape(HeikaRadii.dailyCard))
+            .onGloballyPositioned { coordinates ->
+                val next = coordinates.boundsInRoot()
+                if (sourceBounds != next) sourceBounds = next
+            }
+            .clickable(enabled = !opening, onClick = { onClick(sourceBounds) }),
     ) {
         if (rotation < 90f) {
             CardBack(number)
@@ -148,8 +212,123 @@ private fun FlipCard(number: Int, post: HeikaPost?, opened: Boolean, opening: Bo
 }
 
 @Composable
+private fun FlipPreviewOverlay(
+    preview: DailyCardPreview,
+    containerWidth: androidx.compose.ui.unit.Dp,
+    containerHeight: androidx.compose.ui.unit.Dp,
+    containerOrigin: Offset,
+    opening: Boolean,
+    opened: Boolean,
+    canConfirm: Boolean,
+    error: String?,
+    closeRequest: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val progress = remember(preview.id) { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    var dismissing by remember(preview.id) { mutableStateOf(false) }
+    val targetWidth = (containerWidth - 52.dp).coerceAtMost(390.dp).coerceAtLeast(240.dp)
+    val targetWidthPx = with(density) { targetWidth.toPx() }
+    val targetHeightPx = targetWidthPx / 0.76f
+    val centerX = with(density) { containerWidth.toPx() / 2f }
+    val centerY = with(density) { containerHeight.toPx() / 2f }
+
+    LaunchedEffect(preview.id) {
+        progress.animateTo(1f, tween(390, easing = FastOutSlowInEasing))
+    }
+    LaunchedEffect(opened) {
+        if (opened && !dismissing) {
+            dismissing = true
+            progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
+            onDismiss()
+        }
+    }
+    LaunchedEffect(closeRequest) {
+        if (closeRequest > 0 && !opened && !dismissing) {
+            dismissing = true
+            progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
+            onDismiss()
+        }
+    }
+
+    fun requestDismiss() {
+        if (opening || opened || dismissing) return
+        dismissing = true
+        scope.launch {
+            progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
+            onDismiss()
+        }
+    }
+
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.68f)).clickable(
+            enabled = !opening && !opened && !dismissing,
+            indication = null,
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            onClick = { requestDismiss() },
+        ),
+    ) {
+        Box(
+            Modifier.align(Alignment.Center)
+                .width(targetWidth)
+                .aspectRatio(0.76f)
+                .shadow(18.dp, RoundedCornerShape(HeikaRadii.dailyCard))
+                .graphicsLayer {
+                    val p = progress.value
+                    val source = preview.sourceBounds?.let {
+                        Rect(it.left - containerOrigin.x, it.top - containerOrigin.y, it.right - containerOrigin.x, it.bottom - containerOrigin.y)
+                    }
+                    val sourceScaleX = source?.let { (it.width / targetWidthPx).coerceAtLeast(0.05f) } ?: 0.94f
+                    val sourceScaleY = source?.let { (it.height / targetHeightPx).coerceAtLeast(0.05f) } ?: 0.94f
+                    scaleX = sourceScaleX + (1f - sourceScaleX) * p
+                    scaleY = sourceScaleY + (1f - sourceScaleY) * p
+                    translationX = source?.let { ((it.left + it.right) / 2f - centerX) * (1f - p) } ?: 0f
+                    translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
+                }
+                .clip(RoundedCornerShape(HeikaRadii.dailyCard))
+                .border(1.dp, Color(0xFF9AA8AA).copy(alpha = 0.8f), RoundedCornerShape(HeikaRadii.dailyCard)),
+        ) {
+            CardBack(preview.number)
+        }
+
+        Column(
+            Modifier.align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 22.dp)
+                .fillMaxWidth()
+                .alpha(progress.value),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (opening) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = HeikaPalette.Gold)
+                    Text("正在为你翻开", color = Color.White.copy(alpha = 0.86f), fontSize = 12.sp)
+                }
+            } else if (error != null) {
+                Text(error, color = Color(0xFFE6A49A), fontSize = 12.sp)
+            } else if (!canConfirm) {
+                Text("今日翻卡次数已用完", color = Color.White.copy(alpha = 0.76f), fontSize = 12.sp)
+            }
+            Button(
+                onClick = onConfirm,
+                enabled = !opening && !opened && canConfirm && progress.value >= 0.9f,
+                modifier = Modifier.fillMaxWidth(0.78f),
+            ) {
+                Text(if (error != null) "重试翻卡" else "确认翻卡")
+            }
+            TextButton(onClick = { requestDismiss() }, enabled = !opening && !opened && !dismissing) {
+                Text("取消", color = Color.White.copy(alpha = 0.82f))
+            }
+        }
+    }
+}
+
+@Composable
 private fun CardBack(number: Int) {
-    val shape = RoundedCornerShape(15.dp)
+    val shape = RoundedCornerShape(HeikaRadii.dailyCard)
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF263236), Color(0xFF10171B), Color(0xFF1A2327))))) {
         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
             val inset = 1.dp.toPx()

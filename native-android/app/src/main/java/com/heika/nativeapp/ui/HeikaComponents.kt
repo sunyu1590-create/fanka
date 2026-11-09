@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.drawBehind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -97,7 +100,7 @@ fun SectionLabel(title: String, subtitle: String? = null, modifier: Modifier = M
 
 @Composable
 fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(9.dp)
+    val shape = RoundedCornerShape(HeikaRadii.control)
     Box(
         modifier
             .clip(shape)
@@ -121,6 +124,8 @@ fun GlassNavigationBar(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(37.dp)
+    val isDark = MaterialTheme.colorScheme.background == HeikaPalette.DarkBackground
+    val surface = MaterialTheme.colorScheme.surface
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(horizontal = 14.dp)
@@ -128,14 +133,31 @@ fun GlassNavigationBar(
             .hazeEffect(
                 state = hazeState,
                 style = HazeStyle(
-                    backgroundColor = MaterialTheme.colorScheme.surface,
-                    tint = HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = 0.30f)),
-                    blurRadius = 25.dp,
-                    fallbackTint = HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
+                    backgroundColor = surface,
+                    tint = HazeTint(surface.copy(alpha = if (isDark) 0.16f else 0.28f)),
+                    blurRadius = 30.dp,
+                    noiseFactor = 0.025f,
+                    fallbackTint = HazeTint(surface.copy(alpha = if (isDark) 0.48f else 0.62f)),
                 ),
             )
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.72f), shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        surface.copy(alpha = if (isDark) 0.32f else 0.56f),
+                        surface.copy(alpha = if (isDark) 0.23f else 0.42f),
+                    ),
+                ),
+                shape,
+            )
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.82f), shape)
+            .drawBehind {
+                val highlight = Brush.horizontalGradient(
+                    0f to Color.White.copy(alpha = if (isDark) 0.27f else 0.52f),
+                    0.45f to Color.White.copy(alpha = if (isDark) 0.10f else 0.22f),
+                    1f to Color.White.copy(alpha = if (isDark) 0.18f else 0.36f),
+                )
+                drawLine(highlight, Offset(18.dp.toPx(), 1.dp.toPx()), Offset(size.width - 18.dp.toPx(), 1.dp.toPx()), 1.dp.toPx())
+            }
             .padding(start = 9.dp, top = 9.dp, end = 9.dp, bottom = 9.dp)
             .height(73.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -144,7 +166,7 @@ fun GlassNavigationBar(
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(30.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isDark) 0.52f else 0.66f))
                 .padding(horizontal = 3.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

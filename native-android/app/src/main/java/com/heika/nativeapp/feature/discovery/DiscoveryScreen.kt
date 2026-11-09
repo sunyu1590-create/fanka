@@ -68,6 +68,7 @@ import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.FilterChip
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import com.heika.nativeapp.ui.HeikaRadii
 import java.util.Locale
 
 @Composable
@@ -100,9 +101,9 @@ fun DiscoveryScreen(
         }
         Row(
             Modifier.padding(start = 22.dp, top = 7.dp, bottom = 11.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(HeikaRadii.surface))
                 .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .7f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .7f), RoundedCornerShape(HeikaRadii.surface))
                 .padding(4.dp),
         ) {
             ChannelOption("社区", filter.channel == "community") { viewModel.selectChannel("community") }
@@ -245,7 +246,7 @@ private fun FeedCard(post: HeikaPost, onClick: () -> Unit) {
             var imageFailed by remember(image, post.cloudId) { mutableStateOf(false) }
             val ratio = remember(post.id) { listOf(.78f, .88f, 1.02f)[Math.floorMod(post.id, 3)] }
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick)
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.feedCard)).clickable(onClick = onClick)
                     .background(MaterialTheme.colorScheme.surfaceVariant).aspectRatio(ratio),
             ) {
                 val context = LocalContext.current
@@ -272,7 +273,7 @@ private fun FeedCard(post: HeikaPost, onClick: () -> Unit) {
                     )
                 }
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .27f), Color.Transparent, Color.Black.copy(alpha = .7f)))))
-                Box(Modifier.align(Alignment.TopStart).padding(9.dp).clip(RoundedCornerShape(30.dp)).background(Color.Black.copy(alpha = .46f)).padding(horizontal = 11.dp, vertical = 6.dp)) {
+                Box(Modifier.align(Alignment.TopStart).padding(9.dp).clip(RoundedCornerShape(HeikaRadii.categoryTag)).background(Color.Black.copy(alpha = .46f)).padding(horizontal = 11.dp, vertical = 6.dp)) {
                     Text(post.tag, color = Color.White, fontSize = 10.sp, maxLines = 1)
                 }
                 RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp))
@@ -280,9 +281,9 @@ private fun FeedCard(post: HeikaPost, onClick: () -> Unit) {
             }
         } else {
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick)
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.feedCard)).clickable(onClick = onClick)
                     .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .65f), RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .65f), RoundedCornerShape(HeikaRadii.feedCard))
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -306,8 +307,8 @@ private fun FeedCard(post: HeikaPost, onClick: () -> Unit) {
 @Composable
 private fun RatingTag(post: HeikaPost, modifier: Modifier = Modifier) {
     Row(
-        modifier.clip(RoundedCornerShape(30.dp)).background(Color.Black.copy(alpha = .47f))
-            .border(1.dp, HeikaGold.copy(alpha = .5f), RoundedCornerShape(30.dp))
+        modifier.clip(RoundedCornerShape(HeikaRadii.ratingTag)).background(Color.Black.copy(alpha = .47f))
+            .border(1.dp, HeikaGold.copy(alpha = .5f), RoundedCornerShape(HeikaRadii.ratingTag))
             .padding(horizontal = 9.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),

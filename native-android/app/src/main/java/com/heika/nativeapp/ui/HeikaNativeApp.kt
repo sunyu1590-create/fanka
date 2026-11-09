@@ -8,13 +8,21 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -45,21 +53,33 @@ fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
         val hazeState = rememberHazeState()
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
+        var homePreviewActive by remember { mutableStateOf(false) }
         val selected = when (route) {
             "discovery" -> "discovery"
             "messages" -> "messages"
             "profile" -> "profile"
             else -> "home"
         }
-        val showBottomBar = route in setOf("home", "discovery", "messages", "profile")
+        val topLevelRoute = route in setOf("home", "discovery", "messages", "profile")
+        val showBottomBar = topLevelRoute && !(route == "home" && homePreviewActive)
         val openCompat: (String) -> Unit = remember(nav) {
             { path -> nav.navigate("compat?url=${Uri.encode(path)}") }
         }
-        Box(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+        Box(
+            Modifier.fillMaxSize()
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+        ) {
             NavHost(
                 navController = nav,
                 startDestination = "home",
-                modifier = Modifier.fillMaxSize().hazeSource(hazeState),
+                modifier = Modifier.fillMaxSize()
+                    .then(
+                        if (topLevelRoute) Modifier
+                        else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
+                    )
+                    .imePadding()
+                    .hazeSource(hazeState),
                 enterTransition = { fadeIn(tween(190)) },
                 exitTransition = { fadeOut(tween(150)) },
                 popEnterTransition = { fadeIn(tween(160)) },
@@ -70,6 +90,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
                         onSearch = { openCompat("/?nativeTab=search") },
                         onNotifications = { nav.navigate("notifications") },
                         onPost = { post -> openCompat("/?post=${post.id}") },
+                        onPreviewActive = { homePreviewActive = it },
                     )
                 }
                 composable("discovery") {
