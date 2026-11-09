@@ -322,7 +322,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
 
             override fun onAboutOpenRequest(requestId: String) {
-                setNativeDiscoveryVisible(false, 0, "dark")
+                setNativeDiscoveryVisible(false, 0.0, "dark")
                 showNativeAbout()
                 bridge?.completeRequest(requestId, "app.about.open", true, JSONObject().put("opened", true))
             }
@@ -425,7 +425,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                setNativeDiscoveryVisible(false, 0, "dark")
+                setNativeDiscoveryVisible(false, 0.0, "dark")
                 webContentCommitted = false
                 cardTransition?.clearAll()
                 bridge?.onPageStarted()

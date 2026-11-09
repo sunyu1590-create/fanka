@@ -575,14 +575,14 @@ internal class DiscoveryScreen(
             val bg = if (dark) Color.rgb(28, 32, 34) else Color.rgb(255, 254, 250)
             val ink = if (dark) Color.rgb(235, 235, 229) else Color.rgb(32, 33, 31)
             val muted = if (dark) Color.rgb(164, 167, 162) else Color.rgb(111, 109, 102)
-            card.background = rounded(bg, dp(13))
+            card.background = roundedBackground(bg, dp(13))
             root.background = ColorDrawable(Color.TRANSPARENT)
             categoryLabel.text = value.category
             categoryLabel.setTextColor(Color.WHITE)
-            categoryLabel.background = rounded(0x9C1A1D1F.toInt(), dp(9))
+            categoryLabel.background = roundedBackground(0x9C1A1D1F.toInt(), dp(9))
             ratingLabel.text = if (value.ratingCount > 0) "★ ${"%.1f".format(java.util.Locale.US, value.ratingAverage)}" else "★ 待评级"
             ratingLabel.setTextColor(Color.rgb(224, 188, 111))
-            ratingLabel.background = rounded(0xA61A1D1F.toInt(), dp(9))
+            ratingLabel.background = roundedBackground(0xA61A1D1F.toInt(), dp(9))
             title.text = value.title
             textBody.text = value.body.ifBlank { value.title }
             textBody.setTextColor(muted)
@@ -605,7 +605,7 @@ internal class DiscoveryScreen(
                 textBody.text = "${value.title}\n\n${value.body.ifBlank { "打开内容查看详情" }}"
                 title.text = value.title
             } else {
-                cover.background = rounded(if (dark) Color.rgb(38, 42, 43) else Color.rgb(235, 232, 224), dp(13))
+                cover.background = roundedBackground(if (dark) Color.rgb(38, 42, 43) else Color.rgb(235, 232, 224), dp(13))
                 image.visibility = View.VISIBLE
                 image.scaleType = ImageView.ScaleType.CENTER_CROP
                 textBody.visibility = View.GONE
@@ -633,7 +633,7 @@ internal class DiscoveryScreen(
                         imageError.visibility = View.VISIBLE
                         return false
                     }
-                    override fun onResourceReady(resource: Drawable, model: Any?, target: Target<Drawable>?, dataSource: DataSource, isFirstResource: Boolean) = false
+                    override fun onResourceReady(resource: Drawable, model: Any, target: Target<Drawable>, dataSource: DataSource, isFirstResource: Boolean): Boolean = false
                 }).into(image)
         }
 
@@ -657,6 +657,11 @@ internal class DiscoveryScreen(
 }
 
 private fun dp(value: Int) = (value * android.content.res.Resources.getSystem().displayMetrics.density + .5f).toInt()
+
+private fun roundedBackground(color: Int, radius: Int) = GradientDrawable().apply {
+    setColor(color)
+    cornerRadius = radius.toFloat()
+}
 
 private fun stableLong(value: String): Long {
     val id = runCatching { java.util.UUID.fromString(value) }.getOrNull()

@@ -100,7 +100,7 @@ internal class DiscoveryRepository(context: Context) {
             else -> collected
         }
         val withState = hydrateInteractions(sorted, query.token)
-        DiscoveryPage(withState, cursor, page, hasMore)
+        return DiscoveryPage(withState, cursor, page, hasMore)
     }
 
     private suspend fun aiPage(query: DiscoveryQuery): DiscoveryPage {
