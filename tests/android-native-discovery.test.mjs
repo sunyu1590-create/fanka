@@ -27,6 +27,7 @@ test("native discovery uses a retained two-column list and bounded image caching
 
 test("native discovery overlays only the content and routes posts through the existing WebView", async () => {
   const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
+  const screen = await read("android/app/src/main/java/com/heika/android/discovery/DiscoveryScreen.kt");
   const bridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
   const webBridge = await read("lib/native-bridge.ts");
   const community = await read("components/Community.tsx");
@@ -35,11 +36,15 @@ test("native discovery overlays only the content and routes posts through the ex
   assert.match(activity, /screen\.setNavigationCutout/);
   assert.match(activity, /screen\.bringToFront\(\)/);
   assert.match(activity, /discovery\.openPost/);
+  assert.match(activity, /discovery\.interaction/);
+  assert.match(screen, /interactionUpdates\.collect/);
   assert.match(bridge, /"discovery\.visibility" ->/);
   assert.match(webBridge, /composeLeftCss/);
   assert.match(community, /setNativeDiscoveryVisibility\(next\.visible, next\.top, next\.theme, next\.composeLeft/);
   assert.match(community, /hasNativeBridge\(\)\) return;/);
   assert.match(community, /openNativeAiPostRef\.current\(id, payload\.cloudId\)/);
+  assert.match(community, /subscribeNativeEvent\("discovery\.interaction"/);
+  assert.match(community, /savedFrom: saved \? \{ \.\.\.current\.savedFrom, \[id\]: "discover" \}/);
   assert.match(activity, /\.put\("channel", if \(channel == DiscoveryChannel\.AI\) "ai"/);
 });
 

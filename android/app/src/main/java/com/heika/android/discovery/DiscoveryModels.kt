@@ -54,6 +54,15 @@ internal data class DiscoveryPost(
     val stableKey: String get() = cloudId.ifBlank { "${id}:$contentType" }
 }
 
+internal data class DiscoveryInteractionUpdate(
+    val channel: DiscoveryChannel,
+    val id: Long,
+    val cloudId: String,
+    val liked: Boolean,
+    val saved: Boolean,
+    val likeCount: Int,
+)
+
 internal data class DiscoveryCursor(val createdAt: String, val postId: String)
 
 internal data class DiscoveryFeedState(

@@ -1,383 +1,4 @@
-package com.heika.android
-
-import android.Manifest
-import android.app.Activity
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Color
-import android.net.Uri
-import android.os.Build
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
-import android.view.FrameMetrics
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.view.Window
-import android.webkit.ConsoleMessage
-import android.webkit.SslErrorHandler
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.provider.Settings
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.ViewModelProvider
-import com.heika.android.discovery.DiscoveryChannel
-import com.heika.android.discovery.DiscoveryPersonalization
-import com.heika.android.discovery.DiscoveryScreen
-import com.heika.android.discovery.DiscoveryViewModel
-import org.json.JSONObject
-import java.util.ArrayDeque
-import java.util.LinkedHashSet
-import java.util.UUID
-import kotlin.math.max
-
-class MainActivity : androidx.activity.ComponentActivity() {
-    private val diagnostics get() = (application as HeikaApplication).diagnostics
-    private val trustedOrigin = BuildConfig.WEB_APP_ORIGIN.toUri()
-    private val trustedOrigins = BuildConfig.WEB_APP_HOSTS.split(',')
-        .mapNotNull { host -> runCatching { Uri.Builder().scheme("https").authority(host.trim()).build() }.getOrNull() }
-        .toSet()
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var root: FrameLayout? = null
-    private var webView: WebView? = null
-    private var bridge: NativeBridge? = null
-    private var cardTransition: NativeCardTransition? = null
-    private var bridgeSupported = false
-    private var webContentCommitted = false
-    private var overlay: View? = null
-    private var lastSafeRoute = BuildConfig.WEB_APP_URL
-    private var rendererRestartWindow = 0L
-    private var rendererRestartCount = 0
-    private var pendingPermissionRequest: String? = null
-    private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
-    private var backRequestId: String? = null
-    private var backTimeout: Runnable? = null
-    private val navigationQueue = ArrayDeque<PendingNavigation>()
-    private val seenNavigationIds = LinkedHashSet<String>()
-    private var inFlightNavigationId: String? = null
-    private var lastDeliveredRoute: String? = null
-    private var navigationTimeout: Runnable? = null
-    private var lastBackAt = 0L
-    private var loadTimeout: Runnable? = null
-    private var bridgeFallbackTimeout: Runnable? = null
-    private var recoveringFromUntrustedNavigation = false
-    private var frameMetricsListener: Window.OnFrameMetricsAvailableListener? = null
-    private var discoveryScreen: DiscoveryScreen? = null
-    private var discoveryViewModel: DiscoveryViewModel? = null
-    private var pendingDiscoverySession: Pair<String?, String?> = null to null
-    private var pendingDiscoveryPersonalization: Pair<String?, DiscoveryPersonalization> = null to DiscoveryPersonalization()
-
-    private data class PendingNavigation(val id: String, val route: String)
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        val requestId = pendingPermissionRequest
-        pendingPermissionRequest = null
-        if (requestId != null) {
-            bridge?.replyPermission(
-                requestId,
-                granted,
-                granted && NotificationManagerCompat.from(this).areNotificationsEnabled(),
-            )
-        }
-    }
-
-    private val filePickerLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        val data = result.data
-        val selected = if (result.resultCode == Activity.RESULT_OK && data != null) {
-            val clip = data.clipData
-            when {
-                clip != null -> Array(clip.itemCount) { index -> clip.getItemAt(index).uri }
-                data.data != null -> arrayOf(data.data!!)
-                else -> null
-            }
-        } else null
-        deliverPickedFiles(selected)
-    }
-
-    private val singlePhotoPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri -> deliverPickedFiles(uri?.let { arrayOf(it) }) }
-
-    private val multiPhotoPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(9),
-    ) { uris -> deliverPickedFiles(uris.takeIf { it.isNotEmpty() }?.toTypedArray()) }
-
-    private fun deliverPickedFiles(uris: Array<Uri>?) {
-        val callback = pendingFileCallback
-        pendingFileCallback = null
-        callback?.onReceiveValue(uris)
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
-        }
-
-        val container = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(13, 16, 18))
-            ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
-                val safe = insets.getInsets(
-                    WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
-                )
-                val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime())
-                view.setPadding(safe.left, safe.top, safe.right, max(safe.bottom, keyboard.bottom))
-                WindowInsetsCompat.CONSUMED
-            }
-        }
-        root = container
-        setContentView(container)
-        ViewCompat.requestApplyInsets(container)
-
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = dispatchSystemBack()
-        })
-
-        restorePendingNavigations(savedInstanceState)
-        val deepLink = routeFromIntent(intent)
-        if (deepLink != null) queueNavigation(deepLink.first, deepLink.second)
-        createWebView(savedInstanceState?.getBundle(WEB_VIEW_STATE_KEY), BuildConfig.WEB_APP_URL)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        routeFromIntent(intent)?.let { (route, id) -> queueNavigation(route, id) }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        startFrameMetrics()
-        webView?.onResume()
-        bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "foreground"))
-    }
-
-    override fun onPause() {
-        stopFrameMetrics()
-        discoveryScreen?.saveListState()
-        bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "background"))
-        cardTransition?.clearAll()
-        webView?.onPause()
-        super.onPause()
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        discoveryScreen?.saveListState()
-        webView?.let { view ->
-            val state = Bundle()
-            view.saveState(state)
-            outState.putBundle(WEB_VIEW_STATE_KEY, state)
-        }
-        val ids = ArrayList<String>()
-        val routes = ArrayList<String>()
-        inFlightNavigationId?.let { id ->
-            lastDeliveredRoute?.let { route ->
-                ids.add(id)
-                routes.add(route)
-            }
-        }
-        navigationQueue.forEach { navigation ->
-            ids.add(navigation.id)
-            routes.add(navigation.route)
-        }
-        outState.putStringArrayList(NAVIGATION_IDS_KEY, ids)
-        outState.putStringArrayList(NAVIGATION_ROUTES_KEY, routes)
-        outState.putStringArrayList(SEEN_NAVIGATION_IDS_KEY, ArrayList(seenNavigationIds))
-        super.onSaveInstanceState(outState)
-    }
-
-    override fun onDestroy() {
-        stopFrameMetrics()
-        discoveryScreen?.saveListState()
-        cardTransition?.clearAll()
-        cardTransition = null
-        loadTimeout?.let(mainHandler::removeCallbacks)
-        cancelBridgeFallbackTimeout()
-        backTimeout?.let(mainHandler::removeCallbacks)
-        navigationTimeout?.let(mainHandler::removeCallbacks)
-        pendingFileCallback?.onReceiveValue(null)
-        pendingFileCallback = null
-        discoveryScreen?.let { screen -> (screen.parent as? ViewGroup)?.removeView(screen) }
-        discoveryScreen = null
-        discoveryViewModel = null
-        pendingDiscoverySession = null to null
-        pendingDiscoveryPersonalization = null to DiscoveryPersonalization()
-        releaseWebView()
-        root = null
-        super.onDestroy()
-    }
-
-    private fun startFrameMetrics() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || frameMetricsListener != null) return
-        val refreshRate = window.decorView.display?.refreshRate ?: 60f
-        val listener = Window.OnFrameMetricsAvailableListener { _, metrics, droppedReports ->
-            diagnostics.recordFrameSample(
-                metrics.getMetric(FrameMetrics.TOTAL_DURATION),
-                refreshRate,
-                droppedReports,
-            )
-        }
-        frameMetricsListener = listener
-        window.addOnFrameMetricsAvailableListener(listener, mainHandler)
-    }
-
-    private fun stopFrameMetrics() {
-        frameMetricsListener?.let(window::removeOnFrameMetricsAvailableListener)
-        frameMetricsListener = null
-    }
-
-    private fun createWebView(restoredState: Bundle?, firstUrl: String) {
-        val container = root ?: return
-        val view = WebViewCore.create(this)
-        val migrationPrefs = getSharedPreferences(APP_MIGRATION_PREFS, MODE_PRIVATE)
-        val lastCacheRefreshVersion = migrationPrefs.getInt(WEB_CACHE_VERSION_KEY, 0)
-        if (lastCacheRefreshVersion < BuildConfig.VERSION_CODE) {
-            // Refresh downloadable WebView resources after app upgrades while
-            // preserving cookies, localStorage, drafts, and account state.
-            view.clearCache(true)
-            migrationPrefs.edit().putInt(WEB_CACHE_VERSION_KEY, BuildConfig.VERSION_CODE).apply()
-            diagnostics.record("web_cache_refreshed_for_app_version", BuildConfig.VERSION_CODE.toLong())
-        }
-        webView = view
-        container.addView(view, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        ))
-
-        cardTransition = NativeCardTransition(this, container, view, diagnostics) { id, completed ->
-            bridge?.sendEvent(
-                "card.transition.finished",
-                JSONObject().put("transactionId", id).put("completed", completed),
-            )
-        }
-
-        val nativeBridge = NativeBridge(view, trustedOrigin, trustedOrigins, diagnostics, object : NativeBridge.Callbacks {
-            override fun onWebReady() {
-                diagnostics.recordFirstInteractive()
-                cancelLoadTimeout()
-                cancelBridgeFallbackTimeout()
-                if (overlay?.tag == LOADING_MASK_TAG) dismissLoadingMask() else clearOverlay()
-                bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "foreground"))
-                dispatchNextNavigation()
-            }
-
-            override fun onPermissionRequest(requestId: String) = requestNotificationPermission(requestId)
-
-            override fun onNotificationStatusRequest(requestId: String) {
-                val permissionState = notificationPermissionState()
-                val enabled = NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()
-                bridge?.completeRequest(
-                    requestId,
-                    "notifications.status",
-                    true,
-                    JSONObject()
-                        .put("granted", permissionState == "granted")
-                        .put("enabled", enabled)
-                        .put("permission", permissionState),
-                )
-            }
-
-            override fun onNotificationSettingsRequest(requestId: String) {
-                val opened = openNotificationSettings()
-                bridge?.completeRequest(
-                    requestId,
-                    "notifications.openSettings",
-                    true,
-                    JSONObject().put("opened", opened),
-                )
-            }
-
-            override fun onSystemShareRequest(requestId: String, payload: JSONObject) {
-                shareFromNative(requestId, payload)
-            }
-
-            override fun onAboutOpenRequest(requestId: String) {
-                setNativeDiscoveryVisible(false, 0.0, "dark")
-                showNativeAbout()
-                bridge?.completeRequest(requestId, "app.about.open", true, JSONObject().put("opened", true))
-            }
-
-            override fun onDiscoveryVisibility(visible: Boolean, navigationTopCss: Double, theme: String, composeLeftCss: Double, composeTopCss: Double, composeWidthCss: Double, composeHeightCss: Double) {
-                setNativeDiscoveryVisible(visible, navigationTopCss, theme, composeLeftCss, composeTopCss, composeWidthCss, composeHeightCss)
-            }
-
-            override fun onDiscoverySession(userId: String?, accessToken: String?) {
-                pendingDiscoverySession = userId to accessToken
-                discoveryViewModel?.let { viewModel ->
-                    viewModel.setSession(userId, accessToken)
-                    val pendingPersonalization = pendingDiscoveryPersonalization
-                    if (pendingPersonalization.first == userId) {
-                        viewModel.setPersonalization(
-                            userId,
-                            pendingPersonalization.second.interests,
-                            pendingPersonalization.second.viewedIds.toList(),
-                            pendingPersonalization.second.personalRatings,
-                        )
-                    }
-                }
-            }
-
-            override fun onDiscoveryPersonalization(userId: String?, interests: List<String>, viewedIds: List<Long>, personalRatings: Map<Long, Int>) {
-                pendingDiscoveryPersonalization = userId to DiscoveryPersonalization(interests, viewedIds.toSet(), personalRatings)
-                discoveryViewModel?.setPersonalization(userId, interests, viewedIds, personalRatings)
-            }
-
-            override fun onPageState(path: String) {
-                lastSafeRoute = BuildConfig.WEB_APP_URL.trimEnd('/') + path
-            }
-
-            override fun onBackResult(requestId: String, consumed: Boolean) {
-                if (backRequestId != requestId) return
-                backTimeout?.let(mainHandler::removeCallbacks)
-                backTimeout = null
-                backRequestId = null
-                if (!consumed) fallbackBack()
-            }
-
-            override fun onNavigationAck(requestId: String, accepted: Boolean) {
-                if (inFlightNavigationId != requestId) return
-                if (!accepted) diagnostics.record("navigation_rejected")
-                else lastDeliveredRoute?.let { route ->
-                    lastSafeRoute = BuildConfig.WEB_APP_URL.trimEnd('/') + route
-                }
-                navigationTimeout?.let(mainHandler::removeCallbacks)
-                navigationTimeout = null
-                inFlightNavigationId = null
-                lastDeliveredRoute = null
-                dispatchNextNavigation()
-            }
-
-            override fun onCardTransitionRequest(requestId: String, requestType: String, payload: JSONObject) {
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíóM4N‹Z–‹­¦ëeŠw¬ÕÁ…­…”½´¹¡•¥­„¹…¹‘É½¥()¥µÁ½ÉĞ…¹‘É½¥¹5…¹¥™•ÍĞ)¥µÁ½ÉĞ…¹‘É½¥¹…ÁÀ¹Ñ¥Ù¥Ñä)¥µÁ½ÉĞ…¹‘É½¥¹½¹Ñ•¹Ğ¹Ñ¥Ù¥Ñå9½Ñ½Õ¹‘á•ÁÑ¥½¸)¥µÁ½ÉĞ…¹‘É½¥¹½¹Ñ•¹Ğ¹%¹Ñ•¹Ğ)¥µÁ½ÉĞ…¹‘É½¥¹½¹Ñ•¹Ğ¹Á´¹A…­…•5…¹…•È)¥µÁ½ÉĞ…¹‘É½¥¹É…Á¡¥Ì¹½±½È)¥µÁ½ÉĞ…¹‘É½¥¹¹•Ğ¹UÉ¤)¥µÁ½ÉĞ…¹‘É½¥¹½Ì¹	Õ¥±)¥µÁ½ÉĞ…¹‘É½¥¹½Ì¹	Õ¹‘±”)¥µÁ½ÉĞ…¹‘É½¥¹½Ì¹!…¹‘±•È)¥µÁ½ÉĞ…¹‘É½¥¹½Ì¹1½½Á•È)¥µÁ½ÉĞ…¹‘É½¥¹½Ì¹MåÍÑ•µ±½¬)¥µÁ½ÉĞ…¹‘É½¥¹Ù¥•Ü¹É…µ•5•ÑÉ¥Ì)¥µÁ½ÉĞ…¹‘É½¥¹Ù¥•Ü¹É…Ù¥Ñä)¥µÁ½ÉĞ…¹‘É½¥¹Ù¥•Ü¹Y¥•Ü)¥µÁ½ÉĞ…¹‘É½¥¹Ù¥•Ü¹Y¥•İÉ½ÕÀ)¥µÁ½ÉĞ…¹‘É½¥¹Ù¥•Ü¹]¥¹‘½Ü)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹½¹Í½±•5•ÍÍ…”)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹MÍ±ÉÉ½É!…¹‘±•È)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹Y…±Õ•…±±‰…¬)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹]•‰¡É½µ•±¥•¹Ğ)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹]•‰I•Í½ÕÉ•ÉÉ½È)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹]•‰I•Í½ÕÉ•I•ÅÕ•ÍĞ)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹]•‰Y¥•Ü)¥µÁ½ÉĞ…¹‘É½¥¹İ•‰­¥Ğ¹]•‰Y¥•İ±¥•¹Ğ)¥µÁ½ÉĞ…¹‘É½¥¹ÁÉ½Ù¥‘•È¹M•ÑÑ¥¹Ì)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹	ÕÑÑ½¸)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹É…µ•1…å½ÕĞ)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹%µ…•Y¥•Ü)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹1¥¹•…É1…å½ÕĞ)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹AÉ½É•ÍÍ	…È)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹MÉ½±±Y¥•Ü)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹Q•áÑY¥•Ü)¥µÁ½ÉĞ…¹‘É½¥¹İ¥‘•Ğ¹Q½…ÍĞ)¥µÁ½ÉĞ…¹‘É½¥‘à¹…Ñ¥Ù¥Ñä¹=¹	…­AÉ•ÍÍ•‘…±±‰…¬)¥µÁ½ÉĞ…¹‘É½¥‘à¹…Ñ¥Ù¥Ñä¹É•ÍÕ±Ğ¹A¥­Y¥ÍÕ…±5•‘¥…I•ÅÕ•ÍĞ)¥µÁ½ÉĞ…¹‘É½¥‘à¹…Ñ¥Ù¥Ñä¹É•ÍÕ±Ğ¹½¹ÑÉ…Ğ¹Ñ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ)¥µÁ½ÉĞ…¹‘É½¥‘à¹½É”¹…ÁÀ¹9½Ñ¥™¥…Ñ¥½¹5…¹…•É½µÁ…Ğ)¥µÁ½ÉĞ…¹‘É½¥‘à¹½É”¹½¹Ñ•¹Ğ¹½¹Ñ•áÑ½µÁ…Ğ)¥µÁ½ÉĞ…¹‘É½¥‘à¹½É”¹¹•Ğ¹Ñ½UÉ¤)¥µÁ½ÉĞ…¹‘É½¥‘à¹½É”¹Ù¥•Ü¹Y¥•İ½µÁ…Ğ)¥µÁ½ÉĞ…¹‘É½¥‘à¹½É”¹Ù¥•Ü¹]¥¹‘½İ½µÁ…Ğ)¥µÁ½ÉĞ…¹‘É½¥‘à¹½É”¹Ù¥•Ü¹]¥¹‘½İ%¹Í•ÑÍ½µÁ…Ğ)¥µÁ½ÉĞ…¹‘É½¥‘à¹½É”¹Ù¥•Ü¹]¥¹‘½İ%¹Í•ÑÍ½¹ÑÉ½±±•É½µÁ…Ğ)¥µÁ½ÉĞ…¹‘É½¥‘à¹±¥™•å±”¹Y¥•İ5½‘•±AÉ½Ù¥‘•È)¥µÁ½ÉĞ½´¹¡•¥­„¹…¹‘É½¥¹‘¥Í½Ù•Éä¹¥Í½Ù•Éå¡…¹¹•°)¥µÁ½ÉĞ½´¹¡•¥­„¹…¹‘É½¥¹‘¥Í½Ù•Éä¹¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸)¥µÁ½ÉĞ½´¹¡•¥­„¹…¹‘É½¥¹‘¥Í½Ù•Éä¹¥Í½Ù•ÉåMÉ••¸)¥µÁ½ÉĞ½´¹¡•¥­„¹…¹‘É½¥¹‘¥Í½Ù•Éä¹¥Í½Ù•ÉåY¥•İ5½‘•°)¥µÁ½ÉĞ½Éœ¹©Í½¸¹)M=9=‰©•Ğ)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹ÉÉ…å•ÅÕ”)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹1¥¹­•‘!…Í¡M•Ğ)¥µÁ½ÉĞ©…Ù„¹ÕÑ¥°¹UU%)¥µÁ½ÉĞ­½Ñ±¥¸¹µ…Ñ ¹µ…à()±…ÍÌ5…¥¹Ñ¥Ù¥Ñä€è…¹‘É½¥‘à¹…Ñ¥Ù¥Ñä¹½µÁ½¹•¹ÑÑ¥Ù¥Ñä ¤ì(€€€ÁÉ¥Ù…Ñ”Ù…°‘¥…¹½ÍÑ¥Ì•Ğ ¤€ô€¡…ÁÁ±¥…Ñ¥½¸…Ì!•¥­…ÁÁ±¥…Ñ¥½¸¤¹‘¥…¹½ÍÑ¥Ì(€€€ÁÉ¥Ù…Ñ”Ù…°ÑÉÕÍÑ•‘=É¥¥¸€ô	Õ¥±‘½¹™¥œ¹]	}AA}=I%%8¹Ñ½UÉ¤ ¤(€€€ÁÉ¥Ù…Ñ”Ù…°ÑÉÕÍÑ•‘=É¥¥¹Ì€ô	Õ¥±‘½¹™¥œ¹]	}AA}!=MQL¹ÍÁ±¥Ğ œ°œ¤(€€€€€€€€¹µ…Á9½Ñ9Õ±°ì¡½ÍĞ€´øÉÕ¹…Ñ¡¥¹œìUÉ¤¹	Õ¥±‘•È ¤¹Í¡•µ” ‰¡ÑÑÁÌˆ¤¹…ÕÑ¡½É¥Ñä¡¡½ÍĞ¹ÑÉ¥´ ¤¤¹‰Õ¥± ¤ô¹•Ñ=É9Õ±° ¤ô(€€€€€€€€¹Ñ½M•Ğ ¤(€€€ÁÉ¥Ù…Ñ”Ù…°µ…¥¹!…¹‘±•È€ô!…¹‘±•È¡1½½Á•È¹•Ñ5…¥¹1½½Á•È ¤¤(€€€ÁÉ¥Ù…Ñ”Ù…ÈÉ½½ĞèÉ…µ•1…å½ÕĞü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…Èİ•‰Y¥•Üè]•‰Y¥•Üü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È‰É¥‘”è9…Ñ¥Ù•	É¥‘”ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È…É‘QÉ…¹Í¥Ñ¥½¸è9…Ñ¥Ù•…É‘QÉ…¹Í¥Ñ¥½¸ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È‰É¥‘•MÕÁÁ½ÉÑ•€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”Ù…Èİ•‰½¹Ñ•¹Ñ½µµ¥ÑÑ•€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”Ù…È½Ù•É±…äèY¥•Üü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È±…ÍÑM…™•I½ÕÑ”€ô	Õ¥±‘½¹™¥œ¹]	}AA}UI0(€€€ÁÉ¥Ù…Ñ”Ù…ÈÉ•¹‘•É•ÉI•ÍÑ…ÉÑ]¥¹‘½Ü€ô€Á0(€€€ÁÉ¥Ù…Ñ”Ù…ÈÉ•¹‘•É•ÉI•ÍÑ…ÉÑ½Õ¹Ğ€ô€À(€€€ÁÉ¥Ù…Ñ”Ù…ÈÁ•¹‘¥¹A•Éµ¥ÍÍ¥½¹I•ÅÕ•ÍĞèMÑÉ¥¹œü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…ÈÁ•¹‘¥¹¥±•…±±‰…¬èY…±Õ•…±±‰…¬ñÉÉ…äñUÉ¤øøü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È‰…­I•ÅÕ•ÍÑ%èMÑÉ¥¹œü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È‰…­Q¥µ•½ÕĞèIÕ¹¹…‰±”ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…°¹…Ù¥…Ñ¥½¹EÕ•Õ”€ôÉÉ…å•ÅÕ”ñA•¹‘¥¹9…Ù¥…Ñ¥½¸ø ¤(€€€ÁÉ¥Ù…Ñ”Ù…°Í••¹9…Ù¥…Ñ¥½¹%‘Ì€ô1¥¹­•‘!…Í¡M•ĞñMÑÉ¥¹œø ¤(€€€ÁÉ¥Ù…Ñ”Ù…È¥¹±¥¡Ñ9…Ù¥…Ñ¥½¹%èMÑÉ¥¹œü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È±…ÍÑ•±¥Ù•É•‘I½ÕÑ”èMÑÉ¥¹œü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È¹…Ù¥…Ñ¥½¹Q¥µ•½ÕĞèIÕ¹¹…‰±”ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È±…ÍÑ	…­Ğ€ô€Á0(€€€ÁÉ¥Ù…Ñ”Ù…È±½…‘Q¥µ•½ÕĞèIÕ¹¹…‰±”ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È‰É¥‘•…±±‰…­Q¥µ•½ÕĞèIÕ¹¹…‰±”ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…ÈÉ•½Ù•É¥¹É½µU¹ÑÉÕÍÑ•‘9…Ù¥…Ñ¥½¸€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”Ù…È™É…µ•5•ÑÉ¥Í1¥ÍÑ•¹•Èè]¥¹‘½Ü¹=¹É…µ•5•ÑÉ¥ÍÙ…¥±…‰±•1¥ÍÑ•¹•Èü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È‘¥Í½Ù•ÉåMÉ••¸è¥Í½Ù•ÉåMÉ••¸ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…È‘¥Í½Ù•ÉåY¥•İ5½‘•°è¥Í½Ù•ÉåY¥•İ5½‘•°ü€ô¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…ÈÁ•¹‘¥¹¥Í½Ù•ÉåM•ÍÍ¥½¸èA…¥ÈñMÑÉ¥¹œü°MÑÉ¥¹œüø€ô¹Õ±°Ñ¼¹Õ±°(€€€ÁÉ¥Ù…Ñ”Ù…ÈÁ•¹‘¥¹¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸èA…¥ÈñMÑÉ¥¹œü°¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸ø€ô¹Õ±°Ñ¼¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸ ¤((€€€ÁÉ¥Ù…Ñ”‘…Ñ„±…ÍÌA•¹‘¥¹9…Ù¥…Ñ¥½¸¡Ù…°¥èMÑÉ¥¹œ°Ù…°É½ÕÑ”èMÑÉ¥¹œ¤((€€€ÁÉ¥Ù…Ñ”Ù…°¹½Ñ¥™¥…Ñ¥½¹A•Éµ¥ÍÍ¥½¹1…Õ¹¡•È€ôÉ•¥ÍÑ•É½ÉÑ¥Ù¥ÑåI•ÍÕ±Ğ (€€€€€€€Ñ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ¹I•ÅÕ•ÍÑA•Éµ¥ÍÍ¥½¸ ¤°(€€€€¤ìÉ…¹Ñ•€´ø(€€€€€€€Ù…°É•ÅÕ•ÍÑ%€ôÁ•¹‘¥¹A•Éµ¥ÍÍ¥½¹I•ÅÕ•ÍĞ(€€€€€€€Á•¹‘¥¹A•Éµ¥ÍÍ¥½¹I•ÅÕ•ÍĞ€ô¹Õ±°(€€€€€€€¥˜€¡É•ÅÕ•ÍÑ%€„ô¹Õ±°¤ì(€€€€€€€€€€€‰É¥‘”ü¹É•Á±åA•Éµ¥ÍÍ¥½¸ (€€€€€€€€€€€€€€€É•ÅÕ•ÍÑ%°(€€€€€€€€€€€€€€€É…¹Ñ•°(€€€€€€€€€€€€€€€É…¹Ñ•€˜˜9½Ñ¥™¥…Ñ¥½¹5…¹…•É½µÁ…Ğ¹™É½´¡Ñ¡¥Ì¤¹…É•9½Ñ¥™¥…Ñ¥½¹Í¹…‰±• ¤°(€€€€€€€€€€€€¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…°™¥±•A¥­•É1…Õ¹¡•È€ôÉ•¥ÍÑ•É½ÉÑ¥Ù¥ÑåI•ÍÕ±Ğ (€€€€€€€Ñ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ¹MÑ…ÉÑÑ¥Ù¥Ñå½ÉI•ÍÕ±Ğ ¤°(€€€€¤ìÉ•ÍÕ±Ğ€´ø(€€€€€€€Ù…°‘…Ñ„€ôÉ•ÍÕ±Ğ¹‘…Ñ„(€€€€€€€Ù…°Í•±•Ñ•€ô¥˜€¡É•ÍÕ±Ğ¹É•ÍÕ±Ñ½‘”€ôôÑ¥Ù¥Ñä¹IMU1Q}=,€˜˜‘…Ñ„€„ô¹Õ±°¤ì(€€€€€€€€€€€Ù…°±¥À€ô‘…Ñ„¹±¥Á…Ñ„(€€€€€€€€€€€İ¡•¸ì(€€€€€€€€€€€€€€€±¥À€„ô¹Õ±°€´øÉÉ…ä¡±¥À¹¥Ñ•µ½Õ¹Ğ¤ì¥¹‘•à€´ø±¥À¹•Ñ%Ñ•µĞ¡¥¹‘•à¤¹ÕÉ¤ô(€€€€€€€€€€€€€€€‘…Ñ„¹‘…Ñ„€„ô¹Õ±°€´ø…ÉÉ…å=˜¡‘…Ñ„¹‘…Ñ„„„¤(€€€€€€€€€€€€€€€•±Í”€´ø¹Õ±°(€€€€€€€€€€€ô(€€€€€€€ô•±Í”¹Õ±°(€€€€€€€‘•±¥Ù•ÉA¥­•‘¥±•Ì¡Í•±•Ñ•¤(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…°Í¥¹±•A¡½Ñ½A¥­•É1…Õ¹¡•È€ôÉ•¥ÍÑ•É½ÉÑ¥Ù¥ÑåI•ÍÕ±Ğ (€€€€€€€Ñ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ¹A¥­Y¥ÍÕ…±5•‘¥„ ¤°(€€€€¤ìÕÉ¤€´ø‘•±¥Ù•ÉA¥­•‘¥±•Ì¡ÕÉ¤ü¹±•Ğì…ÉÉ…å=˜¡¥Ğ¤ô¤ô((€€€ÁÉ¥Ù…Ñ”Ù…°µÕ±Ñ¥A¡½Ñ½A¥­•É1…Õ¹¡•È€ôÉ•¥ÍÑ•É½ÉÑ¥Ù¥ÑåI•ÍÕ±Ğ (€€€€€€€Ñ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ¹A¥­5Õ±Ñ¥Á±•Y¥ÍÕ…±5•‘¥„ ä¤°(€€€€¤ìÕÉ¥Ì€´ø‘•±¥Ù•ÉA¥­•‘¥±•Ì¡ÕÉ¥Ì¹Ñ…­•%˜ì¥Ğ¹¥Í9½ÑµÁÑä ¤ôü¹Ñ½QåÁ•‘ÉÉ…ä ¤¤ô((€€€ÁÉ¥Ù…Ñ”™Õ¸‘•±¥Ù•ÉA¥­•‘¥±•Ì¡ÕÉ¥ÌèÉÉ…äñUÉ¤øü¤ì(€€€€€€€Ù…°…±±‰…¬€ôÁ•¹‘¥¹¥±•…±±‰…¬(€€€€€€€Á•¹‘¥¹¥±•…±±‰…¬€ô¹Õ±°(€€€€€€€…±±‰…¬ü¹½¹I••¥Ù•Y…±Õ”¡ÕÉ¥Ì¤(€€€ô((€€€½Ù•ÉÉ¥‘”™Õ¸½¹É•…Ñ”¡Í…Ù•‘%¹ÍÑ…¹•MÑ…Ñ”è	Õ¹‘±”ü¤ì(€€€€€€€ÍÕÁ•È¹½¹É•…Ñ”¡Í…Ù•‘%¹ÍÑ…¹•MÑ…Ñ”¤(€€€€€€€]¥¹‘½İ½µÁ…Ğ¹Í•Ñ•½É¥ÑÍMåÍÑ•µ]¥¹‘½İÌ¡İ¥¹‘½Ü°™…±Í”¤(€€€€€€€]¥¹‘½İ%¹Í•ÑÍ½¹ÑÉ½±±•É½µÁ…Ğ¡İ¥¹‘½Ü°İ¥¹‘½Ü¹‘•½ÉY¥•Ü¤¹…ÁÁ±äì(€€€€€€€€€€€¥ÍÁÁ•…É…¹•1¥¡ÑMÑ…ÑÕÍ	…ÉÌ€ô™…±Í”(€€€€€€€€€€€¥ÍÁÁ•…É…¹•1¥¡Ñ9…Ù¥…Ñ¥½¹	…ÉÌ€ô™…±Í”(€€€€€€€ô((€€€€€€€Ù…°½¹Ñ…¥¹•È€ôÉ…µ•1…å½ÕĞ¡Ñ¡¥Ì¤¹…ÁÁ±äì(€€€€€€€€€€€Í•Ñ	…­É½Õ¹‘½±½È¡½±½È¹Éˆ ÄÌ°€ÄØ°€Äà¤¤(€€€€€€€€€€€Y¥•İ½µÁ…Ğ¹Í•Ñ=¹ÁÁ±å]¥¹‘½İ%¹Í•ÑÍ1¥ÍÑ•¹•È¡Ñ¡¥Ì¤ìÙ¥•Ü°¥¹Í•ÑÌ€´ø(€€€€€€€€€€€€€€€Ù…°Í…™”€ô¥¹Í•ÑÌ¹•Ñ%¹Í•ÑÌ (€€€€€€€€€€€€€€€€€€€]¥¹‘½İ%¹Í•ÑÍ½µÁ…Ğ¹QåÁ”¹ÍåÍÑ•µ	…ÉÌ ¤½È]¥¹‘½İ%¹Í•ÑÍ½µÁ…Ğ¹QåÁ”¹‘¥ÍÁ±…åÕÑ½ÕĞ ¤°(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€Ù…°­•å‰½…É€ô¥¹Í•ÑÌ¹•Ñ%¹Í•ÑÌ¡]¥¹‘½İ%¹Í•ÑÍ½µÁ…Ğ¹QåÁ”¹¥µ” ¤¤(€€€€€€€€€€€€€€€Ù¥•Ü¹Í•ÑA…‘‘¥¹œ¡Í…™”¹±•™Ğ°Í…™”¹Ñ½À°Í…™”¹É¥¡Ğ°µ…à¡Í…™”¹‰½ÑÑ½´°­•å‰½…É¹‰½ÑÑ½´¤¤(€€€€€€€€€€€€€€€]¥¹‘½İ%¹Í•ÑÍ½µÁ…Ğ¹=9MU5(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€É½½Ğ€ô½¹Ñ…¥¹•È(€€€€€€€Í•Ñ½¹Ñ•¹ÑY¥•Ü¡½¹Ñ…¥¹•È¤(€€€€€€€Y¥•İ½µÁ…Ğ¹É•ÅÕ•ÍÑÁÁ±å%¹Í•ÑÌ¡½¹Ñ…¥¹•È¤((€€€€€€€½¹	…­AÉ•ÍÍ•‘¥ÍÁ…Ñ¡•È¹…‘‘…±±‰…¬¡Ñ¡¥Ì°½‰©•Ğ€è=¹	…­AÉ•ÍÍ•‘…±±‰…¬¡ÑÉÕ”¤ì(€€€€€€€€€€€½Ù•ÉÉ¥‘”™Õ¸¡…¹‘±•=¹	…­AÉ•ÍÍ• ¤€ô‘¥ÍÁ…Ñ¡MåÍÑ•µ	…¬ ¤(€€€€€€€ô¤((€€€€€€€É•ÍÑ½É•A•¹‘¥¹9…Ù¥…Ñ¥½¹Ì¡Í…Ù•‘%¹ÍÑ…¹•MÑ…Ñ”¤(€€€€€€€Ù…°‘••Á1¥¹¬€ôÉ½ÕÑ•É½µ%¹Ñ•¹Ğ¡¥¹Ñ•¹Ğ¤(€€€€€€€¥˜€¡‘••Á1¥¹¬€„ô¹Õ±°¤ÅÕ•Õ•9…Ù¥…Ñ¥½¸¡‘••Á1¥¹¬¹™¥ÉÍĞ°‘••Á1¥¹¬¹Í•½¹¤(€€€€€€€É•…Ñ•]•‰Y¥•Ü¡Í…Ù•‘%¹ÍÑ…¹•MÑ…Ñ”ü¹•Ñ	Õ¹‘±”¡]	}Y%]}MQQ}-d¤°	Õ¥±‘½¹™¥œ¹]	}AA}UI0¤(€€€ô((€€€½Ù•ÉÉ¥‘”™Õ¸½¹9•İ%¹Ñ•¹Ğ¡¥¹Ñ•¹Ğè%¹Ñ•¹Ğ¤ì(€€€€€€€ÍÕÁ•È¹½¹9•İ%¹Ñ•¹Ğ¡¥¹Ñ•¹Ğ¤(€€€€€€€Í•Ñ%¹Ñ•¹Ğ¡¥¹Ñ•¹Ğ¤(€€€€€€€É½ÕÑ•É½µ%¹Ñ•¹Ğ¡¥¹Ñ•¹Ğ¤ü¹±•Ğì€¡É½ÕÑ”°¥¤€´øÅÕ•Õ•9…Ù¥…Ñ¥½¸¡É½ÕÑ”°¥¤ô(€€€ô((€€€½Ù•ÉÉ¥‘”™Õ¸½¹I•ÍÕµ” ¤ì(€€€€€€€ÍÕÁ•È¹½¹I•ÍÕµ” ¤(€€€€€€€ÍÑ…ÉÑÉ…µ•5•ÑÉ¥Ì ¤(ƒ}4ÒÚ$z{-®éÜj×ring, requestType: String, payload: JSONObject) {
                 val transactionId = payload.optString("transactionId")
                 when (requestType) {
                     "card.transition.prepare" -> {
@@ -527,376 +148,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 diagnostics.recordRendererExit(detail.didCrash())
                 cancelLoadTimeout()
                 if (view !== webView) {
-                    (view.parent as? ViewGroup)?.removeView(view)
-                    view.destroy()
-                    return true
-                }
-                lastSafeRoute = safeRoute(view.url?.toUri()) ?: lastSafeRoute
-                cardTransition?.clearAll()
-                detachRendererLostWebView(view)
-                val now = SystemClock.elapsedRealtime()
-                if (now - rendererRestartWindow > RENDERER_RESTART_WINDOW_MS) {
-                    rendererRestartWindow = now
-                    rendererRestartCount = 0
-                }
-                rendererRestartCount += 1
-                if (rendererRestartCount > MAX_AUTOMATIC_RENDERER_RESTARTS) {
-                    showLoadError()
-                } else {
-                    diagnostics.record("web_renderer_restarting", rendererRestartCount.toLong())
-                    createWebView(null, lastSafeRoute)
-                }
-                return true
-            }
-        }
-
-        view.webChromeClient = object : WebChromeClient() {
-            override fun onShowFileChooser(
-                webView: WebView,
-                filePathCallback: ValueCallback<Array<Uri>>,
-                fileChooserParams: WebChromeClient.FileChooserParams,
-            ): Boolean {
-                pendingFileCallback?.onReceiveValue(null)
-                pendingFileCallback = filePathCallback
-                val multiple = fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
-                val accepted = fileChooserParams.acceptTypes
-                    .flatMap { it.split(',') }
-                    .map { it.trim().lowercase() }
-                    .filter { it.isNotEmpty() }
-                val imageOnly = accepted.isNotEmpty() && accepted.all { it.startsWith("image/") }
-                val videoOnly = accepted.isNotEmpty() && accepted.all { it.startsWith("video/") }
-                val imageOrVideo = accepted.isNotEmpty() && accepted.all { it.startsWith("image/") || it.startsWith("video/") }
-                if (imageOnly || videoOnly || imageOrVideo) {
-                    val mediaType = when {
-                        imageOnly -> ActivityResultContracts.PickVisualMedia.ImageOnly
-                        videoOnly -> ActivityResultContracts.PickVisualMedia.VideoOnly
-                        else -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                    }
-                    return try {
-                        val request = PickVisualMediaRequest(mediaType)
-                        if (multiple) multiPhotoPickerLauncher.launch(request)
-                        else singlePhotoPickerLauncher.launch(request)
-                        true
-                    } catch (_: Exception) {
-                        launchDocumentPicker(multiple)
-                    }
-                }
-                return launchDocumentPicker(multiple)
-            }
-
-            private fun launchDocumentPicker(multiple: Boolean): Boolean {
-                val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "*/*"
-                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
-                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
-                }
-                return try {
-                    filePickerLauncher.launch(picker)
-                    true
-                } catch (_: ActivityNotFoundException) {
-                    pendingFileCallback?.onReceiveValue(null)
-                    pendingFileCallback = null
-                    Toast.makeText(this@MainActivity, "æ²¡æœ‰å¯ç”¨çš„æ–‡ä»¶é€‰æ‹©å™¨", Toast.LENGTH_SHORT).show()
-                    false
-                }
-            }
-
-            override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
-                diagnostics.record("web_permission_denied")
-                request.deny()
-            }
-
-            override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-                if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
-                    diagnostics.record("web_console_error")
-                }
-                return true
-            }
-        }
-
-        lastSafeRoute = safeRoute(firstUrl.toUri()) ?: BuildConfig.WEB_APP_URL
-        showLoading()
-        val restored = restoredState != null && view.restoreState(restoredState) != null
-        if (restored) {
-            val restoredRoute = safeRoute(view.url?.toUri())
-            if (restoredRoute != null) {
-                lastSafeRoute = restoredRoute
-            } else {
-                diagnostics.record("web_state_restore_rejected")
-                recoveringFromUntrustedNavigation = true
-                lastSafeRoute = BuildConfig.WEB_APP_URL
-                view.stopLoading()
-                view.clearHistory()
-                view.loadUrl(lastSafeRoute)
-            }
-        } else {
-            view.loadUrl(lastSafeRoute)
-        }
-    }
-
-    private fun releaseWebView() {
-        val view = webView ?: return
-        cardTransition?.clearAll()
-        cardTransition = null
-        bridge?.dispose()
-        bridge = null
-        cancelLoadTimeout()
-        view.stopLoading()
-        view.webChromeClient = null
-        view.webViewClient = WebViewClient()
-        (view.parent as? ViewGroup)?.removeView(view)
-        view.removeAllViews()
-        view.destroy()
-        webView = null
-    }
-
-    private fun hideNativeDiscoveryKeyboard() {
-        discoveryScreen?.clearSearchFocus()
-        val inputMethod = getSystemService(INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-        val token = discoveryScreen?.windowToken ?: root?.windowToken ?: return
-        inputMethod?.hideSoftInputFromWindow(token, 0)
-    }
-
-    private fun obtainDiscoveryViewModel(): DiscoveryViewModel {
-        discoveryViewModel?.let { return it }
-        return ViewModelProvider(this)[DiscoveryViewModel::class.java].also { viewModel ->
-            discoveryViewModel = viewModel
-            viewModel.setSession(pendingDiscoverySession.first, pendingDiscoverySession.second)
-            viewModel.setPersonalization(
-                pendingDiscoveryPersonalization.first,
-                pendingDiscoveryPersonalization.second.interests,
-                pendingDiscoveryPersonalization.second.viewedIds.toList(),
-                pendingDiscoveryPersonalization.second.personalRatings,
-            )
-        }
-    }
-
-    private fun setNativeDiscoveryVisible(
-        visible: Boolean,
-        navigationTopCss: Double,
-        theme: String,
-        composeLeftCss: Double = 0.0,
-        composeTopCss: Double = 0.0,
-        composeWidthCss: Double = 0.0,
-        composeHeightCss: Double = 0.0,
-    ) {
-        val container = root ?: return
-        if (!visible || navigationTopCss <= 0.0) {
-            discoveryScreen?.saveListState()
-            discoveryScreen?.visibility = View.GONE
-            return
-        }
-        if (overlay?.tag == NATIVE_ABOUT_TAG || overlay?.tag == LOADING_MASK_TAG) return
-        val density = resources.displayMetrics.density
-        val maxHeight = (container.height - container.paddingTop - container.paddingBottom).coerceAtLeast(0)
-        val topPx = (navigationTopCss * density).toInt().coerceIn(0, maxHeight)
-        if (topPx <= 0) return
-        val screen = discoveryScreen ?: DiscoveryScreen(
-            this,
-            this,
-            obtainDiscoveryViewModel(),
-            object : DiscoveryScreen.Listener {
-                override fun onOpenPost(channel: DiscoveryChannel, post: com.heika.android.discovery.DiscoveryPost) {
-                    hideNativeDiscoveryKeyboard()
-                    bridge?.sendEvent(
-                        "discovery.openPost",
-                        JSONObject()
-                            .put("id", post.id)
-                            .put("channel", if (channel == DiscoveryChannel.AI) "ai" else "community")
-                            .put("cloudId", post.cloudId),
-                    )
-                }
-
-                override fun onOpenAuthor(id: String) {
-                    if (CONVERSATION_ID.matches(id)) bridge?.sendEvent("discovery.openAuthor", JSONObject().put("id", id))
-                }
-
-                override fun onSearch(query: String) {
-                    hideNativeDiscoveryKeyboard()
-                    bridge?.sendEvent("discovery.search", JSONObject().put("query", query.take(60)))
-                }
-
-                override fun onLoginRequired() {
-                    hideNativeDiscoveryKeyboard()
-                    bridge?.sendEvent("discovery.login")
-                }
-            },
-        ).also { created ->
-            discoveryScreen = created
-            container.addView(created, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, topPx, Gravity.TOP))
-        }
-        screen.applyTheme(theme == "dark")
-        val params = screen.layoutParams as? FrameLayout.LayoutParams
-            ?: FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, topPx, Gravity.TOP)
-        if (params.height != topPx || params.width != ViewGroup.LayoutParams.MATCH_PARENT) {
-            params.width = ViewGroup.LayoutParams.MATCH_PARENT
-            params.height = topPx
-            params.gravity = Gravity.TOP
-            screen.layoutParams = params
-        }
-        screen.setNavigationCutout(
-            left = (composeLeftCss * density).toInt(),
-            top = (composeTopCss * density).toInt(),
-            width = (composeWidthCss * density).toInt(),
-            height = (composeHeightCss * density).toInt(),
-        )
-        screen.visibility = View.VISIBLE
-        screen.bringToFront()
-    }
-
-    private fun installNativeAboutCompatibilityHook(view: WebView) {
-        // The site and APK can be deployed separately. Keep the app-specific
-        // About screen reachable while the live site is one deployment behind.
-        val script = """
-            (() => {
-              if (window.__heikaNativeAboutCompat) return;
-              window.__heikaNativeAboutCompat = true;
-              document.addEventListener('click', (event) => {
-                const target = event.target instanceof Element
-                  ? event.target.closest('button, a, [role="button"]') : null;
-                const label = (target?.innerText || target?.textContent || '').replace(/\s+/g, '');
-                if (!target || !label.startsWith('å…³äºé»‘å¡')) return;
-                const bridge = window.HeikaNative;
-                if (!bridge || typeof bridge.postMessage !== 'function') return;
-                event.preventDefault();
-                event.stopImmediatePropagation();
-                bridge.postMessage(JSON.stringify({
-                  version: 1,
-                  id: 'native-about-' + Date.now().toString(36),
-                  type: 'app.about.open',
-                  payload: { source: 'native-compat' }
-                }));
-              }, true);
-            })();
-        """.trimIndent()
-        runCatching { view.evaluateJavascript(script, null) }
-    }
-
-    private fun detachRendererLostWebView(view: WebView) {
-        bridge?.dispose()
-        bridge = null
-        (view.parent as? ViewGroup)?.removeView(view)
-        view.destroy()
-        if (webView === view) webView = null
-        pendingFileCallback?.onReceiveValue(null)
-        pendingFileCallback = null
-    }
-
-    private fun requestNotificationPermission(requestId: String) {
-        val enabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
-        if (pendingPermissionRequest != null) {
-            bridge?.failRequest(requestId, "notifications.requestPermission", "permission_request_in_progress")
-            return
-        }
-        when (notificationPermissionState()) {
-            "granted" -> {
-                bridge?.replyPermission(requestId, true, enabled)
-                return
-            }
-            "denied" -> {
-                bridge?.replyPermission(requestId, false, enabled)
-                return
-            }
-        }
-        pendingPermissionRequest = requestId
-        getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
-            .edit()
-            .putBoolean(NOTIFICATION_PERMISSION_ASKED, true)
-            .apply()
-        try {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } catch (_: Exception) {
-            pendingPermissionRequest = null
-            bridge?.failRequest(requestId, "notifications.requestPermission", "permission_dialog_unavailable")
-        }
-    }
-
-    private fun notificationPermissionState(): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) return "granted"
-        return if (getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
-                .getBoolean(NOTIFICATION_PERMISSION_ASKED, false)
-        ) "denied" else "default"
-    }
-
-    private fun openNotificationSettings(): Boolean = try {
-        startActivity(
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
-        )
-        true
-    } catch (_: ActivityNotFoundException) {
-        runCatching {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
-            true
-        }.getOrDefault(false)
-    }
-
-    private fun shareFromNative(requestId: String, payload: JSONObject) {
-        val rawUrl = payload.optString("url")
-        val uri = runCatching { rawUrl.toUri() }.getOrNull()
-        if (uri == null || !isTrustedUrl(uri) || safeRoute(uri) == null) {
-            bridge?.completeRequest(
-                requestId,
-                "system.share",
-                false,
-                JSONObject().put("code", "invalid_share_url"),
-            )
-            return
-        }
-        val cleanTitle = payload.optString("title", "é»‘å¡ HEIKA")
-            .filterNot(Char::isISOControl)
-            .trim()
-            .take(120)
-            .ifEmpty { "é»‘å¡ HEIKA" }
-        val cleanText = payload.optString("text")
-            .filterNot(Char::isISOControl)
-            .trim()
-            .take(2_000)
-        val shareText = listOf(cleanText, uri.toString()).filter(String::isNotEmpty).joinToString("\n")
-        try {
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TITLE, cleanTitle)
-                putExtra(Intent.EXTRA_TEXT, shareText)
-            }
-            startActivity(Intent.createChooser(intent, "åˆ†äº«é»‘å¡å†…å®¹"))
-            bridge?.completeRequest(
-                requestId,
-                "system.share",
-                true,
-                JSONObject().put("shared", true),
-            )
-        } catch (_: ActivityNotFoundException) {
-            bridge?.completeRequest(
-                requestId,
-                "system.share",
-                false,
-                JSONObject().put("code", "share_unavailable"),
-            )
-        }
-    }
-
-    private fun dispatchSystemBack() {
-        if (overlay?.tag == NATIVE_ABOUT_TAG) {
-            clearOverlay()
-            return
-        }
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastBackAt < BACK_DEBOUNCE_MS || backRequestId != null) return
-        lastBackAt = now
-        val id = UUID.randomUUID().toString()
-        backRequestId = id
-        val sent = bridge?.sendEvent("system.back", JSONObject().put("requestId", id)) == true
-        if (!sent) {
-            backRequestId = null
-            fallbackBack()
-            return
-        }
-        backTimeout = Runnable {
-            if (backRequestId == id) {
+                    (view.parent as? ViewGYªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíóM4N‹Z–‹­¦ëeŠw¬ÕÉ½ÕÀ¤ü¹É•µ½Ù•Y¥•Ü¡Ù¥•Ü¤(€€€€€€€€€€€€€€€€€€€Ù¥•Ü¹‘•ÍÑÉ½ä ¤(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€±…ÍÑM…™•I½ÕÑ”€ôÍ…™•I½ÕÑ”¡Ù¥•Ü¹ÕÉ°ü¹Ñ½UÉ¤ ¤¤€üè±…ÍÑM…™•I½ÕÑ”(€€€€€€€€€€€€€€€…É‘QÉ…¹Í¥Ñ¥½¸ü¹±•…É±° ¤(€€€€€€€€€€€€€€€‘•Ñ…¡I•¹‘•É•É1½ÍÑ]•‰Y¥•Ü¡Ù¥•Ü¤(€€€€€€€€€€€€€€€Ù…°¹½Ü€ôMåÍÑ•µ±½¬¹•±…ÁÍ•‘I•…±Ñ¥µ” ¤(€€€€€€€€€€€€€€€¥˜€¡¹½Ü€´É•¹‘•É•ÉI•ÍÑ…ÉÑ]¥¹‘½Ü€øI9II}IMQIQ}]%9=]}5L¤ì(€€€€€€€€€€€€€€€€€€€É•¹‘•É•ÉI•ÍÑ…ÉÑ]¥¹‘½Ü€ô¹½Ü(€€€€€€€€€€€€€€€€€€€É•¹‘•É•ÉI•ÍÑ…ÉÑ½Õ¹Ğ€ô€À(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•¹‘•É•ÉI•ÍÑ…ÉÑ½Õ¹Ğ€¬ô€Ä(€€€€€€€€€€€€€€€¥˜€¡É•¹‘•É•ÉI•ÍÑ…ÉÑ½Õ¹Ğ€ø5a}UQ=5Q%}I9II}IMQIQL¤ì(€€€€€€€€€€€€€€€€€€€Í¡½İ1½…‘ÉÉ½È ¤(€€€€€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€€€€€‘¥…¹½ÍÑ¥Ì¹É•½É ‰İ•‰}É•¹‘•É•É}É•ÍÑ…ÉÑ¥¹œˆ°É•¹‘•É•ÉI•ÍÑ…ÉÑ½Õ¹Ğ¹Ñ½1½¹œ ¤¤(€€€€€€€€€€€€€€€€€€€É•…Ñ•]•‰Y¥•Ü¡¹Õ±°°±…ÍÑM…™•I½ÕÑ”¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”(€€€€€€€€€€€ô(€€€€€€€ô((€€€€€€€Ù¥•Ü¹İ•‰¡É½µ•±¥•¹Ğ€ô½‰©•Ğ€è]•‰¡É½µ•±¥•¹Ğ ¤ì(€€€€€€€€€€€½Ù•ÉÉ¥‘”™Õ¸½¹M¡½İ¥±•¡½½Í•È (€€€€€€€€€€€€€€€İ•‰Y¥•Üè]•‰Y¥•Ü°(€€€€€€€€€€€€€€€™¥±•A…Ñ¡…±±‰…¬èY…±Õ•…±±‰…¬ñÉÉ…äñUÉ¤øø°(€€€€€€€€€€€€€€€™¥±•¡½½Í•ÉA…É…µÌè]•‰¡É½µ•±¥•¹Ğ¹¥±•¡½½Í•ÉA…É…µÌ°(€€€€€€€€€€€€¤è	½½±•…¸ì(€€€€€€€€€€€€€€€Á•¹‘¥¹¥±•…±±‰…¬ü¹½¹I••¥Ù•Y…±Õ”¡¹Õ±°¤(€€€€€€€€€€€€€€€Á•¹‘¥¹¥±•…±±‰…¬€ô™¥±•A…Ñ¡…±±‰…¬(€€€€€€€€€€€€€€€Ù…°µÕ±Ñ¥Á±”€ô™¥±•¡½½Í•ÉA…É…µÌ¹µ½‘”€ôô]•‰¡É½µ•±¥•¹Ğ¹¥±•¡½½Í•ÉA…É…µÌ¹5=}=A9}5U1Q%A1(€€€€€€€€€€€€€€€Ù…°…•ÁÑ•€ô™¥±•¡½½Í•ÉA…É…µÌ¹…•ÁÑQåÁ•Ì(€€€€€€€€€€€€€€€€€€€€¹™±…Ñ5…Àì¥Ğ¹ÍÁ±¥Ğ œ°œ¤ô(€€€€€€€€€€€€€€€€€€€€¹µ…Àì¥Ğ¹ÑÉ¥´ ¤¹±½İ•É…Í” ¤ô(€€€€€€€€€€€€€€€€€€€€¹™¥±Ñ•Èì¥Ğ¹¥Í9½ÑµÁÑä ¤ô(€€€€€€€€€€€€€€€Ù…°¥µ…•=¹±ä€ô…•ÁÑ•¹¥Í9½ÑµÁÑä ¤€˜˜…•ÁÑ•¹…±°ì¥Ğ¹ÍÑ…ÉÑÍ]¥Ñ  ‰¥µ…”¼ˆ¤ô(€€€€€€€€€€€€€€€Ù…°Ù¥‘•½=¹±ä€ô…•ÁÑ•¹¥Í9½ÑµÁÑä ¤€˜˜…•ÁÑ•¹…±°ì¥Ğ¹ÍÑ…ÉÑÍ]¥Ñ  ‰Ù¥‘•¼¼ˆ¤ô(€€€€€€€€€€€€€€€Ù…°¥µ…•=ÉY¥‘•¼€ô…•ÁÑ•¹¥Í9½ÑµÁÑä ¤€˜˜…•ÁÑ•¹…±°ì¥Ğ¹ÍÑ…ÉÑÍ]¥Ñ  ‰¥µ…”¼ˆ¤ñğ¥Ğ¹ÍÑ…ÉÑÍ]¥Ñ  ‰Ù¥‘•¼¼ˆ¤ô(€€€€€€€€€€€€€€€¥˜€¡¥µ…•=¹±äñğÙ¥‘•½=¹±äñğ¥µ…•=ÉY¥‘•¼¤ì(€€€€€€€€€€€€€€€€€€€Ù…°µ•‘¥…QåÁ”€ôİ¡•¸ì(€€€€€€€€€€€€€€€€€€€€€€€¥µ…•=¹±ä€´øÑ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ¹A¥­Y¥ÍÕ…±5•‘¥„¹%µ…•=¹±ä(€€€€€€€€€€€€€€€€€€€€€€€Ù¥‘•½=¹±ä€´øÑ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ¹A¥­Y¥ÍÕ…±5•‘¥„¹Y¥‘•½=¹±ä(€€€€€€€€€€€€€€€€€€€€€€€•±Í”€´øÑ¥Ù¥ÑåI•ÍÕ±Ñ½¹ÑÉ…ÑÌ¹A¥­Y¥ÍÕ…±5•‘¥„¹%µ…•¹‘Y¥‘•¼(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸ÑÉäì(€€€€€€€€€€€€€€€€€€€€€€€Ù…°É•ÅÕ•ÍĞ€ôA¥­Y¥ÍÕ…±5•‘¥…I•ÅÕ•ÍĞ¡µ•‘¥…QåÁ”¤(€€€€€€€€€€€€€€€€€€€€€€€¥˜€¡µÕ±Ñ¥Á±”¤µÕ±Ñ¥A¡½Ñ½A¥­•É1…Õ¹¡•È¹±…Õ¹ ¡É•ÅÕ•ÍĞ¤(€€€€€€€€€€€€€€€€€€€€€€€•±Í”Í¥¹±•A¡½Ñ½A¥­•É1…Õ¹¡•È¹±…Õ¹ ¡É•ÅÕ•ÍĞ¤(€€€€€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€€€€€ô…Ñ €¡|èá•ÁÑ¥½¸¤ì(€€€€€€€€€€€€€€€€€€€€€€€±…Õ¹¡½Õµ•¹ÑA¥­•È¡µÕ±Ñ¥Á±”¤(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸±…Õ¹¡½Õµ•¹ÑA¥­•È¡µÕ±Ñ¥Á±”¤(€€€€€€€€€€€ô((€€€€€€€€€€€ÁÉ¥Ù…Ñ”™Õ¸±…Õ¹¡½Õµ•¹ÑA¥­•È¡µÕ±Ñ¥Á±”è	½½±•…¸¤è	½½±•…¸ì(€€€€€€€€€€€€€€€Ù…°Á¥­•È€ô%¹Ñ•¹Ğ¡%¹Ñ•¹Ğ¹Q%=9}=A9}=U59P¤¹…ÁÁ±äì(€€€€€€€€€€€€€€€€€€€…‘‘…Ñ•½Éä¡%¹Ñ•¹Ğ¹Q=Ie}=A9	1¤(€€€€€€€€€€€€€€€€€€€ÑåÁ”€ô€ˆ¨¼¨ˆ(€€€€€€€€€€€€€€€€€€€ÁÕÑáÑÉ„¡%¹Ñ•¹Ğ¹aQI}5%5}QeAL°…ÉÉ…å=˜ ‰¥µ…”¼¨ˆ°€‰Ù¥‘•¼¼¨ˆ¤¤(€€€€€€€€€€€€€€€€€€€ÁÕÑáÑÉ„¡%¹Ñ•¹Ğ¹aQI}11=]}5U1Q%A1°µÕ±Ñ¥Á±”¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÑÉäì(€€€€€€€€€€€€€€€€€€€™¥±•A¥­•É1…Õ¹¡•È¹±…Õ¹ ¡Á¥­•È¤(€€€€€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€€€€€ô…Ñ €¡|èÑ¥Ù¥Ñå9½Ñ½Õ¹‘á•ÁÑ¥½¸¤ì(€€€€€€€€€€€€€€€€€€€Á•¹‘¥¹¥±•…±±‰…¬ü¹½¹I••¥Ù•Y…±Õ”¡¹Õ±°¤(€€€€€€€€€€€€€€€€€€€Á•¹‘¥¹¥±•…±±‰…¬€ô¹Õ±°(€€€€€€€€€€€€€€€€€€€Q½…ÍĞ¹µ…­•Q•áĞ¡Ñ¡¥Í5…¥¹Ñ¥Ù¥Ñä°€‹šÊ‡šr'–>¿R£jšZ’îÛ¦'š.§–f ˆ°Q½…ÍĞ¹19Q!}M!=IP¤¹Í¡½Ü ¤(€€€€€€€€€€€€€€€€€€€™…±Í”(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô((€€€€€€€€€€€½Ù•ÉÉ¥‘”™Õ¸½¹A•Éµ¥ÍÍ¥½¹I•ÅÕ•ÍĞ¡É•ÅÕ•ÍĞè…¹‘É½¥¹İ•‰­¥Ğ¹A•Éµ¥ÍÍ¥½¹I•ÅÕ•ÍĞ¤ì(€€€€€€€€€€€€€€€‘¥…¹½ÍÑ¥Ì¹É•½É ‰İ•‰}Á•Éµ¥ÍÍ¥½¹}‘•¹¥•ˆ¤(€€€€€€€€€€€€€€€É•ÅÕ•ÍĞ¹‘•¹ä ¤(€€€€€€€€€€€ô((€€€€€€€€€€€½Ù•ÉÉ¥‘”™Õ¸½¹½¹Í½±•5•ÍÍ…”¡½¹Í½±•5•ÍÍ…”è½¹Í½±•5•ÍÍ…”¤è	½½±•…¸ì(€€€€€€€€€€€€€€€¥˜€¡½¹Í½±•5•ÍÍ…”¹µ•ÍÍ…•1•Ù•° ¤€ôô½¹Í½±•5•ÍÍ…”¹5•ÍÍ…•1•Ù•°¹II=H¤ì(€€€€€€€€€€€€€€€€€€€‘¥…¹½ÍÑ¥Ì¹É•½É ‰İ•‰}½¹Í½±•}•ÉÉ½Èˆ¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€É•ÑÕÉ¸ÑÉÕ”(€€€€€€€€€€€ô(€€€€€€€ô((€€€€€€€±…ÍÑM…™•I½ÕÑ”€ôÍ…™•I½ÕÑ”¡™¥ÉÍÑUÉ°¹Ñ½UÉ¤ ¤¤€üè	Õ¥±‘½¹™¥œ¹]	}AA}UI0(€€€€€€€Í¡½İ1½…‘¥¹œ ¤(€€€€€€€Ù…°É•ÍÑ½É•€ôÉ•ÍÑ½É•‘MÑ…Ñ”€„ô¹Õ±°€˜˜Ù¥•Ü¹É•ÍÑ½É•MÑ…Ñ”¡É•ÍÑ½É•‘MÑ…Ñ”¤€„ô¹Õ±°(€€€€€€€¥˜€¡É•ÍÑ½É•¤ì(€€€€€€€€€€€Ù…°É•ÍÑ½É•‘I½ÕÑ”€ôÍ…™•I½ÕÑ”¡Ù¥•Ü¹ÕÉ°ü¹Ñ½UÉ¤ ¤¤(€€€€€€€€€€€¥˜€¡É•ÍÑ½É•‘I½ÕÑ”€„ô¹Õ±°¤ì(€€€€€€€€€€€€€€€±…ÍÑM…™•I½ÕÑ”€ôÉ•ÍÑ½É•‘I½ÕÑ”(€€€€€€€€€€€ô•±Í”ì(€€€€€€€€€€€€€€€‘¥…¹½ÍÑ¥Ì¹É•½É ‰İ•‰}ÍÑ…Ñ•}É•ÍÑ½É•}É•©•Ñ•ˆ¤(€€€€€€€€€€€€€€€É•½Ù•É¥¹É½µU¹ÑÉÕÍÑ•‘9…Ù¥…Ñ¥½¸€ôÑÉÕ”(€€€€€€€€€€€€€€€±…ÍÑM…™•I½ÕÑ”€ô	Õ¥±‘½¹™¥œ¹]	}AA}UI0(€€€€€€€€€€€€€€€Ù¥•Ü¹ÍÑ½Á1½…‘¥¹œ ¤(€€€€€€€€€€€€€€€Ù¥•Ü¹±•…É!¥ÍÑ½Éä ¤(€€€€€€€€€€€€€€€Ù¥•Ü¹±½…‘UÉ°¡±…ÍÑM…™•I½ÕÑ”¤(€€€€€€€€€€€ô(€€€€€€€ô•±Í”ì(€€€€€€€€€€€Ù¥•Ü¹±½…‘UÉ°¡±…ÍÑM…™•I½ÕÑ”¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸É•±•…Í•]•‰Y¥•Ü ¤ì(€€€€€€€Ù…°Ù¥•Ü€ôİ•‰Y¥•Ü€üèÉ•ÑÕÉ¸(€€€€€€€…É‘QÉ…¹Í¥Ñ¥½¸ü¹±•…É±° ¤(€€€€€€€…É‘QÉ…¹Í¥Ñ¥½¸€ô¹Õ±°(€€€€€€€‰É¥‘”ü¹‘¥ÍÁ½Í” ¤(€€€€€€€‰É¥‘”€ô¹Õ±°(€€€€€€€…¹•±1½…‘Q¥µ•½ÕĞ ¤(€€€€€€€Ù¥•Ü¹ÍÑ½Á1½…‘¥¹œ ¤(€€€€€€€Ù¥•Ü¹İ•‰¡É½µ•±¥•¹Ğ€ô¹Õ±°(€€€€€€€Ù¥•Ü¹İ•‰Y¥•İ±¥•¹Ğ€ô]•‰Y¥•İ±¥•¹Ğ ¤(€€€€€€€€¡Ù¥•Ü¹Á…É•¹Ğ…ÌüY¥•İÉ½ÕÀ¤ü¹É•µ½Ù•Y¥•Ü¡Ù¥•Ü¤(€€€€€€€Ù¥•Ü¹É•µ½Ù•±±Y¥•İÌ ¤(€€€€€€€Ù¥•Ü¹‘•ÍÑÉ½ä ¤(€€€€€€€İ•‰Y¥•Ü€ô¹Õ±°(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸¡¥‘•9…Ñ¥Ù•¥Í½Ù•Éå-•å‰½…É ¤ì(€€€€€€€‘¥Í½Ù•ÉåMÉ••¸ü¹±•…ÉM•…É¡½ÕÌ ¤(€€€€€€€Ù…°¥¹ÁÕÑ5•Ñ¡½€ô•ÑMåÍÑ•µM•ÉÙ¥”¡%9AUQ}5Q!=}MIY%¤…Ìü…¹‘É½¥¹Ù¥•Ü¹¥¹ÁÕÑµ•Ñ¡½¹%¹ÁÕÑ5•Ñ¡½‘5…¹…•È(€€€€€€€Ù…°Ñ½­•¸€ô‘¥Í½Ù•ÉåMÉ••¸ü¹İ¥¹‘½İQ½­•¸€üèÉ½½Ğü¹İ¥¹‘½İQ½­•¸€üèÉ•ÑÕÉ¸(€€€€€€€¥¹ÁÕÑ5•Ñ¡½ü¹¡¥‘•M½™Ñ%¹ÁÕÑÉ½µ]¥¹‘½Ü¡Ñ½­•¸°€À¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸½‰Ñ…¥¹¥Í½Ù•ÉåY¥•İ5½‘•° ¤è¥Í½Ù•ÉåY¥•İ5½‘•°ì(€€€€€€€‘¥Í½Ù•ÉåY¥•İ5½‘•°ü¹±•ĞìÉ•ÑÕÉ¸¥Ğô(€€€€€€€É•ÑÕÉ¸Y¥•İ5½‘•±AÉ½Ù¥‘•È¡Ñ¡¥Ì¥m¥Í½Ù•ÉåY¥•İ5½‘•°èé±…ÍÌ¹©…Ù…t¹…±Í¼ìÙ¥•İ5½‘•°€´ø(€€€€€€€€€€€‘¥Í½Ù•ÉåY¥•İ5½‘•°€ôÙ¥•İ5½‘•°(€€€€€€€€€€€Ù¥•İ5½‘•°¹Í•ÑM•ÍÍ¥½¸¡Á•¹‘¥¹¥Í½Ù•ÉåM•ÍÍ¥½¸¹™¥ÉÍĞ°Á•¹‘¥¹¥Í½Ù•ÉåM•ÍÍ¥½¸¹Í•½¹¤(€€€€€€€€€€€Ù¥•İ5½‘•°¹Í•ÑA•ÉÍ½¹…±¥é…Ñ¥½¸ (€€€€€€€€€€€€€€€Á•¹‘¥¹¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸¹™¥ÉÍĞ°(€€€€€€€€€€€€€€€Á•¹‘¥¹¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸¹Í•½¹¹¥¹Ñ•É•ÍÑÌ°(€€€€€€€€€€€€€€€Á•¹‘¥¹¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸¹Í•½¹¹Ù¥•İ•‘%‘Ì¹Ñ½1¥ÍĞ ¤°(€€€€€€€€€€€€€€€Á•¹‘¥¹¥Í½Ù•ÉåA•ÉÍ½¹…±¥é…Ñ¥½¸¹Í•½¹¹Á•ÉÍ½¹…±I…Ñ¥¹Ì°(€€€€€€€€€€€€¤(€€€€€€€ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸Í•Ñ9…Ñ¥Ù•¥Í½Ù•ÉåY¥Í¥‰±” (€€€€€€€Ù¥Í¥‰±”è	½½±•…¸°(€€€€€€€¹…Ù¥…Ñ¥½¹Q½ÁÍÌè½Õ‰±”°(€€€€€€€Ñ¡•µ”èMÑÉ¥¹œ°(€€€€€€€½µÁ½Í•1•™ÑÍÌè½Õ‰±”€ô€À¸À°(€€€€€€€½µÁ½Í•Q½ÁÍÌè½Õ‰±”€ô€À¸À°(€€€€€€€½µÁ½Í•]¥‘Ñ¡ÍÌè½Õ‰±”€ô€À¸À°(€€€€€€€½µÁ½Í•!•¥¡ÑÍÌè½Õ‰±”€ô€À¸À°(€€€€¤ì(€€€€€€€Ù…°½¹Ñ…¥¹•È€ôÉ½½Ğ€üèÉ•ÑÕÉ¸(€€€€€€€¥˜€ …Ù¥Í¥‰±”ñğ¹…Ù¥…Ñ¥½¹Q½ÁÍÌ€ğô€À¸À¤ì(€€€€€€€€€€€‘¥Í½Ù•ÉåMÉ••¸ü¹Í…Ù•1¥ÍÑMÑ…Ñ” ¤(€€€€€€€€€€€‘¥Í½Ù•ÉåMÉ••¸ü¹Ù¥Í¥‰¥±¥Ñä€ôY¥•Ü¹=9(€€€€€€€€€€€É•ÑÕÉ¸(€€€€€€€ô(€€€€€€€¥˜€¡½Ù•É±…äü¹Ñ…œ€ôô9Q%Y}	=UQ}Qñğ½Ù•É±…äü¹Ñ…œ€ôô1=%9}5M-}Q¤É•ÑÕÉ¸(€€€€€€€Ù…°‘•¹Í¥Ñä€ôÉ•Í½ÕÉ•Ì¹‘¥ÍÁ±…å5•ÑÉ¥Ì¹‘•¹Í¥Ñä(€€€€€€€Ù…°µ…á!•¥¡Ğ€ô€¡½¹Ñ…¥¹•È¹¡•¥¡Ğ€´½¹Ñ…¥¹•È¹Á…‘‘¥¹Q½À€´½¹Ñ…¥¹•È¹Á…‘‘¥¹	½ÑÑ½´¤¹½•É•Ñ1•…ÍĞ À¤(€€€€€€€Ù…°Ñ½ÁAà€ô€¡¹…Ù¥…Ñ¥½¹Q½ÁÍÌ€¨‘•¹Í¥Ñä¤¹Ñ½%¹Ğ ¤¹½•É•%¸ À°µ…á!•¥¡Ğ¤(€€€€€€€¥˜€¡Ñ½ÁAà€ğô€À¤É•ÑÕÉ¸(€€€€€€€Ù…°ÍÉ••¸€ô‘¥Í½Ù•ÉåMÉ••¸€üè¥Í½Ù•ÉåMÉ••¸ (€€€€€€€€€€€Ñ¡¥Ì°(€€€€€€€€€€€Ñ¡¥Ì°(€€€€€€€€€€€½‰Ñ…¥¹¥Í½Ù•ÉåY¥•İ5½‘•° ¤°(€€€€€€€€€€€½‰©•Ğ€è¥Í½Ù•ÉåO}4ÒÚ$z{-®éÜj×          if (backRequestId == id) {
                 backRequestId = null
                 backTimeout = null
                 fallbackBack()

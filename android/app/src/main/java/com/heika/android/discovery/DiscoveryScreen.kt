@@ -1,360 +1,4 @@
-package com.heika.android.discovery
-
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Path
-import android.graphics.RectF
-import android.graphics.Typeface
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
-import android.view.MotionEvent
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.widget.Button
-import android.widget.EditText
-import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
-import android.widget.ImageButton
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.PopupMenu
-import android.widget.TextView
-import androidx.core.graphics.ColorUtils
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.AsyncListDiffer
-import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.target.Target
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.engine.GlideException
-import android.graphics.drawable.Drawable
-import kotlinx.coroutines.launch
-import kotlin.math.max
-
-/** Native discovery surface. The existing WebView remains underneath it and owns the glass navigation. */
-internal class DiscoveryScreen(
-    context: Context,
-    private val lifecycleOwner: LifecycleOwner,
-    private val viewModel: DiscoveryViewModel,
-    private val listener: Listener,
-) : FrameLayout(context) {
-    interface Listener {
-        fun onOpenPost(channel: DiscoveryChannel, post: DiscoveryPost)
-        fun onOpenAuthor(id: String)
-        fun onSearch(query: String)
-        fun onLoginRequired()
-    }
-
-    private val header = LinearLayout(context)
-    private val channelTabs = LinearLayout(context)
-    private val searchInput = EditText(context)
-    private val panes = mapOf(
-        DiscoveryChannel.COMMUNITY to FeedPane(context, DiscoveryChannel.COMMUNITY),
-        DiscoveryChannel.AI to FeedPane(context, DiscoveryChannel.AI),
-    )
-    private var activeChannel = DiscoveryChannel.COMMUNITY
-    private var darkTheme = true
-    private var themeApplied = false
-    private var searchExpanded = false
-    private var searchText = ""
-    private val navigationCutout = RectF()
-    private val navigationHitRect = RectF()
-    private val navigationCutoutPath = Path()
-
-    init {
-        clipChildren = false
-        clipToPadding = false
-        isClickable = false
-        val page = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(5), dp(14), dp(2))
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        }
-        buildHeader()
-        buildChannels()
-        page.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(48)))
-        page.addView(searchInput, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(42)))
-        searchInput.visibility = GONE
-        page.addView(channelTabs, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(42)))
-        panes.values.forEach { pane -> page.addView(pane, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)) }
-        addView(page)
-        showChannel(DiscoveryChannel.COMMUNITY)
-        searchInput.addTextChangedListener(SimpleTextWatcher { value ->
-            searchText = value
-            panes.values.forEach { it.applySearch(value) }
-        })
-        searchInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_GO) {
-                val query = searchInput.text.toString().trim()
-                if (query.isNotEmpty()) listener.onSearch(query)
-                true
-            } else false
-        }
-        lifecycleOwner.lifecycleScope.launch {
-            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.feeds.collect { states ->
-                    states.forEach { (channel, state) -> panes.getValue(channel).render(state, searchText) }
-                }
-            }
-        }
-        applyTheme(dark = true)
-    }
-
-    fun applyTheme(dark: Boolean) {
-        if (themeApplied && darkTheme == dark) return
-        themeApplied = true
-        darkTheme = dark
-        val bg = if (dark) Color.rgb(13, 16, 18) else Color.rgb(245, 243, 238)
-        val ink = if (dark) Color.rgb(238, 238, 232) else Color.rgb(32, 33, 31)
-        val muted = if (dark) Color.rgb(155, 158, 154) else Color.rgb(119, 118, 111)
-        setBackgroundColor(bg)
-        panes.values.forEach { it.applyTheme(dark, bg, ink, muted) }
-        header.setBackgroundColor(bg)
-        channelTabs.setBackgroundColor(bg)
-        fun recolor(view: View) {
-            if (view is TextView && view.text.toString() != "DISCOVER") view.setTextColor(ink)
-            else if (view is ViewGroup) for (index in 0 until view.childCount) recolor(view.getChildAt(index))
-        }
-        for (index in 0 until header.childCount) recolor(header.getChildAt(index))
-        for (index in 0 until channelTabs.childCount) {
-            val button = channelTabs.getChildAt(index) as TextView
-            val selected = (button.tag as? DiscoveryChannel) == activeChannel
-            button.setTextColor(if (selected) ink else muted)
-            button.background = pill(if (selected) if (dark) Color.rgb(45, 49, 50) else Color.rgb(229, 226, 217) else Color.TRANSPARENT)
-        }
-        searchInput.setTextColor(ink)
-        searchInput.setHintTextColor(muted)
-        searchInput.background = rounded(if (dark) Color.rgb(34, 38, 40) else Color.rgb(255, 254, 250), dp(10))
-    }
-
-    fun updateNavigationTop(topPx: Int) {
-        // MainActivity resizes the view itself to the web navigation's measured top edge.
-        requestLayout()
-    }
-
-    fun setNavigationCutout(left: Int, top: Int, width: Int, height: Int) {
-        if (width <= 0 || height <= 0) {
-            navigationCutout.setEmpty()
-            navigationHitRect.setEmpty()
-            navigationCutoutPath.reset()
-            invalidate()
-            return
-        }
-        // The circle is owned by the website. Leave it visible through this native
-        // surface, including its CSS shadow, so the existing glass navigation and
-        // compose interaction remain exactly the website's implementation.
-        val shadow = dp(12).toFloat()
-        navigationCutout.set(
-            left - shadow,
-            top - shadow,
-            left + width + shadow,
-            top + height + shadow,
-        )
-        navigationHitRect.set(left.toFloat(), top.toFloat(), (left + width).toFloat(), (top + height).toFloat())
-        navigationCutoutPath.reset()
-        navigationCutoutPath.addOval(navigationCutout, Path.Direction.CW)
-        invalidate()
-    }
-
-    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && navigationHitRect.contains(event.x, event.y)) {
-            // A drawing clip does not alter hit testing. Let the original WebView
-            // compose button receive its normal tap and animation through the hole.
-            return false
-        }
-        return super.dispatchTouchEvent(event)
-    }
-
-    override fun draw(canvas: Canvas) {
-        if (navigationCutout.isEmpty) {
-            super.draw(canvas)
-            return
-        }
-        val save = canvas.save()
-        canvas.clipOutPath(navigationCutoutPath)
-        super.draw(canvas)
-        canvas.restoreToCount(save)
-    }
-
-    fun setSession(userId: String?, token: String?) = viewModel.setSession(userId, token)
-
-    fun clearSearchFocus() = searchInput.clearFocus()
-
-    fun saveListState() {
-        panes.forEach { (channel, pane) -> pane.saveScrollState() }
-    }
-
-    private fun buildHeader() {
-        header.orientation = LinearLayout.HORIZONTAL
-        header.gravity = Gravity.CENTER_VERTICAL
-        val brand = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        brand.addView(ImageView(context).apply {
-            setImageResource(com.heika.android.R.drawable.ic_heika)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "é»‘å¡æ ‡è¯†"
-        }, LinearLayout.LayoutParams(dp(34), dp(34)).apply { rightMargin = dp(8) })
-        val brandCopy = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-        brandCopy.addView(TextView(context).apply {
-            text = "é»‘å¡  HEIKA"
-            textSize = 16f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            letterSpacing = .035f
-        })
-        brandCopy.addView(TextView(context).apply {
-            text = "DISCOVER"
-            textSize = 9f
-            letterSpacing = .18f
-            setTextColor(Color.rgb(185, 151, 82))
-        })
-        brand.addView(brandCopy)
-        header.addView(brand, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
-        val search = headerButton("âŒ•", "æœç´¢") {
-            searchExpanded = !searchExpanded
-            searchInput.visibility = if (searchExpanded) VISIBLE else GONE
-            if (!searchExpanded) { searchInput.setText(""); searchText = "" }
-            if (searchExpanded) searchInput.requestFocus()
-        }
-        header.addView(search, LinearLayout.LayoutParams(dp(42), dp(42)))
-        val more = headerButton("Â·Â·Â·", "æ›´å¤š") { showMoreMenu(it) }
-        header.addView(more, LinearLayout.LayoutParams(dp(42), dp(42)))
-    }
-
-    private fun buildChannels() {
-        channelTabs.orientation = LinearLayout.HORIZONTAL
-        channelTabs.gravity = Gravity.CENTER_VERTICAL
-        channelTabs.addView(channelButton("ç¤¾åŒº", DiscoveryChannel.COMMUNITY), LinearLayout.LayoutParams(dp(72), dp(34)))
-        channelTabs.addView(channelButton("AI ç©ºé—´", DiscoveryChannel.AI), LinearLayout.LayoutParams(dp(86), dp(34)))
-    }
-
-    private fun channelButton(label: String, channel: DiscoveryChannel) = TextView(context).apply {
-        text = label
-        textSize = 14f
-        gravity = Gravity.CENTER
-        tag = channel
-        background = pill(Color.rgb(45, 49, 50))
-        setOnClickListener { showChannel(channel) }
-    }
-
-    private fun showChannel(channel: DiscoveryChannel) {
-        activeChannel = channel
-        panes.forEach { (key, pane) -> pane.visibility = if (key == channel) VISIBLE else GONE }
-        for (index in 0 until channelTabs.childCount) {
-            val button = channelTabs.getChildAt(index) as TextView
-            val selected = button.tag == channel
-            val ink = if (darkTheme) Color.rgb(238, 238, 232) else Color.rgb(32, 33, 31)
-            val muted = if (darkTheme) Color.rgb(155, 158, 154) else Color.rgb(119, 118, 111)
-            button.setTextColor(if (selected) ink else muted)
-            button.background = pill(if (selected) if (darkTheme) Color.rgb(45, 49, 50) else Color.rgb(229, 226, 217) else Color.TRANSPARENT)
-        }
-    }
-
-    private fun showMoreMenu(anchor: View) {
-        PopupMenu(context, anchor).apply {
-            menu.add("åˆ·æ–°å†…å®¹").setOnMenuItemClickListener { viewModel.refresh(activeChannel); true }
-            menu.add("ç™»å½•ä¸ŽåŒæ­¥").setOnMenuItemClickListener { listener.onLoginRequired(); true }
-            show()
-        }
-    }
-
-    private fun headerButton(symbol: String, description: String, action: (View) -> Unit) = TextView(context).apply {
-        text = symbol
-        textSize = if (symbol == "Â·Â·Â·") 21f else 27f
-        gravity = Gravity.CENTER
-        contentDescription = description
-        setOnClickListener { action(this) }
-    }
-
-    private inner class FeedPane(context: Context, private val channel: DiscoveryChannel) : LinearLayout(context) {
-        private val controls = LinearLayout(context)
-        private val categoryScroll = HorizontalScrollView(context)
-        private val categoryRow = LinearLayout(context)
-        private val contentTypeScroll = HorizontalScrollView(context)
-        private val contentTypeRow = LinearLayout(context)
-        private val sortRow = LinearLayout(context)
-        private val status = TextView(context)
-        private val list = RecyclerView(context)
-        private val adapter = DiscoveryAdapter(
-            context,
-            onPost = { listener.onOpenPost(channel, it) },
-            onAuthor = { it.authorId?.let(listener::onOpenAuthor) },
-            onLike = { if (viewModel.hasSession()) viewModel.toggleLike(channel, it) else listener.onLoginRequired() },
-            onSave = { post ->
-                if (post.saved || viewModel.hasSession()) viewModel.toggleSaved(channel, post)
-                else listener.onLoginRequired()
-            },
-        )
-        private var categoryNames = emptyList<String>()
-        private var state: DiscoveryFeedState? = null
-        private var currentQuery = ""
-        private var dark = true
-
-        fun saveScrollState() = viewModel.saveScrollState(channel, list.layoutManager?.onSaveInstanceState())
-
-        init {
-            orientation = VERTICAL
-            controls.orientation = VERTICAL
-            categoryRow.orientation = LinearLayout.HORIZONTAL
-            categoryScroll.isHorizontalScrollBarEnabled = false
-            categoryScroll.addView(categoryRow)
-            contentTypeRow.orientation = LinearLayout.HORIZONTAL
-            contentTypeScroll.isHorizontalScrollBarEnabled = false
-            contentTypeScroll.addView(contentTypeRow)
-            sortRow.orientation = LinearLayout.HORIZONTAL
-            sortRow.gravity = Gravity.CENTER_VERTICAL
-            controls.addView(categoryScroll, LayoutParams(LayoutParams.MATCH_PARENT, dp(42)))
-            controls.addView(contentTypeScroll, LayoutParams(LayoutParams.MATCH_PARENT, dp(34)))
-            controls.addView(sortRow, LayoutParams(LayoutParams.MATCH_PARENT, dp(39)))
-            addView(controls, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-            status.gravity = Gravity.CENTER
-            status.textSize = 12f
-            addView(status, LayoutParams(LayoutParams.MATCH_PARENT, dp(42)))
-            list.layoutManager = StaggeredGridLayoutManager(2, RecyclerView.VERTICAL).apply { gapStrategy = StaggeredGridLayoutManager.GAP_HANDLING_MOVE_ITEMS_BETWEEN_SPANS }
-            list.adapter = adapter
-            viewModel.restoreScrollState(channel)?.let { saved -> list.layoutManager?.onRestoreInstanceState(saved) }
-            list.setHasFixedSize(false)
-            list.itemAnimator = null
-            list.setItemViewCacheSize(8)
-            list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    if (dy <= 0) return
-                    val manager = recyclerView.layoutManager as? StaggeredGridLayoutManager ?: return
-                    val last = manager.findLastVisibleItemPositions(null).maxOrNull() ?: 0
-                    if (last >= adapter.itemCount - 6) viewModel.loadMore(channel)
-                }
-            })
-            addView(list, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
-        }
-
-        fun applyTheme(isDark: Boolean, bg: Int, ink: Int, muted: Int) {
-            dark = isDark
-            setBackgroundColor(bg)
-            list.setBackgroundColor(bg)
-            status.setTextColor(muted)
-            adapter.applyTheme(isDark)
-            state?.let { value ->
-                renderCategories(value)
-                renderSort(value)
-                renderContentTypes(value)
-                render(value, currentQuery)
-            }
-        }
-
-        fun applySearch(query: String) {
-            currentQuery = query
-            state?.let { render(it, query) }
-        }
-
-        fun render(newState: DiscoveryFeedState, query: String) {
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíóM4N‹Z–‹­¦ëeŠw¬ÕÁ…­…”½´¹¡•¥­„¹…¹‘É½¥¹‘¥Í½Ù•Éä()¥µÁ½ÉÐ…¹‘É½¥¹½¹Ñ•¹Ð¹½¹Ñ•áÐ)¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹…¹Ù…Ì)¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹½±½È)¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹A…Ñ )¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹I•Ñ)¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹QåÁ•™…”)¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹‘É…Ý…‰±”¹½±½ÉÉ…Ý…‰±”)¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹‘É…Ý…‰±”¹É…‘¥•¹ÑÉ…Ý…‰±”)¥µÁ½ÉÐ…¹‘É½¥¹Ù¥•Ü¹5½Ñ¥½¹Ù•¹Ð)¥µÁ½ÉÐ…¹‘É½¥¹Ù¥•Ü¹É…Ù¥Ñä)¥µÁ½ÉÐ…¹‘É½¥¹Ù¥•Ü¹Y¥•Ü)¥µÁ½ÉÐ…¹‘É½¥¹Ù¥•Ü¹Y¥•ÝÉ½ÕÀ)¥µÁ½ÉÐ…¹‘É½¥¹Ù¥•Ü¹¥¹ÁÕÑµ•Ñ¡½¹‘¥Ñ½É%¹™¼)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹	ÕÑÑ½¸)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹‘¥ÑQ•áÐ)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹É…µ•1…å½ÕÐ)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹!½É¥é½¹Ñ…±MÉ½±±Y¥•Ü)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹%µ…•	ÕÑÑ½¸)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹%µ…•Y¥•Ü)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹1¥¹•…É1…å½ÕÐ)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹A½ÁÕÁ5•¹Ô)¥µÁ½ÉÐ…¹‘É½¥¹Ý¥‘•Ð¹Q•áÑY¥•Ü)¥µÁ½ÉÐ…¹‘É½¥‘à¹½É”¹É…Á¡¥Ì¹½±½ÉUÑ¥±Ì)¥µÁ½ÉÐ…¹‘É½¥‘à¹±¥™•å±”¹1¥™•å±”)¥µÁ½ÉÐ…¹‘É½¥‘à¹±¥™•å±”¹1¥™•å±•=Ý¹•È)¥µÁ½ÉÐ…¹‘É½¥‘à¹±¥™•å±”¹±¥™•å±•M½Á”)¥µÁ½ÉÐ…¹‘É½¥‘à¹±¥™•å±”¹É•Á•…Ñ=¹1¥™•å±”)¥µÁ½ÉÐ…¹‘É½¥‘à¹É•å±•ÉÙ¥•Ü¹Ý¥‘•Ð¹¥™™UÑ¥°)¥µÁ½ÉÐ…¹‘É½¥‘à¹É•å±•ÉÙ¥•Ü¹Ý¥‘•Ð¹Íå¹1¥ÍÑ¥™™•È)¥µÁ½ÉÐ…¹‘É½¥‘à¹É•å±•ÉÙ¥•Ü¹Ý¥‘•Ð¹I•å±•ÉY¥•Ü)¥µÁ½ÉÐ…¹‘É½¥‘à¹É•å±•ÉÙ¥•Ü¹Ý¥‘•Ð¹MÑ…•É•‘É¥‘1…å½ÕÑ5…¹…•È)¥µÁ½ÉÐ½´¹‰ÕµÁÑ• ¹±¥‘”¹±¥‘”)¥µÁ½ÉÐ½´¹‰ÕµÁÑ• ¹±¥‘”¹±½…¹•¹¥¹”¹¥Í­…¡•MÑÉ…Ñ•ä)¥µÁ½ÉÐ½´¹‰ÕµÁÑ• ¹±¥‘”¹É•ÅÕ•ÍÐ¹I•ÅÕ•ÍÑ1¥ÍÑ•¹•È)¥µÁ½ÉÐ½´¹‰ÕµÁÑ• ¹±¥‘”¹É•ÅÕ•ÍÐ¹Ñ…É•Ð¹Q…É•Ð)¥µÁ½ÉÐ½´¹‰ÕµÁÑ• ¹±¥‘”¹±½…¹…Ñ…M½ÕÉ”)¥µÁ½ÉÐ½´¹‰ÕµÁÑ• ¹±¥‘”¹±½…¹•¹¥¹”¹±¥‘•á•ÁÑ¥½¸)¥µÁ½ÉÐ…¹‘É½¥¹É…Á¡¥Ì¹‘É…Ý…‰±”¹É…Ý…‰±”)¥µÁ½ÉÐ­½Ñ±¥¹à¹½É½ÕÑ¥¹•Ì¹±…Õ¹ )¥µÁ½ÉÐ­½Ñ±¥¸¹µ…Ñ ¹µ…à((¼¨¨9…Ñ¥Ù”‘¥Í½Ù•ÉäÍÕÉ™…”¸Q¡”•á¥ÍÑ¥¹œ]•‰Y¥•ÜÉ•µ…¥¹ÌÕ¹‘•É¹•…Ñ ¥Ð…¹½Ý¹ÌÑ¡”±…ÍÌ¹…Ù¥…Ñ¥½¸¸€¨¼)¥¹Ñ•É¹…°±…ÍÌ¥Í½Ù•ÉåMÉ••¸ (€€€½¹Ñ•áÐè½¹Ñ•áÐ°(€€€ÁÉ¥Ù…Ñ”Ù…°±¥™•å±•=Ý¹•Èè1¥™•å±•=Ý¹•È°(€€€ÁÉ¥Ù…Ñ”Ù…°Ù¥•Ý5½‘•°è¥Í½Ù•ÉåY¥•Ý5½‘•°°(€€€ÁÉ¥Ù…Ñ”Ù…°±¥ÍÑ•¹•Èè1¥ÍÑ•¹•È°(¤€èÉ…µ•1…å½ÕÐ¡½¹Ñ•áÐ¤ì(€€€¥¹Ñ•É™…”1¥ÍÑ•¹•Èì(€€€€€€€™Õ¸½¹=Á•¹A½ÍÐ¡¡…¹¹•°è¥Í½Ù•Éå¡…¹¹•°°Á½ÍÐè¥Í½Ù•ÉåA½ÍÐ¤(€€€€€€€™Õ¸½¹=Á•¹ÕÑ¡½È¡¥èMÑÉ¥¹œ¤(€€€€€€€™Õ¸½¹M•…É ¡ÅÕ•ÉäèMÑÉ¥¹œ¤(€€€€€€€™Õ¸½¹1½¥¹I•ÅÕ¥É• ¤(€€€€€€€™Õ¸½¹%¹Ñ•É…Ñ¥½¹¡…¹•¡ÕÁ‘…Ñ”è¥Í½Ù•Éå%¹Ñ•É…Ñ¥½¹UÁ‘…Ñ”¤(€€€ô((€€€ÁÉ¥Ù…Ñ”Ù…°¡•…‘•È€ô1¥¹•…É1…å½ÕÐ¡½¹Ñ•áÐ¤(€€€ÁÉ¥Ù…Ñ”Ù…°¡…¹¹•±Q…‰Ì€ô1¥¹•…É1…å½ÕÐ¡½¹Ñ•áÐ¤(€€€ÁÉ¥Ù…Ñ”Ù…°Í•…É¡%¹ÁÕÐ€ô‘¥ÑQ•áÐ¡½¹Ñ•áÐ¤(€€€ÁÉ¥Ù…Ñ”Ù…°Á…¹•Ì€ôµ…Á=˜ (€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹=55U9%QdÑ¼••‘A…¹”¡½¹Ñ•áÐ°¥Í½Ù•Éå¡…¹¹•°¹=55U9%Qd¤°(€€€€€€€¥Í½Ù•Éå¡…¹¹•°¹$Ñ¼••‘A…¹”¡½¹Ñ•áÐ°¥Í½Ù•Éå¡…¹¹•°¹$¤°(€€€€¤(€€€ÁÉ¥Ù…Ñ”Ù…È…Ñ¥Ù•¡…¹¹•°€ô¥Í½Ù•Éå¡…¹¹•°¹=55U9%Qd(€€€ÁÉ¥Ù…Ñ”Ù…È‘…É­Q¡•µ”€ôÑÉÕ”(€€€ÁÉ¥Ù…Ñ”Ù…ÈÑ¡•µ•ÁÁ±¥•€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”Ù…ÈÍ•…É¡áÁ…¹‘•€ô™…±Í”(€€€ÁÉ¥Ù…Ñ”Ù…ÈÍ•…É¡Q•áÐ€ô€ˆˆ(€€€ÁÉ¥Ù…Ñ”Ù…°¹…Ù¥…Ñ¥½¹ÕÑ½ÕÐ€ôI•Ñ ¤(€€€ÁÉ¥Ù…Ñ”Ù…°¹…Ù¥…Ñ¥½¹!¥ÑI•Ð€ôI•Ñ ¤(€€€ÁÉ¥Ù…Ñ”Ù…°¹…Ù¥…Ñ¥½¹ÕÑ½ÕÑA…Ñ €ôA…Ñ  ¤((€€€¥¹¥Ðì(€€€€€€€±¥Á¡¥±‘É•¸€ô™…±Í”(€€€€€€€±¥ÁQ½A…‘‘¥¹œ€ô™…±Í”(€€€€€€€¥Í±¥­…‰±”€ô™…±Í”(€€€€€€€Ù…°Á…”€ô1¥¹•…É1…å½ÕÐ¡½¹Ñ•áÐ¤¹…ÁÁ±äì(€€€€€€€€€€€½É¥•¹Ñ…Ñ¥½¸€ô1¥¹•…É1…å½ÕÐ¹YIQ%0(€€€€€€€€€€€Í•ÑA…‘‘¥¹œ¡‘À ÄÐ¤°‘À Ô¤°‘À ÄÐ¤°‘À È¤¤(€€€€€€€€€€€±…å½ÕÑA…É…µÌ€ô1…å½ÕÑA…É…µÌ¡1…å½ÕÑA…É…µÌ¹5Q!}AI9P°1…å½ÕÑA…É…µÌ¹5Q!}AI9P¤(€€€€€€€ô(€€€€€€€‰Õ¥±‘!•…‘•È ¤(€€€€€€€‰Õ¥±‘¡…¹¹•±Ì ¤(€€€€€€€Á…”¹…‘‘Y¥•Ü¡¡•…‘•È°1¥¹•…É1…å½ÕÐ¹1…å½ÕÑA…É…µÌ¡1…å½ÕÑA…É…µÌ¹5Q!}AI9P°‘À Ðà¤¤¤(€€€€€€€Á…”¹…‘‘Y¥•Ü¡Í•…É¡%¹ÁÕÐ°1¥¹•…É1…å½ÕÐ¹1…å½ÕÑA…É…µÌ¡1…å½ÕÑA…É…µÌ¹5Q!}AI9P°‘À ÐÈ¤¤¤(€€€€€€€Í•…É¡%¹ÁÕÐ¹Ù¥Í¥‰¥±¥Ñä€ô=9(€€€€€€€Á…”¹…‘‘Y¥•Ü¡¡…¹¹•±Q…‰Ì°1¥¹•…É1…å½ÕÐ¹1…å½ÕÑA…É…µÌ¡1…å½ÕÑA…É…µÌ¹5Q!}AI9P°‘À ÐÈ¤¤¤(€€€€€€€Á…¹•Ì¹Ù…±Õ•Ì¹™½É… ìÁ…¹”€´øÁ…”¹…‘‘Y¥•Ü¡Á…¹”°1¥¹•…É1…å½ÕÐ¹1…å½ÕÑA…É…µÌ¡1…å½ÕÑA…É…µÌ¹5Q!}AI9P°€À°€Å˜¤¤ô(€€€€€€€…‘‘Y¥•Ü¡Á…”¤(€€€€€€€Í¡½Ý¡…¹¹•°¡¥Í½Ù•Éå¡…¹¹•°¹=55U9%Qd¤(€€€€€€€Í•…É¡%¹ÁÕÐ¹…‘‘Q•áÑ¡…¹•‘1¥ÍÑ•¹•È¡M¥µÁ±•Q•áÑ]…Ñ¡•ÈìÙ…±Õ”€´ø(€€€€€€€€€€€Í•…É¡Q•áÐ€ôÙ…±Õ”(€€€€€€€€€€€Á…¹•Ì¹Ù…±Õ•Ì¹™½É… ì¥Ð¹…ÁÁ±åM•…É ¡Ù…±Õ”¤ô(€€€€€€€ô¤(€€€€€€€Í•…É¡%¹ÁÕÐ¹Í•Ñ=¹‘¥Ñ½ÉÑ¥½¹1¥ÍÑ•¹•Èì|°…Ñ¥½¹%°|€´ø(€€€€€€€€€€€¥˜€¡…Ñ¥½¹%€ôô‘¥Ñ½É%¹™¼¹%5}Q%=9}MI ñð…Ñ¥½¹%€ôô‘¥Ñ½É%¹™¼¹%5}Q%=9}<¤ì(€€€€€€€€€€€€€€€Ù…°ÅÕ•Éä€ôÍ•…É¡%¹ÁÕÐ¹Ñ•áÐ¹Ñ½MÑÉ¥¹œ ¤¹ÑÉ¥´ ¤(€€€€€€€€€€€€€€€¥˜€¡ÅÕ•Éä¹¥Í9½ÑµÁÑä ¤¤±¥ÍÑ•¹•È¹½¹M•…É ¡ÅÕ•Éä¤(€€€€€€€€€€€€€€€ÑÉÕ”(€€€€€€€€€€€ô•±Í”™…±Í”(€€€€€€€ô(€€€€€€€±¥™•å±•=Ý¹•È¹±¥™•å±•M½Á”¹±…Õ¹ ì(€€€€€€€€€€€±¥™•å±•=Ý¹•È¹É•Á•…Ñ=¹1¥™•å±”¡1¥™•å±”¹MÑ…Ñ”¹MQIQ¤ì(€€€€€€€€€€€€€€€±…Õ¹ ì(€€€€€€€€€€€€€€€€€€€Ù¥•Ý5½‘•°¹™••‘Ì¹½±±•ÐìÍÑ…Ñ•Ì€´ø(€€€€€€€€€€€€€€€€€€€€€€€ÍÑ…Ñ•Ì¹™½É… ì€¡¡…¹¹•°°ÍÑ…Ñ”¤€´øÁ…¹•Ì¹•ÑY…±Õ”¡¡…¹¹•°¤¹É•¹‘•È¡ÍÑ…Ñ”°Í•…É¡Q•áÐ¤ô(€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€±…Õ¹ ì(€€€€€€€€€€€€€€€€€€€Ù¥•Ý5½‘•°¹¥¹Ñ•É…Ñ¥½¹UÁ‘…Ñ•Ì¹½±±•Ð¡±¥ÍÑ•¹•Èèé½¹%¹Ñ•É…Ñ¥½¹¡…¹•¤(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€ô(€€€€€€€ô(€€€€€€€…ÁÁ±åQ¡•µ”¡‘…É¬€ôÑÉÕ”¤(€€€ô((€€€™Õ¸…ÁÁ±åQ¡•µ”¡‘…É¬è	½½±•…¸¤ì(€€€€€€€¥˜€¡Ñ¡•µ•ÁÁ±¥•€˜˜‘…É­Q¡•µ”€ôô‘…É¬¤É•ÑÕÉ¸(€€€€€€€Ñ¡•µ•ÁÁ±¥•€ôÑÉÕ”(€€€€€€€‘…É­Q¡•µ”€ô‘…É¬(€€€€€€€Ù…°‰œ€ô¥˜€¡‘…É¬¤½±½È¹Éˆ ÄÌ°€ÄØ°€Äà¤•±Í”½±½È¹Éˆ ÈÐÔ°€ÈÐÌ°€ÈÌà¤(€€€€€€€Ù…°¥¹¬€ô¥˜€¡‘…É¬¤½±½È¹Éˆ ÈÌà°€ÈÌà°€ÈÌÈ¤•±Í”½±½È¹Éˆ ÌÈ°€ÌÌ°€ÌÄ¤(€€€€€€€Ù…°µÕÑ•€ô¥˜€¡‘…É¬¤½±½È¹Éˆ ÄÔÔ°€ÄÔà°€ÄÔÐ¤•±Í”½±½È¹Éˆ ÄÄä°€ÄÄà°€ÄÄÄ¤(€€€€€€€Í•Ñ	…­É½Õ¹‘½±½È¡‰œ¤(€€€€€€€Á…¹•Ì¹Ù…±Õ•Ì¹™½É… ì¥Ð¹…ÁÁ±åQ¡•µ”¡‘…É¬°‰œ°¥¹¬°µÕÑ•¤ô(€€€€€€€¡•…‘•È¹Í•Ñ	…­É½Õ¹‘½±½È¡‰œ¤(€€€€€€€¡…¹¹•±Q…‰Ì¹Í•Ñ	…­É½Õ¹‘½±½È¡‰œ¤(€€€€€€€™Õ¸É•½±½È¡Ù¥•ÜèY¥•Ü¤ì(€€€€€€€€€€€¥˜€¡Ù¥•Ü¥ÌQ•áÑY¥•Ü€˜˜Ù¥•Ü¹Ñ•áÐ¹Ñ½MÑÉ¥¹œ ¤€„ô€‰%M=YHˆ¤Ù¥•Ü¹Í•ÑQ•áÑ½±½È¡¥¹¬¤(€€€€€€€€€€€•±Í”¥˜€¡Ù¥•Ü¥ÌY¥•ÝÉ½ÕÀ¤™½È€¡¥¹‘•à¥¸€ÀÕ¹Ñ¥°Ù¥•Ü¹¡¥±‘½Õ¹Ð¤É•½±½È¡Ù¥•Ü¹•Ñ¡¥±‘Ð¡¥¹‘•à¤¤(€€€€€€€ô(€€€€€€€™½È€¡¥¹‘•à¥¸€ÀÕ¹Ñ¥°¡•…‘•È¹¡¥±‘½Õ¹Ð¤É•½±½È¡¡•…‘•È¹•Ñ¡¥±‘Ð¡¥¹‘•à¤¤(€€€€€€€™½È€¡¥¹‘•à¥¸€ÀÕ¹Ñ¥°¡…¹¹•±Q…‰Ì¹¡¥±‘½Õ¹Ð¤ì(€€€€€€€€€€€Ù…°‰ÕÑÑ½¸€ô¡…¹¹•±Q…‰Ì¹•Ñ¡¥±‘Ð¡¥¹‘•à¤…ÌQ•áÑY¥•Ü(€€€€€€€€€€€Ù…°Í•±•Ñ•€ô€¡‰ÕÑÑ½¸¹Ñ…œ…Ìü¥Í½Ù•Éå¡…¹¹•°¤€ôô…Ñ¥Ù•¡…¹¹•°(€€€€€€€€€€€‰ÕÑÑ½¸¹Í•ÑQ•áÑ½±½È¡¥˜€¡Í•±•Ñ•¤¥¹¬•±Í”µÕÑ•¤(€€€€€€€€€€€‰ÕÑÑ½¸¹‰…­É½Õ¹€ôÁ¥±°¡¥˜€¡Í•±•Ñ•¤¥˜€¡‘…É¬¤½±½È¹Éˆ ÐÔ°€Ðä°€ÔÀ¤•±Í”½±½È¹Éˆ ÈÈä°€ÈÈØ°€ÈÄÜ¤•±Í”½±½È¹QI9MAI9P¤(€€€€€€€ô(€€€€€€€Í•…É¡%¹ÁÕÐ¹Í•ÑQ•áÑ½±½È¡¥¹¬¤(€€€€€€€Í•…É¡%¹ÁÕÐ¹Í•Ñ!¥¹ÑQ•áÑ½±½È¡µÕÑ•¤(€€€€€€€Í•…É¡%¹ÁÕÐ¹‰…­É½Õ¹€ôÉ½Õ¹‘•¡¥˜€¡‘…É¬¤½±½È¹Éˆ ÌÐ°€Ìà°€ÐÀ¤•±Í”½±½È¹Éˆ ÈÔÔ°€ÈÔÐ°€ÈÔÀ¤°‘À ÄÀ¤¤(€€€ô((€€€™Õ¸ÕÁ‘…Ñ•9…Ù¥…Ñ¥½¹Q½À¡Ñ½ÁAàè%¹Ð¤ì(€€€€€€€€¼¼5…¥¹Ñ¥Ù¥ÑäÉ•Í¥é•ÌÑ¡”Ù¥•Ü¥ÑÍ•±˜Ñ¼Ñ¡”Ý•ˆ¹…Ù¥…Ñ¥½¸Ìµ•…ÍÕÉ•Ñ½À•‘”¸(€€€€€€€É•ÅÕ•ÍÑ1…å½ÕÐ ¤(€€€ô((€€€™Õ¸Í•Ñ9…Ù¥…Ñ¥½¹ÕÑ½ÕÐ¡±•™Ðè%¹Ð°Ñ½Àè%¹Ð°Ý¥‘Ñ è%¹Ð°¡•¥¡Ðè%¹Ð¤ì(€€€€€€€¥˜€¡Ý¥‘Ñ €ðô€Àñð¡•¥¡Ð€ðô€À¤ì(€€€€€€€€€€€¹…Ù¥…Ñ¥½¹ÕÑ½ÕÐ¹Í•ÑµÁÑä ¤(€€€€€€€€€€€¹…Ù¥…Ñ¥½¹!¥ÑI•Ð¹Í•ÑµÁÑä ¤(€€€€€€€€€€€¹…Ù¥…Ñ¥½¹ÕÑ½ÕÑA…Ñ ¹É•Í•Ð ¤(€€€€€€€€€€€¥¹Ù…±¥‘…Ñ” ¤(€€€€€€€€€€€É•ÑÕÉ¸(€€€€€€€ô(€€€€€€€€¼¼Q¡”¥É±”¥Ì½Ý¹•‰äÑ¡”Ý•‰Í¥Ñ”¸1•…Ù”¥ÐÙ¥Í¥‰±”Ñ¡É½Õ Ñ¡¥Ì¹…Ñ¥Ù”(€€€€€€€€¼¼ÍÕÉ™…”°¥¹±Õ‘¥¹œ¥ÑÌMLÍ¡…‘½Ü°Í¼Ñ¡”•á¥ÍÑ¥¹œ±…ÍÌ¹…Ù¥…Ñ¥½¸…¹(€€€€€€€€¼¼½µÁ½Í”¥¹Ñ•É…Ñ¥½¸É•µ…¥¸•á…Ñ±äÑ¡”Ý•‰Í¥Ñ”Ì¥µÁ±•µ•¹Ñ…Ñ¥½¸¸(€€€€€€€Ù…°Í¡…‘½Ü€ô‘À ÄÈ¤¹Ñ½±½…Ð ¤(€€€€€€€¹…Ù¥…Ñ¥½¹ÕÑ½ÕÐ¹Í•Ð (€€€€€€€€€€€±•™Ð€´Í¡…‘½Ü°(€€€€€€€€€€€Ñ½À€´Í¡…‘½Ü°(€€€€€€€€€€€±•™Ð€¬Ý¥‘Ñ €¬Í¡…‘½Ü°(€€€€€€€€€€€Ñ½À€¬¡•¥¡Ð€¬Í¡…‘½Ü°(€€€€€€€€¤(€€€€€€€¹…Ù¥…Ñ¥½¹!¥ÑI•Ð¹Í•Ð¡±•™Ð¹Ñ½±½…Ð ¤°Ñ½À¹Ñ½±½…Ð ¤°€¡±•™Ð€¬Ý¥‘Ñ ¤¹Ñ½±½…Ð ¤°€¡Ñ½À€¬¡•¥¡Ð¤¹Ñ½±½…Ð ¤¤(€€€€€€€¹…Ù¥…Ñ¥½¹ÕÑ½ÕÑA…Ñ ¹É•Í•Ð ¤(€€€€€€€¹…Ù¥…Ñ¥½¹ÕÑ½ÕÑA…Ñ ¹…‘‘=Ù…°¡¹…Ù¥…Ñ¥½¹ÕÑ½ÕÐ°A…Ñ ¹¥É•Ñ¥½¸¹\¤(€€€€€€€¥¹Ù…±¥‘…Ñ” ¤(€€€ô((€€€½Ù•ÉÉ¥‘”™Õ¸ƒ}4ÒÚ$z{-®éÜj×      fun render(newState: DiscoveryFeedState, query: String) {
             val previous = state
             val filterChanged = previous != null && (
                 previous.selectedCategory != newState.selectedCategory ||
