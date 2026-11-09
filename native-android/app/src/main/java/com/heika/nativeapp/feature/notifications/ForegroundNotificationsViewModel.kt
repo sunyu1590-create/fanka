@@ -43,6 +43,14 @@ class ForegroundNotificationsViewModel @Inject constructor(
         if (user == null) return@withLock
 
         val response = runCatching { repository.loadNotifications() }.getOrNull() ?: return@withLock
+        val activeUser = runCatching { auth.restore()?.userId }.getOrNull()
+        if (activeUser != user) {
+            accountId = activeUser
+            initializedForAccount = false
+            seenIds.clear()
+            mutableState.value = ForegroundNotificationsState()
+            return@withLock
+        }
         val items = response.optJSONArray("items").jsonObjects()
             .map(HeikaNotification::from)
             .filter { it.id.isNotBlank() }
