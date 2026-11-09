@@ -3,6 +3,7 @@ package com.heika.nativeapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.compose.runtime.SideEffect
@@ -32,6 +33,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val theme by preferences.theme.collectAsState(initial = "dark")
             val loader by imageCache.loader.collectAsState()
+            val systemDark = isSystemInDarkTheme()
+            val lightSystemBars = theme == "light" || (theme == "system" && !systemDark)
             HeikaTheme(theme) {
                 SideEffect {
                     window.statusBarColor = android.graphics.Color.TRANSPARENT
@@ -41,8 +44,8 @@ class MainActivity : ComponentActivity() {
                         window.isNavigationBarContrastEnforced = false
                     }
                     val controller = WindowCompat.getInsetsController(window, window.decorView)
-                    controller.isAppearanceLightStatusBars = theme == "light"
-                    controller.isAppearanceLightNavigationBars = theme == "light"
+                    controller.isAppearanceLightStatusBars = lightSystemBars
+                    controller.isAppearanceLightNavigationBars = lightSystemBars
                 }
                 HeikaNativeApp(
                     imageLoader = loader,
