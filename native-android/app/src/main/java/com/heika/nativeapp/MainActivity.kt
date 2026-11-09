@@ -10,7 +10,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.ui.HeikaImageCache
 import com.heika.nativeapp.ui.HeikaNativeApp
 import com.heika.nativeapp.ui.HeikaTheme
@@ -20,7 +19,6 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var imageCache: HeikaImageCache
     @Inject lateinit var preferences: NativePreferences
 
@@ -47,10 +45,7 @@ class MainActivity : ComponentActivity() {
                     controller.isAppearanceLightStatusBars = lightSystemBars
                     controller.isAppearanceLightNavigationBars = lightSystemBars
                 }
-                HeikaNativeApp(
-                    imageLoader = loader,
-                    auth = authRepository,
-                )
+                HeikaNativeApp(imageLoader = loader)
             }
         }
     }

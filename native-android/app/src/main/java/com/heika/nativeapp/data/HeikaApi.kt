@@ -8,6 +8,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.PATCH
+import retrofit2.http.HTTP
 import retrofit2.http.Url
 
 interface HeikaApi {
@@ -23,6 +24,12 @@ interface HeikaApi {
     ): Response<ResponseBody>
 
     @PATCH suspend fun patch(
+        @Url url: String,
+        @Header("Authorization") authorization: String? = null,
+        @Body body: RequestBody,
+    ): Response<ResponseBody>
+
+    @HTTP(method = "DELETE", hasBody = true) suspend fun delete(
         @Url url: String,
         @Header("Authorization") authorization: String? = null,
         @Body body: RequestBody,

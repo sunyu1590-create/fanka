@@ -12,6 +12,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -192,6 +193,174 @@ class HeikaRepository @Inject constructor(
         HeikaPost.from(value as? JSONObject ?: JSONObject())
     }
 
+    suspend fun postDetail(post: HeikaPost): HeikaPost = withContext(Dispatchers.IO) {
+        val value = fetchPostDetail(post.cloudId, post.id)
+        val json = value as? JSONObject ?: throw IOException("内容暂不可用")
+        HeikaPost.from(json)
+    }
+
+    suspend fun postDetailByKey(key: String): HeikaPost = withContext(Dispatchers.IO) {
+        val id = key.removePrefix("client-").toIntOrNull() ?: 0
+        val value = fetchPostDetail(key, id) as? JSONObject ?: throw IOException("内容暂不可用")
+        HeikaPost.from(value)
+    }
+
+    private suspend fun fetchPostDetail(cloudId: String, clientId: Int): Any? = if (isUuid(cloudId)) {
+        request("/api/v1/posts/${encode(cloudId)}", includeSession = true)
+    } else {
+        require(clientId > 0) { "内容编号无效" }
+        request("/api/demo/cards", method = "POST", body = JSONObject().put("id", clientId).toString())
+    }
+
+    suspend fun comments(postId: String, page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/posts/${encode(postId)}/comments?page=${page.coerceAtLeast(1)}&limit=30", includeSession = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun addComment(postId: String, body: String, parentId: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("body", body)
+        parentId?.let { payload.put("parent_id", it) }
+        request("/api/v1/posts/${encode(postId)}/comments", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun reportPost(postId: String, reason: String, note: String): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            "/api/v1/reports",
+            method = "POST",
+            body = JSONObject().put("post_id", postId).put("reason", reason).put("note", note.take(300)).toString(),
+            authenticated = true,
+        ) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun setPostInteraction(id: Int, action: String, value: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        require(action == "like" || action == "bookmark")
+        request("/api/v1/library-state", method = "POST", body = JSONObject().put("action", action).put("id", id).put("value", value).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun ratePost(id: Int, rating: Int): JSONObject = withContext(Dispatchers.IO) {
+        require(rating in 1..5)
+        request("/api/v1/posts/$id/rating", method = "POST", body = JSONObject().put("rating", rating).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun interactionState(id: Int): JSONObject = withContext(Dispatchers.IO) {
+        val value = request("/api/v1/me/interactions?ids=$id", includeSession = true) as? JSONObject ?: JSONObject()
+        value.optJSONObject(id.toString()) ?: JSONObject()
+    }
+
+    suspend fun ratingState(id: Int): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/ratings?ids=$id", includeSession = true) as? JSONObject
+            ?.optJSONObject(id.toString()) ?: JSONObject()
+    }
+
+    suspend fun toggleCreatorFollow(creatorId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/creator-follows", method = "POST", body = JSONObject().put("creatorId", creatorId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun myProfile(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun updateMyProfile(nickname: String, bio: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me", method = "PATCH", body = JSONObject().put("nickname", nickname).put("bio", bio).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun profile(userId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/profiles/${encode(userId)}", includeSession = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun creatorFollowState(userId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/creator-follows?creator=${encode(userId)}", includeSession = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun myLibrary(kind: String, page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        require(kind in setOf("own", "bookmarks", "liked", "recent"))
+        request("/api/v1/me/library?kind=$kind&page=${page.coerceAtLeast(1)}&limit=24", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun search(query: String, kind: String = "content"): JSONObject = withContext(Dispatchers.IO) {
+        require(kind == "content" || kind == "people")
+        request("/api/v1/search?q=${encode(query.take(60))}&kind=$kind&page=1&limit=24", includeSession = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun inbox(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/messages", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun conversation(id: String, before: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        val cursor = before?.let { "&before=${encode(it)}" }.orEmpty()
+        request("/api/v1/messages?conversation=${encode(id)}$cursor", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun searchPeople(query: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "search").put("query", query).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun openConversation(peerId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "open").put("peer", peerId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun sendMessage(conversationId: String, content: String, nonce: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "send").put("conversation", conversationId).put("content", content).put("nonce", nonce).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun createOrUpdateDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String> = emptyList(), mediaPaths: List<String> = emptyList()): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("action", "draft").put("title", title).put("body", body).put("tag", tag).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
+        id?.let { payload.put("id", it) }
+        request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun publishDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String>, mediaPaths: List<String>): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("action", "publish").put("title", title).put("body", body).put("tag", tag).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
+        id?.let { payload.put("id", it) }
+        request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun submitFeedback(category: String, message: String): JSONObject = withContext(Dispatchers.IO) {
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("category", category)
+            .addFormDataPart("message", message)
+            .addFormDataPart("website", "")
+            .build()
+        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/feedback", "Bearer $token", body)
+        val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
+        if (!response.isSuccessful || root.has("error")) throw IOException(root.optString("error").ifBlank { "反馈提交失败（${response.code()}）" })
+        root.optJSONObject("data") ?: root
+    }
+
+    suspend fun progression(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/progression", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun uploadImage(postId: String, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int): JSONObject = withContext(Dispatchers.IO) {
+        require(bytes.size in 1..(4 * 1024 * 1024)) { "单张图片须小于 4 MB" }
+        val requestBody = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
+            .addFormDataPart("post_id", postId)
+            .addFormDataPart("upload_id", uploadId)
+            .addFormDataPart("sort_order", sortOrder.toString())
+            .build()
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/media", "Bearer $token", requestBody)
+        val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
+        if (!response.isSuccessful || root.has("error")) throw IOException(root.optString("error").ifBlank { "图片上传失败（${response.code()}）" })
+        (root.opt("data") as? JSONObject) ?: root
+    }
+
+    suspend fun deleteUploadedImage(postId: String, path: String) = withContext(Dispatchers.IO) {
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val fileName = path.substringAfterLast('/')
+        val uploadId = fileName.substringBeforeLast('.')
+        val extension = fileName.substringAfterLast('.', "")
+        val mime = when (extension.lowercase()) { "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "webp" -> "image/webp"; else -> throw IOException("图片路径无效") }
+        val body = JSONObject().put("upload_id", uploadId).put("file_type", mime).put("post_id", postId).toString().toRequestBody(JSON)
+        val response = api.delete("${BuildConfig.API_BASE_URL}/api/v1/media", "Bearer $token", body)
+        val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        val json = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
+        if (!response.isSuccessful || json.has("error")) throw IOException(json.optString("error").ifBlank { "图片清理失败" })
+    }
+
     suspend fun dailyState(userId: String, day: String): DailyStateEntity? = cacheDao.daily(userId, day)
 
     suspend fun saveDailyState(value: DailyStateEntity) = cacheDao.putDaily(value)
@@ -254,6 +423,7 @@ class HeikaRepository @Inject constructor(
         return when (method) {
             "POST" -> api.post(url, authorization, jsonBody ?: "{}".toRequestBody(JSON))
             "PATCH" -> api.patch(url, authorization, jsonBody ?: "{}".toRequestBody(JSON))
+            "DELETE" -> api.delete(url, authorization, jsonBody ?: "{}".toRequestBody(JSON))
             else -> api.get(url, authorization)
         }
     }
@@ -263,6 +433,8 @@ class HeikaRepository @Inject constructor(
     }.getOrDefault(emptyList())
 
     private fun encode(value: String): String = java.net.URLEncoder.encode(value, Charsets.UTF_8.name())
+
+    private fun isUuid(value: String): Boolean = value.matches(Regex("(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"))
 
     private companion object {
         const val RANKING_CACHE_MS = 5L * 60 * 1000

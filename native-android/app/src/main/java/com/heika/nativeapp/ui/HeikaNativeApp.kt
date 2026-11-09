@@ -1,5 +1,6 @@
 package com.heika.nativeapp.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,47 +37,48 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil3.ImageLoader
 import com.heika.nativeapp.auth.AccountScreen
-import com.heika.nativeapp.auth.AuthRepository
-import com.heika.nativeapp.feature.compat.CompatWebScreen
-import com.heika.nativeapp.feature.compat.DestinationResolver
-import com.heika.nativeapp.feature.compat.DestinationTarget
-import com.heika.nativeapp.feature.compat.HeikaDestination
+import com.heika.nativeapp.feature.navigation.DestinationResolver
+import com.heika.nativeapp.feature.navigation.DestinationTarget
+import com.heika.nativeapp.feature.navigation.HeikaDestination
+import com.heika.nativeapp.feature.detail.PostDetailScreen
 import com.heika.nativeapp.feature.discovery.DiscoveryScreen
 import com.heika.nativeapp.feature.home.HomeScreen
+import com.heika.nativeapp.feature.messages.MessagesScreen
 import com.heika.nativeapp.feature.notifications.NotificationsScreen
 import com.heika.nativeapp.feature.notifications.ForegroundNoticeHost
 import com.heika.nativeapp.data.HeikaPost
+import com.heika.nativeapp.feature.profile.ProfileScreen
+import com.heika.nativeapp.feature.publish.PublishScreen
+import com.heika.nativeapp.feature.search.SearchScreen
+import com.heika.nativeapp.feature.FeedbackScreen
+import com.heika.nativeapp.feature.MembershipScreen
 import com.heika.nativeapp.feature.settings.AboutScreen
 import com.heika.nativeapp.feature.settings.SettingsScreen
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
 @Composable
-fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
+fun HeikaNativeApp(imageLoader: ImageLoader) {
     CompositionLocalProvider(LocalHeikaImageLoader provides imageLoader) {
+        val context = LocalContext.current
         val nav = rememberNavController()
         val hazeState = rememberHazeState()
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
         var homePreviewActive by remember { mutableStateOf(false) }
+        var chatConversationOpen by remember { mutableStateOf(false) }
         val selected = when (route) {
             "discovery" -> "discovery"
-            "messages" -> "messages"
-            "profile" -> "profile"
+            "messages", "conversation/{conversationId}" -> "messages"
+            "profile", "user/{userId}" -> "profile"
             else -> "home"
         }
         val topLevelRoute = route in setOf("home", "discovery", "messages", "profile")
-        val showBottomBar = topLevelRoute
+        val showBottomBar = topLevelRoute && !(route == "messages" && chatConversationOpen)
         val openDestination: (HeikaDestination) -> Unit = remember(nav) {
             { destination ->
                 when (val target = DestinationResolver.resolve(destination)) {
                     is DestinationTarget.Native -> nav.navigate(target.route) { launchSingleTop = true }
-                    is DestinationTarget.Compatibility -> {
-                        if (nav.currentDestination?.route?.startsWith("compat?") == true) nav.popBackStack()
-                        nav.navigate(
-                            "compat?url=${Uri.encode(target.path)}&type=${Uri.encode(target.type)}&targetId=${Uri.encode(target.id.orEmpty())}",
-                        ) { launchSingleTop = true }
-                    }
                     is DestinationTarget.Invalid -> nav.navigate("destination-error?message=${Uri.encode(target.message)}")
                 }
             }
@@ -94,7 +96,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
                     startDestination = "home",
                     modifier = Modifier.fillMaxSize()
                         .then(
-                            if (topLevelRoute) Modifier
+                            if (topLevelRoute && !(route == "messages" && chatConversationOpen)) Modifier
                             else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
                         )
                         .imePadding(),
@@ -119,17 +121,107 @@ fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
                     )
                 }
                 composable("messages") {
-                    CompatWebScreen("/?nativeTab=messages&nativeBottomBar=1", "messages", "", auth, { nav.popBackStack() }, { openDestination(HeikaDestination.About) })
+                    MessagesScreen(
+                        onBack = { nav.popBackStack() },
+                        onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                        onLogin = { nav.navigate("account") },
+                        onConversationChange = { chatConversationOpen = it },
+                    )
                 }
                 composable("profile") {
-                    CompatWebScreen("/?nativeTab=mine&nativeBottomBar=1", "my_page", "", auth, { nav.popBackStack() }, { openDestination(HeikaDestination.About) })
+                    ProfileScreen(
+                        userId = null,
+                        onBack = { nav.popBackStack() },
+                        onPost = { post -> openDestination(post.destination()) },
+                        onDraft = { post -> nav.navigate("publish?draftId=${post.id}") },
+                        onSettings = { openDestination(HeikaDestination.Settings) },
+                        onMembership = { openDestination(HeikaDestination.Membership) },
+                        onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
+                        onLogin = { nav.navigate("account") },
+                    )
+                }
+                composable("search") {
+                    SearchScreen(
+                        onBack = { nav.popBackStack() },
+                        onPost = { post -> openDestination(post.destination()) },
+                        onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                    )
+                }
+                composable(
+                    route = "post/{postKey}",
+                    arguments = listOf(navArgument("postKey") { type = NavType.StringType }),
+                ) { entry ->
+                    PostDetailScreen(
+                        postKey = entry.arguments?.getString("postKey"),
+                        onBack = { nav.popBackStack() },
+                        onAuthor = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                        onLogin = { nav.navigate("account") },
+                        onShare = { post -> shareNativePost(context, post) },
+                    )
+                }
+                composable(
+                    route = "user/{userId}",
+                    arguments = listOf(navArgument("userId") { type = NavType.StringType }),
+                ) { entry ->
+                    ProfileScreen(
+                        userId = entry.arguments?.getString("userId"),
+                        onBack = { nav.popBackStack() },
+                        onPost = { post -> openDestination(post.destination()) },
+                        onDraft = { post -> nav.navigate("publish?draftId=${post.id}") },
+                        onSettings = { openDestination(HeikaDestination.Settings) },
+                        onMembership = { openDestination(HeikaDestination.Membership) },
+                        onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
+                        onLogin = { nav.navigate("account") },
+                    )
+                }
+                composable(
+                    route = "conversation/{conversationId}",
+                    arguments = listOf(navArgument("conversationId") { type = NavType.StringType }),
+                ) { entry ->
+                    MessagesScreen(
+                        initialConversationId = entry.arguments?.getString("conversationId"),
+                        onBack = { nav.popBackStack() },
+                        onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                        onLogin = { nav.navigate("account") },
+                    )
+                }
+                composable(
+                    route = "new-conversation/{userId}",
+                    arguments = listOf(navArgument("userId") { type = NavType.StringType }),
+                ) { entry ->
+                    MessagesScreen(
+                        initialPeerId = entry.arguments?.getString("userId"),
+                        onBack = { nav.popBackStack() },
+                        onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                        onLogin = { nav.navigate("account") },
+                    )
+                }
+                composable(
+                    route = "publish?draftId={draftId}",
+                    arguments = listOf(navArgument("draftId") { type = NavType.StringType; defaultValue = "0" }),
+                ) { entry ->
+                    PublishScreen(
+                        onBack = { nav.popBackStack() },
+                        onLogin = { nav.navigate("account") },
+                        draftId = entry.arguments?.getString("draftId")?.toIntOrNull()?.takeIf { it > 0 },
+                        onPublished = { post ->
+                            nav.popBackStack()
+                            openDestination(post.destination())
+                        },
+                    )
+                }
+                composable("feedback") {
+                    FeedbackScreen(onBack = { nav.popBackStack() }, onLogin = { nav.navigate("account") })
+                }
+                composable("membership") {
+                    MembershipScreen(onBack = { nav.popBackStack() }, onLogin = { nav.navigate("account") })
                 }
                 composable("notifications") {
                     NotificationsScreen(
                         onBack = { nav.popBackStack() },
                         onLogin = { nav.navigate("account") },
                         onContent = { id, isPost ->
-                            if (isPost) openDestination(id.toIntOrNull()?.let(HeikaDestination::CommunityPost) ?: HeikaDestination.CommunityPost(-1))
+                            if (isPost) openDestination(id.toIntOrNull()?.let(HeikaDestination::CommunityPost) ?: HeikaDestination.CommunityPost(0, id))
                             else openDestination(HeikaDestination.UserProfile(id))
                         },
                     )
@@ -146,23 +238,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
                 }
                 composable("account") {
                     AccountScreen(onBack = { nav.popBackStack() }, onSignedIn = { nav.popBackStack() })
-                }
-                composable(
-                    route = "compat?url={url}&type={type}&targetId={targetId}",
-                    arguments = listOf(
-                        navArgument("url") { type = NavType.StringType; defaultValue = "/" },
-                        navArgument("type") { type = NavType.StringType; defaultValue = "unknown" },
-                        navArgument("targetId") { type = NavType.StringType; defaultValue = "" },
-                    ),
-                ) { entry ->
-                    CompatWebScreen(
-                        path = entry.arguments?.getString("url") ?: "/",
-                        targetType = entry.arguments?.getString("type") ?: "unknown",
-                        targetId = entry.arguments?.getString("targetId").orEmpty(),
-                        auth = auth,
-                        onBack = { nav.popBackStack() },
-                        onOpenAbout = { openDestination(HeikaDestination.About) },
-                    )
                 }
                 composable(
                     route = "destination-error?message={message}",
@@ -194,6 +269,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
                 onOpen = { item ->
                     when {
                         item.postId != null -> item.postId.toIntOrNull()?.let { openDestination(HeikaDestination.CommunityPost(it)) }
+                            ?: openDestination(HeikaDestination.CommunityPost(0, item.postId))
                         item.actorId != null -> openDestination(HeikaDestination.UserProfile(item.actorId))
                     }
                 },
@@ -204,7 +280,21 @@ fun HeikaNativeApp(imageLoader: ImageLoader, auth: AuthRepository) {
 
 private fun HeikaPost.destination(): HeikaDestination =
     if (channel == "ai") HeikaDestination.AiResource(id, cloudId)
-    else HeikaDestination.CommunityPost(id)
+    else HeikaDestination.CommunityPost(id, cloudId)
+
+private fun shareNativePost(context: android.content.Context, post: HeikaPost) {
+    val url = if (post.channel == "ai") {
+        "https://moonclean.shop/?aiPost=${post.id}&cloudId=${Uri.encode(post.cloudId)}"
+    } else {
+        "https://moonclean.shop/?post=${post.id}"
+    }
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, post.title)
+        putExtra(Intent.EXTRA_TEXT, "${post.title}\n$url")
+    }
+    runCatching { context.startActivity(Intent.createChooser(send, "分享内容")) }
+}
 
 private fun navigateTopLevel(nav: androidx.navigation.NavHostController, target: String) {
     val destination = when (target) {

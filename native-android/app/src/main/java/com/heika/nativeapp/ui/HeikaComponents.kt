@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,8 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
@@ -40,11 +39,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +50,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+import com.heika.nativeapp.R
 
 @Composable
 fun BrandHeader(
@@ -184,7 +183,7 @@ fun GlassNavigationBar(
             shadowElevation = 6.dp,
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Add, contentDescription = "发布内容", tint = Color(0xFF202125), modifier = Modifier.size(31.dp))
+                Image(painterResource(R.drawable.ic_nav_add), contentDescription = "发布内容", colorFilter = ColorFilter.tint(Color(0xFF202125)), modifier = Modifier.size(31.dp))
             }
         }
     }
@@ -213,62 +212,17 @@ private fun RowScope.NavigationItem(key: String, label: String, selected: String
 
 @Composable
 private fun NavigationGlyph(key: String, color: Color) {
-    Canvas(Modifier.size(27.dp)) {
-        val stroke = 1.75.dp.toPx()
-        withTransform({ scale(size.width / 24f, size.height / 24f, Offset.Zero) }) {
-            when (key) {
-                "home" -> {
-                    val path = Path().apply {
-                        moveTo(3.5f, 10.2f)
-                        lineTo(12f, 3.4f)
-                        lineTo(20.5f, 10.2f)
-                        lineTo(20.5f, 20.2f)
-                        lineTo(14.2f, 20.2f)
-                        lineTo(14.2f, 14.2f)
-                        lineTo(9.8f, 14.2f)
-                        lineTo(9.8f, 20.2f)
-                        lineTo(3.5f, 20.2f)
-                        close()
-                    }
-                    drawPath(path, color, style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-                }
-                "discovery" -> {
-                    drawCircle(color, radius = 9.2f, center = Offset(12f, 12f), style = Stroke(stroke))
-                    val needle = Path().apply {
-                        moveTo(15.7f, 7.8f)
-                        lineTo(13.3f, 13.3f)
-                        lineTo(8.1f, 16.2f)
-                        lineTo(10.4f, 10.6f)
-                        close()
-                    }
-                    drawPath(needle, color, style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-                }
-                "messages" -> {
-                    val bubble = Path().apply {
-                        moveTo(5.2f, 4.2f)
-                        lineTo(18.8f, 4.2f)
-                        quadraticTo(20f, 4.2f, 20f, 5.5f)
-                        lineTo(20f, 16.8f)
-                        quadraticTo(20f, 18f, 18.8f, 18f)
-                        lineTo(9.3f, 18f)
-                        lineTo(4f, 21f)
-                        lineTo(4f, 5.5f)
-                        quadraticTo(4f, 4.2f, 5.2f, 4.2f)
-                        close()
-                    }
-                    drawPath(bubble, color, style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
-                }
-                else -> {
-                    drawCircle(color, radius = 4f, center = Offset(12f, 7.2f), style = Stroke(stroke))
-                    val shoulders = Path().apply {
-                        moveTo(4f, 20.5f)
-                        cubicTo(4.3f, 16.4f, 7.4f, 13.5f, 12f, 13.5f)
-                        cubicTo(16.6f, 13.5f, 19.7f, 16.4f, 20f, 20.5f)
-                    }
-                    drawPath(shoulders, color, style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round))
-                }
-            }
-        }
+    val icon = when (key) {
+        "home" -> R.drawable.ic_nav_home
+        "discovery" -> R.drawable.ic_nav_discovery
+        "messages" -> R.drawable.ic_nav_messages
+        else -> R.drawable.ic_nav_profile
     }
+    Image(
+        painter = painterResource(icon),
+        contentDescription = null,
+        colorFilter = ColorFilter.tint(color),
+        modifier = Modifier.size(27.dp),
+    )
 }
 

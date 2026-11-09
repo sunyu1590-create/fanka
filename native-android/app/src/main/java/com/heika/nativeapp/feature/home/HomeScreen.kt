@@ -1,6 +1,7 @@
 package com.heika.nativeapp.feature.home
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -51,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -69,6 +71,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.heika.nativeapp.data.HeikaPost
@@ -242,6 +245,7 @@ private fun FlipPreviewOverlay(
     val density = LocalDensity.current
     var dismissing by remember(preview.id) { mutableStateOf(false) }
     var revealing by remember(preview.id) { mutableStateOf(false) }
+    var rarityPhase by remember(preview.id) { mutableStateOf(false) }
     var handledCloseRequest by remember(preview.id) { mutableIntStateOf(closeRequest) }
     val targetWidth = (containerWidth - 52.dp).coerceAtMost(390.dp).coerceAtLeast(240.dp)
     val targetWidthPx = with(density) { targetWidth.toPx() }
@@ -256,8 +260,11 @@ private fun FlipPreviewOverlay(
     LaunchedEffect(opened) {
         if (opened && rotation.value < 180f) {
             revealing = true
+            rarityPhase = true
             rotation.animateTo(180f, tween(620, easing = FastOutSlowInEasing))
             revealing = false
+            delay(900)
+            rarityPhase = false
         }
     }
     LaunchedEffect(closeRequest, opening, revealing, dismissing) {
@@ -341,12 +348,14 @@ private fun FlipPreviewOverlay(
                 PreviewCardFront(
                     post = post,
                     alpha = progress.value,
-                    enabled = !revealing && post != null,
+                    enabled = !revealing && !rarityPhase && post != null,
+                    rarityPhase = rarityPhase,
                     onOpenDetails = onOpenDetails,
                     modifier = Modifier.graphicsLayer { rotationY = 180f },
                 )
             }
         }
+        FlipConfetti(enabled = opened)
         androidx.compose.material3.IconButton(
             onClick = { requestDismiss() },
             enabled = !opening && !revealing && !dismissing,
@@ -407,10 +416,12 @@ private fun PreviewCardFront(
     post: HeikaPost?,
     alpha: Float,
     enabled: Boolean,
+    rarityPhase: Boolean,
     onOpenDetails: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize().alpha(alpha).background(MaterialTheme.colorScheme.surface)) {
+    Box(modifier.fillMaxSize().alpha(alpha).background(MaterialTheme.colorScheme.surface)) {
+      Column(Modifier.fillMaxSize().then(if (rarityPhase) Modifier.blur(9.dp) else Modifier)) {
         val image = post?.thumbnail
         Box(Modifier.fillMaxWidth().weight(0.60f).background(MaterialTheme.colorScheme.surfaceVariant)) {
             if (image != null && post != null) {
@@ -466,6 +477,59 @@ private fun PreviewCardFront(
                 Spacer(Modifier.width(8.dp))
                 Text("→", fontSize = 20.sp)
             }
+        }
+      }
+      if (rarityPhase) {
+          val tier = post?.rarityTier ?: "pending"
+          Column(
+              Modifier.align(Alignment.Center).clip(RoundedCornerShape(15.dp))
+                  .background(Color(0xD9101417)).border(1.dp, HeikaPalette.Gold.copy(alpha = .52f), RoundedCornerShape(15.dp))
+                  .padding(horizontal = 26.dp, vertical = 19.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+              Text("卡片稀有度", color = Color.White.copy(alpha = .74f), fontSize = 10.sp, letterSpacing = 1.2.sp)
+              Text(if (tier == "ordinary") "N" else if (tier == "pending") "待评" else tier, color = HeikaPalette.Gold, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+              Text(rarityLabel(tier), color = Color.White.copy(alpha = .9f), fontSize = 11.sp)
+          }
+      }
+    }
+}
+
+private fun rarityLabel(tier: String): String = when (tier) {
+    "ordinary" -> "普通黑卡"
+    "S", "SS", "SSS" -> tier
+    else -> "评分形成中"
+}
+
+@Composable
+private fun FlipConfetti(enabled: Boolean) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(enabled) {
+        if (enabled) {
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(4_100, easing = LinearEasing))
+        }
+    }
+    if (!enabled || progress.value >= 1f) return
+    Canvas(Modifier.fillMaxSize()) {
+        val colors = listOf(
+            Color(0xFFF2C45E), Color(0xFFF05F77), Color(0xFFFF963E), Color(0xFF55C99A),
+            Color(0xFF43C7DF), Color(0xFF6F91F5), Color(0xFFB581E8), Color(0xFFF276C0),
+        )
+        repeat(96) { index ->
+            val spread = index / 95f
+            val stagger = ((index * 37) % 96) / 95f
+            val jitter = ((index * 13) % 90) / 1_000f
+            val start = .06f + stagger * .22f + jitter
+            val phase = ((progress.value - start) / .86f).coerceIn(0f, 1f)
+            if (phase <= 0f || phase >= 1f) return@repeat
+            val drift = (((index * 37) % 25) - 12) / 100f
+            val x = (spread + drift * phase).coerceIn(-.04f, 1.04f) * size.width
+            val y = phase * (1.08f + (index % 24) / 100f) * size.height
+            val width = when (index % 3) { 0 -> 3.dp.toPx(); 1 -> 5.dp.toPx(); else -> 7.dp.toPx() }
+            val height = when (index % 3) { 0 -> 30.dp.toPx(); 1 -> 17.dp.toPx(); else -> 9.dp.toPx() }
+            drawRect(colors[index % colors.size].copy(alpha = (1f - phase).coerceIn(0f, 1f)), Offset(x, y), androidx.compose.ui.geometry.Size(width, height))
         }
     }
 }
@@ -523,6 +587,9 @@ private fun CardFront(post: HeikaPost?, modifier: Modifier = Modifier) {
             Text(post?.tag ?: "黑卡内容", color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
             Text(post?.title ?: "已翻开的卡片", color = Color.White, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (post?.hasRating == true) Text("☆  ${"%.1f".format(post.ratingAverage)}", color = HeikaPalette.Gold, fontSize = 11.sp)
+            if (post != null && post.rarityTier in setOf("ordinary", "S", "SS", "SSS")) {
+                Text(rarityLabel(post.rarityTier), color = HeikaPalette.Gold, fontSize = 10.sp)
+            }
         }
         if (post == null) Text("内容已记录", Modifier.align(Alignment.TopStart).padding(12.dp), color = Color.White, fontSize = 10.sp)
     }

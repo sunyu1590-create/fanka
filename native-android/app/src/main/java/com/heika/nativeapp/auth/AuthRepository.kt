@@ -60,6 +60,71 @@ class AuthRepository @Inject constructor(
         session
     }
 
+    suspend fun signUp(email: String, password: String, nickname: String): Boolean = withContext(Dispatchers.IO) {
+        require(password.length >= 8) { "密码至少需要 8 位" }
+        require(nickname.trim().length in 2..24) { "昵称请填写 2–24 个字" }
+        val config = getConfig()
+        val body = JSONObject().put("email", email.trim()).put("password", password)
+            .put("data", JSONObject().put("nickname", nickname.trim()))
+        val json = execute(authRequest(config, "/auth/v1/signup", body, redirect = "${BuildConfig.API_BASE_URL}/"), "注册失败")
+        val accessToken = json.optString("access_token")
+        if (accessToken.isBlank()) return@withContext false
+        val session = sessionFromSupabase(json)
+        store.write(session)
+        restored = true
+        mutableSession.value = session
+        true
+    }
+
+    suspend fun requestPasswordOtp(email: String) = withContext(Dispatchers.IO) {
+        require(email.isNotBlank()) { "请输入邮箱" }
+        val config = getConfig()
+        execute(
+            authRequest(config, "/auth/v1/recover", JSONObject().put("email", email.trim()), redirect = "${BuildConfig.API_BASE_URL}/?auth=reset"),
+            "验证码发送失败",
+        )
+    }
+
+    suspend fun verifyPasswordOtp(email: String, token: String) = withContext(Dispatchers.IO) {
+        require(email.isNotBlank() && token.isNotBlank()) { "请输入邮箱验证码" }
+        val config = getConfig()
+        val json = execute(authRequest(config, "/auth/v1/verify", JSONObject().put("email", email.trim()).put("token", token.trim()).put("type", "recovery")), "邮箱验证失败")
+        val session = sessionFromSupabase(json)
+        store.write(session)
+        restored = true
+        mutableSession.value = session
+        session
+    }
+
+    suspend fun updatePassword(password: String) = withContext(Dispatchers.IO) {
+        require(password.length >= 8) { "新密码至少需要 8 位" }
+        val session = restore() ?: throw IOException("验证状态已失效，请重新申请验证码")
+        val config = getConfig()
+        val request = Request.Builder()
+            .url("${config.url}/auth/v1/user")
+            .header("apikey", config.key)
+            .header("Authorization", "Bearer ${session.accessToken}")
+            .put(JSONObject().put("password", password).toString().toRequestBody(JSON))
+            .build()
+        execute(request, "密码更新失败")
+        signOut()
+    }
+
+    suspend fun recoverWithCode(email: String, code: String, password: String) = withContext(Dispatchers.IO) {
+        require(password.length >= 8) { "新密码至少需要 8 位" }
+        val response = api.get().post(
+            "${BuildConfig.API_BASE_URL}/api/v1/auth/recover",
+            null,
+            JSONObject().put("email", email.trim()).put("code", code.trim()).put("password", password).toString().toRequestBody(JSON),
+        )
+        val raw = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        val root = if (raw.isBlank()) JSONObject() else JSONObject(raw)
+        if (!response.isSuccessful) throw IOException(root.optString("error").ifBlank { "恢复码验证失败" })
+        store.clear()
+        mutableSession.value = null
+        restored = true
+    }
+
     suspend fun signOut() = withContext(Dispatchers.IO) {
         val existing = restore()
         try {
@@ -86,45 +151,6 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun current(): HeikaSession? = restore()
-
-    suspend fun compatBootstrap(): Pair<String, String>? {
-        val session = restore() ?: return null
-        val key = compatStorageKey()
-        val value = JSONObject()
-            .put("access_token", session.accessToken)
-            .put("token_type", session.tokenType)
-            .put("expires_in", (session.expiresAtSeconds - System.currentTimeMillis() / 1000).coerceAtLeast(0))
-            .put("expires_at", session.expiresAtSeconds)
-            .put("refresh_token", session.refreshToken)
-            .put("user", JSONObject(session.userJson))
-            .toString()
-        return key to value
-    }
-
-    suspend fun compatStorageKey(): String {
-        val config = getConfig()
-        val projectRef = config.url.removePrefix("https://").substringBefore('/').substringBefore('.')
-        require(projectRef.isNotBlank()) { "账号服务配置无效" }
-        return "sb-$projectRef-auth-token"
-    }
-
-    /** Accept only a session read back from the allow-listed first-party WebView. */
-    suspend fun importCompatSession(sessionJson: String) = withContext(Dispatchers.IO) {
-        if (sessionJson.isBlank() || sessionJson == "null") {
-            if (mutableSession.value != null) {
-                store.clear()
-                mutableSession.value = null
-                restored = true
-            }
-            return@withContext
-        }
-        val incoming = runCatching { sessionFromSupabase(JSONObject(sessionJson)) }.getOrNull() ?: return@withContext
-        val existing = mutableSession.value ?: store.read()
-        if (existing != null && existing.userId == incoming.userId && incoming.expiresAtSeconds < existing.expiresAtSeconds) return@withContext
-        store.write(incoming)
-        restored = true
-        mutableSession.value = incoming
-    }
 
     private suspend fun refreshLocked(existing: HeikaSession, force: Boolean = false): HeikaSession? {
         if (!force && existing.expiresAtSeconds > System.currentTimeMillis() / 1000 + 90) return existing
@@ -170,6 +196,17 @@ class AuthRepository @Inject constructor(
             "账号服务配置无效"
         }
         return SupabasePublicConfig(url, key).also { authConfig = it }
+    }
+
+    private fun authRequest(config: SupabasePublicConfig, path: String, body: JSONObject, redirect: String? = null): Request {
+        val redirectQuery = redirect?.let {
+            "?redirect_to=${java.net.URLEncoder.encode(it, Charsets.UTF_8.name())}"
+        }.orEmpty()
+        val builder = Request.Builder()
+            .url("${config.url}$path$redirectQuery")
+            .header("apikey", config.key)
+            .post(body.toString().toRequestBody(JSON))
+        return builder.build()
     }
 
     private fun execute(request: Request, fallback: String): JSONObject {
