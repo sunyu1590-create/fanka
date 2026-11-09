@@ -30,7 +30,7 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "构建指定分支或标签；留空时使用最新网站分支 publish-vercel"
+        description: "构建指定分支或标签；留空时使用基于 publish-vercel 2.40.7 与 #52 的原生 Android 分支"
         required: false
         type: string
         default: ""
@@ -51,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.source_ref || 'publish-vercel') || github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.source_ref || 'codex/native-discovery-from-52') || github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Resolve checked out source
         id: resolve-source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

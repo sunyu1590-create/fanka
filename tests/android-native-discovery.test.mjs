@@ -58,7 +58,7 @@ test("native AI discovery reuses the AI API and supports approved topic filterin
 test("Android Actions builds the selected branch or pull request head, not the default branch", async () => {
   const workflow = await read(".github/workflows/android-apk.yml");
 
-  assert.match(workflow, /inputs\.source_ref \|\| 'publish-vercel'/);
+  assert.match(workflow, /inputs\.source_ref \|\| 'codex\/native-discovery-from-52'/);
   assert.match(workflow, /github\.event\.pull_request\.head\.sha/);
   assert.doesNotMatch(workflow, /github\.event\.repository\.default_branch/);
 });
