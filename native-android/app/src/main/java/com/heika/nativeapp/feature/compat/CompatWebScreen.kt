@@ -2,10 +2,15 @@ package com.heika.nativeapp.feature.compat
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.webkit.WebView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -48,11 +53,42 @@ private const val TAG = "HeikaCompat"
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun CompatWebScreen(path: String, auth: AuthRepository, onBack: () -> Unit) {
+fun CompatWebScreen(
+    path: String,
+    targetType: String = "unknown",
+    targetId: String = "",
+    auth: AuthRepository,
+    onBack: () -> Unit,
+    onOpenAbout: () -> Unit = {},
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val latestBack by rememberUpdatedState(onBack)
+    val latestOpenAbout by rememberUpdatedState(onOpenAbout)
+    var pendingPermissionReply by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        pendingPermissionReply?.invoke(granted)
+        pendingPermissionReply = null
+    }
+    val requestNotificationPermission: ((Boolean) -> Unit) -> Unit = { reply ->
+        if (android.os.Build.VERSION.SDK_INT < 33 || NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            reply(NotificationManagerCompat.from(context).areNotificationsEnabled())
+        } else {
+            val activity = context as? Activity
+            val askedBefore = context.getSharedPreferences("heika-native-permissions", android.content.Context.MODE_PRIVATE)
+                .getBoolean("post_notifications_asked", false)
+            if (askedBefore && activity != null && !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.POST_NOTIFICATIONS)) {
+                openNotificationSettings(context)
+                reply(false)
+            } else {
+                pendingPermissionReply = reply
+                context.getSharedPreferences("heika-native-permissions", android.content.Context.MODE_PRIVATE)
+                    .edit().putBoolean("post_notifications_asked", true).apply()
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     var initialized by remember(path) { mutableStateOf(false) }
     var targetUrl by remember(path) { mutableStateOf("") }
     var authStorageKey by remember(path) { mutableStateOf<String?>(null) }
@@ -94,13 +130,18 @@ fun CompatWebScreen(path: String, auth: AuthRepository, onBack: () -> Unit) {
                         WebCompatibilityHost(
                             baseUrl = BuildConfig.API_BASE_URL,
                             targetUrl = targetUrl,
+                            targetType = targetType,
+                            targetId = targetId,
                             sessionBootstrap = sessionBootstrap,
                             authStorageKey = authStorageKey,
+                            context = context,
                             onState = { pageState = it },
                             onBridgeMessage = { payload ->
                                 scope.launch { currentAuth.importCompatSession(payload) }
                             },
                             onOpenExternal = { uri -> openExternal(context, uri) },
+                            onRequestNotificationPermission = requestNotificationPermission,
+                            onOpenAbout = { latestOpenAbout() },
                         )
                     }
                     AndroidView(
@@ -157,11 +198,16 @@ internal sealed interface CompatPageState {
 internal class WebCompatibilityHost(
     private val baseUrl: String,
     private val targetUrl: String,
+    private val targetType: String,
+    private val targetId: String,
     private val sessionBootstrap: Pair<String, String>?,
     private val authStorageKey: String?,
+    private val context: android.content.Context,
     private val onState: (CompatPageState) -> Unit,
     private val onBridgeMessage: (String) -> Unit,
     private val onOpenExternal: (Uri) -> Unit,
+    private val onRequestNotificationPermission: ((Boolean) -> Unit) -> Unit,
+    private val onOpenAbout: () -> Unit,
 ) {
     private var webView: WebView? = null
     private var bootstrapPending = false
@@ -271,7 +317,115 @@ internal class WebCompatibilityHost(
                     onBridgeMessage(payload)
                 }
             }
+            androidx.webkit.WebViewCompat.addWebMessageListener(
+                view,
+                "HeikaNative",
+                setOf("https://moonclean.shop", "https://www.moonclean.shop"),
+            ) { _, message, sourceOrigin, isMainFrame, replyProxy ->
+                if (!isMainFrame || sourceOrigin?.let(::isTrusted) != true) return@addWebMessageListener
+                val raw = message.data?.takeIf { it.length <= 32_768 } ?: return@addWebMessageListener
+                val command = runCatching { JSONObject(raw) }.getOrNull() ?: return@addWebMessageListener
+                if (command.optInt("version") != 1) return@addWebMessageListener
+                val id = command.optString("id").takeIf { it.isNotBlank() && it.length <= 128 } ?: return@addWebMessageListener
+                val type = command.optString("type").takeIf { it.length in 1..80 } ?: return@addWebMessageListener
+                val payload = command.optJSONObject("payload") ?: JSONObject()
+                handleNativeCommand(id, type, payload, replyProxy)
+            }
         }
+    }
+
+    private fun handleNativeCommand(
+        id: String,
+        type: String,
+        payload: JSONObject,
+        reply: androidx.webkit.JavaScriptReplyProxy,
+    ) {
+        when (type) {
+            "bridge.ready" -> Log.d(TAG, "bridge_ready target=$targetType")
+            "capabilities.get" -> respond(id, type, true, JSONObject()
+                .put("android", true)
+                .put("notifications", true)
+                .put("inAppNotifications", true)
+                .put("remotePush", false)
+                .put("systemShare", true)
+                .put("nativeAbout", true)
+                .put("nativeDiscovery", false)
+                .put("cardTransition", false), reply)
+            "notifications.status" -> respond(id, type, true, notificationStatus(), reply)
+            "notifications.requestPermission" -> onRequestNotificationPermission { granted ->
+                respond(id, type, true, notificationStatus().put("requested", granted), reply)
+            }
+            "notifications.openSettings" -> {
+                val opened = openNotificationSettings(context)
+                respond(id, type, opened, JSONObject().put("opened", opened), reply)
+            }
+            "system.share" -> {
+                val shared = sharePublicContent(payload)
+                respond(id, type, shared, JSONObject().put("shared", shared), reply)
+            }
+            "app.about.open" -> {
+                onOpenAbout()
+                respond(id, type, true, JSONObject().put("opened", true), reply)
+            }
+            "page.state" -> {
+                val reported = payload.optString("path").take(240)
+                Log.i(TAG, "spa_route target=$targetType target_id=$targetId route=$reported")
+            }
+            "image.error" -> Log.w(TAG, "web_image_error target=$targetType route=${Uri.parse(targetUrl).path}")
+            else -> respond(id, type, false, JSONObject().put("error", "此原生操作暂不可用"), reply)
+        }
+    }
+
+    private fun respond(
+        id: String,
+        requestType: String,
+        ok: Boolean,
+        data: JSONObject,
+        reply: androidx.webkit.JavaScriptReplyProxy,
+    ) {
+        val result = JSONObject()
+            .put("version", 1)
+            .put("id", id)
+            .put("type", "result")
+            .put("requestType", requestType)
+            .put("ok", ok)
+            .put("data", data)
+        runCatching { reply.postMessage(result.toString()) }
+    }
+
+    private fun notificationStatus(): JSONObject {
+        val systemEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        val channelEnabled = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = context.getSystemService(android.app.NotificationManager::class.java)
+                .getNotificationChannel(com.heika.nativeapp.HeikaApplication.NOTIFICATION_CHANNEL_ID)
+            channel == null || channel.importance != android.app.NotificationManager.IMPORTANCE_NONE
+        } else true
+        val permission = if (android.os.Build.VERSION.SDK_INT < 33) "unsupported"
+            else if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) "granted"
+            else "denied"
+        return JSONObject()
+            .put("granted", permission == "granted" || android.os.Build.VERSION.SDK_INT < 33)
+            .put("enabled", systemEnabled && channelEnabled)
+            .put("permission", permission)
+    }
+
+    private fun sharePublicContent(payload: JSONObject): Boolean {
+        val url = payload.optString("url").take(2_048)
+        val uri = Uri.parse(url)
+        if (uri.scheme != "https" || uri.host !in TRUSTED_HOSTS) return false
+        val title = payload.optString("title").take(120)
+        val text = payload.optString("text").take(2_000)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TITLE, title)
+            putExtra(Intent.EXTRA_TEXT, listOf(title, text, url).filter(String::isNotBlank).joinToString("\n"))
+        }
+        return runCatching {
+            context.startActivity(Intent.createChooser(intent, "分享黑卡内容").apply {
+                if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+            true
+        }.getOrDefault(false)
     }
 
     private fun installClients(view: WebView) {
@@ -308,7 +462,7 @@ internal class WebCompatibilityHost(
                     }
                     failed = false
                     targetLoadStarted = true
-                    Log.d(TAG, "page_started host=${uri.host.orEmpty()} route=${uri.path.orEmpty()}")
+                    Log.d(TAG, "page_started type=$targetType target_id=$targetId host=${uri.host.orEmpty()} route=${uri.path.orEmpty()}")
                     onState(CompatPageState.Loading)
                 }
             }
@@ -406,6 +560,7 @@ internal class WebCompatibilityHost(
     private fun destroy(view: WebView) {
         runCatching {
             androidx.webkit.WebViewCompat.removeWebMessageListener(view, "HeikaAuthBridge")
+            androidx.webkit.WebViewCompat.removeWebMessageListener(view, "HeikaNative")
         }
         view.stopLoading()
         view.webChromeClient = null
@@ -419,6 +574,25 @@ internal class WebCompatibilityHost(
 }
 
 private val TRUSTED_HOSTS = setOf("moonclean.shop", "www.moonclean.shop")
+
+private fun openNotificationSettings(context: android.content.Context): Boolean {
+    val appSettings = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+    return runCatching {
+        context.startActivity(appSettings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    }.getOrElse {
+        runCatching {
+            context.startActivity(
+                Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrDefault(false)
+    }
+}
 
 private fun openExternal(context: android.content.Context, uri: Uri) {
     if (uri.scheme != "http" && uri.scheme != "https" && uri.scheme != "mailto" && uri.scheme != "tel") return

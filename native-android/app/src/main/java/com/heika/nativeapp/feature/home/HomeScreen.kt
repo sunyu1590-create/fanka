@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -37,7 +36,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,7 +54,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.boundsInRoot
@@ -78,6 +75,11 @@ import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.HeikaPalette
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 
 @Composable
 fun HomeScreen(
@@ -92,6 +94,7 @@ fun HomeScreen(
     var closeRequest by remember { mutableIntStateOf(0) }
     var containerOrigin by remember { mutableStateOf(Offset.Zero) }
     val gridState = rememberLazyGridState()
+    val previewHaze = rememberHazeState()
     LaunchedEffect(preview?.id) { onPreviewActive(preview != null) }
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose { onPreviewActive(false) }
@@ -102,7 +105,7 @@ fun HomeScreen(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .onGloballyPositioned { containerOrigin = it.positionInRoot() },
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().hazeSource(previewHaze)) {
             BrandHeader(onSearch = onSearch, onNotifications = onNotifications)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
@@ -143,7 +146,7 @@ fun HomeScreen(
                         cardId = id,
                         number = index + 1,
                         post = post,
-                        opened = opened && preview?.id != id,
+                        opened = opened,
                         opening = state.openingId == id,
                         onClick = { bounds ->
                             if (opened) {
@@ -164,11 +167,14 @@ fun HomeScreen(
                 containerOrigin = containerOrigin,
                 opening = state.openingId == selected.id,
                 opened = selected.id in state.openedIds,
+                post = state.posts[selected.id],
                 canConfirm = state.remaining > 0,
                 error = state.error,
                 closeRequest = closeRequest,
                 onConfirm = { viewModel.flip(selected.id) },
+                onOpenDetails = { state.posts[selected.id]?.let(onPost) },
                 onDismiss = { preview = null },
+                hazeState = previewHaze,
             )
         }
     }
@@ -219,16 +225,22 @@ private fun FlipPreviewOverlay(
     containerOrigin: Offset,
     opening: Boolean,
     opened: Boolean,
+    post: HeikaPost?,
     canConfirm: Boolean,
     error: String?,
     closeRequest: Int,
     onConfirm: () -> Unit,
+    onOpenDetails: () -> Unit,
     onDismiss: () -> Unit,
+    hazeState: dev.chrisbanes.haze.HazeState,
 ) {
     val progress = remember(preview.id) { Animatable(0f) }
+    val rotation = remember(preview.id) { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     var dismissing by remember(preview.id) { mutableStateOf(false) }
+    var revealing by remember(preview.id) { mutableStateOf(false) }
+    var handledCloseRequest by remember(preview.id) { mutableIntStateOf(closeRequest) }
     val targetWidth = (containerWidth - 52.dp).coerceAtMost(390.dp).coerceAtLeast(240.dp)
     val targetWidthPx = with(density) { targetWidth.toPx() }
     val targetHeightPx = targetWidthPx / 0.76f
@@ -239,22 +251,25 @@ private fun FlipPreviewOverlay(
         progress.animateTo(1f, tween(390, easing = FastOutSlowInEasing))
     }
     LaunchedEffect(opened) {
-        if (opened && !dismissing) {
-            dismissing = true
-            progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
-            onDismiss()
+        if (opened && rotation.value < 180f) {
+            revealing = true
+            rotation.animateTo(180f, tween(620, easing = FastOutSlowInEasing))
+            revealing = false
         }
     }
-    LaunchedEffect(closeRequest) {
-        if (closeRequest > 0 && !opened && !dismissing) {
-            dismissing = true
-            progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
-            onDismiss()
+    LaunchedEffect(closeRequest, opening, revealing, dismissing) {
+        if (closeRequest > handledCloseRequest) {
+            if (!opening && !revealing && !dismissing) {
+                handledCloseRequest = closeRequest
+                dismissing = true
+                progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
+                onDismiss()
+            }
         }
     }
 
     fun requestDismiss() {
-        if (opening || opened || dismissing) return
+        if (opening || revealing || dismissing) return
         dismissing = true
         scope.launch {
             progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
@@ -262,19 +277,37 @@ private fun FlipPreviewOverlay(
         }
     }
 
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.68f)).clickable(
-            enabled = !opening && !opened && !dismissing,
-            indication = null,
-            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-            onClick = { requestDismiss() },
-        ),
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize()
+                .hazeEffect(
+                    state = hazeState,
+                    style = HazeStyle(
+                        backgroundColor = Color(0xFF0D0F13),
+                        tint = HazeTint(Color.Black.copy(alpha = 0.52f)),
+                        blurRadius = 24.dp,
+                        noiseFactor = 0.018f,
+                        fallbackTint = HazeTint(Color(0xFF0D0F13).copy(alpha = 0.78f)),
+                    ),
+                )
+                .background(Color.Black.copy(alpha = 0.42f))
+                .clickable(
+                    enabled = !opening && !revealing && !dismissing,
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    onClick = { requestDismiss() },
+                ),
+        )
         Box(
             Modifier.align(Alignment.Center)
                 .width(targetWidth)
                 .aspectRatio(0.76f)
                 .shadow(18.dp, RoundedCornerShape(HeikaRadii.dailyCard))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    onClick = {},
+                )
                 .graphicsLayer {
                     val p = progress.value
                     val source = preview.sourceBounds?.let {
@@ -286,48 +319,156 @@ private fun FlipPreviewOverlay(
                     scaleY = sourceScaleY + (1f - sourceScaleY) * p
                     translationX = source?.let { ((it.left + it.right) / 2f - centerX) * (1f - p) } ?: 0f
                     translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
+                    rotationY = rotation.value
+                    cameraDistance = 18 * density
                 }
                 .clip(RoundedCornerShape(HeikaRadii.dailyCard))
                 .border(1.dp, Color(0xFF9AA8AA).copy(alpha = 0.8f), RoundedCornerShape(HeikaRadii.dailyCard)),
         ) {
-            CardBack(preview.number)
+            if (rotation.value < 90f) {
+                PreviewCardBack(
+                    number = preview.number,
+                    alpha = progress.value,
+                    opening = opening,
+                    canConfirm = canConfirm && progress.value >= 0.92f,
+                    error = error,
+                    onConfirm = onConfirm,
+                )
+            } else {
+                PreviewCardFront(
+                    post = post,
+                    alpha = progress.value,
+                    enabled = !revealing && post != null,
+                    onOpenDetails = onOpenDetails,
+                    modifier = Modifier.graphicsLayer { rotationY = 180f },
+                )
+            }
         }
+        androidx.compose.material3.IconButton(
+            onClick = { requestDismiss() },
+            enabled = !opening && !revealing && !dismissing,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 13.dp),
+        ) {
+            Icon(
+                androidx.compose.material.icons.Icons.Outlined.Close,
+                contentDescription = "关闭预览",
+                tint = Color.White.copy(alpha = 0.92f),
+                modifier = Modifier.size(26.dp),
+            )
+        }
+    }
+}
 
+@Composable
+private fun PreviewCardBack(
+    number: Int,
+    alpha: Float,
+    opening: Boolean,
+    canConfirm: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize().alpha(alpha)) {
+        CardBack(number, preview = true)
         Column(
-            Modifier.align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 22.dp)
-                .fillMaxWidth()
-                .alpha(progress.value),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (opening) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = HeikaPalette.Gold)
-                    Text("正在为你翻开", color = Color.White.copy(alpha = 0.86f), fontSize = 12.sp)
-                }
-            } else if (error != null) {
-                Text(error, color = Color(0xFFE6A49A), fontSize = 12.sp)
+            if (error != null) {
+                Text(error, color = Color(0xFFE6A49A), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             } else if (!canConfirm) {
-                Text("今日翻卡次数已用完", color = Color.White.copy(alpha = 0.76f), fontSize = 12.sp)
+                Text("今日翻卡次数已用完", color = Color.White.copy(alpha = 0.82f), fontSize = 11.sp)
             }
             Button(
                 onClick = onConfirm,
-                enabled = !opening && !opened && canConfirm && progress.value >= 0.9f,
-                modifier = Modifier.fillMaxWidth(0.78f),
+                enabled = !opening && canConfirm,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFC7D4D9),
+                    contentColor = Color(0xFF17191C),
+                    disabledContainerColor = Color(0xFF69777B),
+                    disabledContentColor = Color(0xFF25292B),
+                ),
             ) {
-                Text(if (error != null) "重试翻卡" else "确认翻卡")
-            }
-            TextButton(onClick = { requestDismiss() }, enabled = !opening && !opened && !dismissing) {
-                Text("取消", color = Color.White.copy(alpha = 0.82f))
+                if (opening) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = Color(0xFF25292B))
+                else Text(if (error != null) "重试翻开" else "确认翻开", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
 }
 
 @Composable
-private fun CardBack(number: Int) {
+private fun PreviewCardFront(
+    post: HeikaPost?,
+    alpha: Float,
+    enabled: Boolean,
+    onOpenDetails: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxSize().alpha(alpha).background(MaterialTheme.colorScheme.surface)) {
+        val image = post?.thumbnail
+        Box(Modifier.fillMaxWidth().weight(0.60f).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            if (image != null && post != null) {
+                AsyncImage(
+                    model = imageRequest(image, post.cloudId, 0),
+                    contentDescription = post.title,
+                    imageLoader = LocalHeikaImageLoader.current,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+            } else {
+                Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF55594F), Color(0xFF292B29), Color(0xFF171A1D)))))
+            }
+        }
+        Column(
+            Modifier.fillMaxWidth().weight(0.40f).padding(horizontal = 17.dp, vertical = 11.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(post?.tag ?: "黑卡内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                Spacer(Modifier.weight(1f))
+                val rating = when {
+                    post == null -> "待评级"
+                    post.hasRating -> String.format(java.util.Locale.US, "☆  %.1f", post.ratingAverage)
+                    else -> "☆  待评级"
+                }
+                Text(rating, color = HeikaPalette.Gold, fontSize = 10.sp)
+            }
+            Text(
+                post?.title ?: "正在恢复卡片内容",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 17.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(post?.author ?: "HEIKA", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = onOpenDetails,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFC7D4D9),
+                    contentColor = Color(0xFF17191C),
+                    disabledContainerColor = Color(0xFF687477),
+                    disabledContentColor = Color(0xFF25292B),
+                ),
+            ) {
+                Text("查看更多", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                Text("→", fontSize = 20.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardBack(number: Int, preview: Boolean = false) {
     val shape = RoundedCornerShape(HeikaRadii.dailyCard)
     Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF263236), Color(0xFF10171B), Color(0xFF1A2327))))) {
         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
@@ -346,11 +487,12 @@ private fun CardBack(number: Int) {
                 drawLine(Color.White.copy(alpha = 0.035f), start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x - size.height * .24f, size.height), strokeWidth = 1.dp.toPx())
             }
         }
-        Text(number.toString().padStart(2, '0'), Modifier.align(Alignment.TopStart).padding(18.dp), color = Color(0xFFB7C3C5), fontSize = 14.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+        if (!preview) Text(number.toString().padStart(2, '0'), Modifier.align(Alignment.TopStart).padding(18.dp), color = Color(0xFFB7C3C5), fontSize = 14.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("黑卡 · HEIKA", color = Color(0xFFF0F0ED), fontSize = 18.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Medium)
+            Text("黑卡", color = Color(0xFFF0F0ED), fontSize = if (preview) 40.sp else 18.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+            Text("H E I K A", Modifier.padding(top = if (preview) 6.dp else 0.dp), color = Color(0xFFC8CECF), fontSize = if (preview) 10.sp else 18.sp, letterSpacing = if (preview) 2.3.sp else 1.5.sp)
         }
-        Text("轻触翻开", Modifier.align(Alignment.BottomStart).padding(18.dp), color = Color(0xFFC1C6C7), fontSize = 12.sp, letterSpacing = 1.1.sp)
+        if (!preview) Text("轻触翻开", Modifier.align(Alignment.BottomStart).padding(18.dp), color = Color(0xFFC1C6C7), fontSize = 12.sp, letterSpacing = 1.1.sp)
         Box(Modifier.fillMaxSize().padding(3.dp).border(1.dp, Color.White.copy(alpha = .08f), shape))
     }
 }

@@ -383,6 +383,9 @@ export default function Community() {
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
   const [fontReady, setFontReady] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+  const [nativeRouteError, setNativeRouteError] = useState<{ target: string; message: string } | null>(null);
+  const nativeRouteSequence = useRef(0);
+  const nativeRouteRetry = useRef<() => void>(() => {});
   useEffect(() => {
     const saved = localStorage.getItem("heika-theme");
     if (saved === "dark" || saved === "light" || saved === "system") setTheme(saved);
@@ -462,6 +465,7 @@ export default function Community() {
   const discoverChannelTimer = useRef<number | null>(null);
   const switchDiscoverChannelRef = useRef<(next: "community" | "ai") => void>(() => {});
   const sharedPostHandled = useRef<string | null>(null);
+  const sharedAiPostHandled = useRef<string | null>(null);
   const sharedProfileHandled = useRef<string | null>(null);
   const searchCursorRef = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
@@ -719,20 +723,35 @@ export default function Community() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const nativeShell = params.get("nativeShell") === "1";
+    const nativeBottomBar = nativeShell && params.get("nativeBottomBar") === "1";
     if (nativeShell) document.documentElement.dataset.nativeShell = "true";
+    if (nativeBottomBar) document.documentElement.dataset.nativeBottomBar = "true";
     if (params.get("room")) { setSecondaryReturnTab("mine"); setTabState("co-explore"); }
     else if (params.get("collection")) { setSharedCollectionCode(params.get("collection") || ""); setSecondaryReturnTab("discover"); setTabState("shared-collection"); }
     else if (params.get("chain")) { setSecondaryReturnTab("mine"); setTabState("card-chain"); }
     else {
       const nativeTab = params.get("nativeTab");
-      if (nativeTab === "messages") { setMessagesTabVisited(true); setTabState("messages"); }
+      if (nativeTab === "messages") {
+        setMessagesTabVisited(true);
+        const peer = params.get("conversation");
+        if (peer && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(peer)) setMessagePeer(peer);
+        setTabState("messages");
+      }
       else if (nativeTab === "mine") setTabState("mine");
       else if (nativeTab === "search") { setSearchReturnTab("discover"); setTabState("search"); }
       else if (nativeTab === "settings") setTabState("settings");
+      else if (nativeTab === "membership") {
+        setSettingsReturnTab("mine");
+        setSettingsDetailState("membership");
+        setTabState("settings");
+      }
       else if (nativeTab === "about") setTabState("about");
       else if (nativeTab === "feedback") { setSettingsReturnTab("settings"); setSettingsDetailState("feedback"); setTabState("settings"); }
     }
-    return () => { if (nativeShell) delete document.documentElement.dataset.nativeShell; };
+    return () => {
+      if (nativeBottomBar) delete document.documentElement.dataset.nativeBottomBar;
+      if (nativeShell) delete document.documentElement.dataset.nativeShell;
+    };
   }, []);
   const startPageTransition = (updatePage: () => void) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -1731,11 +1750,40 @@ export default function Community() {
   };
   const openPostRef = useRef(openPost);
   openPostRef.current = openPost;
+  const isNativeShell = () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("nativeShell") === "1";
+  const failNativeRoute = (sequence: number, target: string, error: unknown, retry: () => void) => {
+    if (sequence !== nativeRouteSequence.current) return;
+    const message = error instanceof Error && error.message.trim() ? error.message : "页面暂时无法打开，请检查网络后重试。";
+    if (isNativeShell()) {
+      nativeRouteRetry.current = retry;
+      setNativeRouteError({ target, message });
+    } else {
+      toast(message);
+    }
+  };
   useEffect(() => {
-    if (hasNativeBridge()) reportNativePageState(detail === null ? "/" : `/?post=${detail}`);
-  }, [detail]);
+    if (!hasNativeBridge()) return;
+    const params = new URLSearchParams(window.location.search);
+    const nativeTab = params.get("nativeTab");
+    const path = detail !== null
+      ? `/?post=${detail}`
+      : authorProfile
+        ? `/?profile=${authorProfile}`
+        : params.get("aiPost") && params.get("cloudId")
+          ? `/?aiPost=${params.get("aiPost")}&cloudId=${params.get("cloudId")}`
+          : nativeTab && ["messages", "mine", "search", "publish", "settings", "membership", "about", "feedback"].includes(nativeTab)
+            ? `/?nativeTab=${nativeTab}${messagePeer ? `&conversation=${messagePeer}` : ""}`
+            : "/";
+    reportNativePageState(path);
+  }, [detail, authorProfile, messagePeer]);
   const openNativePost = async (id: number) => {
-    if (!Number.isSafeInteger(id) || id < 1) return;
+    const sequence = ++nativeRouteSequence.current;
+    setNativeRouteError(null);
+    nativeRouteRetry.current = () => { void openNativePost(id); };
+    if (!Number.isSafeInteger(id) || id < 1) {
+      failNativeRoute(sequence, "内容详情", new Error("内容编号无效，无法打开此页面。"), () => { void openNativePost(id); });
+      return;
+    }
     let post = all.find((item) => item.id === id);
     if (!post || post.isPartial) {
       try {
@@ -1750,25 +1798,34 @@ export default function Community() {
         setPublicFeed((items) => items.some((item) => item.id === id) ? items : [...items, post!]);
         setFeedPostIds((items) => items.includes(id) ? items : [...items, id]);
       } catch (error) {
-        toast(error instanceof Error ? error.message : "这篇内容暂时不可用");
+        failNativeRoute(sequence, "内容详情", error || new Error("这篇内容暂时不可用"), () => { void openNativePost(id); });
         return;
       }
     }
+    if (sequence !== nativeRouteSequence.current) return;
     openPostRef.current(id, "discover", null, post);
   };
   const openNativePostRef = useRef<(id: number) => void>(() => {});
   openNativePostRef.current = (id) => { void openNativePost(id); };
   const openNativeAiPostRef = useRef<(id: number, cloudId: string) => void>(() => {});
   openNativeAiPostRef.current = (id, cloudId) => {
-    if (!Number.isSafeInteger(id) || id < 1 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudId)) return;
+    const sequence = ++nativeRouteSequence.current;
+    setNativeRouteError(null);
+    nativeRouteRetry.current = () => openNativeAiPostRef.current(id, cloudId);
+    const retry = () => openNativeAiPostRef.current(id, cloudId);
+    if (!Number.isSafeInteger(id) || id < 1 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudId)) {
+      failNativeRoute(sequence, "AI 资源详情", new Error("AI 资源编号无效，无法打开此页面。"), retry);
+      return;
+    }
     void cloudFetch(`/api/v1/ai-space?postId=${encodeURIComponent(cloudId)}&limit=1`, { cache: "no-store" })
       .then(async (response) => {
         const result = await response.json();
         const item = (result.data?.items || []).find((candidate: Post) => candidate.id === id && candidate.cloudId === cloudId);
         if (!response.ok || !item) throw new Error(result.error || "这项 AI 内容暂时不可用");
+        if (sequence !== nativeRouteSequence.current) return;
         openAiPost(item, null);
       })
-      .catch((error) => toast(error instanceof Error ? error.message : "这项 AI 内容暂时不可用"));
+      .catch((error) => failNativeRoute(sequence, "AI 资源详情", error, retry));
   };
   const nativeSearchRef = useRef<(query: string) => void>(() => {});
   nativeSearchRef.current = (query) => {
@@ -1853,27 +1910,27 @@ export default function Community() {
     setAuthorProfile(sharedId);
   }, [ready]);
   useEffect(() => {
-    const sharedId = new URLSearchParams(location.search).get("post");
-    if (!ready || !sharedId || detail !== null || sharedPostHandled.current === sharedId) return;
-    const id = Number(sharedId);
-    if (!Number.isFinite(id) || !all.some((item) => item.id === id)) return;
-    sharedPostHandled.current = sharedId;
-    openPostRef.current(id, "discover");
-  }, [ready, detail, all]);
-  const sharedPostLoading = useRef<string | null>(null);
+    const params = new URLSearchParams(location.search);
+    const sharedId = params.get("aiPost");
+    const cloudId = params.get("cloudId");
+    if (!ready || !sharedId || !cloudId || !/^[0-9]{1,16}$/.test(sharedId) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudId)) return;
+    const key = `${sharedId}:${cloudId.toLowerCase()}`;
+    if (sharedAiPostHandled.current === key) return;
+    sharedAiPostHandled.current = key;
+    openNativeAiPostRef.current(Number(sharedId), cloudId);
+  }, [ready]);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
+    if (!ready || !sharedId || sharedPostHandled.current === sharedId) return;
+    sharedPostHandled.current = sharedId;
     const id = Number(sharedId);
-    if (!ready || !sharedId || !Number.isSafeInteger(id) || all.some((item) => item.id === id) || sharedPostLoading.current === sharedId) return;
-    sharedPostLoading.current = sharedId;
-    void cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
-      .then((response) => response.json().then((result) => ({ response, result })))
-      .then(({ response, result }) => {
-        if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [...current, result.data as Post]);
-      })
-      .catch(() => {})
-      .finally(() => { sharedPostLoading.current = null; });
-  }, [ready, all]);
+    if (!Number.isSafeInteger(id) || id < 1) {
+      if (isNativeShell()) failNativeRoute(++nativeRouteSequence.current, "内容详情", new Error("内容编号无效，无法打开此页面。"), () => window.location.reload());
+      return;
+    }
+    openNativePostRef.current(id);
+  }, [ready]);
   const closeDetail = (fromHistory = false) => {
     if (detail === null || transitionPhase === "closing") return;
     if (!fromHistory && history.state?.heikaDetail === detail) {
@@ -4191,6 +4248,14 @@ export default function Community() {
   ) : null;
   return (
     <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
+      {nativeRouteError && <section className="native-route-error" role="alertdialog" aria-modal="true" aria-labelledby="native-route-error-title" aria-describedby="native-route-error-message">
+        <div className="native-route-error-card">
+          <span className="native-route-error-mark" aria-hidden="true">!</span>
+          <h1 id="native-route-error-title">{nativeRouteError.target}暂时无法打开</h1>
+          <p id="native-route-error-message">{nativeRouteError.message}</p>
+          <button type="button" onClick={() => { setNativeRouteError(null); nativeRouteRetry.current(); }}>重新加载</button>
+        </div>
+      </section>}
       <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}${tab === "discover" && !secondaryTitle ? " is-discover-topline" : ""}`}>
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand"><span>黑卡</span><i>HEIKA</i></span>}
         {tab === "discover" && !secondaryTitle ? <div className="discover-top-actions">

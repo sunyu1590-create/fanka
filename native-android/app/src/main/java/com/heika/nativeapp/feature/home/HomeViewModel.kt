@@ -7,6 +7,7 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.db.DailyStateEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.IOException
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ class HomeViewModel @Inject constructor(
     private val mutableState = MutableStateFlow(HomeUiState())
     val state = mutableState.asStateFlow()
     private val openMutex = Mutex()
+    private val loadMutex = Mutex()
 
     init {
         viewModelScope.launch {
@@ -55,15 +57,18 @@ class HomeViewModel @Inject constructor(
                 if (nextUser != mutableState.value.userId) {
                     val old = mutableState.value.userId
                     if (old != HomeUiState.GUEST_ID) repository.clearUserCache(old)
+                    mutableState.value = HomeUiState(userId = nextUser, loading = true)
                     load(nextUser)
                 }
             }
         }
     }
 
-    fun reload() = viewModelScope.launch { load(mutableState.value.userId) }
+    fun reload() = viewModelScope.launch { openMutex.withLock { load(mutableState.value.userId) } }
 
-    private suspend fun load(userId: String) {
+    private suspend fun load(userId: String) = loadMutex.withLock { loadLatest(userId) }
+
+    private suspend fun loadLatest(userId: String) {
         val day = LocalDate.now().toString()
         val local = repository.dailyState(userId, day)
         var candidates = local?.candidateIds?.split(',')?.mapNotNull(String::toIntOrNull).orEmpty()
@@ -117,6 +122,8 @@ class HomeViewModel @Inject constructor(
                 posts = posts + fresh.associateBy(HeikaPost::id)
             }
         }
+        val activeUserId = runCatching { auth.restore()?.userId ?: HomeUiState.GUEST_ID }.getOrDefault(userId)
+        if (activeUserId != userId) return
         mutableState.value = HomeUiState(
             userId = userId,
             day = day,
@@ -140,26 +147,39 @@ class HomeViewModel @Inject constructor(
                 return@withLock
             }
             mutableState.value = current.copy(openingId = id, error = null, notice = null)
-            runCatching { repository.revealCard(id) }
+            runCatching {
+                repository.revealCard(id).also { post ->
+                    if (post.id != id) throw IOException("返回的卡片与所选卡片不一致")
+                }
+            }
                 .onSuccess { post ->
+                    val latest = mutableState.value
+                    if (latest.userId != current.userId || latest.day != current.day || latest.openingId != id) return@onSuccess
                     val extra = if (current.luckyBonus >= 10) 0 else DailyDeckLogic.luckyBonusFor(kotlin.random.Random.nextDouble()).coerceAtMost(10 - current.luckyBonus)
-                    val updated = mutableState.value.copy(
+                    val updated = latest.copy(
                         openingId = null,
-                        openedIds = (current.openedIds + id).distinct(),
-                        posts = mutableState.value.posts + (id to post),
-                        luckyBonus = current.luckyBonus + extra,
-                        allowance = current.allowance + extra,
+                        openedIds = (latest.openedIds + id).distinct(),
+                        posts = latest.posts + (id to post),
+                        luckyBonus = latest.luckyBonus + extra,
+                        allowance = latest.allowance + extra,
                         notice = if (extra > 0) "幸运加成 +$extra 次" else null,
                     )
                     mutableState.value = updated
                     persist()
                     if (current.userId != HomeUiState.GUEST_ID) {
-                        runCatching { repository.recordOpen(id) }.onFailure {
+                        runCatching {
+                            if (auth.current()?.userId == current.userId) repository.recordOpen(id)
+                        }.onFailure {
                             mutableState.value = mutableState.value.copy(notice = "已保存在本机，阅读记录稍后同步")
                         }
                     }
                 }
-                .onFailure { mutableState.value = mutableState.value.copy(openingId = null, error = it.message ?: "卡片暂时无法翻开，请重试") }
+                .onFailure {
+                    val latest = mutableState.value
+                    if (latest.userId == current.userId && latest.openingId == id) {
+                        mutableState.value = latest.copy(openingId = null, error = it.message ?: "卡片暂时无法翻开，请重试")
+                    }
+                }
         }
     }
 

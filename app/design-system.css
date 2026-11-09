@@ -5967,3 +5967,60 @@ img, video, canvas, iframe { max-width:100%; }
 @media(prefers-reduced-motion:reduce) {
   .bottom-nav>button,.bottom-nav>button .bottom-nav-icon,.bottom-nav-shell>.compose { transition:none!important; }
 }
+
+/* Native shell routes keep the Compose glass bar above this WebView. */
+html[data-native-shell="true"][data-native-bottom-bar="true"] {
+  --native-bottom-bar-reserve: calc(104px + env(safe-area-inset-bottom));
+  --nav-overlay-reserve: var(--native-bottom-bar-reserve);
+}
+html[data-native-shell="true"][data-native-bottom-bar="true"] .app {
+  padding-bottom: var(--native-bottom-bar-reserve) !important;
+}
+html[data-native-shell="true"][data-native-bottom-bar="true"] .app.app-immersive .chat-screen {
+  bottom: var(--native-bottom-bar-reserve) !important;
+  height: calc(100dvh - var(--native-bottom-bar-reserve)) !important;
+}
+.native-route-error {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--bg) 76%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
+}
+.native-route-error-card {
+  width: min(100%, 380px);
+  padding: 28px 24px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--ink);
+  box-shadow: 0 20px 64px #0005, inset 0 1px 0 #ffffff16;
+  text-align: center;
+}
+.native-route-error-mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  margin: 0 auto 15px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 18px;
+}
+.native-route-error-card h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.native-route-error-card p { margin: 10px 0 22px; color: var(--muted); font-size: 14px; line-height: 1.65; }
+.native-route-error-card button {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--action);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 600;
+}

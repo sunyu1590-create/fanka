@@ -17,6 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
@@ -39,6 +45,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import coil3.request.crossfade
 import androidx.compose.runtime.setValue
@@ -53,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
@@ -89,8 +98,34 @@ fun DiscoveryScreen(
     val filter = state.filter
     val categories = if (filter.channel == "community") state.communityCategories else state.aiCategories
     val tags = if (filter.channel == "community") state.communityTags else state.aiTags
+    var communityCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
+    var aiCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
+    val rangeDp = (if (tags.isNotEmpty()) 55.dp else 0.dp) +
+        (if (filter.channel == "ai") 39.dp else 0.dp) + 49.dp + 35.dp
+    val density = LocalDensity.current
+    val rangePx = with(density) { rangeDp.toPx() }
+    val collapsedPx = if (filter.channel == "community") communityCollapsePx else aiCollapsePx
+    androidx.compose.runtime.LaunchedEffect(filter.channel, rangePx) {
+        communityCollapsePx = communityCollapsePx.coerceAtMost(rangePx)
+        aiCollapsePx = aiCollapsePx.coerceAtMost(rangePx)
+    }
+    val collapseConnection = remember(filter.channel, rangePx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                val current = if (filter.channel == "community") communityCollapsePx else aiCollapsePx
+                val next = when {
+                    available.y < 0f -> (current - available.y).coerceAtMost(rangePx)
+                    available.y > 0f -> (current - available.y).coerceAtLeast(0f)
+                    else -> current
+                }
+                val consumedY = current - next
+                if (filter.channel == "community") communityCollapsePx = next else aiCollapsePx = next
+                return androidx.compose.ui.geometry.Offset(0f, consumedY)
+            }
+        }
+    }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).nestedScroll(collapseConnection)) {
         BrandHeader(onSearch = onSearch, onNotifications = onNotifications) {
             androidx.compose.material3.IconButton(onClick = onNotifications) {
                 Icon(Icons.Outlined.NotificationsNone, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -120,53 +155,77 @@ fun DiscoveryScreen(
                 CategoryTab(category.name, selected = filter.category?.id == category.id) { viewModel.selectCategory(category) }
             }
         }
-        if (tags.isNotEmpty()) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 19.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-            ) {
-                item(key = "all-tags") { FilterChip("全部话题", filter.topic == null, { viewModel.selectTopic(null) }) }
-                items(tags.take(12), key = { "topic-${it.id}" }) { tag ->
-                    FilterChip("#${tag.name}", filter.topic == tag.name, { viewModel.selectTopic(if (filter.topic == tag.name) null else tag.name) })
-                }
-            }
-        }
-        if (filter.channel == "ai") {
-            val types = listOf(
-                null to "全部资源",
-                "knowledge_article" to "知识",
-                "agent" to "Agent",
-                "skill" to "Skill",
-                "prompt" to "Prompt",
-                "ai_tool" to "工具",
-                "tutorial" to "教程",
-            )
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 19.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(types, key = { "ai-type-${it.first ?: "all"}" }) { (type, label) ->
-                    FilterChip(label, filter.contentType == type, { viewModel.selectContentType(type) })
-                }
-            }
-        }
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 19.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Box(
+            Modifier.fillMaxWidth()
+                .height(with(density) { (rangePx - collapsedPx).coerceAtLeast(0f).toDp() })
+                .clipToBounds(),
         ) {
-            val sorts = if (filter.channel == "community") listOf("推荐", "最新", "高评分", "关注") else listOf("推荐", "最新", "热门")
-            items(sorts, key = { "sort-$it" }) { sort ->
-                FilterChip(sort, filter.sort == sort, { viewModel.selectSort(sort) })
+            Column(
+                Modifier.fillMaxWidth().height(rangeDp).offset { IntOffset(0, -collapsedPx.toInt()) },
+            ) {
+                if (tags.isNotEmpty()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 19.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        item(key = "all-tags") { FilterChip("全部话题", filter.topic == null, { viewModel.selectTopic(null) }) }
+                        items(tags.take(12), key = { "topic-${it.id}" }) { tag ->
+                            FilterChip("#${tag.name}", filter.topic == tag.name, { viewModel.selectTopic(if (filter.topic == tag.name) null else tag.name) })
+                        }
+                    }
+                }
+                if (filter.channel == "ai") {
+                    val types = listOf(
+                        null to "全部资源",
+                        "knowledge_article" to "知识",
+                        "agent" to "Agent",
+                        "skill" to "Skill",
+                        "prompt" to "Prompt",
+                        "ai_tool" to "工具",
+                        "tutorial" to "教程",
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 19.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(types, key = { "ai-type-${it.first ?: "all"}" }) { (type, label) ->
+                            FilterChip(label, filter.contentType == type, { viewModel.selectContentType(type) })
+                        }
+                    }
+                }
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 19.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val sorts = if (filter.channel == "community") listOf("推荐", "最新", "高评分", "关注") else listOf("推荐", "最新", "热门")
+                    items(sorts, key = { "sort-$it" }) { sort ->
+                        FilterChip(sort, filter.sort == sort, { viewModel.selectSort(sort) })
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when (filter.sort) { "最新" -> "最新内容"; "高评分" -> "高评分内容"; "热门" -> "热门 AI 资源"; "关注" -> "关注动态"; else -> "为你推荐" },
+                        color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    val count = posts.itemCount
+                    Text(if (count > 0) "$count 篇内容" else "探索黑卡内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                when (filter.sort) { "最新" -> "最新内容"; "高评分" -> "高评分内容"; "热门" -> "热门 AI 资源"; "关注" -> "关注动态"; else -> "为你推荐" },
-                color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.weight(1f))
-            val count = posts.itemCount
-            Text(if (count > 0) "$count 篇内容" else "探索黑卡内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+        if (collapsedPx >= rangePx - 1f) {
+            Row(Modifier.fillMaxWidth().padding(start = 19.dp, end = 19.dp, top = 4.dp, bottom = 7.dp)) {
+                FilterChip("筛选 · ${filter.sort}", false, {
+                    if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
+                })
+                if (filter.topic != null) {
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip("#${filter.topic}", true, {
+                        viewModel.selectTopic(null)
+                        if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
+                    })
+                }
+            }
         }
 
         val gridState = if (filter.channel == "community") communityGrid else aiGrid

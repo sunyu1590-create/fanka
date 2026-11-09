@@ -146,11 +146,22 @@ export function announceNativeReady() {
   post("bridge.ready");
   const current = new URL(window.location.href);
   const postId = current.searchParams.get("post");
+  const aiPostId = current.searchParams.get("aiPost");
+  const cloudId = current.searchParams.get("cloudId");
   const conversationId = current.searchParams.get("conversation");
+  const profileId = current.searchParams.get("profile");
+  const nativeTab = current.searchParams.get("nativeTab");
   const path = postId && /^[0-9]{1,20}$/.test(postId) && Number.isSafeInteger(Number(postId))
     ? `/?post=${postId}`
+    : aiPostId && /^[0-9]{1,16}$/.test(aiPostId) &&
+        cloudId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudId)
+      ? `/?aiPost=${aiPostId}&cloudId=${cloudId.toLowerCase()}`
     : conversationId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)
       ? `/?conversation=${conversationId.toLowerCase()}`
+    : profileId && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(profileId)
+      ? `/?profile=${profileId.toLowerCase()}`
+    : nativeTab && ["messages", "mine", "search", "publish", "settings", "membership", "about", "feedback"].includes(nativeTab)
+      ? `/?nativeTab=${nativeTab}`
       : "/";
   post("page.state", { path });
 }
