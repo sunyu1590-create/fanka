@@ -91,7 +91,7 @@ import {
   getNativeNotificationStatus,
   hasNativeBridge,
   installNativeBridge,
-  openNativeAbout,
+  openNativeNotificationCenter,
   openNativeNotificationSettings,
   requestNativeNotificationPermission,
   reportNativePageState,
@@ -761,7 +761,10 @@ export default function Community() {
   useLayoutEffect(() => {
     window.scrollTo({ top: scrollPositions.current[tab] || 0, behavior: "instant" });
   }, [tab]);
-  const openNotifications = (returnTab = "messages") => { setSecondaryReturnTab(returnTab); setTab("notifications"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openNotifications = (returnTab = "messages") => {
+    if (hasNativeBridge()) { void openNativeNotificationCenter(state.notifications.messages); return; }
+    setSecondaryReturnTab(returnTab); setTab("notifications"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
   const openMineSettings = () => { scrollPositions.current.mine = window.scrollY; setSettingsPersonalOpen(false); setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
   const openExplorationCenter = () => { scrollPositions.current.mine = window.scrollY; setTab("exploration-center"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
   const openCoExplore = (returnTab: "mine" | "exploration-center" = "mine") => { scrollPositions.current[returnTab] = window.scrollY; setSecondaryReturnTab(returnTab); setTab("co-explore"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
@@ -1265,6 +1268,10 @@ export default function Community() {
   }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
   const openSettingsDetail = (detail: SettingsDetail | "feedbackAdmin", returnTab: "settings" | "mine" = "settings") => {
+    if (detail === "notifications" && hasNativeBridge()) {
+      void openNativeNotificationCenter(state.notifications.messages);
+      return;
+    }
     scrollPositions.current[returnTab] = window.scrollY;
     startPageTransition(() => {
       setSettingsReturnTab(returnTab);
@@ -1281,10 +1288,6 @@ export default function Community() {
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[settingsReturnTab] || 0, behavior: "instant" }));
   };
   const openAboutPage = () => {
-    if (hasNativeBridge()) {
-      void openNativeAbout();
-      return;
-    }
     scrollPositions.current.settings = window.scrollY;
     setTab("about");
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
@@ -1767,6 +1770,7 @@ export default function Community() {
   };
   const nativeLoginRef = useRef<() => void>(() => {});
   nativeLoginRef.current = () => setTab("messages");
+  const nativeMessagesPreferenceRef = useRef<(enabled: boolean) => void>(() => {});
   const nativeAuthorRef = useRef<(id: string) => void>(() => {});
   nativeAuthorRef.current = (id) => {
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) setAuthorProfile(id);
@@ -1796,6 +1800,11 @@ export default function Community() {
       }),
       subscribeNativeEvent("discovery.login", () => {
         nativeLoginRef.current();
+        return true;
+      }),
+      subscribeNativeEvent("notifications.preference.messages", (payload) => {
+        if (typeof payload.enabled !== "boolean") return false;
+        nativeMessagesPreferenceRef.current(payload.enabled);
         return true;
       }),
       subscribeNativeEvent("discovery.interaction", (payload) => {
@@ -2306,6 +2315,9 @@ export default function Community() {
       notifications: { ...s.notifications, [key]: !s.notifications[key] },
     }));
     toast("黑卡消息提醒偏好已更新");
+  };
+  nativeMessagesPreferenceRef.current = (enabled) => {
+    if (state.notifications.messages !== enabled) void toggleNotification("messages");
   };
   const requestNotificationPermission = async () => {
     if (hasNativeBridge()) {

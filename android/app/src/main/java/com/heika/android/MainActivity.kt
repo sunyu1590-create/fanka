@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -38,6 +39,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
@@ -87,6 +89,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var recoveringFromUntrustedNavigation = false
     private var frameMetricsListener: Window.OnFrameMetricsAvailableListener? = null
     private var discoveryScreen: DiscoveryScreen? = null
+    private var notificationCenter: NativeNotificationCenter? = null
+    private var notificationCenterRestoreDiscovery = false
     private var discoveryViewModel: DiscoveryViewModel? = null
     private var pendingDiscoverySession: Pair<String?, String?> = null to null
     private var pendingDiscoveryPersonalization: Pair<String?, DiscoveryPersonalization> = null to DiscoveryPersonalization()
@@ -98,6 +102,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     ) { granted ->
         val requestId = pendingPermissionRequest
         pendingPermissionRequest = null
+        notificationCenter?.refreshSystemStatus()
         if (requestId != null) {
             bridge?.replyPermission(
                 requestId,
@@ -179,6 +184,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         super.onResume()
         startFrameMetrics()
         webView?.onResume()
+        notificationCenter?.refreshSystemStatus()
         bridge?.sendEvent("app.lifecycle", JSONObject().put("state", "foreground"))
     }
 
@@ -317,6 +323,16 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 )
             }
 
+            override fun onNotificationCenterOpenRequest(requestId: String, payload: JSONObject) {
+                showNativeNotificationCenter(payload.optBoolean("messagesEnabled", true))
+                bridge?.completeRequest(requestId, "notifications.center.open", true, JSONObject().put("opened", true))
+            }
+
+            override fun onLocalNotificationRequest(requestId: String, payload: JSONObject) {
+                val shown = showLocalNotification(payload)
+                bridge?.completeRequest(requestId, "notifications.show", shown, JSONObject().put("shown", shown))
+            }
+
             override fun onSystemShareRequest(requestId: String, payload: JSONObject) {
                 shareFromNative(requestId, payload)
             }
@@ -332,7 +348,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
 
             override fun onDiscoverySession(userId: String?, accessToken: String?) {
+                val accountChanged = pendingDiscoverySession.first != userId
                 pendingDiscoverySession = userId to accessToken
+                if (accountChanged) {
+                    if (notificationCenter != null) closeNativeNotificationCenter()
+                    NotificationManagerCompat.from(this@MainActivity).cancelAll()
+                }
                 discoveryViewModel?.let { viewModel ->
                     viewModel.setSession(userId, accessToken)
                     val pendingPersonalization = pendingDiscoveryPersonalization
@@ -470,7 +491,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 diagnostics.recordFirstContentVisible()
                 val committedHost = url.toUri().host?.lowercase() ?: "unknown"
                 diagnostics.record("web_page_committed_$committedHost")
-                installNativeAboutCompatibilityHook(view)
+                installNativeNavigationCompatibilityHook(view)
                 recoveringFromUntrustedNavigation = false
                 if (!bridgeSupported) {
                     cancelLoadTimeout()
@@ -687,7 +708,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             discoveryScreen?.visibility = View.GONE
             return
         }
-        if (overlay?.tag == NATIVE_ABOUT_TAG || overlay?.tag == LOADING_MASK_TAG) return
+        if (overlay?.tag == NATIVE_ABOUT_TAG || overlay?.tag == NATIVE_NOTIFICATION_TAG || overlay?.tag == LOADING_MASK_TAG) return
         val density = resources.displayMetrics.density
         val maxHeight = (container.height - container.paddingTop - container.paddingBottom).coerceAtLeast(0)
         val topPx = (navigationTopCss * density).toInt().coerceIn(0, maxHeight)
@@ -758,27 +779,40 @@ class MainActivity : androidx.activity.ComponentActivity() {
         screen.bringToFront()
     }
 
-    private fun installNativeAboutCompatibilityHook(view: WebView) {
-        // The site and APK can be deployed separately. Keep the app-specific
-        // About screen reachable while the live site is one deployment behind.
+    private fun installNativeNavigationCompatibilityHook(view: WebView) {
+        // Keep notification entry points native while the site and APK deploy independently.
+        // About stays on the shared website page, including when the live site is one revision behind.
         val script = """
             (() => {
-              if (window.__heikaNativeAboutCompat) return;
-              window.__heikaNativeAboutCompat = true;
+              if (window.__heikaNativeNavigationCompat) return;
+              window.__heikaNativeNavigationCompat = true;
               document.addEventListener('click', (event) => {
                 const target = event.target instanceof Element
                   ? event.target.closest('button, a, [role="button"]') : null;
-                const label = (target?.innerText || target?.textContent || '').replace(/\s+/g, '');
-                if (!target || !label.startsWith('关于黑卡')) return;
+                const label = ((target?.getAttribute('aria-label') || '') + (target?.innerText || target?.textContent || '')).replace(/\s+/g, '');
+                if (!target) return;
                 const bridge = window.HeikaNative;
                 if (!bridge || typeof bridge.postMessage !== 'function') return;
+                if (label.startsWith('关于黑卡')) {
+                  try {
+                    Object.defineProperty(window, 'HeikaNative', { configurable: true, writable: true, value: null });
+                    if (window.HeikaNative !== null) return;
+                    window.setTimeout(() => {
+                      try { Object.defineProperty(window, 'HeikaNative', { configurable: true, writable: true, value: bridge }); }
+                      catch (_) { window.HeikaNative = bridge; }
+                    }, 0);
+                  } catch (_) { return; }
+                  return;
+                }
+                const isNotificationEntry = label === '打开通知' || label === '通知中心' || label.startsWith('通知与提醒');
+                if (!isNotificationEntry) return;
                 event.preventDefault();
                 event.stopImmediatePropagation();
                 bridge.postMessage(JSON.stringify({
                   version: 1,
-                  id: 'native-about-' + Date.now().toString(36),
-                  type: 'app.about.open',
-                  payload: { source: 'native-compat' }
+                  id: 'native-notifications-' + Date.now().toString(36),
+                  type: 'notifications.center.open',
+                  payload: { messagesEnabled: label.includes('私信提醒已开启') }
                 }));
               }, true);
             })();
@@ -847,6 +881,117 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }.getOrDefault(false)
     }
 
+    private fun notificationSystemStatus(): String {
+        val enabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        val channelDisabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            getSystemService(android.app.NotificationManager::class.java)
+                .getNotificationChannel(HeikaApplication.HEIKA_NOTIFICATION_CHANNEL)?.importance == android.app.NotificationManager.IMPORTANCE_NONE
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        return when {
+            !granted -> "Android 系统通知权限未授权"
+            !enabled -> "系统通知已关闭，请在系统设置中开启"
+            channelDisabled -> "黑卡消息通知渠道已关闭，请在系统设置中开启"
+            else -> "系统通知已开启；后台推送服务尚未接通"
+        }
+    }
+
+    private fun requestNotificationPermissionFromCenter() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            openNotificationSettings()
+            return
+        }
+        when (notificationPermissionState()) {
+            "granted" -> openNotificationSettings()
+            "denied" -> openNotificationSettings()
+            else -> {
+                getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE).edit()
+                    .putBoolean(NOTIFICATION_PERMISSION_ASKED, true).apply()
+                runCatching { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                    .onFailure { Toast.makeText(this, "无法请求通知权限，请打开系统设置管理", Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
+
+    private fun showNativeNotificationCenter(messagesEnabled: Boolean) {
+        val container = root ?: return
+        notificationCenter?.let {
+            it.bringToFront()
+            return
+        }
+        notificationCenterRestoreDiscovery = discoveryScreen?.visibility == View.VISIBLE
+        discoveryScreen?.visibility = View.GONE
+        clearOverlay()
+        val screen = NativeNotificationCenter(
+            this,
+            tokenProvider = { pendingDiscoverySession.second },
+            initialMessagesEnabled = messagesEnabled,
+            onMessagesEnabledChange = { enabled -> bridge?.sendEvent("notifications.preference.messages", JSONObject().put("enabled", enabled)) },
+            unreadSystemStatus = ::notificationSystemStatus,
+            onRequestPermission = ::requestNotificationPermissionFromCenter,
+            onOpenPost = { post ->
+                closeNativeNotificationCenter()
+                bridge?.sendEvent(
+                    "discovery.openPost",
+                    JSONObject().put("id", post.id).put("channel", post.channel).put("cloudId", post.cloudId),
+                )
+            },
+            onLogin = {
+                closeNativeNotificationCenter()
+                bridge?.sendEvent("discovery.login")
+            },
+            onClose = ::closeNativeNotificationCenter,
+        ).apply { tag = NATIVE_NOTIFICATION_TAG }
+        notificationCenter = screen
+        overlay = screen
+        container.addView(screen, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    private fun closeNativeNotificationCenter() {
+        val current = notificationCenter
+        if (current != null && overlay === current) clearOverlay()
+        notificationCenter = null
+        if (notificationCenterRestoreDiscovery) discoveryScreen?.visibility = View.VISIBLE
+        notificationCenterRestoreDiscovery = false
+    }
+
+    private fun showLocalNotification(payload: JSONObject): Boolean {
+        if (pendingDiscoverySession.first.isNullOrBlank() || !NotificationManagerCompat.from(this).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            getSystemService(android.app.NotificationManager::class.java)
+                .getNotificationChannel(HeikaApplication.HEIKA_NOTIFICATION_CHANNEL)?.importance == android.app.NotificationManager.IMPORTANCE_NONE
+        ) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return false
+        val title = payload.optString("title").filterNot(Char::isISOControl).trim().take(100).ifBlank { "黑卡 · 新消息" }
+        val body = payload.optString("body").filterNot(Char::isISOControl).trim().take(240).ifBlank { return false }
+        val route = normalizeBusinessRoute(payload.optString("route")) ?: return false
+        val messageId = payload.optString("notificationId").take(80).ifBlank { UUID.randomUUID().toString() }
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_NOTIFICATION_ROUTE, route)
+            .putExtra(EXTRA_NOTIFICATION_ID, messageId)
+        val requestCode = messageId.hashCode()
+        val pendingIntent = PendingIntent.getActivity(
+            this, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(this, HeikaApplication.HEIKA_NOTIFICATION_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        return runCatching {
+            NotificationManagerCompat.from(this).notify(requestCode, notification)
+            true
+        }.getOrDefault(false)
+    }
+
     private fun shareFromNative(requestId: String, payload: JSONObject) {
         val rawUrl = payload.optString("url")
         val uri = runCatching { rawUrl.toUri() }.getOrNull()
@@ -893,6 +1038,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun dispatchSystemBack() {
+        if (overlay?.tag == NATIVE_NOTIFICATION_TAG) {
+            closeNativeNotificationCenter()
+            return
+        }
         if (overlay?.tag == NATIVE_ABOUT_TAG) {
             clearOverlay()
             return
@@ -1320,6 +1469,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         const val APP_MIGRATION_PREFS = "heika_app_migrations"
         const val WEB_CACHE_VERSION_KEY = "web_cache_version"
         const val NATIVE_ABOUT_TAG = "heika_native_about"
+        const val NATIVE_NOTIFICATION_TAG = "heika_native_notification_center"
         const val LOAD_TIMEOUT_MS = 20_000L
         const val BACK_RESPONSE_TIMEOUT_MS = 280L
         const val BACK_DEBOUNCE_MS = 250L

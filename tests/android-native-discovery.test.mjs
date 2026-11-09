@@ -60,7 +60,7 @@ test("native AI discovery reuses the AI API and supports approved topic filterin
   assert.match(route, /if \(postId\) request = request\.eq\("id", postId\)/);
   assert.match(route, /post_topics\.interest_tags\.moderation_status/);
   assert.match(gradle, /applicationId = "com\.heika\.community"/);
-  assert.match(gradle, /versionName = "2\.2\.4"/);
+  assert.match(gradle, /versionName = "2\.3\.6"/);
   assert.match(pkg, /"version": "2\.40\.7"/);
 });
 

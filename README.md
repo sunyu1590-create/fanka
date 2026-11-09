@@ -5,7 +5,7 @@
 ## 当前版本
 
 - 网站：`2.40.7`（`publish-vercel` 同步到 `main`）
-- Android：原生应用工程保留在 `android/`，应用 ID 为 `com.heika.community`；当前底包版本为 `2.2.3`。
+- Android：原生应用工程保留在 `android/`，应用 ID 为 `com.heika.community`；本次以 #68（2.2.4 / versionCode 10）代码为基线，目标版本为 `2.3.6` / versionCode `11`。
 - 网站生产域名：`https://moonclean.shop`
 
 ## 最近更新
