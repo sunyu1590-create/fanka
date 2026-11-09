@@ -246,6 +246,7 @@ private fun FlipPreviewOverlay(
     val targetWidth = (containerWidth - 52.dp).coerceAtMost(390.dp).coerceAtLeast(240.dp)
     val targetWidthPx = with(density) { targetWidth.toPx() }
     val targetHeightPx = targetWidthPx / 0.76f
+    val cardCameraDistancePx = with(density) { 18.dp.toPx() }
     val centerX = with(density) { containerWidth.toPx() / 2f }
     val centerY = with(density) { containerHeight.toPx() / 2f }
 
@@ -322,7 +323,7 @@ private fun FlipPreviewOverlay(
                     translationX = source?.let { ((it.left + it.right) / 2f - centerX) * (1f - p) } ?: 0f
                     translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
                     rotationY = rotation.value
-                    cameraDistance = 18 * density
+                    cameraDistance = cardCameraDistancePx
                 }
                 .clip(RoundedCornerShape(HeikaRadii.dailyCard))
                 .border(1.dp, Color(0xFF9AA8AA).copy(alpha = 0.8f), RoundedCornerShape(HeikaRadii.dailyCard)),
