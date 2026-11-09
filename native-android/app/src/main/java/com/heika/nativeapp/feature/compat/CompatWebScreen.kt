@@ -132,7 +132,7 @@ fun CompatWebScreen(path: String, auth: AuthRepository, onBack: () -> Unit) {
                     CircularProgressIndicator(Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
                     Text("正在打开兼容页面", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 11.dp))
                 }
-                CompatPageState.Visible -> Unit
+                is CompatPageState.Visible -> Unit
                 is CompatPageState.Failed -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(state.message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     Text("重新加载", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp).clickable {
@@ -149,7 +149,7 @@ fun CompatWebScreen(path: String, auth: AuthRepository, onBack: () -> Unit) {
 
 internal sealed interface CompatPageState {
     data object Loading : CompatPageState
-    data object Visible : CompatPageState
+    data class Visible(val resourcesComplete: Boolean) : CompatPageState
     data class Failed(val message: String, val rendererGone: Boolean = false) : CompatPageState
 }
 
@@ -278,7 +278,7 @@ internal class WebCompatibilityHost(
         view.webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 if (!failed && targetLoadStarted && newProgress == 100 && bootstrapped && isTrusted(Uri.parse(view.url.orEmpty()))) {
-                    showDocument(view)
+                    showDocument(view, resourcesComplete = true)
                 }
             }
         }
@@ -316,7 +316,7 @@ internal class WebCompatibilityHost(
             override fun onPageCommitVisible(view: WebView, url: String?) {
                 super.onPageCommitVisible(view, url)
                 val uri = Uri.parse(url.orEmpty())
-                if (!failed && targetLoadStarted && bootstrapped && isTrusted(uri)) showDocument(view)
+                if (!failed && targetLoadStarted && bootstrapped && isTrusted(uri)) showDocument(view, resourcesComplete = false)
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
@@ -344,7 +344,10 @@ internal class WebCompatibilityHost(
                     return
                 }
                 val uri = Uri.parse(url.orEmpty())
-                if (!failed && targetLoadStarted && bootstrapped && isTrusted(uri)) showDocument(view)
+                if (!failed && targetLoadStarted && bootstrapped && isTrusted(uri)) {
+                    Log.d(TAG, "page_finished host=${uri.host.orEmpty()} route=${uri.path.orEmpty()}")
+                    showDocument(view, resourcesComplete = true)
+                }
             }
 
             override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
@@ -381,10 +384,11 @@ internal class WebCompatibilityHost(
         }
     }
 
-    private fun showDocument(view: WebView) {
+    private fun showDocument(view: WebView, resourcesComplete: Boolean) {
         if (disposed || failed || !targetLoadStarted || !bootstrapped) return
         view.visibility = android.view.View.VISIBLE
-        onState(CompatPageState.Visible)
+        onState(CompatPageState.Visible(resourcesComplete))
+        Log.d(TAG, "page_content_visible resources_complete=$resourcesComplete")
         val currentUrl = view.url
         if (currentUrl != null && currentUrl != lastAuthSyncedUrl) {
             lastAuthSyncedUrl = currentUrl
