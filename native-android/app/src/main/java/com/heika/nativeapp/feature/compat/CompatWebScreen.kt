@@ -57,7 +57,7 @@ fun CompatWebScreen(path: String, auth: AuthRepository, onBack: () -> Unit) {
     var targetUrl by remember(path) { mutableStateOf("") }
     var authStorageKey by remember(path) { mutableStateOf<String?>(null) }
     var sessionBootstrap by remember(path) { mutableStateOf<Pair<String, String>?>(null) }
-    var pageState by remember(path) { mutableStateOf(CompatPageState.Loading) }
+    var pageState by remember(path) { mutableStateOf<CompatPageState>(CompatPageState.Loading) }
     var webGeneration by remember(path) { mutableIntStateOf(0) }
     var hostRetry by remember(path) { mutableStateOf<(() -> Unit)?>(null) }
     val currentAuth by rememberUpdatedState(auth)
