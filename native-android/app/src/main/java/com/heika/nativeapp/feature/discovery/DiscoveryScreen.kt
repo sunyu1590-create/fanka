@@ -207,7 +207,7 @@ private fun FeedGrid(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 9.dp, bottom = 128.dp),
         horizontalArrangement = Arrangement.spacedBy(13.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        verticalItemSpacing = 18.dp,
     ) {
         items(count = posts.itemCount, key = posts.itemKey { it.cloudId }) { index ->
             val post = posts[index] ?: return@items
