@@ -697,9 +697,15 @@ class MainActivity : androidx.activity.ComponentActivity() {
             this,
             obtainDiscoveryViewModel(),
             object : DiscoveryScreen.Listener {
-                override fun onOpenPost(id: Long) {
+                override fun onOpenPost(channel: DiscoveryChannel, post: com.heika.android.discovery.DiscoveryPost) {
                     hideNativeDiscoveryKeyboard()
-                    bridge?.sendEvent("discovery.openPost", JSONObject().put("id", id))
+                    bridge?.sendEvent(
+                        "discovery.openPost",
+                        JSONObject()
+                            .put("id", post.id)
+                            .put("channel", if (channel == DiscoveryChannel.AI) "ai" else "community")
+                            .put("cloudId", post.cloudId),
+                    )
                 }
 
                 override fun onOpenAuthor(id: String) {

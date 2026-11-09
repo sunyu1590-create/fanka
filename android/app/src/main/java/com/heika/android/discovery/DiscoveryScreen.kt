@@ -49,7 +49,7 @@ internal class DiscoveryScreen(
     private val listener: Listener,
 ) : FrameLayout(context) {
     interface Listener {
-        fun onOpenPost(id: Long)
+        fun onOpenPost(channel: DiscoveryChannel, post: DiscoveryPost)
         fun onOpenAuthor(id: String)
         fun onSearch(query: String)
         fun onLoginRequired()
@@ -285,7 +285,7 @@ internal class DiscoveryScreen(
         private val list = RecyclerView(context)
         private val adapter = DiscoveryAdapter(
             context,
-            onPost = { listener.onOpenPost(it.id) },
+            onPost = { listener.onOpenPost(channel, it) },
             onAuthor = { it.authorId?.let(listener::onOpenAuthor) },
             onLike = { if (viewModel.hasSession()) viewModel.toggleLike(channel, it) else listener.onLoginRequired() },
             onSave = { post ->

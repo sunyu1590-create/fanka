@@ -39,6 +39,8 @@ test("native discovery overlays only the content and routes posts through the ex
   assert.match(webBridge, /composeLeftCss/);
   assert.match(community, /setNativeDiscoveryVisibility\(next\.visible, next\.top, next\.theme, next\.composeLeft/);
   assert.match(community, /hasNativeBridge\(\)\) return;/);
+  assert.match(community, /openNativeAiPostRef\.current\(id, payload\.cloudId\)/);
+  assert.match(activity, /\.put\("channel", if \(channel == DiscoveryChannel\.AI\) "ai"/);
 });
 
 test("native AI discovery reuses the AI API and supports approved topic filtering", async () => {
@@ -49,6 +51,8 @@ test("native AI discovery reuses the AI API and supports approved topic filterin
 
   assert.match(repository, /"\/api\/v1\/ai-space"/);
   assert.match(repository, /query\.topic\?\.let \{ params\["topic"\]/);
+  assert.match(repository, /query\.category\?\.id/);
+  assert.match(route, /if \(postId\) request = request\.eq\("id", postId\)/);
   assert.match(route, /post_topics\.interest_tags\.moderation_status/);
   assert.match(gradle, /applicationId = "com\.heika\.community"/);
   assert.match(gradle, /versionName = "2\.2\.4"/);

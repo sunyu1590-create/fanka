@@ -1745,6 +1745,18 @@ export default function Community() {
   };
   const openNativePostRef = useRef<(id: number) => void>(() => {});
   openNativePostRef.current = (id) => { void openNativePost(id); };
+  const openNativeAiPostRef = useRef<(id: number, cloudId: string) => void>(() => {});
+  openNativeAiPostRef.current = (id, cloudId) => {
+    if (!Number.isSafeInteger(id) || id < 1 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudId)) return;
+    void cloudFetch(`/api/v1/ai-space?postId=${encodeURIComponent(cloudId)}&limit=1`, { cache: "no-store" })
+      .then(async (response) => {
+        const result = await response.json();
+        const item = (result.data?.items || []).find((candidate: Post) => candidate.id === id && candidate.cloudId === cloudId);
+        if (!response.ok || !item) throw new Error(result.error || "这项 AI 内容暂时不可用");
+        openAiPost(item, null);
+      })
+      .catch((error) => toast(error instanceof Error ? error.message : "这项 AI 内容暂时不可用"));
+  };
   const nativeSearchRef = useRef<(query: string) => void>(() => {});
   nativeSearchRef.current = (query) => {
     const normalized = query.trim().slice(0, 60);
@@ -1764,7 +1776,12 @@ export default function Community() {
       subscribeNativeEvent("discovery.openPost", (payload) => {
         const id = Number(payload.id);
         if (!Number.isSafeInteger(id) || id < 1) return false;
-        openNativePostRef.current(id);
+        if (payload.channel === "ai") {
+          if (typeof payload.cloudId !== "string") return false;
+          openNativeAiPostRef.current(id, payload.cloudId);
+        } else {
+          openNativePostRef.current(id);
+        }
         return true;
       }),
       subscribeNativeEvent("discovery.openAuthor", (payload) => {
@@ -3097,7 +3114,7 @@ export default function Community() {
   const openAiPost = (item: Post, source: Element | null) => {
     setPublicFeed((current) => current.some((post) => post.id === item.id) ? current : [...current, item]);
     setFeedPostIds((current) => current.includes(item.id) ? current : [...current, item.id]);
-    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source)));
+    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source, item)));
   };
   useEffect(() => {
     const isDiscover = tab === "discover" && discoverChannel === "community" && modal !== "write";
