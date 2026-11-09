@@ -10,16 +10,20 @@ import { getNativeAppInfo, hasNativeBridge, type NativeAppInfo } from "@/lib/nat
 
 export default function AboutHeika({ onBack, onFeedback }: { onBack: () => void; onFeedback: () => void }) {
   const [appInfo, setAppInfo] = useState<NativeAppInfo | null>(null);
+  const [nativeRuntime, setNativeRuntime] = useState(false);
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    if (!hasNativeBridge()) return;
+    const runningNative = hasNativeBridge();
+    setNativeRuntime(runningNative);
+    setMounted(true);
+    if (!runningNative) return;
     let active = true;
     void getNativeAppInfo().then((value) => { if (active) setAppInfo(value); });
     return () => { active = false; };
   }, []);
-  const nativeRuntime = hasNativeBridge();
   const versionLabel = appInfo
     ? `HEIKA · VERSION ${appInfo.versionName}`
-    : nativeRuntime ? "HEIKA · ANDROID APP" : `HEIKA · VERSION ${APP_VERSION}`;
+    : nativeRuntime ? "HEIKA · ANDROID APP" : mounted ? `HEIKA · VERSION ${APP_VERSION}` : "HEIKA";
   const categoryOrder = ["新功能", "体验优化", "问题修复"] as const;
   return <section className="page about-page about-heika-page">
     <button className="back settings-back" onClick={onBack}><ArrowLeft size={18}/> 设置</button>
