@@ -9,7 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -125,7 +124,7 @@ private fun FlipCard(number: Int, post: HeikaPost?, opened: Boolean, opening: Bo
         animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing),
         label = "heika-flip-card",
     )
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(0.76f)
