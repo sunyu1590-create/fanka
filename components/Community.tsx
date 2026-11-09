@@ -713,13 +713,26 @@ export default function Community() {
     document.documentElement.classList.remove("heika-page-fallback");
   }, []);
   const [messagesTabVisited, setMessagesTabVisited] = useState(false);
+  const nativePublishHandled = useRef(false);
   const [secondaryReturnTab, setSecondaryReturnTab] = useState("discover");
   const [sharedCollectionCode, setSharedCollectionCode] = useState("");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const nativeShell = params.get("nativeShell") === "1";
+    if (nativeShell) document.documentElement.dataset.nativeShell = "true";
     if (params.get("room")) { setSecondaryReturnTab("mine"); setTabState("co-explore"); }
     else if (params.get("collection")) { setSharedCollectionCode(params.get("collection") || ""); setSecondaryReturnTab("discover"); setTabState("shared-collection"); }
     else if (params.get("chain")) { setSecondaryReturnTab("mine"); setTabState("card-chain"); }
+    else {
+      const nativeTab = params.get("nativeTab");
+      if (nativeTab === "messages") { setMessagesTabVisited(true); setTabState("messages"); }
+      else if (nativeTab === "mine") setTabState("mine");
+      else if (nativeTab === "search") { setSearchReturnTab("discover"); setTabState("search"); }
+      else if (nativeTab === "settings") setTabState("settings");
+      else if (nativeTab === "about") setTabState("about");
+      else if (nativeTab === "feedback") { setSettingsReturnTab("settings"); setSettingsDetailState("feedback"); setTabState("settings"); }
+    }
+    return () => { if (nativeShell) delete document.documentElement.dataset.nativeShell; };
   }, []);
   const startPageTransition = (updatePage: () => void) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -2787,6 +2800,11 @@ export default function Community() {
     setDraftSaved(false);
     setModal("write");
   };
+  useEffect(() => {
+    if (!ready || new URLSearchParams(window.location.search).get("nativeTab") !== "publish" || nativePublishHandled.current) return;
+    nativePublishHandled.current = true;
+    void openComposer();
+  }, [ready]);
   useEffect(() => {
     if (modal !== "write") return;
     const generation = composerSession.current;

@@ -1,0 +1,16 @@
+<resources>
+    <style name="Theme.Heika" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#0D0F13</item>
+        <item name="android:navigationBarColor">#0D0F13</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#0D0F13</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+    <style name="Theme.Heika.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#0D0F13</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_heika</item>
+        <item name="postSplashScreenTheme">@style/Theme.Heika</item>
+    </style>
+</resources>
