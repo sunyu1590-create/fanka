@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -65,11 +66,15 @@ fun ProfileScreen(
         } else if (state.profile == null) {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(state.error ?: "主页暂不可用", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = if (state.error?.contains("登录") == true) onLogin else ({ viewModel.load(userId) })) { Text(if (state.error?.contains("登录") == true) "登录" else "重试") }
+                val needsLogin = state.error?.contains("登录") == true
+                Button(onClick = {
+                    if (needsLogin) onLogin() else viewModel.load(userId)
+                    Unit
+                }) { Text(if (needsLogin) "登录" else "重试") }
             }
         } else {
             val profile = state.profile!!
-            LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 7.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 7.dp, end = 20.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         AsyncImage(model = profile.avatar, contentDescription = "${profile.nickname}头像", contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface))

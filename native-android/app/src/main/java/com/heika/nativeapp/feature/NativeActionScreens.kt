@@ -65,14 +65,15 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, viewModel: NativeA
     LaunchedEffect(Unit) { viewModel.loadMembership() }
     val tier = state.tier.lowercase().let { if (it in setOf("plus", "pro")) it else "free" }
     val activeAllowance = when (tier) { "plus" -> 9; "pro" -> 13; else -> 5 }
+    val loginError = state.error?.takeIf { it.contains("登录") }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("会员与支持", onBack)
-        if (state.error?.contains("登录") == true) {
+        if (loginError != null) {
             Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(state.error, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(loginError, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = onLogin) { Text("登录") }
             }
-        } else androidx.compose.foundation.lazy.LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 12.dp, bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        } else androidx.compose.foundation.lazy.LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface).padding(17.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("HEIKA · 支持计划", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)

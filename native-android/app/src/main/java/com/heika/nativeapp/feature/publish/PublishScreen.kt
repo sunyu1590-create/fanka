@@ -94,7 +94,7 @@ fun PublishScreen(
         })
         if (state.error == "登录后可以发布内容") {
             Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(state.error, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("登录后可以发布内容", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = onLogin) { Text("登录") }
             }
         } else if (state.loading) {
