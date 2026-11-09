@@ -333,7 +333,18 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
             override fun onDiscoverySession(userId: String?, accessToken: String?) {
                 pendingDiscoverySession = userId to accessToken
-                discoveryViewModel?.setSession(userId, accessToken)
+                discoveryViewModel?.let { viewModel ->
+                    viewModel.setSession(userId, accessToken)
+                    val pendingPersonalization = pendingDiscoveryPersonalization
+                    if (pendingPersonalization.first == userId) {
+                        viewModel.setPersonalization(
+                            userId,
+                            pendingPersonalization.second.interests,
+                            pendingPersonalization.second.viewedIds.toList(),
+                            pendingPersonalization.second.personalRatings,
+                        )
+                    }
+                }
             }
 
             override fun onDiscoveryPersonalization(userId: String?, interests: List<String>, viewedIds: List<Long>, personalRatings: Map<Long, Int>) {

@@ -151,9 +151,14 @@ internal class DiscoveryRepository(context: Context) {
             val personalRatings = personalByCategory[post.category].orEmpty()
             val personalAverage = if (personalRatings.isEmpty()) 3.0 else (personalRatings.sum() + 6.0) / (personalRatings.size + 2.0)
             val communityAverage = if (post.ratingCount > 0) (post.ratingAverage * post.ratingCount + 15.0) / (post.ratingCount + 5.0) else 3.0
-            val date = runCatching { java.time.LocalDate.parse(post.createdAt.take(10)) }.getOrNull()
-            val ageDays = date?.let { java.time.temporal.ChronoUnit.DAYS.between(it, java.time.LocalDate.now()).toDouble().coerceAtLeast(0.0) }
-            val freshness = ageDays?.let { (1.0 - it / 45.0).coerceIn(0.0, 1.0) * 0.2 } ?: 0.0
+            val createdAt = runCatching { java.time.Instant.parse(post.createdAt) }
+                .recoverCatching { java.time.OffsetDateTime.parse(post.createdAt).toInstant() }
+                .recoverCatching { java.time.LocalDate.parse(post.createdAt.take(10)).atStartOfDay(java.time.ZoneOffset.UTC).toInstant() }
+                .getOrNull()
+            val ageDays = createdAt?.let {
+                ((System.currentTimeMillis() - it.toEpochMilli()) / 86_400_000.0).coerceAtLeast(0.0)
+            }
+            val freshness = ageDays?.let { maxOf(0.0, 1.0 - it / 45.0) * 0.2 } ?: 0.0
             val score = (if (post.category in interests) 1.0 else 0.0) +
                 (personalAverage - 3.0) * 0.55 + (communityAverage - 3.0) * 0.35 + freshness -
                 (if (post.id in viewed) 0.28 else 0.0)

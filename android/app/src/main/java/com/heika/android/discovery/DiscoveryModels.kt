@@ -162,7 +162,8 @@ internal object DiscoveryJson {
         }
         if (host.isNotEmpty() && parsed.path?.contains("/storage/v1/object/sign/post-covers/") == true) {
             val pathPart = parsed.path.orEmpty().substringAfter("/storage/v1/object/sign/post-covers/")
-            val decoded = runCatching { java.net.URLDecoder.decode(pathPart, Charsets.UTF_8.name()) }.getOrDefault(pathPart)
+            // Uri.decode preserves a literal '+' in storage paths; URLDecoder treats it as a space.
+            val decoded = android.net.Uri.decode(pathPart)
             return stableMediaUrl(decoded)
         }
         if (parsed.scheme.isNullOrBlank() && parsed.path?.startsWith("/") == true) {

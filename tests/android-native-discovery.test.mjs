@@ -21,6 +21,8 @@ test("native discovery uses a retained two-column list and bounded image caching
   assert.match(models, /thumbnailImages/);
   assert.match(repository, /Authorization/);
   assert.match(repository, /fun close\(\) = cache\.close\(\)/);
+  assert.match(repository, /86_400_000\.0/);
+  assert.match(models, /Uri\.decode\(pathPart\)/);
 });
 
 test("native discovery overlays only the content and routes posts through the existing WebView", async () => {
