@@ -40,7 +40,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
     val version = installedVersion(context)
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("关于黑卡", onBack)
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 22.dp, vertical = 14.dp, bottom = 32.dp)) {
+        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 22.dp, vertical = 14.dp)) {
             item {
                 Column(Modifier.fillMaxWidth().padding(top = 17.dp, bottom = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.size(76.dp).clip(RoundedCornerShape(23.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {

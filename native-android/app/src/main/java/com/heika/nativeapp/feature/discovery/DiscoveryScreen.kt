@@ -40,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import coil3.request.crossfade
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -205,8 +206,8 @@ private fun FeedGrid(
         state = state,
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 9.dp, bottom = 128.dp),
-        horizontalItemSpacing = 13.dp,
-        verticalItemSpacing = 18.dp,
+        horizontalArrangement = Arrangement.spacedBy(13.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         items(count = posts.itemCount, key = posts.itemKey { it.cloudId }) { index ->
             val post = posts[index] ?: return@items

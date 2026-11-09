@@ -104,8 +104,9 @@ fun CompatWebScreen(path: String, auth: AuthRepository, onBack: () -> Unit) {
                                         "HeikaAuthBridge",
                                         setOf("https://moonclean.shop", "https://www.moonclean.shop"),
                                     ) { _, message, sourceOrigin, isMainFrame, _ ->
-                                        if (isMainFrame && isTrusted(sourceOrigin) && message.data.length <= 32_768) {
-                                            scope.launch { auth.importCompatSession(message.data) }
+                                        val payload = message.data
+                                        if (isMainFrame && sourceOrigin?.let(::isTrusted) == true && payload != null && payload.length <= 32_768) {
+                                            scope.launch { auth.importCompatSession(payload) }
                                         }
                                     }
                                 }

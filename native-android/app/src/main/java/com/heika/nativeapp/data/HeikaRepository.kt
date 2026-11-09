@@ -225,7 +225,8 @@ class HeikaRepository @Inject constructor(
         if (authenticated && token == null) throw IOException("请先登录后继续")
         var response = send(url, method, body, token)
         if (response.code() == 401 && token != null) {
-            response.close()
+            response.body()?.close()
+            response.errorBody()?.close()
             val refreshed = auth.retryAfterUnauthorized()
             if (refreshed != null) {
                 token = refreshed
@@ -236,16 +237,15 @@ class HeikaRepository @Inject constructor(
                 response = send(url, method, body, null)
             }
         }
-        return response.use { result ->
-            val content = (if (result.isSuccessful) result.body() else result.errorBody())?.use { it.string() }.orEmpty()
-            val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue()
-            if (!result.isSuccessful) {
-                val message = (root as? JSONObject)?.optString("error").orEmpty()
-                throw IOException(message.ifBlank { "请求失败（${result.code()}）" })
-            }
-            if (root is JSONObject && root.has("error") && !root.isNull("error")) throw IOException(root.optString("error"))
-            if (root is JSONObject && root.has("data")) root.opt("data") else root
+        val result = response
+        val content = (if (result.isSuccessful) result.body() else result.errorBody())?.use { it.string() }.orEmpty()
+        val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue()
+        if (!result.isSuccessful) {
+            val message = (root as? JSONObject)?.optString("error").orEmpty()
+            throw IOException(message.ifBlank { "请求失败（${result.code()}）" })
         }
+        if (root is JSONObject && root.has("error") && !root.isNull("error")) throw IOException(root.optString("error"))
+        return if (root is JSONObject && root.has("data")) root.opt("data") else root
     }
 
     private suspend fun send(url: String, method: String, body: String?, token: String?): Response<ResponseBody> {

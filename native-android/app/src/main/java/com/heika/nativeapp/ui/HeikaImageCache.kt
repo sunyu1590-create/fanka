@@ -6,6 +6,7 @@ import coil3.ImageLoader
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import okio.Path.Companion.toOkioPath
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -58,7 +59,7 @@ class HeikaImageCache @Inject constructor(
         }
         .diskCache {
             DiskCache.Builder()
-                .directory(File(context.cacheDir, "heika-image-cache").toPath())
+                .directory(File(context.cacheDir, "heika-image-cache").toOkioPath())
                 .maxSizeBytes(mb.toLong() * 1024 * 1024)
                 .build()
         }
