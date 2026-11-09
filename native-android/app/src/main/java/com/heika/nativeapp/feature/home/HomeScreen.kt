@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
@@ -50,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -350,7 +352,7 @@ private fun FlipPreviewOverlay(
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 13.dp),
         ) {
             Icon(
-                androidx.compose.material.icons.Icons.Outlined.Close,
+                Icons.Outlined.Close,
                 contentDescription = "关闭预览",
                 tint = Color.White.copy(alpha = 0.92f),
                 modifier = Modifier.size(26.dp),
