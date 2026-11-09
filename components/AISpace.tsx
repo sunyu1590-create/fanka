@@ -63,13 +63,14 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
+    if (hidden) return;
     let active = true;
     void cloudFetch("/api/v1/categories?channel=ai&kind=category", { cache: "no-store" }).then((response) => response.json()).then((result) => {
       if (!active || !Array.isArray(result.data?.items)) return;
       setCategories(result.data.items as Category[]);
     }).catch(() => {});
     return () => { active = false; };
-  }, []);
+  }, [hidden]);
 
   const categoriesByRoot = useMemo(() => categories.filter((item) => !item.parent_id), [categories]);
   const selectedCategory = categories.find((item) => item.id === categoryId);
@@ -94,9 +95,10 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     }).catch(() => {});
   }, [fetchSection]);
 
-  useEffect(() => { refreshSections(); }, [refreshSections]);
+  useEffect(() => { if (!hidden) refreshSections(); }, [hidden, refreshSections]);
 
   useEffect(() => {
+    if (hidden) return;
     let active = true;
     const controller = new AbortController();
     const run = async () => {
@@ -121,7 +123,7 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     };
     void run();
     return () => { active = false; controller.abort(); };
-  }, [categoryId, contentType, searchTerm]);
+  }, [hidden, categoryId, contentType, searchTerm]);
 
   const loadMore = async () => {
     if (loading || list.length >= total) return;

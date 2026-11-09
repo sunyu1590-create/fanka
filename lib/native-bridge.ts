@@ -155,6 +155,59 @@ export function announceNativeReady() {
   post("page.state", { path });
 }
 
+export function syncNativeDiscoverySession(userId: string | null, accessToken: string | null) {
+  if (!hasNativeBridge()) return false;
+  const validUserId = userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId)
+    ? userId
+    : null;
+  const validToken = accessToken && accessToken.length <= 4_096 && /^[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]*$/.test(accessToken)
+    ? accessToken
+    : null;
+  return post("discovery.auth", { userId: validUserId, accessToken: validToken });
+}
+
+export function syncNativeDiscoveryPersonalization(data: {
+  userId: string | null;
+  interests: string[];
+  viewedIds: number[];
+  personalRatings: Record<number, number>;
+}) {
+  if (!hasNativeBridge()) return false;
+  const interests = data.interests.map((value) => value.trim().slice(0, 40)).filter(Boolean).slice(0, 24);
+  const viewedIds = data.viewedIds.filter((value) => Number.isSafeInteger(value) && value > 0).slice(-200);
+  const personalRatings = Object.fromEntries(Object.entries(data.personalRatings)
+    .map(([id, value]) => [Number(id), value] as const)
+    .filter(([id, value]) => Number.isSafeInteger(id) && id > 0 && Number.isInteger(value) && value >= 1 && value <= 5)
+    .slice(-200));
+  return post("discovery.personalization", {
+    userId: data.userId,
+    interests,
+    viewedIds,
+    personalRatings,
+  });
+}
+
+export function setNativeDiscoveryVisibility(
+  visible: boolean,
+  navigationTopCss: number,
+  theme: "light" | "dark",
+  composeLeftCss = 0,
+  composeTopCss = 0,
+  composeWidthCss = 0,
+  composeHeightCss = 0,
+) {
+  if (!hasNativeBridge() || !Number.isFinite(navigationTopCss)) return false;
+  return post("discovery.visibility", {
+    visible,
+    navigationTopCss: Math.min(10_000, Math.max(0, navigationTopCss)),
+    theme,
+    composeLeftCss: Number.isFinite(composeLeftCss) ? composeLeftCss : 0,
+    composeTopCss: Number.isFinite(composeTopCss) ? composeTopCss : 0,
+    composeWidthCss: Number.isFinite(composeWidthCss) ? composeWidthCss : 0,
+    composeHeightCss: Number.isFinite(composeHeightCss) ? composeHeightCss : 0,
+  });
+}
+
 export function reportNativePageState(path: string) {
   if (hasNativeBridge()) post("page.state", { path });
 }

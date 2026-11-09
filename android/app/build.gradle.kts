@@ -16,8 +16,8 @@ android {
         applicationId = "com.heika.community"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "2.2.3"
+        versionCode = 10
+        versionName = "2.2.4"
         buildConfigField("String", "WEB_APP_URL", "\"$normalizedWebUrl\"")
         buildConfigField("String", "WEB_APP_ORIGIN", "\"${webUri.scheme}://${webUri.rawAuthority}\"")
         buildConfigField("String", "WEB_APP_HOSTS", "\"moonclean.shop,www.moonclean.shop,fanka-two.vercel.app\"")
@@ -41,5 +41,13 @@ android {
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.7")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.webkit:webkit:1.14.0")
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    testImplementation("junit:junit:4.13.2")
 }

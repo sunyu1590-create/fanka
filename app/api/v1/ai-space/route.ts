@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const { db, user } = await context(req, false);
     const params = req.nextUrl.searchParams;
     const queryText = safeQuery((params.get("q") || "").trim());
+    const topicName = safeQuery((params.get("topic") || "").trim());
     const type = params.get("type");
     const sort = params.get("sort") || "latest";
     const categoryId = Number(params.get("category")) || null;
@@ -38,8 +39,19 @@ export async function GET(req: NextRequest) {
         categoryIds = [categoryId, ...(children.data || []).map((item) => item.id)];
       }
     }
-    let request = db.from("posts").select(libraryFields, { count: "exact" }).eq("channel", "ai").eq("status", "published");
+    const selectedFields = topicName
+      ? libraryFields.replace("post_topics(", "post_topics!inner(").replace(
+        "interest_tags!post_topics_topic_id_fkey(name)",
+        "interest_tags!inner(name,channel,kind,active,moderation_status)",
+      )
+      : libraryFields;
+    let request = db.from("posts").select(selectedFields, { count: "exact" }).eq("channel", "ai").eq("status", "published");
     if (type) request = request.eq("content_type", type);
+    if (topicName) request = request.eq("post_topics.interest_tags.name", topicName)
+      .eq("post_topics.interest_tags.channel", "ai")
+      .eq("post_topics.interest_tags.kind", "tag")
+      .eq("post_topics.interest_tags.active", true)
+      .eq("post_topics.interest_tags.moderation_status", "approved");
     if (categoryIds) request = request.in("tag_id", categoryIds);
     if (queryText) request = request.or(`title.ilike.%${queryText}%,body.ilike.%${queryText}%`);
     if (sort === "featured") request = request.not("featured_at", "is", null).order("featured_at", { ascending: false });

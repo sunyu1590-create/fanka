@@ -32,6 +32,9 @@ internal class NativeBridge(
         fun onBackResult(requestId: String, consumed: Boolean)
         fun onNavigationAck(requestId: String, accepted: Boolean)
         fun onCardTransitionRequest(requestId: String, requestType: String, payload: JSONObject)
+        fun onDiscoveryVisibility(visible: Boolean, navigationTopCss: Double, theme: String, composeLeftCss: Double, composeTopCss: Double, composeWidthCss: Double, composeHeightCss: Double)
+        fun onDiscoverySession(userId: String?, accessToken: String?)
+        fun onDiscoveryPersonalization(userId: String?, interests: List<String>, viewedIds: List<Long>, personalRatings: Map<Long, Int>)
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -170,6 +173,7 @@ internal class NativeBridge(
                     .put("system.filePicker", true)
                     .put("system.share", true)
                     .put("app.about.open", true)
+                    .put("discovery.native", true)
                     .put("navigation.events", true),
             )
             "notifications.requestPermission" -> {
@@ -215,6 +219,53 @@ internal class NativeBridge(
             "image.error" -> {
                 diagnostics.recordResourceFailure()
                 complete(id, type, true, JSONObject())
+            }
+            "discovery.visibility" -> {
+                val payload = request.optJSONObject("payload") ?: JSONObject()
+                val top = payload.optDouble("navigationTopCss", Double.NaN)
+                val theme = payload.optString("theme").takeIf { it == "light" || it == "dark" } ?: "dark"
+                val composeLeft = payload.optDouble("composeLeftCss", Double.NaN)
+                val composeTop = payload.optDouble("composeTopCss", Double.NaN)
+                val composeWidth = payload.optDouble("composeWidthCss", Double.NaN)
+                val composeHeight = payload.optDouble("composeHeightCss", Double.NaN)
+                val visible = payload.optBoolean("visible")
+                val validCutout = composeLeft.isFinite() && composeLeft in -500.0..10_000.0 &&
+                    composeTop.isFinite() && composeTop in -500.0..10_000.0 && composeWidth.isFinite() && composeWidth in 1.0..500.0 &&
+                    composeHeight.isFinite() && composeHeight in 1.0..500.0
+                val validLayout = top.isFinite() && top in 0.0..10_000.0 && (!visible || validCutout)
+                if (!validLayout) {
+                    complete(id, type, false, JSONObject().put("code", "invalid_layout"))
+                } else {
+                    callbacks.onDiscoveryVisibility(visible, top, theme, composeLeft, composeTop, composeWidth, composeHeight)
+                    complete(id, type, true, JSONObject())
+                }
+            }
+            "discovery.auth" -> {
+                val payload = request.optJSONObject("payload") ?: JSONObject()
+                val userId = payload.optString("userId").takeIf { UUID_PATTERN.matches(it) }
+                val token = payload.optString("accessToken").takeIf { isValidAccessToken(it) }
+                callbacks.onDiscoverySession(userId, token)
+                complete(id, type, true, JSONObject().put("received", token != null))
+            }
+            "discovery.personalization" -> {
+                val payload = request.optJSONObject("payload") ?: JSONObject()
+                val userId = payload.optString("userId").takeIf { UUID_PATTERN.matches(it) }
+                val interests = payload.optJSONArray("interests")?.let { values ->
+                    (0 until minOf(values.length(), 24)).mapNotNull { index ->
+                        values.optString(index).filterNot(Char::isISOControl).trim().take(40).takeIf(String::isNotEmpty)
+                    }.distinct()
+                }.orEmpty()
+                val viewed = payload.optJSONArray("viewedIds")?.let { values ->
+                    (0 until minOf(values.length(), 200)).mapNotNull { index -> values.optLong(index, -1L).takeIf { it > 0L } }.distinct()
+                }.orEmpty()
+                val ratingsObject = payload.optJSONObject("personalRatings") ?: JSONObject()
+                val ratings = ratingsObject.keys().asSequence().take(200).mapNotNull { key ->
+                    val postId = key.toLongOrNull() ?: return@mapNotNull null
+                    val rating = ratingsObject.optInt(key, 0)
+                    if (postId > 0L && rating in 1..5) postId to rating else null
+                }.toMap()
+                callbacks.onDiscoveryPersonalization(userId, interests, viewed, ratings)
+                complete(id, type, true, JSONObject().put("accepted", true))
             }
             "card.transition.prepare", "card.transition.start", "card.transition.cancel", "card.transition.release" -> {
                 val payload = request.optJSONObject("payload") ?: JSONObject()
@@ -290,6 +341,7 @@ internal class NativeBridge(
         private val REQUEST_ID = Regex("^[A-Za-z0-9_-]{1,80}$")
         private val TRANSITION_ID = Regex("^[A-Za-z0-9_-]{1,80}$")
         private val POST_ID = Regex("^[0-9]{1,20}$")
+        private val UUID_PATTERN = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
         private val SAFE_PAGE_PATH = Regex("^/(?:\\?post=[0-9]{1,20}|\\?auth=reset|\\?conversation=[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})?$")
         private val ALLOWED_TYPES = setOf(
             "bridge.ready",
@@ -307,6 +359,12 @@ internal class NativeBridge(
             "card.transition.start",
             "card.transition.cancel",
             "card.transition.release",
+            "discovery.visibility",
+            "discovery.auth",
+            "discovery.personalization",
         )
+
+        private fun isValidAccessToken(token: String): Boolean = token.length in 60..4096 &&
+            token.count { it == '.' } == 2 && token.matches(Regex("^[A-Za-z0-9_=-]+\\.[A-Za-z0-9_=-]+\\.[A-Za-z0-9_=-]*$"))
     }
 }
