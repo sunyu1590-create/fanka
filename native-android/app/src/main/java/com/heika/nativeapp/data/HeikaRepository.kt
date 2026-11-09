@@ -247,8 +247,8 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun ratingState(id: Int): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/ratings?ids=$id", includeSession = true) as? JSONObject
-            ?.optJSONObject(id.toString()) ?: JSONObject()
+        val value = request("/api/v1/ratings?ids=$id", includeSession = true) as? JSONObject ?: JSONObject()
+        value.optJSONObject(id.toString()) ?: JSONObject()
     }
 
     suspend fun toggleCreatorFollow(creatorId: String): JSONObject = withContext(Dispatchers.IO) {
