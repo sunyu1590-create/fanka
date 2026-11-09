@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const { db } = await context(req, false);
     const query = (req.nextUrl.searchParams.get("q") || "").trim().toLocaleLowerCase("zh-CN");
     const [topics, stats] = await Promise.all([
-      db.from("interest_tags").select("id,name").eq("active", true).order("id"),
+      db.from("interest_tags").select("id,name").eq("channel", "community").eq("active", true).is("merged_into_id", null).order("sort_order").order("id"),
       db.rpc("get_topic_stats"),
     ]);
     dbError(topics.error);

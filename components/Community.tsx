@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import {
   Home,
   Compass,
@@ -7,6 +8,7 @@ import {
   Bookmark,
   ArrowLeft,
   Search,
+  Bell,
   Plus,
   Heart,
   Star,
@@ -14,74 +16,144 @@ import {
   Send,
   Trash2,
   PenLine,
+  ChevronDown,
   ChevronRight,
   X,
   Check,
   ArrowRight,
   MessageSquare,
   Share2,
-  MessageCircle,
   ThumbsDown,
   MoreHorizontal,
   Flag,
   Sparkles,
+  UsersRound,
   Crown,
   ShieldCheck,
+  Settings,
+  GitBranch,
+  CalendarDays,
+  History,
+  ImagePlus,
+  Video as VideoIcon,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import dynamic from "next/dynamic";
+import ProgressiveImage from "./ProgressiveImage";
+import ChoiceSelect from "./ChoiceSelect";
+import { confirmInApp, promptInApp } from "@/lib/in-app-dialog";
 const Messages = dynamic(() => import("./Messages"), {
   loading: () => <div className="empty">正在加载消息…</div>,
 });
 const AdminModeration = dynamic(() => import("./AdminModeration"), {
   loading: () => <div className="empty">正在加载审核队列…</div>,
 });
-import EditorialArticle from "./EditorialArticle";
-import AccountProfile from "./AccountProfile";
+import DiscoveryPostCard from "./DiscoveryPostCard";
+const EditorialArticle = dynamic(() => import("./EditorialArticle"));
+import { MarkdownContent, markdownToText } from "./MarkdownContent";
+import { FollowedTopicsSettings, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
+const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
-import PublicProfile from "./PublicProfile";
-import MessagingPreferences from "./MessagingPreferences";
-import InboxBadge from "./InboxBadge";
-import { cloudRequest } from "@/lib/cloud";
-import { browserDb } from "@/lib/browser-db";
+const PublicProfile = dynamic(() => import("./PublicProfile"), { loading: () => <div className="empty">正在加载…</div> });
+const MessagingPreferences = dynamic(() => import("./MessagingPreferences"), { loading: () => <div className="empty">正在加载…</div> });
+const InboxBadge = dynamic(() => import("./InboxBadge"));
+const DailyMissions = dynamic(() => import("./DailyMissions"), { loading: () => <div className="daily-missions-loading" aria-hidden="true" /> });
+const NotificationCenter = dynamic(() => import("./NotificationCenter"), { loading: () => <div className="empty">正在加载…</div> });
+const CoExplore = dynamic(() => import("./CoExplore"), { loading: () => <div className="empty">正在加载…</div> });
+const SharedCollection = dynamic(() => import("./SharedCollection"), { loading: () => <div className="empty">正在加载…</div> });
+const CardChainPanel = dynamic(() => import("./ExplorationFeatures").then((module) => module.CardChainPanel));
+const ExplorationRecap = dynamic(() => import("./ExplorationFeatures").then((module) => module.ExplorationRecap));
+import type { User } from "@supabase/supabase-js";
+import { cloudFetch, cloudRequest } from "@/lib/cloud";
+import { browserDb, browserDbConfig } from "@/lib/browser-db";
+import { ComposerSheet, ComposerTextEditor, ComposerMediaStrip } from "./ComposerPanels";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
 import { validateComposerFiles } from "@/lib/composer-validation";
+import { compressUploadImage } from "@/lib/image-compression";
 import type { TopicSummary } from "@/lib/topics";
 import { tags, dayKey, coverColor, type Post } from "@/lib/content";
 import { dailyCandidates, openDailyCard } from "@/lib/daily";
 import { rankRecommendations, type CommunityRating } from "@/lib/recommendations";
 import { cardRarity, cardRarityLabel, cardRarityTier, EXPERIENCE_LEVELS, experienceProgress, type CardRarityTier } from "@/lib/progression";
 import { REPORT_REASONS } from "@/lib/report-validation";
-import { animationCoordinator } from "@/lib/animation-coordinator";
-import { readPublicCache, schedulePublicCacheWrite } from "@/lib/public-content-cache";
 import { feedImageSource } from "@/lib/feed-images";
-import { deleteCardStateSnapshot, loadCardStateSnapshot, saveCardStateSnapshot } from "@/lib/card-state-cache";
-import { cachedPostNeedsRefresh, normalizeCachedPost } from "@/lib/card-media";
-import { appendUniqueById } from "@/lib/feed-collection";
-import {
-  announceNativeReady,
-  cancelNativeCardTransition,
-  hasNativeBridge,
-  installNativeBridge,
-  prepareNativeCardTransition,
-  releaseNativeCardTransition,
-  getNativeNotificationStatus,
-  openNativeAbout,
-  openNativeNotificationSettings,
-  requestNativeNotificationPermission,
-  shareViaNative,
-  subscribeNativeEvent,
-  startNativeCardTransition,
-  waitForNativeCardTransition,
-  type NativeTransitionRect,
-} from "@/lib/native-bridge";
+import { userMessage } from "@/lib/user-message";
+import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
+import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
+import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
+import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
+import SettingsHome, { type SettingsDetail } from "./SettingsHome";
+import MembershipCenter from "./MembershipCenter";
+import { baseDailyFlipAllowance } from "@/lib/membership-plans";
+const AboutHeika = dynamic(() => import("./AboutHeika"));
+const CacheManager = dynamic(() => import("./CacheManager"));
+const FeedbackForm = dynamic(() => import("./FeedbackForm"));
+const FeedbackAdmin = dynamic(() => import("./FeedbackAdmin"));
+const NotificationSettings = dynamic(() => import("./NotificationSettings"));
+const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div className="empty">正在加载 AI 空间…</div> });
+const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
+const AppealCenter = dynamic(() => import("./AppealCenter"));
+import type { AiContentType } from "@/lib/ai-resources";
 
-const FLIP_RAIN_PARTICLES = 112;
+const FLIP_RAIN_PARTICLES = 96;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
 const FLIP_RAIN_DURATION_SPREAD_MS = 900;
 const FLIP_RAIN_LEAD_MS = 240;
 const FLIP_RAIN_STAGGER_WINDOW_MS = 900;
 const FLIP_RAIN_JITTER_MS = 90;
 const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
+const RATING_COLORS = ["#ff5d78", "#ff9452", "#edbd36", "#65b95e", "#34aeb5"];
+const AI_EDITOR_FIELDS: Record<AiContentType, { key: string; label: string; hint: string; multiline?: boolean; required?: boolean }[]> = {
+  knowledge_article: [],
+  agent: [
+    { key: "functionality", label: "主要功能", hint: "这个 Agent 能解决什么问题", multiline: true, required: true },
+    { key: "platforms", label: "兼容平台", hint: "例如：OpenAI API、Claude、Dify", required: true },
+    { key: "run_mode", label: "运行方式", hint: "云端 / 本地 / 工作流", required: true },
+    { key: "source_url", label: "项目来源", hint: "公开的 HTTPS 项目地址", required: true },
+    { key: "use_cases", label: "适用场景", hint: "补充推荐使用场景", multiline: true },
+    { key: "tutorial", label: "使用教程", hint: "安装和使用步骤", multiline: true },
+    { key: "version", label: "版本", hint: "例如：1.0.0", required: true },
+    { key: "changelog", label: "更新记录", hint: "本次版本变更", multiline: true },
+  ],
+  skill: [
+    { key: "functionality", label: "功能说明", hint: "这个 Skill 扩展了什么能力", multiline: true, required: true },
+    { key: "environments", label: "兼容环境", hint: "例如：Claude Code、Cursor", required: true },
+    { key: "installation", label: "安装步骤", hint: "安装命令或配置步骤", multiline: true, required: true },
+    { key: "configuration", label: "配置内容", hint: "可选配置或环境变量", multiline: true },
+    { key: "example", label: "使用示例", hint: "展示典型调用方式", multiline: true },
+    { key: "version", label: "版本", hint: "例如：1.0.0", required: true },
+    { key: "changelog", label: "更新记录", hint: "本次版本变更", multiline: true },
+    { key: "source_url", label: "来源地址", hint: "公开的 HTTPS 项目地址", required: true },
+  ],
+  prompt: [
+    { key: "model", label: "适用模型", hint: "例如：GPT-5、Claude、通用模型", required: true },
+    { key: "scenario", label: "应用场景", hint: "说明适用任务", required: true },
+    { key: "prompt", label: "完整提示词", hint: "请粘贴可直接使用的提示词", multiline: true, required: true },
+    { key: "variables", label: "可替换变量", hint: "例如：主题、语气、受众", multiline: true },
+    { key: "example", label: "使用示例", hint: "补充输入和输出示例", multiline: true },
+  ],
+  ai_tool: [
+    { key: "functionality", label: "功能说明", hint: "工具核心能力", multiline: true, required: true },
+    { key: "platforms", label: "支持平台", hint: "Web、iOS、Android、桌面端等", required: true },
+    { key: "source_url", label: "工具地址", hint: "公开的网站或项目地址", required: true },
+    { key: "pricing", label: "价格信息", hint: "免费方案或订阅价格" },
+    { key: "experience", label: "使用体验", hint: "优缺点与适合人群", multiline: true },
+  ],
+  tutorial: [
+    { key: "difficulty", label: "难度", hint: "入门 / 进阶 / 高级", required: true },
+    { key: "requirements", label: "准备条件", hint: "账号、模型、软件或素材", required: true },
+    { key: "steps", label: "实战步骤", hint: "按顺序说明如何完成任务", multiline: true, required: true },
+    { key: "source_url", label: "参考来源", hint: "可选公开资料地址" },
+  ],
+};
+
+function discoverCoverRatio(postId: number) {
+  const shape = Math.abs(postId) % 8;
+  if (shape === 0) return "1 / 1.45";
+  if (shape === 1 || shape === 2) return "1 / 1.18";
+  return "4 / 5";
+}
 
 type Comment = {
   id: number;
@@ -92,16 +164,23 @@ type Comment = {
   post: number;
   body: string;
   parent?: number;
+  replyToName?: string;
   time: number;
   likes: number;
   liked?: boolean;
 };
 type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
+type ComposerVideo = { id: string; file?: File; path?: string; url: string; name: string; size: number; type: string; status: "ready" | "compressing" | "uploading" | "failed"; progress: number; compressionProgress?: number; originalSize?: number; compressionNote?: string; existing?: boolean };
+type PageTransitionHandle = { finished: Promise<unknown> };
+const VIDEO_UPLOAD_BETA_ENABLED = process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA === "1";
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
-type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating"; points: number; createdAt: string }[] };
+type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
+type BookmarkCollection = { id: string; name: string; created_at?: string; role?: "owner" | "collaborator"; is_public?: boolean; allow_collaboration?: boolean; share_code?: string | null; user_id?: string };
+type PostSeries = { id: string; title: string; description: string; created_at?: string; postCount?: number };
+type TopicEvent = { id: string; title: string; description: string; topic: string; ends_at: string; postCount: number; participantCount: number; joined: boolean };
+type CreatorMission = { key: "explore_days" | "publish_post" | "curate_posts"; title: string; description: string; progress: number; target: number; claimed: boolean; points: number };
+type CreatorCenter = { insights: { posts: number; views: number; likes: number; saves: number; comments: number; topPosts: { id: number; title: string; views: number; likes: number; saves: number; comments: number }[] }; weekStart: string; missions: CreatorMission[] };
 type SearchPerson = { id: string; nickname: string; bio: string | null; avatar_url: string | null };
-type DetailReturnAnchor = { postId: number; scrollY: number; viewportTop: number; savedAt: number };
-type NativeTransitionCandidate = { id: string; src: string; prepared: Promise<boolean>; createdAt: number };
 function relativeTime(timestamp: number) {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (seconds < 45) return "刚刚";
@@ -168,37 +247,6 @@ const initial: State = {
   },
   viewed: [],
 };
-
-function normalizeSavedState(value: unknown): Partial<State> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const saved = value as Partial<State>;
-  const revealed = Object.fromEntries(
-    Object.entries(saved.revealed || {})
-      .filter(([, post]) => post && typeof post === "object")
-      .map(([id, post]) => [id, normalizeCachedPost(post as Post)]),
-  );
-  return {
-    ...saved,
-    revealed,
-    comments: [],
-    opened: saved.opened && typeof saved.opened === "object" ? saved.opened : {},
-    rarityTiers: saved.rarityTiers && typeof saved.rarityTiers === "object" ? saved.rarityTiers : {},
-  };
-}
-
-function cachedStateNeedingCardRefresh(value: unknown) {
-  if (!value || typeof value !== "object") return [] as number[];
-  const revealed = (value as Partial<State>).revealed || {};
-  return Object.entries(revealed)
-    .filter(([, post]) => cachedPostNeedsRefresh(post))
-    .map(([id]) => Number(id))
-    .filter((id) => Number.isSafeInteger(id) && id > 0);
-}
-const membershipPlans = [
-  { id: "plus", name: "Plus", price: 12, dailyFlips: 9 },
-  { id: "pro", name: "Pro", price: 16, dailyFlips: 13 },
-] as const;
-const extraFlipPacks = [3, 5, 10] as const;
 function hydrateProfileDetails(rows: Array<{ attribute: string; value: string; is_public: boolean }> = []): ProfileDetails {
   const details: ProfileDetails = {
     gender: "", mbti: "", birthday: "", hobbies: [],
@@ -310,8 +358,14 @@ const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
-  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("fixed");
+  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("glass");
+  const [discoverSettingsOpen, setDiscoverSettingsOpen] = useState(false);
+  const [discoverSearchOpen, setDiscoverSearchOpen] = useState(false);
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
+  const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("blur-rise");
+  const [detailTransitionLoaded, setDetailTransitionLoaded] = useState(false);
+  const [profileLayout, setProfileLayout] = useState<"masonry" | "list">("masonry");
+  const [profileLayoutLoaded, setProfileLayoutLoaded] = useState(false);
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
   const [fontReady, setFontReady] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
@@ -323,9 +377,26 @@ export default function Community() {
     if (savedFont === "oppo" || savedFont === "system") setFontChoice(savedFont);
     setFontReady(true);
     const savedBottomNavStyle = localStorage.getItem("heika-bottom-nav-style");
-    if (savedBottomNavStyle === "glass" || savedBottomNavStyle === "fixed")
-      setBottomNavStyle(savedBottomNavStyle);
+    if (savedBottomNavStyle === "glass") setBottomNavStyle("glass");
+    if (savedBottomNavStyle === "fixed") {
+      const explicitlyChosen = localStorage.getItem("heika-bottom-nav-style-explicit") === "1";
+      const nextStyle = explicitlyChosen ? "fixed" : "glass";
+      setBottomNavStyle(nextStyle);
+      if (!explicitlyChosen) localStorage.setItem("heika-bottom-nav-style", nextStyle);
+    }
     setBottomNavStyleReady(true);
+    const savedDetailTransition = localStorage.getItem("heika-detail-transition");
+    if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise" || savedDetailTransition === "ghost-handoff") {
+      const explicitlyChosen = localStorage.getItem("heika-detail-transition-explicit") === "1";
+      const nextTransition = savedDetailTransition === "image-zoom" && !explicitlyChosen ? "blur-rise" : savedDetailTransition;
+      setDetailTransition(nextTransition);
+      if (nextTransition !== savedDetailTransition) localStorage.setItem("heika-detail-transition", nextTransition);
+    }
+    setDetailTransitionLoaded(true);
+    const savedProfileLayout = localStorage.getItem("heika-public-profile-layout");
+    if (savedProfileLayout === "masonry" || savedProfileLayout === "list")
+      setProfileLayout(savedProfileLayout);
+    setProfileLayoutLoaded(true);
   }, []);
   useEffect(() => {
     if (!themeReady) return;
@@ -348,41 +419,40 @@ export default function Community() {
     localStorage.setItem("heika-bottom-nav-style", bottomNavStyle);
   }, [bottomNavStyle, bottomNavStyleReady]);
   useEffect(() => {
-    const finishAnimations = () => animationCoordinator.cancelAll();
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") finishAnimations();
-    };
-    const unsubscribeLifecycle = subscribeNativeEvent("app.lifecycle", (payload) => {
-      if (payload.state === "background") finishAnimations();
-    });
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("pagehide", finishAnimations);
-    return () => {
-      unsubscribeLifecycle();
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("pagehide", finishAnimations);
-    };
-  }, []);
+    if (!detailTransitionLoaded) return;
+    localStorage.setItem("heika-detail-transition", detailTransition);
+  }, [detailTransition, detailTransitionLoaded]);
+  useEffect(() => {
+    if (!profileLayoutLoaded) return;
+    localStorage.setItem("heika-public-profile-layout", profileLayout);
+  }, [profileLayout, profileLayoutLoaded]);
   const flipBusy = useRef(false),
     transitionBusy = useRef(false),
+    pageTransition = useRef<PageTransitionHandle | null>(null),
+    pageTransitionQueue = useRef<Array<() => void>>([]),
+    fallbackPageTimer = useRef<number | null>(null),
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
-  const detailReturnAnchor = useRef<DetailReturnAnchor | null>(null);
-  const detailWasOpen = useRef(false);
-  const topicReturnPostIdRef = useRef<number | null>(null);
-  const nativeTransitionCandidate = useRef<NativeTransitionCandidate | null>(null);
-  const feedRequestSequence = useRef(0);
-  const topicRequestSequence = useRef(0);
+  const discoverScrollPositions = useRef<Record<"community" | "ai", number>>({ community: 0, ai: 0 });
+  const discoverChannelBusy = useRef(false);
+  const queuedDiscoverChannel = useRef<"community" | "ai" | null>(null);
+  const discoverChannelTimer = useRef<number | null>(null);
+  const switchDiscoverChannelRef = useRef<(next: "community" | "ai") => void>(() => {});
   const sharedPostHandled = useRef<string | null>(null);
-  const sharedConversationHandled = useRef<string | null>(null);
+  const sharedProfileHandled = useRef<string | null>(null);
+  const searchCursorRef = useRef<string | null>(null);
   const [authorProfile, setAuthorProfile] = useState<string | null>(null);
+  const [publicBookmarks, setPublicBookmarks] = useState(false);
+  const [publicBookmarksLoaded, setPublicBookmarksLoaded] = useState(false);
+  const [bookmarkVisibilityBusy, setBookmarkVisibilityBusy] = useState(false);
   const [messagePeer, setMessagePeer] = useState<string | null>(null);
-  const [messageConversation, setMessageConversation] = useState<string | null>(null);
+  const [chatConversationOpen, setChatConversationOpen] = useState(false);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
-  const accountIdRef = useRef<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [accountReady, setAccountReady] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
+  const [adminRole, setAdminRole] = useState<"member" | "admin" | "content_manager" | "reviewer">("member");
   const adminEntryPending = useRef(false);
   const [reportPostId, setReportPostId] = useState<string | null>(null);
   const [reportCommentId, setReportCommentId] = useState<string | null>(null);
@@ -390,32 +460,47 @@ export default function Community() {
   const [reportNote, setReportNote] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const cloudHydrated = useRef(false);
-  const hydrationSequence = useRef(0);
-  const staleCardMedia = useRef<{ key: string; ids: Set<number> }>({ key: "heika-demo-v1", ids: new Set() });
   const pullStart = useRef<number | null>(null);
-  const nativeBackHandler = useRef<() => boolean>(() => false);
-  const nativeNavigationHandler = useRef<(payload: Record<string, unknown>) => boolean>(() => false);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
-  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [] });
+  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
+  const [bookmarkCollections, setBookmarkCollections] = useState<BookmarkCollection[]>([]);
+  const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
+  const [bookmarkCollectionContents, setBookmarkCollectionContents] = useState<Record<string, Post[]>>({});
+  const [bookmarkMembership, setBookmarkMembership] = useState<Record<string, string | null>>({});
+  const [favoriteCollection, setFavoriteCollection] = useState("all");
+  const [favoriteSearch, setFavoriteSearch] = useState("");
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [editingCollection, setEditingCollection] = useState<string | null>(null);
+  const [editingCollectionName, setEditingCollectionName] = useState("");
+  const [collectionInviteCode, setCollectionInviteCode] = useState("");
+  const [creatorCenter, setCreatorCenter] = useState<CreatorCenter | null>(null);
+  const [creatorSeries, setCreatorSeries] = useState<PostSeries[]>([]);
+  const [seriesName, setSeriesName] = useState("");
+  const [seriesDescription, setSeriesDescription] = useState("");
+  const [selectedSeriesId, setSelectedSeriesId] = useState("");
+  const [topicEvents, setTopicEvents] = useState<TopicEvent[]>([]);
+  const [settingsPersonalOpen, setSettingsPersonalOpen] = useState(false);
+  const [recentPreview, setRecentPreview] = useState<{ post: Post; source: "today" | "discover" } | null>(null);
+  const [creatorCenterLoading, setCreatorCenterLoading] = useState(false);
+  const [rewardClaimBusyLevel, setRewardClaimBusyLevel] = useState<number | null>(null);
   const [detailImageTransition, setDetailImageTransition] = useState<{
     rect: DOMRect;
     src: string;
     sourceImage: HTMLImageElement;
-    nativeTransitionId?: string;
-    nativePrepared?: Promise<boolean>;
   } | null>(null);
   const [luckyReward, setLuckyReward] = useState<{ postId: number; amount: number } | null>(null);
   const [ratingPulse, setRatingPulse] = useState<{ postId: number; score: number } | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<"plus" | "pro" | null>(null);
-  const [selectedFlipPack, setSelectedFlipPack] = useState<number | null>(null);
-  const [extraPacksOpen, setExtraPacksOpen] = useState(false);
-  const [subscriptionRulesOpen, setSubscriptionRulesOpen] = useState(false);
   const luckyRewardTimer = useRef<number | null>(null);
   const rarityRevealTimer = useRef<number | null>(null);
   const flipRainTimer = useRef<number | null>(null);
   const noticeTimer = useRef<number | null>(null);
   const noticeExitTimer = useRef<number | null>(null);
+  const noticeRef = useRef<NoticeBannerItem | null>(null);
+  const noticeQueue = useRef<NoticeBannerItem[]>([]);
+  const noticeSequence = useRef(0);
+  const noticeLeavingRef = useRef(false);
+  const dismissNoticeRef = useRef<() => void>(() => {});
   const [flipRainId, setFlipRainId] = useState<number | null>(null);
   const [dayTick, setDayTick] = useState(0),
     [viewerId, setViewerId] = useState<number | null>(null),
@@ -427,6 +512,7 @@ export default function Community() {
     [viewerRevealPhase, setViewerRevealPhase] = useState<"rarity" | "content" | null>(null),
     [flippingId, setFlippingId] = useState<number | null>(null),
     [publicFeed, setPublicFeed] = useState<Post[]>([]),
+    [feedPostIds, setFeedPostIds] = useState<number[]>([]),
     [feedError, setFeedError] = useState(""),
     [feedPage, setFeedPage] = useState(0),
     [feedTotal, setFeedTotal] = useState(0),
@@ -435,63 +521,53 @@ export default function Community() {
     [feedLoadedTag, setFeedLoadedTag] = useState<string | null>(null),
     publicFeedLoading = useRef(false),
     feedController = useRef<AbortController | null>(null),
+    feedCursor = useRef<{ createdAt: string; postId: string } | null>(null),
     loadedRatingIds = useRef(new Set<number>()),
+    detailPostCache = useRef(new Map<number, { post: Post; at: number }>()),
     detailSource = useRef<"today" | "discover">("today");
+  const [feedLoadedSort, setFeedLoadedSort] = useState<string | null>(null);
+  const [discoverColumnCount, setDiscoverColumnCount] = useState(2);
   const [favoriteSource, setFavoriteSource] = useState("全部"),
-    [mineSection, setMineSection] = useState<"favorites" | "liked" | "calendar" | "recent">("favorites"),
-    [settingsDetail, setSettingsDetailState] = useState<"theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression" | null>(null),
+    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked">("works"),
+    [settingsDetail, setSettingsDetailState] = useState<SettingsDetail | "feedbackAdmin" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
-    [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("settings"),
+    [debugReturnTab, setDebugReturnTab] = useState<"settings" | "mine">("settings"),
     [selectedCalendarDate, setSelectedCalendarDate] = useState(""),
     [readingTransition, setReadingTransition] = useState<"out" | "in" | null>(
       null,
     ),
     [notificationPermission, setNotificationPermission] = useState<
       "default" | "granted" | "denied" | "unsupported"
-    >("default"),
-    [systemNotificationsEnabled, setSystemNotificationsEnabled] = useState<boolean | null>(null);
-  const refreshNativeNotificationStatus = useCallback(async () => {
-    if (!hasNativeBridge()) return null;
-    try {
-      const status = await getNativeNotificationStatus();
-      if (!status) return null;
-      setNotificationPermission(status.permission ?? (status.granted ? "granted" : "denied"));
-      setSystemNotificationsEnabled(status.enabled);
-      return status;
-    } catch {
-      return null;
-    }
-  }, []);
-  const systemNotificationLabel = systemNotificationsEnabled === null
-    ? "正在检查"
-    : notificationPermission === "default"
-      ? "尚未请求"
-      : notificationPermission === "denied"
-        ? "未授权"
-        : systemNotificationsEnabled
-          ? "已开启"
-          : "系统已关闭";
+    >("default");
+  const [recentExperienceOpen, setRecentExperienceOpen] = useState(false);
+  const [explorationCalendarOpen, setExplorationCalendarOpen] = useState(true);
+  const [explorationHistoryOpen, setExplorationHistoryOpen] = useState(false);
+  const [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("mine");
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
     ratingPulseTimer = useRef<number | null>(null);
   const ratingBusy = useRef(false);
   const [state, setState] = useState<State>(initial),
     [ready, setReady] = useState(false),
-    [accountReady, setAccountReady] = useState(false),
     [tab, setTabState] = useState("today"),
     [detail, setDetail] = useState<number | null>(null),
+    [detailPostOverride, setDetailPostOverride] = useState<Post | null>(null),
     [detailReady, setDetailReady] = useState(false),
     [transitionPhase, setTransitionPhase] = useState<
       "opening" | "closing" | null
     >(null),
     [justFlippedId, setJustFlippedId] = useState<number | null>(null),
     [category, setCategory] = useState("全部"),
+    [discoverChannel, setDiscoverChannel] = useState<"community" | "ai">("community"),
+    [outgoingDiscoverChannel, setOutgoingDiscoverChannel] = useState<"community" | "ai" | null>(null),
+    [discoverChannelPhase, setDiscoverChannelPhase] = useState<"primed" | "running" | null>(null),
     [searchDraft, setSearchDraft] = useState(""),
     [searchTerm, setSearchTerm] = useState(""),
     [searchKind, setSearchKind] = useState<"content" | "people">("content"),
     [searchPeople, setSearchPeople] = useState<SearchPerson[]>([]),
     [searchPosts, setSearchPosts] = useState<Post[]>([]),
     [searchTotal, setSearchTotal] = useState(0),
+    [searchHasMore, setSearchHasMore] = useState(false),
     [searchPage, setSearchPage] = useState(1),
     [searchLoading, setSearchLoading] = useState(false),
     [searchError, setSearchError] = useState(""),
@@ -509,23 +585,48 @@ export default function Community() {
       | "notifications"
       | "reading"
       | "browsing"
-      | "subscription"
       | "report"
       | null
     >(null),
+    [composerPanel, setComposerPanel] = useState<"topics" | "settings" | "preview" | null>(null),
+    [composerMediaId, setComposerMediaId] = useState<string | null>(null),
+    [draftSyncError, setDraftSyncError] = useState(""),
+    [composerMediaLoadFailed,setComposerMediaLoadFailed] = useState(false),
+    [draftRetry, setDraftRetry] = useState(0),
+    [draftCloudSynced, setDraftCloudSynced] = useState(false),
     [title, setTitle] = useState(""),
     [body, setBody] = useState(""),
+    [pollQuestion, setPollQuestion] = useState(""),
+    [pollOptions, setPollOptions] = useState(["", ""]),
+    [aiWorkbenchOpen, setAiWorkbenchOpen] = useState(false),
+    [aiWorkbenchMode, setAiWorkbenchMode] = useState<"title" | "outline" | "polish" | "topics">("outline"),
+    [aiWorkbenchOutput, setAiWorkbenchOutput] = useState(""),
+    [aiWorkbenchBusy, setAiWorkbenchBusy] = useState(false),
+    [aiPreviousBody, setAiPreviousBody] = useState<string | null>(null),
+    [aiPreviousTitle, setAiPreviousTitle] = useState<string | null>(null),
+    [aiPreviousTopics, setAiPreviousTopics] = useState<string[] | null>(null),
+    [aiResultApplied, setAiResultApplied] = useState(false),
     [writeTag, setWriteTag] = useState<string>(tags[0]),
+    [communityCategories, setCommunityCategories] = useState<string[]>([...tags]),
+    [aiCategories, setAiCategories] = useState<{id:number;name:string;description?:string;kind?:string;moderation_status?:string}[]>([]),
+    [writeChannel, setWriteChannel] = useState<"community" | "ai">("community"),
+    [writeContentType, setWriteContentType] = useState<AiContentType>("knowledge_article"),
+    [aiResourceFields, setAiResourceFields] = useState<Record<string, string>>({}),
     [writeTopics, setWriteTopics] = useState<string[]>([]),
+    [writeSeriesId, setWriteSeriesId] = useState(""),
     [topicSearch, setTopicSearch] = useState(""),
     [topicChoices, setTopicChoices] = useState<TopicSummary[]>([]),
     [creatingTopic, setCreatingTopic] = useState(false),
     [composerImages, setComposerImages] = useState<ComposerImage[]>([]),
+    [composerVideo, setComposerVideo] = useState<ComposerVideo | null>(null),
+    [composerValidation, setComposerValidation] = useState<"" | "title" | "body">(""),
     [uploadingImages, setUploadingImages] = useState(false),
     [coverIndex, setCoverIndex] = useState(0),
     [draftSaved, setDraftSaved] = useState(false),
     [composerEditingPublished, setComposerEditingPublished] = useState(false),
+    [composerRevisionMode, setComposerRevisionMode] = useState(false),
     [draftSaving, setDraftSaving] = useState(false),
+    [isPublishing, setIsPublishing] = useState(false),
     [topicSummary, setTopicSummary] = useState<TopicSummary | null>(null),
     [topicPosts, setTopicPosts] = useState<Post[]>([]),
     [topicPage, setTopicPage] = useState(1),
@@ -534,55 +635,146 @@ export default function Community() {
     [topicReturnPostId, setTopicReturnPostId] = useState<number | null>(null),
     [topicReturnTab, setTopicReturnTab] = useState("discover"),
     [editing, setEditing] = useState<number | null>(null),
-    [notice, setNotice] = useState(""),
-    [noticeId, setNoticeId] = useState(0),
-    [noticeLeaving, setNoticeLeaving] = useState(false);
-  const stateRef = useRef(state);
-  stateRef.current = state;
+    [notice, setNotice] = useState<NoticeBannerItem | null>(null),
+    [noticeLeaving, setNoticeLeaving] = useState(false),
+    [noticeExpanded, setNoticeExpanded] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
   const modalCloseTimer = useRef<number | null>(null);
-  const noticeQueue = useRef<string[]>([]);
-  const currentNotice = useRef<string | null>(null);
+  const presentNotice = useCallback((item: NoticeBannerItem) => {
+    noticeRef.current = item;
+    noticeLeavingRef.current = false;
+    setNotice(item);
+    setNoticeLeaving(false);
+    setNoticeExpanded(false);
+    noticeTimer.current = window.setTimeout(() => dismissNoticeRef.current(), item.kind === "message" ? 5000 : 3800);
+  }, []);
+  const dismissNotice = useCallback(() => {
+    if (!noticeRef.current || noticeLeavingRef.current) return;
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = null;
+    noticeLeavingRef.current = true;
+    setNoticeLeaving(true);
+    noticeExitTimer.current = window.setTimeout(() => {
+      noticeExitTimer.current = null;
+      noticeLeavingRef.current = false;
+      const next = noticeQueue.current.shift() || null;
+      noticeRef.current = null;
+      if (next) presentNotice(next);
+      else { setNotice(null); setNoticeLeaving(false); setNoticeExpanded(false); }
+    }, 220);
+  }, [presentNotice]);
+  dismissNoticeRef.current = dismissNotice;
+  const expandNotice = useCallback(() => {
+    setNoticeExpanded((expanded) => !expanded);
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => dismissNoticeRef.current(), 6500);
+  }, []);
+  const toast = useCallback((msg: string, options: NoticeOptions = {}) => {
+    const body = userMessage(msg).trim();
+    if (!body) return;
+    const error = /(失败|错误|无效|不能|暂不可用|未保存|未能)/.test(body);
+    const kind: NoticeKind = options.kind || (error ? "error" : /(点赞|赞了|赞同)/.test(body) ? "like" : /(评论|回复)/.test(body) ? "comment" : /(收藏|书签)/.test(body) ? "bookmark" : /(关注|粉丝)/.test(body) ? "follow" : /(评分|评级|星级)/.test(body) ? "rating" : /(私信|新消息|消息)/.test(body) ? "message" : /(奖励|经验|等级|会员)/.test(body) ? "reward" : /(图片|视频|作品|草稿|发布|上传)/.test(body) ? "content" : /(账号|登录|安全|密码)/.test(body) ? "account" : /(成功|已保存|已发布|已领取|完成)/.test(body) ? "success" : "general");
+    const title = options.title || (!options.onActivate
+      ? error ? "操作未完成" : "操作完成"
+      : error ? "操作未完成" : kind === "like" ? "点赞提醒" : kind === "comment" ? "评论提醒" : kind === "bookmark" ? "收藏提醒" : kind === "follow" ? "关注动态" : kind === "rating" ? "评分提醒" : kind === "message" ? "社区动态" : kind === "reward" ? "探索进度" : kind === "content" ? "内容提醒" : kind === "account" ? "账号提醒" : kind === "success" ? "操作完成" : "HEIKA 提醒");
+    const item: NoticeBannerItem = { ...options, id: ++noticeSequence.current, title, body, createdAt: Date.now(), kind };
+    if ((noticeRef.current?.title === title && noticeRef.current.body === body) || noticeQueue.current.some((queued) => queued.title === title && queued.body === body)) return;
+    if (!noticeRef.current) presentNotice(item);
+    else if (noticeQueue.current.length < 12) noticeQueue.current.push(item);
+    else if (!noticeQueue.current.some((queued) => queued.title === "更多提醒")) {
+      noticeQueue.current[noticeQueue.current.length - 1] = { id: ++noticeSequence.current, title: "更多提醒", body: "还有新的提醒，请前往消息中心查看。", createdAt: Date.now(), kind: "general" };
+    }
+  }, [presentNotice]);
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
+    if (fallbackPageTimer.current !== null) window.clearTimeout(fallbackPageTimer.current);
+    document.documentElement.classList.remove("heika-page-fallback");
   }, []);
   const [messagesTabVisited, setMessagesTabVisited] = useState(false);
+  const [secondaryReturnTab, setSecondaryReturnTab] = useState("discover");
+  const [sharedCollectionCode, setSharedCollectionCode] = useState("");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("room")) { setSecondaryReturnTab("mine"); setTabState("co-explore"); }
+    else if (params.get("collection")) { setSharedCollectionCode(params.get("collection") || ""); setSecondaryReturnTab("discover"); setTabState("shared-collection"); }
+    else if (params.get("chain")) { setSecondaryReturnTab("mine"); setTabState("card-chain"); }
+  }, []);
   const startPageTransition = (updatePage: () => void) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       updatePage();
       return;
     }
     const transitionDocument = document as Document & {
-      startViewTransition?: (callback: () => void) => unknown;
+      startViewTransition?: (callback: () => void) => PageTransitionHandle;
     };
-    if (transitionDocument.startViewTransition) transitionDocument.startViewTransition(updatePage);
-    else updatePage();
+    if (!transitionDocument.startViewTransition) {
+      document.documentElement.classList.add("heika-page-fallback");
+      updatePage();
+      if (fallbackPageTimer.current !== null) window.clearTimeout(fallbackPageTimer.current);
+      fallbackPageTimer.current = window.setTimeout(() => {
+        fallbackPageTimer.current = null;
+        document.documentElement.classList.remove("heika-page-fallback");
+      }, 260);
+      return;
+    }
+    if (pageTransition.current) {
+      pageTransitionQueue.current.push(updatePage);
+      return;
+    }
+    const transition = transitionDocument.startViewTransition(() => flushSync(updatePage));
+    pageTransition.current = transition;
+    void transition.finished.catch(() => {}).then(() => {
+      if (pageTransition.current !== transition) return;
+      pageTransition.current = null;
+      const next = pageTransitionQueue.current.shift();
+      if (next) startPageTransition(next);
+    });
   };
   const setTab = (next: string) => {
     if (next === tab) return;
-    if (next === "about" && hasNativeBridge()) {
-      void openNativeAbout().then((opened) => {
-        if (!opened) startPageTransition(() => setTabState("about"));
-      });
-      return;
-    }
+    scrollPositions.current[tab] = window.scrollY;
     if (next === "messages") setMessagesTabVisited(true);
     startPageTransition(() => setTabState(next));
   };
-  const openSearch = () => {
-    setSearchReturnTab(tab);
-    setSearchDraft(searchTerm);
-    setTab("search");
-  };
+  useLayoutEffect(() => {
+    window.scrollTo({ top: scrollPositions.current[tab] || 0, behavior: "instant" });
+  }, [tab]);
+  const openNotifications = (returnTab = "messages") => { setSecondaryReturnTab(returnTab); setTab("notifications"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openMineSettings = () => { scrollPositions.current.mine = window.scrollY; setSettingsPersonalOpen(false); setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openExplorationCenter = () => { scrollPositions.current.mine = window.scrollY; setTab("exploration-center"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openCoExplore = (returnTab: "mine" | "exploration-center" = "mine") => { scrollPositions.current[returnTab] = window.scrollY; setSecondaryReturnTab(returnTab); setTab("co-explore"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const openMineFeature = (feature: "monthly-recap" | "card-chain", returnTab: "mine" | "exploration-center" = "mine") => { scrollPositions.current[returnTab] = window.scrollY; setSecondaryReturnTab(returnTab); setTab(feature); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); };
+  const returnToSecondaryTab = () => { const destination = secondaryReturnTab; setTab(destination); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[destination] || 0, behavior: "instant" })); };
   const closeSearch = () => setTab(searchReturnTab || "discover");
+  const closeAuthorProfile = () => {
+    setAuthorProfile(null);
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("profile")) return;
+    url.searchParams.delete("profile");
+    window.history.replaceState(window.history.state, "", url);
+  };
+  const openMyContent = (returnTab: "mine" | "settings" = "mine") => {
+    scrollPositions.current[returnTab] = window.scrollY;
+    setMyContentReturnTab(returnTab);
+    setTab("my-content");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
+  const openCreatorCenter = (returnTab: "mine" | "settings" = "settings") => {
+    scrollPositions.current[returnTab] = window.scrollY;
+    setMyContentReturnTab(returnTab);
+    setTab("creator-center");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
   const submitSearch = (value = searchDraft) => {
     const normalized = value.trim().slice(0, 60);
     setSearchDraft(normalized);
     setSearchTerm(normalized);
     setSearchPage(1);
+    searchCursorRef.current = null;
     setSearchPosts([]);
     setSearchPeople([]);
     setSearchTotal(0);
+    setSearchHasMore(false);
     setSearchError("");
     setSearchRetry((n) => n + 1);
     if (normalized) {
@@ -609,6 +801,7 @@ export default function Community() {
   };
   const [detailSort, setDetailSort] = useState<"热度" | "最新">("最新");
   const [commentSending, setCommentSending] = useState(false);
+  const [commentInputExpanded, setCommentInputExpanded] = useState(false);
   const [commentTotal, setCommentTotal] = useState(0);
   const [commentOffset, setCommentOffset] = useState(0);
   const [commentHasMore, setCommentHasMore] = useState(false);
@@ -617,13 +810,34 @@ export default function Community() {
   const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
   const commentLikeBusy = useRef(new Set<number>());
   const [likeBusy, setLikeBusy] = useState(false);
+  const [discoveryLikeBusy, setDiscoveryLikeBusy] = useState<Record<number, boolean>>({});
+  const discoveryLikeBusyRef = useRef(new Set<number>());
+  const [detailLikeCounts, setDetailLikeCounts] = useState<Record<number, number>>({});
   const [previewImage, setPreviewImage] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const imageTouchStart = useRef<number | null>(null);
+  const [displayedImageIndex, setDisplayedImageIndex] = useState(0);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [detailImageDirection, setDetailImageDirection] = useState<"next" | "previous">("next");
+  const preloadedDetailImages = useRef(new Map<string, { image: HTMLImageElement; promise: Promise<HTMLImageElement> }>());
+  const imageSwitchSequence = useRef(0);
+  const imageTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const imageSwipeTriggered = useRef(false);
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
+  const [replyTargetName, setReplyTargetName] = useState<string | undefined>();
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastDraftPayload = useRef("");
+  const draftSaveTimer = useRef<number | null>(null);
+  const draftCloudQueue = useRef<Promise<void>>(Promise.resolve());
+  const composerSession = useRef(0);
+  const draftRevision = useRef(0);
+  const composerDraftRef = useRef<Post | null>(null);
+  const composerCloudDrafts = useRef(new Map<string, Post>());
+  const flushComposerDraft = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => { composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.clear(); }, [accountId]);
+  const publishInFlight = useRef(false);
+  const videoCompressionSequence = useRef(0);
+  const videoCompressionAbort = useRef<AbortController | null>(null);
   const draftMediaBusy = useRef(new Set<string>());
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
@@ -637,11 +851,11 @@ export default function Community() {
   const selectedDayIds = state.opened[selectedDay] || [];
   const all = useMemo(() => [
     ...new Map(
-      [...publicFeed, ...topicPosts, ...searchPosts, ...Object.values(state.revealed), ...state.own].map(
+      [...publicFeed, ...topicPosts, ...searchPosts, ...bookmarkedPosts, ...Object.values(state.revealed), ...state.own].map(
         (post) => [post.id, post],
       ),
     ).values(),
-  ], [publicFeed, topicPosts, searchPosts, state.revealed, state.own]);
+  ], [publicFeed, topicPosts, searchPosts, bookmarkedPosts, state.revealed, state.own]);
   const opened = state.opened[today] || [];
   const latestOpenedDay = Object.keys(state.opened)
     .filter((day) => state.opened[day]?.length)
@@ -654,7 +868,9 @@ export default function Community() {
     ? null
     : state.revealed[latestOpenedId] || null;
   const luckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
-  const dailyAllowance = 5 + luckyBonusToday;
+  const membershipTier = experienceSummary.membershipTier || "free";
+  const memberFlipAllowance = baseDailyFlipAllowance(membershipTier);
+  const dailyAllowance = memberFlipAllowance + luckyBonusToday;
   const candidatePosts = state.cardIds.map(
     (id) =>
       state.revealed[id] ||
@@ -672,8 +888,10 @@ export default function Community() {
     candidatePosts,
     state.interests,
     state.deck[today] || [],
+    50,
+    today,
   );
-  const visibleCandidates = candidates.slice(0, page);
+  const visibleCandidates = candidates;
   const openedIds = [
     ...new Set([
       ...Object.values(state.opened).flat(),
@@ -711,108 +929,86 @@ export default function Community() {
       (state.savedFrom?.[post.id] || (state.revealed[post.id] ? "today" : "discover")) ===
         (favoriteSource === "今日翻卡" ? "today" : "discover")),
   );
+  const collectionPosts = favoriteCollection !== "all" && favoriteCollection !== "uncategorized"
+    ? bookmarkCollectionContents[favoriteCollection] || []
+    : favoritePosts;
+  const favoritePostsForView = collectionPosts.filter((post) => favoriteSource === "全部" || (state.savedFrom?.[post.id] || (state.revealed[post.id] ? "today" : "discover")) === (favoriteSource === "今日翻卡" ? "today" : "discover"));
+  const organizedFavoritePosts = favoritePostsForView.filter((post) => {
+    const assignedCollection = bookmarkMembership[post.cloudId || ""] || null;
+    const inCollection = favoriteCollection !== "all" && favoriteCollection !== "uncategorized" ? true : favoriteCollection === "all" || !assignedCollection;
+    const term = favoriteSearch.trim().toLocaleLowerCase();
+    const matches = !term || [post.title, post.tag, post.author, post.body].some((value) => value.toLocaleLowerCase().includes(term));
+    return inCollection && matches;
+  });
   const likedPosts = all.filter((post) => state.liked?.includes(post.id));
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      let loaded: State = initial;
-      try {
-        const rawSnapshot = await loadCardStateSnapshot<unknown>("heika-demo-v1");
-        staleCardMedia.current = {
-          key: "heika-demo-v1",
-          ids: new Set(cachedStateNeedingCardRefresh(rawSnapshot)),
+    let loaded: State = initial;
+    try {
+      const raw = localStorage.getItem("heika-demo-v1");
+      if (raw) {
+        const saved = JSON.parse(raw);
+        loaded = {
+          ...initial, ...saved, comments: [], dailyCount: 5,
+          revealed: saved.revealed || {}, rarityTiers: saved.rarityTiers || {},
+          notifications: saved.notifications || initial.notifications,
+          readingMode: saved.readingMode || (saved.compactReading ? "focus" : "standard"),
         };
-        const saved = normalizeSavedState(rawSnapshot);
-        if (saved) {
-          loaded = {
-            ...initial,
-            ...saved,
-            comments: [],
-            dailyCount: 5,
-            revealed: saved.revealed || {},
-            rarityTiers: saved.rarityTiers || {},
-            notifications: saved.notifications || initial.notifications,
-            readingMode:
-              saved.readingMode ||
-              ((saved as Partial<State> & { compactReading?: boolean }).compactReading ? "focus" : "standard"),
-          };
-          const legacyOpened = [
-            ...new Set<number>(Object.values(loaded.opened).flat()),
-          ].filter((id) => !loaded.revealed[id] || cachedPostNeedsRefresh((rawSnapshot as Partial<State> | null)?.revealed?.[id]));
-          if (legacyOpened.length) {
-            const batches = Array.from({ length: Math.ceil(legacyOpened.length / 100) }, (_, index) => legacyOpened.slice(index * 100, (index + 1) * 100));
-            const results = (await Promise.all(batches.map(async (ids) => {
-              const response = await fetch("/api/demo/cards", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ids }),
-              });
-              const result = await response.json();
-              return response.ok && Array.isArray(result.data?.items) ? result.data.items as Post[] : [];
-            }))).flat();
-            loaded = {
-              ...loaded,
-              rarityTiers: {
-                ...loaded.rarityTiers,
-                ...Object.fromEntries(
-                  results
-                    .filter((post): post is Post => Boolean(post.rarityTier))
-                    .map((post) => [post.id, post.rarityTier!]),
-                ),
-              },
-              revealed: {
-                ...loaded.revealed,
-                ...Object.fromEntries(
-                  results
-                    .filter((post): post is Post => Boolean(post))
-                    .map((post) => [post.id, post]),
-                ),
-              },
+      }
+    } catch {}
+    // Local navigation must be usable even when either background request stalls.
+    setState(loaded);
+    setReady(true);
+    const refreshIds = [...new Set([
+      ...Object.values(loaded.opened).flat(),
+      ...Object.keys(loaded.revealed).map(Number),
+    ])].filter(Number.isSafeInteger);
+    const refreshHistory = async () => {
+      // Bound concurrency so a long history does not flood the startup connection.
+      for (let offset = 0; offset < refreshIds.length && !cancelled; offset += 100) {
+        try {
+          const response = await cloudFetch("/api/demo/cards", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: refreshIds.slice(offset, offset + 100) }),
+          });
+          const result = await response.json();
+          if (!response.ok || cancelled || !Array.isArray(result.data?.items)) continue;
+          setState((current) => {
+            const eligible = new Set([...Object.keys(current.revealed).map(Number), ...Object.values(current.opened).flat()]);
+            const posts = (result.data.items as Post[]).filter((post) => eligible.has(post.id));
+            return { ...current,
+              revealed: { ...current.revealed, ...Object.fromEntries(posts.map((post) => [post.id, post])) },
+              rarityTiers: { ...current.rarityTiers, ...Object.fromEntries(posts.filter((post) => post.rarityTier).map((post) => [post.id, post.rarityTier!])) },
             };
-          }
-        }
-      } catch {}
-      if (cancelled) return;
-      setState(loaded);
-      try {
-        const response = await fetch("/api/demo/cards", { cache: "no-store" });
-        const { data } = await response.json();
-        if (!cancelled && Array.isArray(data))
-          setState((current) => ({
-            ...current,
-            cardIds: data.map((item: { id: number }) => item.id),
-          }));
-      } catch {}
-      if (!cancelled) setReady(true);
+          });
+        } catch {}
+      }
     };
-    void load();
-    return () => {
-      cancelled = true;
-    };
+    void refreshHistory();
+    // Published card IDs are public: fetching them must not wait on auth initialization.
+    void fetch("/api/demo/cards", { cache: "no-store" }).then(async (response) => {
+      const { data } = await response.json();
+      if (response.ok && !cancelled && Array.isArray(data)) {
+        setState((current) => ({ ...current, cardIds: data.map((item: { id: number }) => item.id) }));
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => {
-    if (!ready || !accountReady) return;
+    if (!ready) return;
     const timer = window.setTimeout(() => {
       const cachedState: Partial<State> = { ...state };
       delete cachedState.comments;
-      void saveCardStateSnapshot(storageKey, cachedState);
+      const isSignedImage = (src?: string) => Boolean(src && (src.startsWith("/api/v1/media?") || src.includes("/storage/v1/object/sign/")));
+      cachedState.revealed = Object.fromEntries(Object.entries(state.revealed).map(([id, post]) => [id, {
+        ...post,
+        image: isSignedImage(post.image) ? undefined : post.image,
+        images: post.images?.filter((image) => !isSignedImage(image)),
+      }]));
+      try { localStorage.setItem(storageKey, JSON.stringify(cachedState)); } catch { /* Storage quota must not interrupt navigation. */ }
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [state, ready, accountReady, storageKey]);
-  useEffect(() => {
-    if (!ready || !accountReady) return;
-    const persist = () => {
-      const cachedState: Partial<State> = { ...state };
-      delete cachedState.comments;
-      void saveCardStateSnapshot(storageKey, cachedState);
-    };
-    document.addEventListener("visibilitychange", persist);
-    window.addEventListener("pagehide", persist);
-    return () => {
-      document.removeEventListener("visibilitychange", persist);
-      window.removeEventListener("pagehide", persist);
-    };
-  }, [state, ready, accountReady, storageKey]);
+  }, [state, ready, storageKey]);
   useEffect(() => () => {
     readingTimer.current.forEach(window.clearTimeout);
     if (ratingPulseTimer.current !== null) window.clearTimeout(ratingPulseTimer.current);
@@ -822,118 +1018,160 @@ export default function Community() {
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
     if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
     noticeQueue.current = [];
-    currentNotice.current = null;
+    noticeRef.current = null;
   }, []);
   useEffect(() => {
-    if (hasNativeBridge()) {
-      return;
-    }
     if (!("Notification" in window)) {
       setNotificationPermission("unsupported");
       return;
     }
     setNotificationPermission(Notification.permission);
-  }, [refreshNativeNotificationStatus]);
-  useEffect(() => {
-    if (!hasNativeBridge()) return;
-    const onLifecycle = (payload: Record<string, unknown>) => {
-      if (payload.state === "foreground") void refreshNativeNotificationStatus();
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") void refreshNativeNotificationStatus();
-    };
-    const unsubscribe = subscribeNativeEvent("app.lifecycle", onLifecycle);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      unsubscribe();
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [refreshNativeNotificationStatus]);
+  }, []);
   const loadPublicFeed = useCallback(async (requestedPage = 1, reset = false, requestedTag = category) => {
     if (publicFeedLoading.current && !reset) return;
     if (reset) feedController.current?.abort();
+    if (reset) feedCursor.current = null;
     const controller = new AbortController();
     feedController.current = controller;
-    const requestSequence = ++feedRequestSequence.current;
     publicFeedLoading.current = true;
     setFeedLoading(true);
     setFeedError("");
-    const params = new URLSearchParams({ mode: "discover", page: String(requestedPage), limit: "24" });
+    const params = new URLSearchParams({ mode: "discover", limit: "24" });
     if (requestedTag !== "全部") params.set("tag", requestedTag);
-    const cacheKey = `discover:${requestedTag}:${requestedPage}`;
-    let networkApplied = false;
-    let cacheApplied = false;
-    const cached = readPublicCache<{ items: Post[]; total: number }>(cacheKey, 5 * 60 * 1000);
-    const network = fetch(`/api/demo/cards?${params}`, { cache: "no-store", signal: controller.signal });
-    void cached.then((entry) => {
-      if (!entry || !Array.isArray(entry.value.items) || controller.signal.aborted ||
-          requestSequence !== feedRequestSequence.current || networkApplied) return;
-      cacheApplied = true;
-      const { items, total } = entry.value;
-      setPublicFeed((current) => reset ? items : appendUniqueById(current, items));
-      setFeedTotal(Number(total) || items.length);
-      setFeedPage(requestedPage);
-      setFeedHasMore(requestedPage * 24 < (Number(total) || 0));
-      setFeedLoadedTag(requestedTag);
-      if (reset) setPage(12);
-      else setPage((current) => current + items.length);
-    }).catch(() => undefined);
+    if (sort === "关注") params.set("following", "1");
+    if (!reset && feedCursor.current) {
+      params.set("cursorCreatedAt", feedCursor.current.createdAt);
+      params.set("cursorPostId", feedCursor.current.postId);
+    }
     try {
-      const response = await network;
+      const requestUrl = `/api/demo/cards?${params}`;
+      const response = sort === "关注"
+        ? await cloudFetch(requestUrl, { cache: "no-store", signal: controller.signal })
+        : await fetch(requestUrl, { cache: "default", signal: controller.signal });
       const result = await response.json();
       if (!response.ok) throw new Error("内容加载失败");
       const payload = result.data;
       const items: Post[] | undefined = Array.isArray(payload) ? payload : payload?.items;
       if (!Array.isArray(items)) throw new Error("内容格式无效");
       if (controller.signal.aborted) return;
-      networkApplied = true;
-      setPublicFeed((current) => reset ? items : appendUniqueById(current, items));
-      const total = Array.isArray(payload) ? items.length : Number(payload.total) || 0;
-      setFeedTotal(total);
-      setFeedPage(requestedPage);
-      setFeedHasMore(!Array.isArray(payload) && requestedPage * 24 < total);
-      setFeedLoadedTag(requestedTag);
-      setPage((current) => reset ? 12 : cacheApplied ? current : current + items.length);
-      schedulePublicCacheWrite(cacheKey, { items, total });
-      for (const item of items) schedulePublicCacheWrite(`post:${item.id}`, item);
-    } catch {
-      if (!controller.signal.aborted && requestSequence === feedRequestSequence.current) {
-        const fallback = await cached.catch(() => null);
-        if (!fallback) setFeedError("内容加载失败，请重试");
+      const pageRatings = { ...communityRatings };
+      for (const item of items) {
+        if (typeof item.ratingAverage === "number" && typeof item.ratingCount === "number") {
+          pageRatings[item.id] = { average: item.ratingAverage, count: item.ratingCount };
+        }
       }
+      const orderedItems = sort === "最新"
+        ? items
+        : sort === "高分"
+          ? [...items].sort((a, b) => (b.ratingAverage || 0) - (a.ratingAverage || 0) || (b.ratingCount || 0) - (a.ratingCount || 0) || b.date.localeCompare(a.date) || b.id - a.id)
+          : rankRecommendations(items, state.interests, state.viewed, state.ratings, pageRatings);
+      setPublicFeed((current) => {
+        if (reset) return orderedItems;
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...orderedItems.filter((item) => !seen.has(item.id))];
+      });
+      setFeedPostIds((current) => reset
+        ? orderedItems.map((item) => item.id)
+        : [...current, ...orderedItems.filter((item) => !current.includes(item.id)).map((item) => item.id)]);
+      setCommunityRatings((current) => ({ ...current, ...Object.fromEntries(items.flatMap((item) =>
+        typeof item.ratingAverage === "number" && typeof item.ratingCount === "number"
+          ? [[item.id, { average: item.ratingAverage, count: item.ratingCount }]]
+          : [],
+      )) }));
+      feedCursor.current = !Array.isArray(payload) && payload.cursor ? payload.cursor : null;
+      const total = Array.isArray(payload) ? items.length : typeof payload.total === "number" ? payload.total : null;
+      setFeedTotal((current) => reset ? total ?? items.length : total ?? current);
+      setFeedPage((current) => reset ? 1 : Math.max(current + 1, requestedPage));
+      setFeedHasMore(!Array.isArray(payload) && Boolean(payload.hasMore));
+      setFeedLoadedTag(requestedTag);
+      setFeedLoadedSort(sort);
+      setPage((current) => reset ? Math.min(12, items.length) : current);
+    } catch {
+      if (!controller.signal.aborted) setFeedError("内容加载失败，请重试");
     } finally {
-      if (feedController.current === controller && requestSequence === feedRequestSequence.current) {
+      if (feedController.current === controller) {
         publicFeedLoading.current = false;
         setFeedLoading(false);
       }
     }
-  }, [category]);
+  }, [category, sort, state.interests, state.viewed, state.ratings, communityRatings]);
   useEffect(() => {
-    if (!ready || tab !== "discover") return;
+    if (!ready) return;
+    let active = true;
+    void Promise.all([
+      cloudFetch("/api/v1/categories?channel=community&kind=category", { cache: "no-store" }).then((response) => response.json()),
+      cloudFetch("/api/v1/categories?channel=ai&kind=category", { cache: "no-store" }).then((response) => response.json()),
+    ]).then(([communityResult, aiResult]) => {
+      if (!active) return;
+      const communityItems = Array.isArray(communityResult.data?.items) ? communityResult.data.items : [];
+      const aiItems = Array.isArray(aiResult.data?.items) ? aiResult.data.items : [];
+      if (communityItems.length) setCommunityCategories(communityItems.filter((item: { kind?: string }) => item.kind === "category").map((item: { name: string }) => item.name));
+      if (aiItems.length) setAiCategories(aiItems.filter((item: { kind?: string }) => item.kind === "category"));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [ready]);
+  useEffect(() => {
+    const updateColumns = () => setDiscoverColumnCount(window.innerWidth >= 1600 ? 5 : window.innerWidth >= 1280 ? 4 : window.innerWidth >= 768 ? 3 : 2);
+    updateColumns();
+    window.addEventListener("resize", updateColumns, { passive: true });
+    return () => window.removeEventListener("resize", updateColumns);
+  }, []);
+  useEffect(() => {
+    if (!ready || tab !== "discover" || discoverChannel !== "community") return;
     const wantedTag = category;
-    if (feedLoadedTag === wantedTag && (publicFeed.length || feedPage > 0)) return;
+    if (feedLoadedTag === wantedTag && feedLoadedSort === sort && (publicFeed.length || feedPage > 0)) return;
     void loadPublicFeed(1, true, wantedTag);
-  }, [ready, tab, category, feedLoadedTag, publicFeed.length, feedPage, loadPublicFeed]);
-  const missingMineIdsKey = useMemo(() => {
-    const availableIds = new Set(all.map((post) => post.id));
-    return [...new Set([...state.saved, ...(state.liked || [])])]
-      .filter((id) => !availableIds.has(id))
-      .join(",");
-  }, [all, state.saved, state.liked]);
+  }, [ready, tab, discoverChannel, category, sort, feedLoadedTag, feedLoadedSort, publicFeed.length, feedPage, loadPublicFeed]);
+  useEffect(() => {
+    if (tab !== "discover" || discoverChannel !== "community") return;
+    let active = true;
+    void cloudFetch("/api/v1/topic-events", { cache: "no-store" }).then((response) => response.json()).then((result) => {
+      if (active && Array.isArray(result.data?.items)) setTopicEvents(result.data.items as TopicEvent[]);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [tab, discoverChannel]);
+  useEffect(() => {
+    if (!accountId) { setCreatorSeries([]); return; }
+    let active = true;
+    void cloudRequest("/api/v1/series").then((data) => { if (active && Array.isArray(data?.items)) setCreatorSeries(data.items as PostSeries[]); }).catch(() => {});
+    return () => { active = false; };
+  }, [accountId, tab]);
+  const createPostSeries = async () => {
+    if (!seriesName.trim()) return;
+    try {
+      const item = await cloudRequest("/api/v1/series", { title: seriesName.trim(), description: seriesDescription.trim() }) as PostSeries | null;
+      if (item) { setCreatorSeries((items) => [item, ...items]); setSeriesName(""); setSeriesDescription(""); toast("作品系列已创建，发布内容时可以加入"); }
+    } catch (error) { toast(error instanceof Error ? error.message : "系列创建失败"); }
+  };
+  const joinTopicEvent = async (event: TopicEvent) => {
+    if (!accountId) { toast("登录后可以参加话题共创"); return; }
+    try {
+      const result = await cloudRequest("/api/v1/topic-events", { eventId: event.id }) as { joined: boolean };
+      setTopicEvents((items) => items.map((item) => item.id === event.id ? { ...item, joined: result.joined, participantCount: Math.max(0, item.participantCount + (result.joined ? 1 : -1)) } : item));
+      if (result.joined) {
+        setWriteTag(event.topic); setWriteTopics((items) => [...new Set([...items, event.topic])].slice(0, 5));
+        await openComposer();
+        setWriteTag(event.topic); setWriteTopics((items) => [...new Set([...items, event.topic])].slice(0, 5));
+        toast(`已加入共创，发布时已选中 #${event.topic}`);
+      }
+    } catch (error) { toast(error instanceof Error ? error.message : "参加活动失败，请重试"); }
+  };
+  const missingMineIds = [...new Set([...state.saved, ...(state.liked || [])])].filter((id) => !all.some((post) => post.id === id));
+  const missingMineIdsKey = missingMineIds.join(",");
   useEffect(() => {
     if (tab !== "mine" || !missingMineIdsKey) return;
     const controller = new AbortController();
     const ids = missingMineIdsKey.split(",").map(Number);
     const batches = Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) => ids.slice(index * 100, (index + 1) * 100));
     void Promise.all(batches.map(async (batch) => {
-      const response = await fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch }), signal: controller.signal });
+      const response = await cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch }), signal: controller.signal });
       if (!response.ok) throw new Error("内容加载失败");
       const result = await response.json();
       return Array.isArray(result.data?.items) ? result.data.items as Post[] : [];
     })).then((results) => {
       if (controller.signal.aborted) return;
       const items = results.flat();
-      setPublicFeed((current) => appendUniqueById(current, items));
+      setPublicFeed((current) => [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]);
     }).catch(() => {});
     return () => controller.abort();
   }, [tab, missingMineIdsKey]);
@@ -947,6 +1185,15 @@ export default function Community() {
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   useEffect(() => {
+    if (!ready || !state.cardIds.length || state.deck[today]?.length) return;
+    const deck = dailyCandidates(candidatePosts, state.interests, [], 50, today).map((post) => post.id);
+    if (!deck.length) return;
+    update((current) => current.deck[today]?.length ? current : {
+      ...current,
+      deck: { ...current.deck, [today]: deck },
+    });
+  }, [ready, today, state.cardIds, state.deck, state.interests, candidatePosts]);
+  useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("heika-search-recent") || "[]");
       if (Array.isArray(saved)) setSearchRecent(saved.filter((item): item is string => typeof item === "string").slice(0, 8));
@@ -957,16 +1204,22 @@ export default function Community() {
     const controller = new AbortController();
     setSearchLoading(true);
     setSearchError("");
-    const url = `/api/v1/search?q=${encodeURIComponent(searchTerm)}&kind=${searchKind}&page=${searchPage}&limit=12`;
-    void fetch(url, { signal: controller.signal, cache: "no-store" })
+    const cursor = searchKind === "content" && searchPage > 1 && searchCursorRef.current
+      ? `&cursor=${encodeURIComponent(searchCursorRef.current)}`
+      : "";
+    const url = `/api/v1/search?q=${encodeURIComponent(searchTerm)}&kind=${searchKind}&page=${searchPage}&limit=12${cursor}`;
+    void fetch(url, { signal: controller.signal, cache: "default" })
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok || !Array.isArray(result.data?.items)) throw new Error(result.error || "搜索失败，请重试");
         const items = result.data.items as (Post | SearchPerson)[];
-        setSearchTotal(result.data.total || 0);
         if (searchKind === "content") {
+          searchCursorRef.current = result.data.next_cursor || null;
+          setSearchHasMore(Boolean(result.data.has_more));
           setSearchPosts((current) => searchPage === 1 ? items as Post[] : [...current, ...(items as Post[])]);
         } else {
+          setSearchTotal(result.data.total || 0);
+          setSearchHasMore(false);
           setSearchPeople((current) => searchPage === 1 ? items as SearchPerson[] : [...current, ...(items as SearchPerson[])]);
         }
       })
@@ -977,7 +1230,7 @@ export default function Community() {
     return () => controller.abort();
   }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
-  const openSettingsDetail = (detail: "theme" | "font" | "bottomNav" | "discoverLayout" | "homeMode" | "reading" | "notifications" | "profile" | "interests" | "privacy" | "progression", returnTab: "settings" | "mine" = "settings") => {
+  const openSettingsDetail = (detail: SettingsDetail | "feedbackAdmin", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
     startPageTransition(() => {
       setSettingsReturnTab(returnTab);
@@ -993,13 +1246,187 @@ export default function Community() {
     });
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[settingsReturnTab] || 0, behavior: "instant" }));
   };
+  const openAboutPage = () => {
+    scrollPositions.current.settings = window.scrollY;
+    setTab("about");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
+  const closeAboutPage = () => {
+    setTab("settings");
+    requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" }));
+  };
+  const openFeedbackFromAbout = () => {
+    setSettingsReturnTab("settings");
+    startPageTransition(() => {
+      setSettingsDetailState("feedback");
+      setTabState("settings");
+    });
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  };
+  const updateBookmarkVisibility = async (value: boolean) => {
+    if (!accountId) {
+      toast("登录后可管理收藏公开状态");
+      setTab("messages");
+      return;
+    }
+    const previous = publicBookmarks;
+    if (!await confirmInApp(value
+      ? "将收藏设置为公开展示？其他人可以在你的主页浏览收藏。"
+      : "停止展示我的收藏？其他人将无法在你的主页浏览收藏。", {title:"更新收藏公开范围",confirmLabel:"确认更新"})) return;
+    setPublicBookmarks(value);
+    setPublicBookmarksLoaded(true);
+    setBookmarkVisibilityBusy(true);
+    void cloudRequest("/api/v1/me", { show_bookmarks: value }, "PATCH")
+      .then((result) => { if (!result) throw new Error("会话已失效"); toast("公开范围已更新"); })
+      .catch(() => {
+        setPublicBookmarks(previous);
+        toast("同步失败，请重试");
+      })
+      .finally(() => setBookmarkVisibilityBusy(false));
+  };
+  const saveBookmarkCollection = async () => {
+    const name = newCollectionName.trim();
+    if (!name) return;
+    if (!accountId) { toast("登录后可以整理收藏夹"); return; }
+    try {
+      const data = await cloudRequest("/api/v1/bookmark-collections", { action: "create", name });
+      setBookmarkCollections((current) => [...current, data]);
+      setNewCollectionName("");
+      setFavoriteCollection(data.id);
+      toast("收藏夹已创建");
+    } catch (error) { toast(error instanceof Error ? error.message : "收藏夹创建失败"); }
+  };
+  const deleteBookmarkCollection = async (collection: BookmarkCollection) => {
+    if (!await confirmInApp(`删除“${collection.name}”？其中的内容会回到未分类收藏。`, {title:"删除收藏夹",confirmLabel:"删除",danger:true})) return;
+    try {
+      await cloudRequest("/api/v1/bookmark-collections", { action: "delete", id: collection.id });
+      setBookmarkCollections((current) => current.filter((item) => item.id !== collection.id));
+      setBookmarkMembership((current) => Object.fromEntries(Object.entries(current).map(([postId, id]) => [postId, id === collection.id ? null : id])));
+      if (favoriteCollection === collection.id) setFavoriteCollection("all");
+      toast("收藏夹已删除");
+    } catch (error) { toast(error instanceof Error ? error.message : "删除收藏夹失败"); }
+  };
+  const renameBookmarkCollection = async (collection: BookmarkCollection) => {
+    const name = editingCollectionName.trim();
+    if (!name) return;
+    try {
+      const updated = await cloudRequest("/api/v1/bookmark-collections", { action: "rename", id: collection.id, name });
+      setBookmarkCollections((current) => current.map((item) => item.id === collection.id ? updated : item));
+      setEditingCollection(null);
+      toast("收藏夹名称已更新");
+    } catch (error) { toast(error instanceof Error ? error.message : "重命名失败"); }
+  };
+  const assignBookmarkCollection = async (post: Post, collectionId: string) => {
+    if (!accountId || !post.cloudId) { toast("登录后可以整理云端收藏"); return; }
+    const value = collectionId || null;
+    const previous = bookmarkMembership[post.cloudId] || null;
+    setBookmarkMembership((current) => ({ ...current, [post.cloudId!]: value }));
+    try {
+      await cloudRequest("/api/v1/bookmark-collections", { action: "assign", postId: post.cloudId, collectionId: value });
+      setBookmarkCollectionContents((current) => {
+        const next = Object.fromEntries(Object.entries(current).map(([id, items]) => [id, items.filter((item) => item.cloudId !== post.cloudId)]));
+        if (value) next[value] = [...(next[value] || []), post];
+        return next;
+      });
+    } catch (error) {
+      setBookmarkMembership((current) => ({ ...current, [post.cloudId!]: previous }));
+      toast(error instanceof Error ? error.message : "收藏整理失败");
+    }
+  };
+  const shareBookmarkCollection = async (collection: BookmarkCollection) => {
+    try {
+      const result = await cloudRequest("/api/v1/bookmark-collections", { action: "share", id: collection.id, isPublic: true, allowCollaboration: true });
+      setBookmarkCollections((items) => items.map((item) => item.id === collection.id ? { ...item, ...result } : item));
+      const url = `${window.location.origin}${window.location.pathname}?collection=${result.share_code}`;
+      try { await navigator.clipboard.writeText(url); toast("协作分享链接已开启并复制，可邀请朋友查看和加入整理"); }
+      catch { await promptInApp("复制这个协作分享链接", url, {title:"协作分享链接",confirmLabel:"完成"}); }
+    } catch (error) { toast(error instanceof Error ? error.message : "分享设置失败"); }
+  };
+  const joinBookmarkCollection = async () => {
+    try {
+      const result = await cloudRequest("/api/v1/bookmark-collections", { action: "join", shareCode: collectionInviteCode.trim() });
+      setCollectionInviteCode("");
+      const data = await cloudRequest("/api/v1/bookmark-collections");
+      if (data?.collections) {
+        setBookmarkCollections(data.collections);
+        const rows = data.bookmarks || [];
+        setBookmarkMembership(Object.fromEntries(rows.filter((item: { userId: string }) => item.userId === accountId).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
+        const byCollection: Record<string, Post[]> = {};
+        for (const item of rows as { collectionId: string | null; post: Post | null }[]) if (item.collectionId && item.post) byCollection[item.collectionId] = [...(byCollection[item.collectionId] || []).filter((post) => post.id !== item.post!.id), item.post];
+        setBookmarkCollectionContents(byCollection);
+        setBookmarkedPosts([...new Map((rows as { post: Post | null }[]).map((item) => item.post).filter((post): post is Post => Boolean(post)).map((post) => [post.id, post])).values()]);
+      }
+      setFavoriteCollection(result.collectionId);
+      toast("已加入协作收藏夹");
+    } catch (error) { toast(error instanceof Error ? error.message : "加入失败"); }
+  };
+  useEffect(() => {
+    let active = true;
+    if (!accountId) {
+      setBookmarkCollections([]);
+      setBookmarkMembership({});
+      setBookmarkedPosts([]);
+      setBookmarkCollectionContents({});
+      setCreatorCenter(null);
+      return;
+    }
+    void cloudRequest("/api/v1/bookmark-collections").then((data) => {
+      if (!active || !data) return;
+      setBookmarkCollections(Array.isArray(data.collections) ? data.collections : []);
+      const rows = data.bookmarks || [];
+      setBookmarkMembership(Object.fromEntries(rows.filter((item: { userId: string }) => item.userId === accountId).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
+      const byCollection: Record<string, Post[]> = {};
+      for (const item of rows as { collectionId: string | null; post: Post | null }[]) if (item.collectionId && item.post) byCollection[item.collectionId] = [...(byCollection[item.collectionId] || []).filter((post) => post.id !== item.post!.id), item.post];
+      setBookmarkCollectionContents(byCollection);
+      setBookmarkedPosts([...new Map((rows as { post: Post | null }[]).map((item) => item.post).filter((post): post is Post => Boolean(post)).map((post) => [post.id, post])).values()]);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [accountId]);
+  useEffect(() => {
+    if (!accountId) return;
+    const sync = () => void cloudRequest("/api/v1/bookmark-collections").then((data) => {
+      if (!data) return;
+      setBookmarkCollections(data.collections || []);
+      const rows = data.bookmarks || [];
+      setBookmarkMembership(Object.fromEntries(rows.filter((item: { userId: string }) => item.userId === accountId).map((item: { postId: string; collectionId: string | null }) => [item.postId, item.collectionId])));
+      const byCollection: Record<string, Post[]> = {};
+      for (const item of rows as { collectionId: string | null; post: Post | null }[]) if (item.collectionId && item.post) byCollection[item.collectionId] = [...(byCollection[item.collectionId] || []).filter((post) => post.id !== item.post!.id), item.post];
+      setBookmarkCollectionContents(byCollection);
+      setBookmarkedPosts([...new Map((rows as { post: Post | null }[]).map((item) => item.post).filter((post): post is Post => Boolean(post)).map((post) => [post.id, post])).values()]);
+    }).catch(() => {});
+    window.addEventListener("heika-collections-updated", sync);
+    return () => window.removeEventListener("heika-collections-updated", sync);
+  }, [accountId]);
+  useEffect(() => {
+    if (tab !== "creator-center" || !accountId) return;
+    let active = true;
+    setCreatorCenterLoading(true);
+    void cloudRequest("/api/v1/creator-center").then((data) => {
+      if (active && data) setCreatorCenter(data);
+    }).catch((error) => {
+      if (active) toast(error instanceof Error ? error.message : "创作者数据加载失败");
+    }).finally(() => { if (active) setCreatorCenterLoading(false); });
+    return () => { active = false; };
+  }, [tab, accountId, toast]);
+  const claimCreatorMission = async (missionKey: CreatorMission["key"]) => {
+    try {
+      const claimed = await cloudRequest("/api/v1/creator-center", { missionKey });
+      const [center, summary] = await Promise.all([
+        cloudRequest("/api/v1/creator-center"),
+        cloudRequest("/api/v1/progression"),
+      ]);
+      if (center) setCreatorCenter(center);
+      if (summary) setExperienceSummary(summary);
+      toast(claimed?.claimed ? `任务完成，获得 ${claimed.points} EXP` : "本周奖励已经领取");
+    } catch (error) { toast(error instanceof Error ? error.message : "领取失败，请重试"); }
+  };
   const chooseHomeMode = (mode: "waterfall" | "blackcard") => {
     update((current) => ({ ...current, homeMode: mode }));
     void browserDb().then(async (db) => {
       const { data } = await db.auth.getUser();
       if (data.user) {
         const { error } = await db.from("browsing_preferences").upsert({ user_id: data.user.id, home_mode: mode });
-        if (error) toast("本地已保存，云端同步失败");
+        if (error) toast("同步失败，请重试");
       }
     }).catch(() => {});
   };
@@ -1013,12 +1440,6 @@ export default function Community() {
         <><i /><i /><i /><i /><i /></>}
     </span>
   );
-  const openMyContent = (returnTab: "mine" | "settings") => {
-    setMyContentReturnTab(returnTab);
-    scrollPositions.current[returnTab] = window.scrollY;
-    setTab("my-content");
-    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-  };
   const submitRating = async (postId: number, score: number) => {
     if (ratingBusy.current) return;
     ratingBusy.current = true;
@@ -1039,43 +1460,61 @@ export default function Community() {
           else setExperienceSummary((current) => ({ ...current, total: result.experience.total }));
         }).catch(() => setExperienceSummary((current) => ({ ...current, total: result.experience.total })));
       }
-      if (result.experience?.awarded) toast(`已评分 · +${result.experience.awarded} EXP`);
+      if (result.experience?.awarded) toast(`已评分 · 获得 ${result.experience.awarded} 点经验`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "评分暂未同步，请稍后重试");
     } finally {
       ratingBusy.current = false;
     }
   };
-  const displayNotice = (msg: string) => {
-    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
-    if (noticeExitTimer.current !== null) window.clearTimeout(noticeExitTimer.current);
-    noticeTimer.current = null;
-    noticeExitTimer.current = null;
-    currentNotice.current = msg;
-    setNoticeLeaving(false);
-    setNoticeId((id) => id + 1);
-    setNotice(msg);
-    noticeTimer.current = window.setTimeout(() => {
-      setNoticeLeaving(true);
-      noticeExitTimer.current = window.setTimeout(() => {
-        setNotice("");
-        setNoticeLeaving(false);
-        currentNotice.current = null;
-        noticeExitTimer.current = null;
-        noticeTimer.current = null;
-        const next = noticeQueue.current.shift();
-        if (next) displayNotice(next);
-      }, 330);
-    }, 2700);
+  const toggleDiscoveryLike = async (postId: number) => {
+    if (discoveryLikeBusyRef.current.has(postId)) return;
+    discoveryLikeBusyRef.current.add(postId);
+    const wasLiked = Boolean(state.liked?.includes(postId));
+    const nextLiked = !wasLiked;
+    setDiscoveryLikeBusy((current) => ({ ...current, [postId]: true }));
+    update((current) => ({
+      ...current,
+      liked: nextLiked
+        ? [...new Set([...(current.liked || []), postId])]
+        : (current.liked || []).filter((id) => id !== postId),
+    }));
+    try {
+      await cloudRequest("/api/v1/library-state", { action: "like", id: postId, value: nextLiked });
+    } catch {
+      update((current) => ({
+        ...current,
+        liked: wasLiked
+          ? [...new Set([...(current.liked || []), postId])]
+          : (current.liked || []).filter((id) => id !== postId),
+      }));
+      toast("点赞暂未同步，已恢复原状态");
+    } finally {
+      discoveryLikeBusyRef.current.delete(postId);
+      setDiscoveryLikeBusy((current) => {
+        const next = { ...current };
+        delete next[postId];
+        return next;
+      });
+    }
   };
-  const toast = (msg: string) => {
-    if (document.documentElement.dataset.heikaNative === "true" && currentNotice.current) {
-      if (msg === currentNotice.current || noticeQueue.current.includes(msg)) return;
-      if (noticeQueue.current.length < 3) noticeQueue.current.push(msg);
-      else noticeQueue.current[2] = msg;
+  const claimExperienceReward = async (level: number) => {
+    if (!accountId) {
+      toast("登录后即可领取并同步等级奖励");
       return;
     }
-    displayNotice(msg);
+    if (rewardClaimBusyLevel !== null) return;
+    setRewardClaimBusyLevel(level);
+    try {
+      const result = await cloudRequest("/api/v1/progression", { level });
+      const summary = await cloudRequest("/api/v1/progression");
+      if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+      toast(result?.claimed ? `LV.${level} 奖励已领取并保存到账号` : `LV.${level} 奖励此前已领取`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "奖励领取失败，请稍后重试");
+    } finally {
+      setRewardClaimBusyLevel(null);
+    }
   };
   const submitContentReport = async () => {
     if (reportSubmitting) return;
@@ -1096,18 +1535,26 @@ export default function Community() {
     setResetBusy(true);
     try {
       if (accountId) await cloudRequest("/api/v1/library-state", { action: "reset" });
-      await deleteCardStateSnapshot("heika-demo-v1");
-      await deleteCardStateSnapshot(storageKey);
-      if (accountId) await deleteCardStateSnapshot(`heika-user-${accountId}`);
+      localStorage.removeItem("heika-demo-v1");
+      localStorage.removeItem(storageKey);
+      if (accountId) localStorage.removeItem(`heika-user-${accountId}`);
       localStorage.removeItem("heika-theme");
       localStorage.removeItem("heika-font");
       localStorage.removeItem("heika-bottom-nav-style");
+      localStorage.removeItem("heika-bottom-nav-style-explicit");
+      localStorage.removeItem("heika-detail-transition");
+      localStorage.removeItem("heika-detail-transition-explicit");
       setState({ ...initial, cardIds: state.cardIds });
+      setPublicBookmarks(false);
+      setPublicBookmarksLoaded(true);
       setTheme("dark");
       setFontChoice("oppo");
-      setBottomNavStyle("fixed");
+      setBottomNavStyle("glass");
+      setDetailTransition("blur-rise");
       setSelectedCalendarDate("");
       setTab("today");
+      imageSwitchSequence.current += 1;
+      setImageLoading(false);
       setDetail(null);
       setDetailReady(false);
       setTransitionPhase(null);
@@ -1141,30 +1588,6 @@ export default function Community() {
       ? rect
       : null;
   };
-  const prewarmNativeCardTransition = (id: number, sourceElement: Element | null) => {
-    if (!hasNativeBridge() || !sourceElement) return;
-    const cardElement = sourceElement instanceof HTMLImageElement
-      ? sourceElement
-      : sourceElement.closest<HTMLElement>(
-          `[data-window-card-id="${id}"], [data-card-id="${id}"], [data-discover-id="${id}"]`,
-        ) || sourceElement;
-    const sourceImage = cardElement instanceof HTMLImageElement
-      ? cardElement
-      : cardElement.querySelector<HTMLImageElement>("img");
-    if (!sourceImage || !sourceImage.complete || sourceImage.naturalWidth < 1) return;
-    const rect = sourceImage.getBoundingClientRect();
-    const src = sourceImage.currentSrc || sourceImage.src;
-    if (!src || rect.width < 1 || rect.height < 1 || rect.bottom <= 0 || rect.top >= innerHeight) return;
-    const transactionId = globalThis.crypto?.randomUUID?.() || `card-${Date.now().toString(36)}-${id}`;
-    const safeRect: NativeTransitionRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-    const candidate: NativeTransitionCandidate = {
-      id: transactionId,
-      src,
-      createdAt: Date.now(),
-      prepared: prepareNativeCardTransition(transactionId, safeRect, window.devicePixelRatio),
-    };
-    nativeTransitionCandidate.current = candidate;
-  };
   const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null) => {
     if (source) detailSource.current = source;
     if (
@@ -1173,6 +1596,15 @@ export default function Community() {
       !all.some((p) => p.id === id)
     )
       return;
+    if (pageTransition.current) {
+      const activeTransition = pageTransition.current;
+      const resume = () => {
+        if (pageTransition.current === activeTransition) pageTransition.current = null;
+        openPost(id, source, sourceElement);
+      };
+      void activeTransition.finished.then(resume, resume);
+      return;
+    }
     const explicitSource = sourceElement?.closest<HTMLElement>(
       `[data-window-card-id="${id}"], [data-card-id="${id}"], [data-discover-id="${id}"]`,
     ) || sourceElement;
@@ -1204,48 +1636,21 @@ export default function Community() {
       });
     const sourceRect = sourceImage?.getBoundingClientRect();
     const sourceImageUrl = sourceImage?.currentSrc || sourceImage?.src;
-    let savedAnchor: DetailReturnAnchor | null = null;
-    try {
-      const raw = sessionStorage.getItem("heika-detail-return-anchor");
-      const parsed = raw ? JSON.parse(raw) as DetailReturnAnchor : null;
-      const routePost = new URLSearchParams(location.search).get("post");
-      if (parsed && parsed.postId === id && routePost === String(id) && Date.now() - parsed.savedAt < 10 * 60 * 1000) {
-        savedAnchor = parsed;
-      }
-    } catch {}
-    const sourceCard = [
-      ...document.querySelectorAll<HTMLElement>(`[data-discover-id="${id}"], [data-card-id="${id}"]`),
-    ].find((element) => {
-      const rect = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-    }) || explicitSource?.closest<HTMLElement>(`[data-window-card-id="${id}"]`);
-    const cardTop = sourceCard?.getBoundingClientRect().top;
-    const anchor: DetailReturnAnchor = savedAnchor || {
-      postId: id,
-      scrollY: window.scrollY,
-      viewportTop: Number.isFinite(cardTop) ? cardTop! : 0,
-      savedAt: Date.now(),
-    };
-    detailReturnAnchor.current = anchor;
-    scrollBeforeDetail.current = anchor.scrollY;
-    try { sessionStorage.setItem("heika-detail-return-anchor", JSON.stringify(anchor)); } catch {}
-    const candidate = nativeTransitionCandidate.current;
-    const transitionCandidate = candidate && candidate.src === sourceImageUrl && Date.now() - candidate.createdAt < 5_000
-      ? candidate
-      : null;
+    scrollBeforeDetail.current = window.scrollY;
+    imageSwitchSequence.current += 1;
+    setActiveImageIndex(0);
+    setDisplayedImageIndex(0);
+    setImageLoading(false);
+    setPreviewImage(false);
+    const cachedDetail = detailPostCache.current.get(id);
+    setDetailPostOverride(cachedDetail && Date.now() - cachedDetail.at < 45 * 60 * 1000
+      ? cachedDetail.post
+      : all.find((post) => post.id === id) || null);
     setDetailImageTransition(
-      sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
-        ? {
-            rect: sourceRect,
-            src: sourceImageUrl,
-            sourceImage,
-            nativeTransitionId: transitionCandidate?.id,
-            nativePrepared: transitionCandidate?.prepared,
-          }
+      detailTransition === "image-zoom" && sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
+        ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
         : null,
     );
-    nativeTransitionCandidate.current = null;
     if (viewerId === id) {
       cancelFlipRain(id);
       if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
@@ -1261,7 +1666,11 @@ export default function Community() {
     setDetailReady(false);
     setDetail(id);
     setTransitionPhase("opening");
-    history.pushState({ ...history.state, heikaDetail: id }, "", `/?post=${id}`);
+    history.pushState({ ...history.state, heikaDetail: id }, "");
+    update((s) => ({
+      ...s,
+      viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
+    }));
   };
   const cancelFlipRain = (id?: number) => {
     if (id !== undefined && flipRainId !== id) return;
@@ -1272,6 +1681,12 @@ export default function Community() {
   const openPostRef = useRef(openPost);
   openPostRef.current = openPost;
   useEffect(() => {
+    const sharedId = new URLSearchParams(location.search).get("profile");
+    if (!ready || !sharedId || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sharedId) || sharedProfileHandled.current === sharedId) return;
+    sharedProfileHandled.current = sharedId;
+    setAuthorProfile(sharedId);
+  }, [ready]);
+  useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
     if (!ready || !sharedId || detail !== null || sharedPostHandled.current === sharedId) return;
     const id = Number(sharedId);
@@ -1279,37 +1694,16 @@ export default function Community() {
     sharedPostHandled.current = sharedId;
     openPostRef.current(id, "discover");
   }, [ready, detail, all]);
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const conversationId = params.get("conversation");
-    if (!ready || !conversationId || params.getAll("conversation").length !== 1 ||
-        sharedConversationHandled.current === conversationId ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return;
-    sharedConversationHandled.current = conversationId;
-    setMessageConversation(conversationId.toLowerCase());
-    setMessagesTabVisited(true);
-    setTabState("messages");
-    window.history.replaceState(window.history.state, "", window.location.pathname);
-  }, [ready]);
   const sharedPostLoading = useRef<string | null>(null);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("post");
     const id = Number(sharedId);
     if (!ready || !sharedId || !Number.isSafeInteger(id) || all.some((item) => item.id === id) || sharedPostLoading.current === sharedId) return;
     sharedPostLoading.current = sharedId;
-    let networkApplied = false;
-    void readPublicCache<Post>(`post:${id}`, 30 * 60 * 1000).then((cached) => {
-      if (!cached || networkApplied) return;
-      setPublicFeed((current) => current.some((post) => post.id === id) ? current : [cached.value, ...current]);
-    }).catch(() => undefined);
-    void fetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
+    void cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })
       .then((response) => response.json().then((result) => ({ response, result })))
       .then(({ response, result }) => {
-        if (response.ok && result.data) {
-          networkApplied = true;
-          schedulePublicCacheWrite(`post:${id}`, result.data as Post);
-          setPublicFeed((current) => current.some((post) => post.id === id) ? current.map((post) => post.id === id ? result.data as Post : post) : [result.data as Post, ...current]);
-        }
+        if (response.ok && result.data) setPublicFeed((current) => current.some((post) => post.id === id) ? current : [...current, result.data as Post]);
       })
       .catch(() => {})
       .finally(() => { sharedPostLoading.current = null; });
@@ -1324,41 +1718,14 @@ export default function Community() {
       window.setTimeout(() => closeDetail(true), 420);
       return;
     }
+    imageSwitchSequence.current += 1;
+    setImageLoading(false);
     transitionBusy.current = true;
     setDetailReady(false);
     setTransitionPhase("closing");
   };
   useLayoutEffect(() => {
-    if (detail === null) {
-      if (!detailWasOpen.current) return;
-      detailWasOpen.current = false;
-      if (topicReturnPostIdRef.current !== null) return;
-      const anchor = detailReturnAnchor.current;
-      requestAnimationFrame(() => {
-        if (anchor) {
-          const source = [
-            ...document.querySelectorAll<HTMLElement>(`[data-discover-id="${anchor.postId}"], [data-card-id="${anchor.postId}"]`),
-          ].find((element) => {
-            const rect = element.getBoundingClientRect();
-            const style = getComputedStyle(element);
-            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-          });
-          if (source) {
-            const rect = source.getBoundingClientRect();
-            const targetScroll = Math.max(0, window.scrollY + rect.top - anchor.viewportTop);
-            window.scrollTo({ top: targetScroll, behavior: "instant" });
-          } else {
-            window.scrollTo({ top: anchor.scrollY, behavior: "instant" });
-          }
-          try { sessionStorage.removeItem("heika-detail-return-anchor"); } catch {}
-          detailReturnAnchor.current = null;
-        } else {
-          window.scrollTo({ top: scrollBeforeDetail.current, behavior: "instant" });
-        }
-      });
-      return;
-    }
-    detailWasOpen.current = true;
+    if (detail === null) return;
     const body = document.body,
       previousOverflow = body.style.overflow,
       previousPadding = body.style.paddingRight,
@@ -1370,27 +1737,17 @@ export default function Community() {
     return () => {
       body.style.overflow = previousOverflow;
       body.style.paddingRight = previousPadding;
-      if (topicReturnPostIdRef.current === null) {
-        window.scrollTo({ top: detailReturnAnchor.current?.scrollY ?? scrollBeforeDetail.current, behavior: "instant" });
-      }
+      window.scrollTo({ top: scrollBeforeDetail.current, behavior: "instant" });
       history.scrollRestoration = previousScrollRestoration;
     };
   }, [detail]);
   useEffect(() => {
     const onBack = () => {
-      if (detail !== null) {
-        closeDetail(true);
-        const openedPost = new URLSearchParams(location.search).get("post");
-        if (openedPost && sharedPostHandled.current === openedPost) {
-          history.replaceState(history.state, "", location.pathname);
-        }
-      } else if (tab === "topic") {
-        nativeBackHandler.current();
-      }
+      if (detail !== null) closeDetail(true);
     };
     window.addEventListener("popstate", onBack);
     return () => window.removeEventListener("popstate", onBack);
-  }, [detail, transitionPhase, tab]);
+  }, [detail, transitionPhase]);
   useLayoutEffect(() => {
     if (!viewerPhase || viewerId === null) return;
     const opening = viewerPhase === "opening",
@@ -1398,12 +1755,7 @@ export default function Community() {
       stage = viewerStageRef.current,
       reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     let animation: Animation | undefined;
-    let transaction: ReturnType<typeof animationCoordinator.track> | undefined;
-    let disposed = false;
-    let settled = false;
     const finish = () => {
-      if (settled || disposed) return;
-      settled = true;
       if (opening) setViewerPhase(null);
       else {
         setViewerId(null);
@@ -1416,13 +1768,9 @@ export default function Community() {
       finish();
       return;
     }
-    const node = stage || document.querySelector<HTMLElement>(".flip-stage");
-    if (!node) {
-      finish();
-      return;
-    }
-    try {
-      if (!rect || !stage) {
+    if (!rect || !stage) {
+      const node = document.querySelector<HTMLElement>(".flip-stage");
+      if (node) {
         animation = node.animate(
           opening
             ? [
@@ -1435,64 +1783,57 @@ export default function Community() {
               ],
           { duration: 240, easing: "ease-out", fill: "forwards" },
         );
-      } else {
-        stage.style.transformOrigin = "top left";
-        const target = stage.getBoundingClientRect();
-        const first = `translate3d(${rect.left - target.left}px,${rect.top - target.top}px,0) scale(${rect.width / target.width},${rect.height / target.height})`;
-        const radius = getComputedStyle(stage).borderRadius || "6px";
-        animation = stage.animate(
-          opening
-            ? [
-                { transform: first, borderRadius: radius, opacity: 1 },
-                { transform: "translate3d(0,0,0) scale(1)", borderRadius: radius, opacity: 1 },
-              ]
-            : [
-                { transform: "translate3d(0,0,0) scale(1)", borderRadius: radius, opacity: 1 },
-                { transform: first, borderRadius: radius, opacity: 1 },
-              ],
-          { duration: 380, easing: "cubic-bezier(.22,.72,.18,1)", fill: "forwards" },
-        );
-      }
-      transaction = animationCoordinator.track("flip-stage", "P0", animation, finish, 1_200);
-    } catch {
-      finish();
+        animation.onfinish = finish;
+      } else finish();
+      return () => animation?.cancel();
     }
-    return () => {
-      disposed = true;
-      transaction?.release();
-      animation?.cancel();
-    };
+    stage.style.transformOrigin = "top left";
+    const target = stage.getBoundingClientRect(),
+      first = `translate3d(${rect.left - target.left}px,${rect.top - target.top}px,0) scale(${rect.width / target.width},${rect.height / target.height})`;
+    animation = stage.animate(
+      opening
+        ? [
+            { transform: first, borderRadius: "7px", opacity: 1 },
+            {
+              transform: "translate3d(0,0,0) scale(1)",
+              borderRadius: "8px",
+              opacity: 1,
+            },
+          ]
+        : [
+            {
+              transform: "translate3d(0,0,0) scale(1)",
+              borderRadius: "8px",
+              opacity: 1,
+            },
+            { transform: first, borderRadius: "7px", opacity: 1 },
+          ],
+      {
+        duration: 380,
+        easing: "cubic-bezier(.22,.72,.18,1)",
+        fill: "forwards",
+      },
+    );
+    animation.onfinish = finish;
+    return () => animation?.cancel();
   }, [viewerPhase, viewerId, viewerRect]);
   useLayoutEffect(() => {
     if (!transitionPhase) return;
     const opening = transitionPhase === "opening";
+    const usesImageZoom = detailTransition === "image-zoom";
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const transitionImage = detailImageTransition;
     let imageAnimation: Animation | undefined;
-    let transaction: ReturnType<typeof animationCoordinator.track> | undefined;
     let imageClone: HTMLImageElement | null = null;
     let imageTarget: HTMLImageElement | null = null;
     let cancelled = false;
     let finished = false;
-    let panelSettled = false;
-    let imageSettled = !transitionImage || reduced;
-    let nativeStarted = false;
-    let nativeSettled = false;
-    let imageTimeout = 0;
-    const finishTransition = () => {
-      if (finished) return;
+    let detailAnimationFinished = false;
+    let imageAnimationPending = false;
+    const finish = () => {
+      if (finished || cancelled) return;
       finished = true;
-      cancelled = true;
-      window.clearTimeout(imageTimeout);
-      if (nativeStarted && !nativeSettled && transitionImage?.nativeTransitionId) {
-        void cancelNativeCardTransition(transitionImage.nativeTransitionId);
-      } else if (!nativeStarted && transitionImage?.nativeTransitionId) {
-        void releaseNativeCardTransition(transitionImage.nativeTransitionId);
-      }
-      imageAnimation?.cancel();
       imageTarget?.style.removeProperty("visibility");
       imageClone?.remove();
-      imageClone = null;
       if (opening) {
         setDetailReady(true);
       } else {
@@ -1503,174 +1844,120 @@ export default function Community() {
       setTransitionPhase(null);
       transitionBusy.current = false;
     };
-    const finishIfSettled = () => {
-      if (panelSettled && imageSettled) finishTransition();
+    const settle = () => {
+      if (detailAnimationFinished && !imageAnimationPending) finish();
     };
-    const settleImage = () => {
-      if (imageSettled) return;
-      imageSettled = true;
-      window.clearTimeout(imageTimeout);
-      finishIfSettled();
-    };
-    const onPageHide = () => finishTransition();
-    window.addEventListener("pagehide", onPageHide, { once: true });
     const detailNode = document.querySelector<HTMLElement>(".overlay .detail");
-    let animation: Animation | undefined;
-    const duration = opening ? 430 : 300;
     if (!detailNode || reduced) {
-      panelSettled = true;
+      finish();
+      return;
+    }
+    const duration = usesImageZoom ? (opening ? 320 : 240) : (opening ? 220 : 180);
+    const animation = detailNode.animate(
+      usesImageZoom
+        ? opening
+          ? [
+              { opacity: 1, transform: "translate3d(0,24px,0)" },
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+            ]
+          : [
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+              { opacity: 1, transform: "translate3d(0,18px,0)" },
+            ]
+        : opening
+          ? [
+              { opacity: .82, transform: "translate3d(0,9px,0)" },
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+            ]
+          : [
+              { opacity: 1, transform: "translate3d(0,0,0)" },
+              { opacity: .82, transform: "translate3d(0,7px,0)" },
+            ],
+      { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+    );
+    animation.onfinish = () => {
+      detailAnimationFinished = true;
+      settle();
+    };
+    const transitionImage = detailImageTransition;
+    if (usesImageZoom && transitionImage) {
       imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
-      imageTarget?.style.removeProperty("visibility");
-      imageSettled = true;
-      finishIfSettled();
-    } else {
-      try {
-        animation = detailNode.animate(
-          opening
-            ? [
-                { opacity: 1, transform: "translate3d(0,24px,0)" },
-                { opacity: 1, transform: "translate3d(0,0,0)" },
-              ]
-            : [
-                { opacity: 1, transform: "translate3d(0,0,0)" },
-                { opacity: 1, transform: "translate3d(0,18px,0)" },
-              ],
-          { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
-        );
-        transaction = animationCoordinator.track("detail-panel", "P0", animation, () => {
-          panelSettled = true;
-          finishIfSettled();
-        }, duration + 900);
-      } catch {
-        panelSettled = true;
-      }
-
-      if (transitionImage) {
-        imageTarget = document.querySelector<HTMLImageElement>(".overlay .detail-image-button img");
-        if (imageTarget) {
-          imageTimeout = window.setTimeout(() => {
-            if (nativeStarted && !nativeSettled && transitionImage.nativeTransitionId) {
-              void cancelNativeCardTransition(transitionImage.nativeTransitionId);
-              void releaseNativeCardTransition(transitionImage.nativeTransitionId);
-              nativeSettled = true;
-            }
+      if (imageTarget) {
+        imageAnimationPending = true;
+        const animateImage = async () => {
+          try { await imageTarget?.decode(); } catch {}
+          if (cancelled || !imageTarget) return;
+          const targetRect = imageTarget.getBoundingClientRect();
+          const originRect = transitionImage.rect;
+          const from = opening ? originRect : targetRect;
+          const returnRect = transitionImage.sourceImage.isConnected
+            ? transitionImage.sourceImage.getBoundingClientRect()
+            : originRect;
+          const to = opening ? targetRect :
+            returnRect.width && returnRect.height ? returnRect : originRect;
+          if (!from.width || !from.height || !to.width || !to.height || from.bottom < 0 || from.top > innerHeight || to.bottom < 0 || to.top > innerHeight) {
+            imageTarget.style.removeProperty("visibility");
+            imageAnimationPending = false;
+            settle();
+            return;
+          }
+          imageClone = new Image();
+          imageClone.src = transitionImage.src;
+          try { await imageClone.decode(); } catch {}
+          if (cancelled || !imageClone) return;
+          imageClone.alt = "";
+          imageClone.setAttribute("aria-hidden", "true");
+          Object.assign(imageClone.style, {
+            position: "fixed",
+            left: `${from.left}px`,
+            top: `${from.top}px`,
+            width: `${from.width}px`,
+            height: `${from.height}px`,
+            objectFit: "cover",
+            objectPosition: "center",
+            zIndex: "120",
+            pointerEvents: "none",
+            transformOrigin: "top left",
+            willChange: "transform,border-radius",
+          });
+          document.body.appendChild(imageClone);
+          imageTarget.style.setProperty("visibility", "hidden");
+          const translateX = to.left - from.left;
+          const translateY = to.top - from.top;
+          const scaleX = to.width / from.width;
+          const scaleY = to.height / from.height;
+          imageAnimation = imageClone.animate(
+            [
+              { transform: "translate3d(0,0,0) scale(1)", borderRadius: "6px" },
+              { transform: `translate3d(${translateX}px,${translateY}px,0) scale(${scaleX},${scaleY})`, borderRadius: "0px" },
+            ],
+            { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
+          );
+          imageAnimation.onfinish = () => {
             imageTarget?.style.removeProperty("visibility");
             imageClone?.remove();
             imageClone = null;
-            settleImage();
-          }, 1_200);
-          const animateImage = async () => {
-            const decodeTarget = imageTarget;
-            if (!decodeTarget) { settleImage(); return; }
-            try { await decodeTarget.decode(); } catch { settleImage(); return; }
-            if (cancelled || finished) return;
-            const targetRect = decodeTarget.getBoundingClientRect();
-            const originRect = transitionImage.rect;
-            const returnRect = transitionImage.sourceImage.isConnected
-              ? transitionImage.sourceImage.getBoundingClientRect()
-              : originRect;
-            const from = opening ? originRect : targetRect;
-            const to = opening ? targetRect :
-              returnRect.width && returnRect.height ? returnRect : originRect;
-            if (!from.width || !from.height || !to.width || !to.height || from.bottom < 0 || from.top > innerHeight || to.bottom < 0 || to.top > innerHeight) {
-              settleImage();
-              return;
-            }
-            if (transitionImage.nativeTransitionId && transitionImage.nativePrepared) {
-              const prepared = await transitionImage.nativePrepared.catch(() => false);
-              if (cancelled || finished) return;
-              if (prepared) {
-                const destination: NativeTransitionRect = { left: to.left, top: to.top, width: to.width, height: to.height };
-                const durationMs = opening ? 360 : 240;
-                const accepted = await startNativeCardTransition(
-                  transitionImage.nativeTransitionId,
-                  opening ? "open" : "close",
-                  destination,
-                  durationMs,
-                );
-                if (cancelled || finished) {
-                  if (accepted) void cancelNativeCardTransition(transitionImage.nativeTransitionId);
-                  return;
-                }
-                if (accepted) {
-                  nativeStarted = true;
-                  decodeTarget.style.setProperty("visibility", "hidden");
-                  const completed = await waitForNativeCardTransition(transitionImage.nativeTransitionId, durationMs + 400);
-                  nativeSettled = true;
-                  decodeTarget.style.removeProperty("visibility");
-                  if (!opening || !completed) void releaseNativeCardTransition(transitionImage.nativeTransitionId);
-                  settleImage();
-                  return;
-                }
-              }
-            }
-            if (cancelled || finished) return;
-            imageClone = new Image();
-            imageClone.src = transitionImage.src;
-            try { await imageClone.decode(); } catch { settleImage(); return; }
-            if (cancelled || finished || !imageClone) return;
-            imageClone.alt = "";
-            imageClone.setAttribute("aria-hidden", "true");
-            const deltaX = to.left - from.left;
-            const deltaY = to.top - from.top;
-            const scaleX = to.width / from.width;
-            const scaleY = to.height / from.height;
-            Object.assign(imageClone.style, {
-              position: "fixed",
-              left: `${from.left}px`,
-              top: `${from.top}px`,
-              width: `${from.width}px`,
-              height: `${from.height}px`,
-              objectFit: "cover",
-              objectPosition: "center",
-              zIndex: "120",
-              pointerEvents: "none",
-              transformOrigin: "top left",
-              willChange: "transform,border-radius",
-            });
-            document.body.appendChild(imageClone);
-            decodeTarget.style.setProperty("visibility", "hidden");
-            try {
-              imageAnimation = imageClone.animate(
-                [
-                  { transform: "translate3d(0,0,0) scale(1,1)", borderRadius: "6px" },
-                  { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(${scaleX},${scaleY})`, borderRadius: "0px" },
-                ],
-                { duration, easing: "cubic-bezier(.2,.78,.18,1)", fill: "both" },
-              );
-              imageAnimation.addEventListener("finish", () => {
-                decodeTarget.style.removeProperty("visibility");
-                imageClone?.remove();
-                imageClone = null;
-                settleImage();
-              }, { once: true });
-            } catch {
-              decodeTarget.style.removeProperty("visibility");
-              imageClone.remove();
-              imageClone = null;
-              settleImage();
-            }
+            imageAnimationPending = false;
+            settle();
           };
-          void animateImage();
-        } else imageSettled = true;
+        };
+        void animateImage().catch(() => {
+          imageTarget?.style.removeProperty("visibility");
+          imageClone?.remove();
+          imageClone = null;
+          imageAnimationPending = false;
+          settle();
+        });
       }
-      if (reduced) imageSettled = true;
-      finishIfSettled();
     }
     return () => {
       cancelled = true;
-      window.removeEventListener("pagehide", onPageHide);
-      window.clearTimeout(imageTimeout);
-      transaction?.release();
       animation?.cancel();
       imageAnimation?.cancel();
       imageTarget?.style.removeProperty("visibility");
       imageClone?.remove();
-      if (nativeStarted && !nativeSettled && transitionImage?.nativeTransitionId) {
-        void cancelNativeCardTransition(transitionImage.nativeTransitionId);
-      }
     };
-  }, [transitionPhase, detailImageTransition]);
+  }, [transitionPhase, detailImageTransition, detailTransition]);
   const toggleSave = async (id: number) => {
     const value = !state.saved.includes(id);
     try {
@@ -1691,7 +1978,7 @@ export default function Community() {
   const flip = (id: number, origin?: Element) => {
     if (flipBusy.current || justFlippedId === id || transitionBusy.current)
       return;
-    if (state.revealed[id]) {
+    if (opened.includes(id) && state.revealed[id]) {
       setViewerRect(origin?.getBoundingClientRect() || findVisibleCard(id));
       setViewerId(id);
       setViewerFlipped(true);
@@ -1715,16 +2002,16 @@ export default function Community() {
       return;
     }
     const available = candidates.filter(
-      (candidate) => !state.revealed[candidate.id] && !opened.includes(candidate.id),
+      (candidate) => !opened.includes(candidate.id),
     );
-    const unlocked = candidates.filter((candidate) => Boolean(state.revealed[candidate.id]));
+    const unlocked = candidates.filter((candidate) => opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]));
     const pool = opened.length < dailyAllowance ? [...available, ...unlocked] : unlocked;
     if (!pool.length) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
     }
     const assigned = candidates.find((candidate, candidatePosition) =>
-      Boolean(state.revealed[candidate.id]) &&
+      opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]) &&
       (state.facetSlots?.[candidate.id] ?? candidatePosition % blackCardFacets.length) === facet,
     );
     const candidate = assigned || pool[(facetIndex + facet) % pool.length];
@@ -1749,7 +2036,7 @@ export default function Community() {
     flipBusy.current = true;
     setFlippingId(id);
     try {
-      const response = await fetch("/api/demo/cards", {
+      const response = await cloudFetch("/api/demo/cards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -1779,10 +2066,6 @@ export default function Community() {
         },
       };
       setState(next);
-      staleCardMedia.current.ids.delete(id);
-      const cacheState: Partial<State> = { ...next };
-      delete cacheState.comments;
-      void saveCardStateSnapshot(storageKey, cacheState);
       setViewerFlipped(true);
       setViewerRevealPhase("rarity");
       if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
@@ -1864,17 +2147,13 @@ export default function Community() {
     ];
   };
   const toggleNotification = async (key: "messages" | "comments" | "daily") => {
+    if (key !== "messages") return toast("该功能正在完善中");
     if (state.notifications[key]) {
       update((s) => ({
         ...s,
         notifications: { ...s.notifications, [key]: false },
       }));
-      return;
-    }
-    if (hasNativeBridge()) {
-      // These are account preferences. Keep them independent from Android's
-      // OS permission so the in-app inbox and unread badge remain usable.
-      update((s) => ({ ...s, notifications: { ...s.notifications, [key]: true } }));
+      toast("已保存至此设备");
       return;
     }
     if (notificationPermission === "unsupported" || !("Notification" in window))
@@ -1895,10 +2174,11 @@ export default function Community() {
       ...s,
       notifications: { ...s.notifications, [key]: !s.notifications[key] },
     }));
+    toast("已保存至此设备");
   };
-  const clearTodayFlips = () => {
+  const clearTodayFlips = async () => {
     if (!opened.length) return toast("今天还没有翻开的卡片");
-    if (!confirm("清除今天的翻卡记录？这些卡片会重新锁定。")) return;
+    if (!await confirmInApp("清除今天的翻卡记录？这些卡片会重新锁定。", {title:"清除翻卡记录",confirmLabel:"清除记录",danger:true})) return;
     update((current) => ({
       ...current,
       opened: { ...current.opened, [today]: [] },
@@ -1923,11 +2203,14 @@ export default function Community() {
       if (!comment) return;
       update((s) => ({ ...s, comments: [...s.comments, comment] }));
       setCommentTotal((count) => count + 1);
-      if (reply) setExpandedReplies((current) => ({ ...current, [reply]: true }));
+      const replyRoot = comment.parent || (reply ? state.comments.find((item) => item.id === reply)?.parent || reply : undefined);
+      if (replyRoot) setExpandedReplies((current) => ({ ...current, [replyRoot]: true }));
       setDraft("");
       setReply(undefined);
+      setReplyTargetName(undefined);
+      setCommentInputExpanded(false);
       toast("评论已发布");
-      if (reply) requestAnimationFrame(() => document.getElementById(`comment-${reply}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+      if (replyRoot) requestAnimationFrame(() => document.getElementById(`comment-${replyRoot}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     } catch (e) {
       toast(e instanceof Error ? e.message : "评论保存失败");
     } finally {
@@ -1935,7 +2218,7 @@ export default function Community() {
     }
   };
   const deleteOwn = async (p: Post) => {
-    if (!confirm("确定删除这篇内容？")) return;
+    if (!await confirmInApp("确定删除这篇内容？", {title:"删除作品",confirmLabel:"删除",danger:true})) return;
     try {
       if (p.cloudId)
         await cloudRequest("/api/v1/library-state", {
@@ -1949,7 +2232,7 @@ export default function Community() {
     }
   };
   const deleteComment = async (c: Comment) => {
-    if (!confirm("删除这条评论？")) return;
+    if (!await confirmInApp("删除这条评论？", {title:"删除评论",confirmLabel:"删除",danger:true})) return;
     try {
       if (c.cloudId)
         await cloudRequest("/api/library-comments", {
@@ -1968,6 +2251,21 @@ export default function Community() {
       toast(e instanceof Error ? e.message : "删除失败");
     }
   };
+  const copyComment = async (comment: Comment) => {
+    try {
+      if (!navigator.clipboard) throw new Error("当前浏览器不支持复制");
+      await navigator.clipboard.writeText(comment.body);
+      toast("评论已复制");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "复制失败");
+    }
+  };
+  const focusReply = (parentId: number, name?: string) => {
+    setReply(parentId);
+    setReplyTargetName(name || "评论");
+    setCommentInputExpanded(true);
+    requestAnimationFrame(() => commentInputRef.current?.focus());
+  };
   const toggleCommentLike = async (comment: Comment) => {
     if (!accountId) { toast("登录后可点赞"); return; }
     if (!comment.cloudId || commentLikeBusy.current.has(comment.id)) return;
@@ -1984,24 +2282,142 @@ export default function Community() {
   const uploadImageToPost = async (image: ComposerImage, postId: string, sortOrder: number): Promise<ComposerImage> => {
     if (image.external) return image;
     if (image.path) {
+      if (composerRevisionMode) return { ...image, sortOrder };
       await cloudRequest(`/api/v1/posts/${postId}/media`, { path: image.path, sort_order: sortOrder });
       return { ...image, sortOrder };
     }
     if (!image.file || !accountId) throw new Error("登录后可同步草稿图片");
     const db = await browserDb(); const { data: session } = await db.auth.getSession();
     if (!session.session) throw new Error("登录状态已失效，请重新登录");
-    const form = new FormData(); form.set("file", image.file); form.set("post_id", postId); form.set("sort_order", String(sortOrder)); form.set("upload_id", image.id);
+    const form = new FormData(); form.set("file", image.file); form.set(composerRevisionMode ? "revision_post_id" : "post_id", postId); form.set("sort_order", String(sortOrder)); form.set("upload_id", image.id);
     const response = await fetch("/api/v1/media", { method: "POST", headers: { Authorization: `Bearer ${session.session.access_token}` }, body: form });
     const result = await response.json(); if (!response.ok) throw new Error(result.error || "图片上传失败");
+    if (!result.data?.path) throw new Error("图片上传未完成，请重试");
     return { ...image, path: result.data.path, status: "ready", sortOrder };
   };
+  const uploadVideoToPost = async (video: ComposerVideo, postId: string, sortOrder: number): Promise<ComposerVideo> => {
+    if (!VIDEO_UPLOAD_BETA_ENABLED) throw new Error("视频上传目前仅在 Beta 预览版开放");
+    if (!accountId) throw new Error("登录后可上传视频");
+    const file = video.file;
+    let path = video.path;
+    if (!path) {
+      if (!file) throw new Error("视频草稿文件已丢失，请重新选择视频");
+      const extension = videoExtension(file.type);
+      if (!extension) throw new Error("视频测试版仅支持 MP4、WebM 格式");
+      if (!file.size || file.size > POST_VIDEO_MAX_BYTES) throw new Error("视频大小不能超过 50 MB");
+      path = `${accountId}/${video.id}.${extension}`;
+      const db = await browserDb();
+      const clientConfig = await browserDbConfig();
+      const { data } = await db.auth.getSession();
+      if (!data.session) throw new Error("登录状态已失效，请重新登录");
+      await uploadVideoResumable({
+        file,
+        path,
+        supabaseUrl: clientConfig.url,
+        publishableKey: clientConfig.key,
+        accessToken: data.session.access_token,
+        onProgress: (progress) => setComposerVideo((current) => current?.id === video.id ? { ...current, progress, status: "uploading" } : current),
+      });
+      video = { ...video, path, status: "ready", progress: 100 };
+      setComposerVideo((current) => current?.id === video.id ? video : current);
+    }
+    if (!composerRevisionMode || !video.existing) {
+      await cloudRequest(`/api/v1/posts/${postId}/media`, {
+        path,
+        sort_order: sortOrder,
+        media_type: "video",
+        ...(composerRevisionMode ? { revision: true } : {}),
+      });
+    }
+    return { ...video, path, status: "ready", progress: 100 };
+  };
+  const chooseComposerVideo = (file: File | null) => {
+    if (!file) return;
+    if (composerImages.length) return toast("视频 Beta 暂不与图片混发，请先移除已选图片");
+    if (!POST_VIDEO_TYPES.includes(file.type as (typeof POST_VIDEO_TYPES)[number])) return toast("视频测试版仅支持 MP4、WebM 格式");
+    if (!file.size || file.size > POST_VIDEO_MAX_BYTES) return toast("视频大小需在 1 B 到 50 MB 之间");
+    videoCompressionAbort.current?.abort();
+    const controller = new AbortController();
+    videoCompressionAbort.current = controller;
+    const sequence = ++videoCompressionSequence.current;
+    const id = crypto.randomUUID();
+    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    const url = URL.createObjectURL(file);
+    const wantsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
+    const canCompress = wantsCompression && supportsVideoCompression();
+    setComposerVideo({ id, file, url, name: file.name, size: file.size, type: file.type, status: canCompress ? "compressing" : "ready", progress: 0, compressionProgress: 0, originalSize: file.size, compressionNote: wantsCompression && !canCompress ? "此浏览器暂不支持本地压缩，将保留原视频" : undefined });
+    if (!canCompress) return;
+    void compressVideoForUpload(file, (compressionProgress) => {
+      if (videoCompressionSequence.current !== sequence || controller.signal.aborted) return;
+      setComposerVideo((current) => current?.id === id ? { ...current, compressionProgress } : current);
+    }, controller.signal).then((result) => {
+      if (videoCompressionSequence.current !== sequence || controller.signal.aborted) return;
+      const nextUrl = result.file === file ? url : URL.createObjectURL(result.file);
+      if (nextUrl !== url) URL.revokeObjectURL(url);
+      setComposerVideo((current) => current?.id === id ? {
+        ...current,
+        file: result.file,
+        url: nextUrl,
+        name: result.file.name,
+        size: result.file.size,
+        type: result.file.type,
+        status: "ready",
+        compressionProgress: 100,
+        compressionNote: result.compressed
+          ? `已优化 ${(file.size / 1024 / 1024).toFixed(1)} MB → ${(result.file.size / 1024 / 1024).toFixed(1)} MB`
+          : result.reason === "unsupported" ? "此浏览器暂不支持本地压缩，将保留原视频" : "原视频画质已保留",
+      } : current);
+      videoCompressionAbort.current = null;
+    }).catch(() => {
+      if (controller.signal.aborted || videoCompressionSequence.current !== sequence) return;
+      setComposerVideo((current) => current?.id === id ? { ...current, status: "ready", compressionProgress: 100, compressionNote: "压缩未完成，已保留原视频" } : current);
+      videoCompressionAbort.current = null;
+    });
+  };
+  const removeComposerVideo = async () => {
+    if (!composerVideo) return;
+    videoCompressionAbort.current?.abort();
+    videoCompressionAbort.current = null;
+    videoCompressionSequence.current += 1;
+    const old = state.own.find((item) => item.id === editing);
+    if (composerVideo.path && old?.cloudId && composerVideo.existing && !composerRevisionMode) {
+      try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: composerVideo.path }, "DELETE"); }
+      catch (error) { toast(error instanceof Error ? error.message : "视频移除失败"); return; }
+    } else if (composerVideo.path && accountId && old?.cloudId) {
+      try { await cloudRequest("/api/v1/media", { upload_id: composerVideo.id, file_type: composerVideo.type, post_id: old.cloudId }, "DELETE"); }
+      catch (error) { toast(error instanceof Error ? error.message : "视频移除失败"); return; }
+    }
+    if (composerVideo.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    setComposerVideo(null);
+  };
   const publish = async () => {
-    if (!title.trim() || !body.trim()) return toast("请填写标题和正文");
-    if (!accountId) return toast("请先在消息页面登录，当前输入会保留");
+    if (publishInFlight.current) return;
+    if (!title.trim()) { setComposerValidation("title"); toast("请先填写标题"); document.querySelector<HTMLTextAreaElement>(".composer-title-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    if (!body.trim()) { setComposerValidation("body"); toast("请先填写正文"); document.querySelector<HTMLTextAreaElement>(".composer-body-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    setComposerValidation("");
+    const pollDraft = writeChannel === "community" ? { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) } : { question:"", options:[] as string[] };
+    if ((pollDraft.question || pollDraft.options.length) && (!pollDraft.question || pollDraft.options.length < 2 || pollDraft.options.length > 4)) return toast("投票需要填写问题，并设置 2–4 个选项");
+    if (composerMediaLoadFailed) return toast("附件列表尚未恢复，请先重试读取附件");
+    if (!writeTag.trim()) return toast("请选择内容分类");
+    if (!accountId) { await flushComposerDraft.current().catch(()=>{}); return toast("请先在消息页面登录，当前输入会保留"); }
+    if (composerImages.some(image=>!image.external&&!image.path&&!image.file)) return toast("有图片文件未恢复，请替换后再提交");
     if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
+    if (composerVideo?.status === "compressing") return toast("视频正在优化，请稍后发布");
+    if (composerVideo?.status === "uploading") return toast("视频正在上传，请稍后发布");
+    if (composerVideo && composerImages.length) return toast("视频 Beta 暂不与图片混发，请移除其中一种媒体");
+    if (draftSaveTimer.current !== null) {
+      window.clearTimeout(draftSaveTimer.current);
+      draftSaveTimer.current = null;
+    }
+    if (draftSaving) return toast("草稿正在同步，请稍后发布");
+    publishInFlight.current = true;
+    setIsPublishing(true);
     try {
       const old = state.own.find((p) => p.id === editing);
-      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag, topics: writeTopics, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
+      const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
+      const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai"
+        ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
+        : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
@@ -2020,17 +2436,22 @@ export default function Community() {
           throw error;
         } finally { draftMediaBusy.current.delete(image.id); }
       }
+      let uploadedVideo: ComposerVideo | null = null;
+      if (composerVideo) {
+        setComposerVideo((current) => current ? { ...current, status: "uploading", progress: current.path ? 100 : 0 } : current);
+        try {
+          uploadedVideo = await uploadVideoToPost({ ...composerVideo, status: "uploading" }, draft.cloudId, uploaded.length);
+          setComposerVideo(uploadedVideo);
+        } catch (error) {
+          setComposerVideo((current) => current ? { ...current, status: "failed" } : current);
+          throw error;
+        }
+      }
       setUploadingImages(false);
-      const item = await cloudRequest("/api/v1/library-state", {
-        action: "publish",
-        id: draft.id,
-        title,
-        body,
-        tag: writeTag,
-        topics: writeTopics,
-        mediaPaths: uploaded.map((image) => image.path!),
-        coverUrl: cover?.external ? cover.url : null,
-      });
+      const mediaPaths = [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])];
+      const item = writeChannel === "ai"
+        ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData, mediaPaths, coverUrl: cover?.external ? cover.url : null })
+        : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null });
       if (!item) return;
       update((s) => ({
         ...s,
@@ -2040,80 +2461,160 @@ export default function Community() {
         ],
         cardIds: item.status === "published" ? [...new Set([...s.cardIds, item.id])] : s.cardIds,
       }));
-      setPublicFeed((s) => item.status === "published" ? [item, ...s.filter((p) => p.id !== item.id)] : s.filter((p) => p.id !== item.id));
       setModal(null);
       setTitle("");
       setBody("");
+      setPollQuestion("");
+      setPollOptions(["", ""]);
       composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
       setComposerImages([]);
+      if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+      setComposerVideo(null);
       setCoverIndex(0);
       setEditing(null);
       setComposerEditingPublished(false);
+      setComposerRevisionMode(false);
+      setWriteChannel("community");
+      setWriteContentType("knowledge_article");
+      setAiResourceFields({});
+      setComposerValidation("");
       const owner = accountId || "guest";
-      localStorage.removeItem(`heika-compose-${owner}`);
-      await clearDraftFiles(owner).catch(() => {});
-      if (accountId) { localStorage.removeItem("heika-compose-guest"); await clearDraftFiles("guest").catch(() => {}); }
-      toast("内容已提交人工审核，通过后将公开展示");
+      if (writeChannel === "community") localStorage.removeItem(`heika-compose-${owner}`);
+      localStorage.removeItem(`heika-compose-${writeChannel}-${owner}`);
+      await clearDraftFiles(`${owner}:${writeChannel}`).catch(() => {});
+      if (accountId) {
+        if (writeChannel === "community") localStorage.removeItem("heika-compose-guest");
+        localStorage.removeItem(`heika-compose-${writeChannel}-guest`);
+        await clearDraftFiles(`guest:${writeChannel}`).catch(() => {});
+      }
+      composerCloudDrafts.current.delete(`${owner}:${writeChannel}`); composerDraftRef.current = null;
+      lastDraftPayload.current = "";
+      toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : "内容已提交人工审核，通过后将公开展示");
     } catch (e) {
       setUploadingImages(false);
       toast(e instanceof Error ? e.message : "发布失败，请重试");
+    } finally {
+      publishInFlight.current = false;
+      setIsPublishing(false);
     }
   };
-  const openComposer = async (post?: Post) => {
-    const stored = !post ? state.own.find((item) => item.status === "draft") : undefined;
+  const composerMediaUrl = async (path:string) => {
+    try { const db=await browserDb();const result=await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path,3600);return result.data?.signedUrl || ""; } catch { return ""; }
+  };
+  const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community") => {
+    composerImages.forEach(image=>{if(image.url.startsWith("blob:"))URL.revokeObjectURL(image.url);});
+    composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false);
+    videoCompressionAbort.current?.abort();
+    videoCompressionAbort.current = null;
+    videoCompressionSequence.current += 1;
+    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    const stored = !post ? state.own.find((item) => item.status === "draft" && (item.channel || "community") === requestedChannel) : undefined;
     const initialPost = post || stored;
+    composerDraftRef.current = initialPost || null;
+    if (initialPost?.status === "draft") composerCloudDrafts.current.set(`${accountId || "guest"}:${requestedChannel}`,initialPost);
+    const revisionPayload = initialPost?.pendingRevision?.payload;
+    const channel = initialPost?.channel === "ai" ? "ai" : initialPost ? "community" : requestedChannel;
+    const initialResourceData = revisionPayload?.resourceData || initialPost?.resourceData || {};
+    setWriteChannel(channel);
+    setWriteContentType(channel === "ai" && initialPost?.contentType && initialPost.contentType !== "community_post" ? initialPost.contentType : "knowledge_article");
+    setAiResourceFields(Object.fromEntries(Object.entries(initialResourceData).map(([key, value]) => [key, Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : ""]).filter(([, value]) => Boolean(value))));
     setEditing(initialPost?.id ?? null);
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
-    setTitle(initialPost?.title || "");
-    setBody(initialPost?.body || "");
-    setWriteTag(initialPost?.tag || tags[0]);
-    setWriteTopics(initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [tags[0]]);
+    setComposerRevisionMode(Boolean(post && (post.status === "published" || post.pendingRevision)));
+    setTitle(revisionPayload?.title || initialPost?.title || "");
+    setBody(revisionPayload?.body || initialPost?.body || "");
+    setPollQuestion("");
+    setPollOptions(["", ""]);
+    setWriteTag(revisionPayload?.tag || initialPost?.tag || (channel === "ai" ? aiCategories[0]?.name || "AI 知识" : communityCategories[0] || tags[0]));
+    setWriteTopics(channel === "ai"
+      ? revisionPayload?.topics || initialPost?.topics || []
+      : revisionPayload?.topics?.length ? revisionPayload.topics : initialPost?.topics?.length ? initialPost.topics : initialPost?.tag ? [initialPost.tag] : [communityCategories[0] || tags[0]]);
+    setWriteSeriesId(revisionPayload?.seriesId || initialPost?.seriesId || "");
     setTopicSearch("");
     setComposerImages([]);
+    setComposerVideo(null);
+    setComposerValidation("");
     setCoverIndex(0);
     lastDraftPayload.current = "";
     if (initialPost?.cloudId) {
       try {
-        const data = await cloudRequest(`/api/v1/posts/${initialPost.cloudId}`) as { post_media?: { storage_path: string; sort_order: number }[] } | null;
-        if (data?.post_media?.length) {
-          const db = await browserDb();
-          const images = await Promise.all(data.post_media.sort((a,b) => a.sort_order-b.sort_order).map(async (item, index) => {
-            const signed = await db.storage.from("post-covers").createSignedUrl(item.storage_path, 3600);
-            return signed.data?.signedUrl ? { id: `saved-${index}-${item.storage_path}`, path: item.storage_path, url: signed.data.signedUrl, status: "ready" as const, sortOrder: index } : null;
+        const data = await cloudRequest(`/api/v1/posts/${initialPost.cloudId}`) as { image_url?:string|null; post_media?: { storage_path: string; sort_order: number }[] } | null;
+        const pollResponse = await cloudFetch(`/api/v1/posts/${initialPost.cloudId}/poll`, { cache: "no-store" });
+        if (revisionPayload) {
+          setPollQuestion(revisionPayload.poll?.question || "");
+          setPollOptions(revisionPayload.poll ? [...revisionPayload.poll.options, "", ""].slice(0, 4) : ["", ""]);
+        } else if (pollResponse.ok) {
+          const pollResult = await pollResponse.json();
+          if (pollResult.data?.poll) {
+            setPollQuestion(pollResult.data.poll.question || "");
+            setPollOptions((pollResult.data.poll.options || []).map((option: { label: string }) => option.label).concat(["", ""]).slice(0, 4));
+          }
+        }
+        const revisionMedia = revisionPayload?.mediaPaths?.map((storage_path, sort_order) => ({ storage_path, sort_order }));
+        const mediaToLoad = revisionMedia || data?.post_media || [];
+        if (mediaToLoad.length || revisionPayload?.coverUrl || data?.image_url) {
+          const orderedMedia = mediaToLoad.slice().sort((a,b) => a.sort_order-b.sort_order);
+          const imageMedia = orderedMedia.filter((item) => !isVideoMediaPath(item.storage_path));
+          const videoMedia = orderedMedia.find((item) => isVideoMediaPath(item.storage_path));
+          const images = await Promise.all(imageMedia.map(async (item, index) => {
+            const url = await composerMediaUrl(item.storage_path);
+            return {id:`saved-${index}-${item.storage_path}`,path:item.storage_path,url:url || "/image-not-loaded.svg",status:"ready" as const,sortOrder:index};
           }));
-          const external = initialPost.image ? [{ id: "legacy-cover", url: initialPost.image, status: "ready" as const, external: true }] : [];
+          if (videoMedia) {
+            const url = await composerMediaUrl(videoMedia.storage_path);
+            {
+              const extension = videoMedia.storage_path.toLowerCase().split(".").pop();
+              setComposerVideo({ id: videoMedia.storage_path.split("/").pop()!.replace(/\.(?:mp4|webm)$/i, ""), path: videoMedia.storage_path, url, name: `已上传视频.${extension}`, size: 0, type: extension === "webm" ? "video/webm" : "video/mp4", status: "ready", progress: 100, existing: true });
+            }
+          }
+          const externalCover = revisionPayload ? revisionPayload.coverUrl : data?.image_url;
+          const external = externalCover ? [{ id: "legacy-cover", url: externalCover, status: "ready" as const, external: true }] : [];
           setComposerImages([...external, ...images.filter((image): image is NonNullable<typeof image> => Boolean(image))]);
         }
-      } catch { toast("已恢复草稿文字，图片列表暂时无法读取"); }
+      } catch { setComposerMediaLoadFailed(true);toast("已恢复草稿文字，附件列表读取失败，请重试读取后提交"); }
     }
     const owner = accountId || "guest";
     if (!initialPost || initialPost.status === "draft") {
       try {
-        const ownRaw = localStorage.getItem(`heika-compose-${owner}`);
-        const raw = ownRaw || (accountId ? localStorage.getItem("heika-compose-guest") : null);
-        const fileOwner = ownRaw || !accountId ? owner : "guest";
+        const ownRaw = localStorage.getItem(`heika-compose-${channel}-${owner}`);
+        const legacyRaw = channel === "community" ? localStorage.getItem(`heika-compose-${owner}`) : null;
+        const raw = ownRaw || legacyRaw || (accountId && channel === "community" ? localStorage.getItem("heika-compose-guest") : null);
+        const fileOwner = ownRaw || legacyRaw || !accountId ? owner : "guest";
         if (raw) {
-          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[] };
+          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; channel?: "community" | "ai"; contentType?: AiContentType; resourceData?: Record<string,string>; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
           setTitle(saved.title || "");
           setBody(saved.body || "");
-          setWriteTag(saved.tag || tags[0]);
-          setWriteTopics(saved.topics || [saved.tag || tags[0]]);
-          if (saved.images?.length) {
-            const db = await browserDb();
-            const files = await loadDraftFiles(fileOwner);
+          setWriteTag(saved.tag || (channel === "ai" ? aiCategories[0]?.name || "AI 知识" : communityCategories[0] || tags[0]));
+          setWriteTopics(saved.topics || []);
+          setWriteContentType(saved.contentType || "knowledge_article");
+          setAiResourceFields(saved.resourceData || {});
+          setWriteSeriesId(saved.seriesId || "");
+          setPollQuestion(saved.poll?.question || "");
+          setPollOptions(saved.poll?.options?.length ? [...saved.poll.options, "", ""].slice(0, 4) : ["", ""]);
+          if (saved.images?.length || saved.video) {
+            const files = await loadDraftFiles(`${fileOwner}:${channel}`).then(async files => files.length ? files : loadDraftFiles(fileOwner)).catch(()=>[]);
+            if (saved.video) {
+              const videoFile = files.find((item) => item.id === saved.video!.id)?.file;
+              if (saved.video.path) {
+                const signedUrl = await composerMediaUrl(saved.video.path);
+                if (signedUrl || !videoFile) setComposerVideo({ id: saved.video.id, path: saved.video.path, url: signedUrl, name: saved.video.name || "已上传视频", size: saved.video.size || videoFile?.size || 0, type: saved.video.type || videoFile?.type || "video/mp4", status: "ready", progress: 100, existing: saved.video.existing });
+                else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
+              } else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
+            }
+            if (saved.images?.length) {
               const restored = await Promise.all(saved.images.map(async (image, index) => {
               if (image.path) {
-                const { data } = await db.storage.from("post-covers").createSignedUrl(image.path, 3600);
-                if (data?.signedUrl) return { id: image.id, path: image.path, url: data.signedUrl, status: "ready" as const, sortOrder: index };
+                const signedUrl = await composerMediaUrl(image.path);
                 const file = files.find((item) => item.id === image.id)?.file;
-                return file ? { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const, sortOrder: index } : null;
+                return { id:image.id,path:image.path,file,url:signedUrl || (file?URL.createObjectURL(file):"/image-not-loaded.svg"),status:"ready" as const,sortOrder:index };
               }
               if (image.external && image.url) return { id: image.id, url: image.url, status: "ready" as const, external: true };
               const file = files.find((item) => item.id === image.id)?.file;
               if (file) return { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const };
-              return null;
+              return {id:image.id,url:image.url || "/image-not-loaded.svg",status:"failed" as const};
             }));
             setComposerImages(restored.filter((image): image is NonNullable<typeof image> => Boolean(image?.url)));
+            }
           }
           setCoverIndex(Math.min(saved.coverIndex || 0, Math.max(0, (saved.images?.length || 1) - 1)));
           toast("已恢复上次保存的草稿");
@@ -2125,30 +2626,49 @@ export default function Community() {
   };
   useEffect(() => {
     if (modal !== "write") return;
-    const timer = window.setTimeout(() => {
-      if (!title && !body && !composerImages.length) return;
-      const persist = async () => {
-        const owner = accountId || "guest";
-        await saveDraftFiles(owner, composerImages.map(({ id, file }) => ({ id, file })));
-        const draftData = { title, body, tag: writeTag, topics: writeTopics, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), savedAt: Date.now() };
-        localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData)); setDraftSaved(true);
+    const generation = composerSession.current;
+    const revision = ++draftRevision.current;
+    const currentSession = () => composerSession.current === generation;
+    setDraftCloudSynced(false);
+    const persist = async () => {
+      if (publishInFlight.current || !currentSession() || (!title && !body && !composerImages.length && !composerVideo && !pollQuestion && !pollOptions.some(Boolean))) return;
+      const owner = accountId || "guest";
+      const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
+      const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
+      localStorage.setItem(`heika-compose-${writeChannel}-${owner}`, JSON.stringify(draftData));
+      if (writeChannel === "community") localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData));
+      await saveDraftFiles(`${owner}:${writeChannel}`, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
+      if (!currentSession()) return;
+      setDraftSaved(true); setDraftSyncError("");
+      if (!accountId || composerEditingPublished || composerMediaLoadFailed) return;
+      // Serialize snapshots: an older response cannot finish after a newer save.
+      draftCloudQueue.current = draftCloudQueue.current.catch(() => {}).then(async () => {
+        if (!currentSession() || publishInFlight.current || draftRevision.current !== revision) return;
+        setDraftSaving(true);
+        try {
         if (accountId && !composerEditingPublished) {
-          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, coverIndex });
-          let cloudDraft = state.own.find((item) => item.id === editing && item.status === "draft");
+          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex, writeChannel, writeContentType, aiResourceFields });
+          let cloudDraft = composerDraftRef.current || composerCloudDrafts.current.get(`${owner}:${writeChannel}`) || state.own.find((item) => item.id === editing && item.status === "draft" && (item.channel || "community") === writeChannel);
           if (lastDraftPayload.current !== signature || !cloudDraft) {
-            lastDraftPayload.current = signature; setDraftSaving(true);
+            setDraftSaving(true);
             try {
               const cover = composerImages[coverIndex];
-              const saved = await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId, title, body, tag: writeTag, topics: writeTopics, coverUrl: cover?.external ? cover.url : null }) as Post | null;
-              if (saved) { cloudDraft = saved; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] })); }
-            } catch { setDraftSaved(false); toast("云端草稿保存失败，已保留本机草稿"); }
-            finally { setDraftSaving(false); }
+              const saved = writeChannel === "ai"
+                ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: cloudDraft?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields, coverUrl: cover?.external ? cover.url : null }) as Post | null
+                : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId ? cloudDraft.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
+              if (saved?.cloudId) composerCloudDrafts.current.set(`${owner}:${writeChannel}`,saved);
+              if (!currentSession()) return;
+              if (!saved?.cloudId) throw new Error("云端草稿暂时不可用");
+              cloudDraft = saved; composerDraftRef.current = saved; lastDraftPayload.current = signature; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] }));
+            } catch { throw new Error("同步失败，本机草稿已保留"); }
+            finally { /* The queue clears saving after all media has settled. */ }
           }
           if (cloudDraft?.cloudId) {
             const cover = composerImages[coverIndex];
             const storageImages = composerImages.filter((image) => !image.external);
             const ordered = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
             for (const [index, image] of ordered.entries()) {
+              if (!currentSession()) return;
               if (image.external) continue;
               const needsUpload = Boolean(image.file && !image.path);
               const needsReorder = Boolean(image.path && image.sortOrder !== index);
@@ -2157,26 +2677,147 @@ export default function Community() {
               setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading" } : item));
               try {
                 const synced = await uploadImageToPost(image, cloudDraft.cloudId, index);
-                setComposerImages((items) => items.map((item) => item.id === image.id ? synced : item));
+                if (currentSession()) setComposerImages((items) => items.map((item) => item.id === image.id ? synced : item));
               } catch (error) {
-                setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
-                toast(error instanceof Error ? error.message : "图片上传失败，可重试");
+                if (currentSession()) setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
+                throw error;
               } finally { draftMediaBusy.current.delete(image.id); }
             }
           }
         }
-      };
-      void persist().catch(() => toast("本机草稿保存失败，请检查设备存储空间"));
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, coverIndex, composerImages, composerEditingPublished]);
+          if (currentSession() && draftRevision.current === revision && !composerEditingPublished && !composerVideo && !composerImages.some(image=>image.status !== "ready" || (!image.external && !image.path))) setDraftCloudSynced(true);
+        } catch (error) { if (currentSession()) setDraftSyncError(error instanceof Error ? error.message : "同步失败，本机草稿已保留"); }
+        finally { if (currentSession()) setDraftSaving(false); }
+      });
+    };
+    flushComposerDraft.current = persist;
+    const save = () => { void persist().catch(() => { if (currentSession()) setDraftSyncError("本机保存失败，请重试"); }); };
+    const timer = window.setTimeout(save, 500);
+    draftSaveTimer.current = timer;
+    window.addEventListener("pagehide",save);
+    return () => { window.clearTimeout(timer); window.removeEventListener("pagehide",save); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
+  // UI-only panels are excluded so opening a sheet does not restart autosave.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished, writeChannel, writeContentType, aiResourceFields, draftRetry, composerMediaLoadFailed]);
+  const reloadComposerMedia = async () => {
+    const old=composerDraftRef.current || state.own.find(item=>item.id===editing);
+    if(!old?.cloudId)return;
+    setUploadingImages(true);
+    try {
+      const data=await cloudRequest(`/api/v1/posts/${old.cloudId}`) as {image_url?:string|null;post_media?:{storage_path:string;sort_order:number}[]}|null;
+      if(!data)throw new Error("附件读取失败，请检查登录和网络后重试");
+      const media=(old.pendingRevision?.payload.mediaPaths?.map((storage_path,sort_order)=>({storage_path,sort_order})) || data.post_media || []).slice().sort((a,b)=>a.sort_order-b.sort_order);
+      const images=await Promise.all(media.filter(item=>!isVideoMediaPath(item.storage_path)).map(async(item,index)=>({id:`saved-${index}-${item.storage_path}`,path:item.storage_path,url:(await composerMediaUrl(item.storage_path)) || "/image-not-loaded.svg",status:"ready" as const,sortOrder:index})));
+      const external=old.pendingRevision?old.pendingRevision.payload.coverUrl:data.image_url;
+      setComposerImages(current=>[...(external&&!current.some(image=>image.external)?[{id:"legacy-cover",url:external,external:true,status:"ready" as const}]:[]),...images,...current.filter(image=>!images.some(item=>item.path===image.path))]);
+      const video=media.find(item=>isVideoMediaPath(item.storage_path));
+      if(video)setComposerVideo({id:video.storage_path,path:video.storage_path,url:await composerMediaUrl(video.storage_path),name:"已上传视频",size:0,type:video.storage_path.endsWith("webm")?"video/webm":"video/mp4",status:"ready",progress:100,existing:true});
+      setComposerMediaLoadFailed(false);
+    } catch(error) { toast(error instanceof Error?error.message:"附件读取失败，请重试"); } finally {setUploadingImages(false);}
+  };
+  const changeComposerTitle = useCallback((value: string) => { setTitle(value); setDraftSaved(false); setDraftCloudSynced(false); if(value.trim()) setComposerValidation(""); }, []);
+  const changeComposerBody = useCallback((value: string) => { setBody(value); setDraftSaved(false); setDraftCloudSynced(false); if(value.trim()) setComposerValidation(""); }, []);
+  const closeComposer = async () => {
+    if (isPublishing) return toast("内容正在提交，请稍候");
+    try { await flushComposerDraft.current(); }
+    catch { if (!await confirmInApp("本机草稿保存失败，仍要退出吗？", { title:"草稿尚未保存", confirmLabel:"退出编辑" })) return; }
+    setComposerPanel(null); setComposerMediaId(null); setModal(null);
+  };
+  const composerCloseRef = useRef(closeComposer);
+  const composerOverlayRef = useRef({ panel:composerPanel, media:composerMediaId });
+  composerCloseRef.current = closeComposer; composerOverlayRef.current = {panel:composerPanel,media:composerMediaId};
+  useEffect(() => {
+    if (modal !== "write") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden"; document.documentElement.classList.add("is-composing");
+    const viewport = window.visualViewport;
+    const resize = () => { document.documentElement.style.setProperty("--composer-height", `${viewport?.height || window.innerHeight}px`); document.documentElement.style.setProperty("--composer-top", `${viewport?.offsetTop || 0}px`); };
+    resize(); viewport?.addEventListener("resize",resize); viewport?.addEventListener("scroll",resize);
+    const footer=document.querySelector<HTMLElement>(".composer-footer");
+    const measureFooter=()=>document.documentElement.style.setProperty("--composer-footer-height",`${footer?.offsetHeight || 76}px`);
+    const footerObserver=typeof ResizeObserver!=="undefined"?new ResizeObserver(measureFooter):null;
+    if(footer)footerObserver?.observe(footer);measureFooter();
+    history.pushState({...history.state, heikaComposer:true}, "");
+    let consumed = false;
+    const back = (event: PopStateEvent) => {
+      event.stopImmediatePropagation();
+      if (composerOverlayRef.current.panel || composerOverlayRef.current.media) { setComposerPanel(null); setComposerMediaId(null); history.pushState({...history.state,heikaComposer:true},""); return; }
+      consumed = true; void composerCloseRef.current();
+    };
+    const escape = (event: KeyboardEvent) => { if(event.key === "Escape" && !composerOverlayRef.current.panel && !composerOverlayRef.current.media) void composerCloseRef.current(); };
+    const beforeUnload = (event: BeforeUnloadEvent) => { if (draftSaveTimer.current !== null || draftMediaBusy.current.size) { void flushComposerDraft.current(); event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("popstate",back,true); window.addEventListener("keydown",escape); window.addEventListener("beforeunload",beforeUnload);
+    return () => {
+      document.body.style.overflow = previousOverflow; document.documentElement.classList.remove("is-composing"); document.documentElement.style.removeProperty("--composer-height"); document.documentElement.style.removeProperty("--composer-top");
+      viewport?.removeEventListener("resize",resize); viewport?.removeEventListener("scroll",resize); footerObserver?.disconnect();document.documentElement.style.removeProperty("--composer-footer-height");
+      window.removeEventListener("popstate",back,true); window.removeEventListener("keydown",escape); window.removeEventListener("beforeunload",beforeUnload);
+      if (!consumed && history.state?.heikaComposer) { window.addEventListener("popstate",event=>event.stopImmediatePropagation(),{capture:true,once:true}); history.back(); }
+    };
+  }, [modal]);
+  const switchComposerChannel = async (channel: "community" | "ai") => {
+    if (channel === writeChannel || isPublishing) return;
+    if (draftSaving || uploadingImages || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在同步，请稍后切换");
+    const targetRaw = localStorage.getItem(`heika-compose-${channel}-${accountId || "guest"}`);
+    const hasTargetDraft = Boolean(targetRaw && (()=>{try{const draft=JSON.parse(targetRaw);return draft.title || draft.body || draft.images?.length || draft.video;}catch{return false;}})());
+    if ((title || body || writeTopics.length || composerImages.length || composerVideo || Object.values(aiResourceFields).some(Boolean)) && !await confirmInApp(hasTargetDraft ? "目标下已有草稿，切换后将恢复它。当前内容会先保留在原目标，不会被清空。" : "切换会保留标题、正文和附件。分类与话题需要重新选择，原目标的草稿会保留。", { title:"切换发布目标", confirmLabel:"切换目标" })) return;
+    try { await flushComposerDraft.current(); } catch { toast("请先重试保存草稿，再切换目标"); return; }
+    await draftCloudQueue.current;
+    if (hasTargetDraft) { await openComposer(undefined,channel); return; }
+    // Storage paths cannot belong to two posts. Re-upload a copied file under a fresh ID.
+    let images: ComposerImage[] = composerImages, video = composerVideo;
+    setUploadingImages(true);
+    try {
+      const clone = async (url:string,file:File|undefined,name:string,type:string) => { if(file) return file; const response=await fetch(url); if(!response.ok) throw new Error("附件复制失败，请检查网络后重试"); return new File([await response.blob()],name,{type}); };
+      images=await Promise.all(composerImages.map(async image=>image.external?image:{id:crypto.randomUUID(),url:image.url,file:await clone(image.url,image.file,"draft-image.jpg",image.file?.type || "image/jpeg"),status:"ready" as const}));
+      if(composerVideo) video={...composerVideo,id:crypto.randomUUID(),file:await clone(composerVideo.url,composerVideo.file,composerVideo.name,composerVideo.type),path:undefined,existing:false,status:"ready",progress:0};
+    } catch(error) { toast(error instanceof Error?error.message:"附件复制失败"); return; } finally { setUploadingImages(false); }
+    setComposerImages(images); setComposerVideo(video);
+    composerSession.current += 1; composerDraftRef.current = null; lastDraftPayload.current = "";
+    setEditing(null); setWriteChannel(channel); setWriteTag(channel === "ai" ? aiCategories.find(item=>item.kind === "category")?.name || "AI 知识" : communityCategories[0] || tags[0]); setWriteTopics([]); setDraftSaved(false); setDraftCloudSynced(false); setDraftSyncError("");
+  };
+  const reorderComposerImages = (from: number, to: number) => {
+    if (isPublishing || from === to || from < 0 || to < 0 || to >= composerImages.length) return;
+    const coverId = composerImages[coverIndex]?.id;
+    const next = [...composerImages]; const [image] = next.splice(from,1); next.splice(to,0,image);
+    setComposerImages(next); setCoverIndex(Math.max(0,next.findIndex(item=>item.id===coverId)));
+  };
+  const replaceComposerImage = async (id: string, file?: File) => {
+    if (!file || isPublishing || draftSaving) return;
+    const validation = validateComposerFiles([file],0); if(validation.error) return toast(validation.error);
+    setUploadingImages(true);
+    try {
+      const compressed=await compressUploadImage(file);
+      const image=composerImages.find(item=>item.id===id); if(!image) return;
+      const old=state.own.find(item=>item.id===editing);
+      if(image.path && old?.cloudId && !composerRevisionMode) await cloudRequest(`/api/v1/posts/${old.cloudId}/media`,{path:image.path},"DELETE");
+      const replacement: ComposerImage={id:crypto.randomUUID(),file:compressed,url:URL.createObjectURL(compressed),status:"ready"};
+      setComposerImages(items=>items.map(item=>item.id===id?replacement:item)); setComposerMediaId(replacement.id);
+      if(image.url.startsWith("blob:")) URL.revokeObjectURL(image.url);
+    } catch(error) { toast(error instanceof Error?error.message:"图片替换失败，请重试"); } finally { setUploadingImages(false); }
+  };
+
   const chooseComposerImages = async (files: FileList | null) => {
-    if (!files?.length) return;
+    if (!files?.length || uploadingImages || isPublishing) return;
+    if (composerVideo) return toast("视频 Beta 暂不与图片混发，请先移除视频");
     const validation = validateComposerFiles(Array.from(files), composerImages.length);
     if (validation.error) toast(validation.error);
-    const next = validation.accepted.map((file) => ({ id: crypto.randomUUID(), file, url: URL.createObjectURL(file), status: "ready" as const }));
-    setComposerImages((current) => [...current, ...next]);
-    if (!composerImages.length) setCoverIndex(0);
+    if (!validation.accepted.length) return;
+    setUploadingImages(true);
+    const next: ComposerImage[] = [];
+    let failureMessage = "";
+    try {
+      for (const file of validation.accepted) {
+        try {
+          const compressed = await compressUploadImage(file);
+          next.push({ id: crypto.randomUUID(), file: compressed, url: URL.createObjectURL(compressed), status: "ready" });
+        } catch (error) {
+          failureMessage ||= error instanceof Error ? error.message : "有图片压缩失败，请重新选择";
+        }
+      }
+      if (failureMessage) toast(failureMessage);
+      setComposerImages((current) => [...current, ...next]);
+      if (!composerImages.length && next.length) setCoverIndex(0);
+    } finally { setUploadingImages(false); }
   };
   const moveComposerImage = (index: number, delta: -1 | 1) => {
     const target = index + delta;
@@ -2187,7 +2828,7 @@ export default function Community() {
   const removeComposerImage = async (index: number) => {
     const image = composerImages[index];
     const old = state.own.find((item) => item.id === editing);
-    if (image.path && old?.cloudId) {
+    if (image.path && old?.cloudId && !composerRevisionMode) {
       try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: image.path }, "DELETE"); }
       catch (error) { toast(error instanceof Error ? error.message : "图片移除失败"); return; }
     } else if (image.file && accountId && old?.cloudId) {
@@ -2200,136 +2841,82 @@ export default function Community() {
   };
   const retryComposerImage = async (imageId: string) => {
     const image = composerImages.find((item) => item.id === imageId);
-    if (!image?.file || !accountId) return toast("登录后可重试图片上传");
+    if (!accountId) return toast("登录后可重试图片上传");
+    if (!image?.file) return toast("本机图片文件未恢复，请点击图片重新替换");
+    if (draftMediaBusy.current.has(imageId)) return;
+    draftMediaBusy.current.add(imageId);
     setUploadingImages(true);
     setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "uploading" } : item));
     try {
       const old = state.own.find((item) => item.id === editing);
-      const draft = composerEditingPublished && old?.cloudId ? old : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag }) as Post | null;
+      const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai" ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields }) as Post | null : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败");
       const synced = await uploadImageToPost(image, draft.cloudId, composerImages.indexOf(image));
       setEditing(draft.id); update((current) => ({ ...current, own: [draft, ...current.own.filter((item) => item.id !== draft.id)] }));
       setComposerImages((items) => items.map((item) => item.id === imageId ? synced : item));
       toast("图片已上传");
     } catch (error) { setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "failed" } : item)); toast(error instanceof Error ? error.message : "图片上传失败"); }
-    finally { setUploadingImages(false); }
+    finally { draftMediaBusy.current.delete(imageId); setUploadingImages(false); }
   };
   const discardComposerDraft = async () => {
-    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id))) return toast("草稿正在同步，请稍后再删除");
-    if (!confirm("删除这份草稿及其图片？此操作无法撤销。")) return;
-    let old = state.own.find((item) => item.id === editing);
-    if (accountId && !composerEditingPublished) {
+    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id)) || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在处理，请稍后再删除");
+    if (!await confirmInApp("删除这份草稿及其图片？此操作无法撤销。", {title:"删除草稿",confirmLabel:"删除草稿",danger:true})) return;
+    if (draftSaveTimer.current !== null) { window.clearTimeout(draftSaveTimer.current);draftSaveTimer.current=null; }
+    await draftCloudQueue.current;
+    composerSession.current += 1;
+    let old = composerDraftRef.current || state.own.find((item) => item.id === editing);
+    if (accountId && !composerEditingPublished && old?.cloudId) {
       try {
-        const draft = await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId, title, body, tag: writeTag }) as Post | null;
+        const draft = old;
         if (draft?.cloudId) {
           old = draft;
           for (const image of composerImages) if (image.file && !image.path) await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: draft.cloudId }, "DELETE");
-          await cloudRequest("/api/v1/library-state", { action: "delete", id: draft.id });
+          if (composerVideo?.path && !composerVideo.existing) await cloudRequest("/api/v1/media", { upload_id: composerVideo.id, file_type: composerVideo.type, post_id: draft.cloudId }, "DELETE");
+          if (writeChannel === "ai") await cloudRequest(`/api/v1/posts/${draft.cloudId}`, {}, "DELETE"); else await cloudRequest("/api/v1/library-state", { action: "delete", id: draft.id });
           update((current) => ({ ...current, own: current.own.filter((item) => item.id !== draft.id) }));
         }
-      } catch (error) { toast(error instanceof Error ? error.message : "草稿删除失败"); return; }
+      } catch (error) { toast(error instanceof Error ? error.message : "草稿删除失败"); setDraftRetry(value=>value+1); return; }
     }
     const owner = accountId || "guest";
-    localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(owner).catch(() => {});
+    localStorage.removeItem(`heika-compose-${writeChannel}-${owner}`); if (writeChannel === "community") localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(`${owner}:${writeChannel}`).catch(() => {});
     composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
-    setComposerImages([]); setTitle(""); setBody(""); setEditing(null); setModal(null); toast("草稿已删除");
+    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    videoCompressionAbort.current?.abort();
+    videoCompressionAbort.current = null;
+    videoCompressionSequence.current += 1;
+    composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.delete(`${owner}:${writeChannel}`);
+    setComposerVideo(null); setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
   };
   const openTopic = async (name: string) => {
-    const requestSequence = ++topicRequestSequence.current;
-    const cacheKey = `topic:${name}:1`;
-    let cacheApplied = false;
-    const returnPostId = detail;
-    const returnTab = detail === null ? tab : detailSource.current;
-    topicReturnPostIdRef.current = returnPostId;
-    setTopicReturnPostId(returnPostId);
-    setTopicReturnTab(returnTab);
-    setTopicSummary(null);
-    setTopicPosts([]);
-    setTopicTotal(0);
-    setTopicPage(1);
     setTopicLoading(true);
-    if (returnPostId !== null) {
-      sharedPostHandled.current = String(returnPostId);
-      const topicUrl = new URL(window.location.href);
-      topicUrl.searchParams.delete("post");
-      const topicHistoryState = { ...history.state };
-      delete topicHistoryState.heikaDetail;
-      history.replaceState(topicHistoryState, "", `${topicUrl.pathname}${topicUrl.search}${topicUrl.hash}`);
-      setDetail(null);
-      setDetailReady(false);
-      setDetailMoreOpen(false);
-      setTransitionPhase(null);
-      transitionBusy.current = false;
-    }
-    scrollPositions.current[returnTab] = window.scrollY;
-    setTab("topic");
-    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-    const applyPage = (page: TopicPageResponse) => {
-      if (requestSequence !== topicRequestSequence.current) return;
-      setTopicSummary(page.topic);
-      setTopicPosts(page.items);
-      setTopicTotal(page.total);
-      setTopicPage(1);
-    };
     try {
-      const cached = await readPublicCache<TopicPageResponse>(cacheKey, 10 * 60 * 1000).catch(() => null);
-      if (cached && Array.isArray(cached.value.items)) {
-        cacheApplied = true;
-        applyPage(cached.value);
-      }
-      let topicId = cached?.value.topic?.id;
-      if (!topicId) {
-        const listResponse = await fetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
-        const listResult = await listResponse.json();
-        if (!listResponse.ok) throw new Error(listResult.error || "话题读取失败");
-        const topic = (listResult.data as TopicSummary[]).find((item) => item.name === name);
-        if (!topic) throw new Error("话题不存在");
-        topicId = topic.id;
-      }
-      const response = await fetch(`/api/v1/topics/${topicId}?page=1&limit=12`, { cache: "no-store" });
+      const listResponse = await cloudFetch(`/api/v1/topics?q=${encodeURIComponent(name)}`);
+      const listResult = await listResponse.json();
+      if (!listResponse.ok) throw new Error(listResult.error || "话题读取失败");
+      const topic = (listResult.data as TopicSummary[]).find((item) => item.name === name);
+      if (!topic) throw new Error("话题不存在");
+      const response = await cloudFetch(`/api/v1/topics/${topic.id}?page=1&limit=12`);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题内容读取失败");
       const page = result.data as TopicPageResponse;
-      if (requestSequence !== topicRequestSequence.current) return;
-      applyPage(page);
-      schedulePublicCacheWrite(cacheKey, page);
-      for (const item of page.items) schedulePublicCacheWrite(`post:${item.id}`, item);
-    } catch (error) {
-      if (requestSequence === topicRequestSequence.current && !cacheApplied) toast(error instanceof Error ? error.message : "话题读取失败");
-    } finally {
-      if (requestSequence === topicRequestSequence.current) setTopicLoading(false);
-    }
+      setTopicSummary(page.topic); setTopicPosts(page.items); setTopicTotal(page.total); setTopicPage(1);
+      setTopicReturnPostId(detail); setTopicReturnTab(detail === null ? tab : detailSource.current);
+      if (detail !== null) { imageSwitchSequence.current += 1; setImageLoading(false); setDetail(null); setDetailReady(false); }
+      scrollPositions.current[tab] = window.scrollY;
+      setTab("topic"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    } catch (error) { toast(error instanceof Error ? error.message : "话题读取失败"); }
+    finally { setTopicLoading(false); }
   };
   const loadMoreTopicPosts = async () => {
     if (!topicSummary || topicLoading || topicPosts.length >= topicTotal) return;
-    const summary = topicSummary;
-    const nextPage = topicPage + 1;
-    const requestSequence = ++topicRequestSequence.current;
-    const cacheKey = `topic:${summary.id}:${nextPage}`;
-    let cacheApplied = false;
-    setTopicLoading(true);
+    const nextPage = topicPage + 1; setTopicLoading(true);
     try {
-      const cached = await readPublicCache<TopicPageResponse>(cacheKey, 10 * 60 * 1000).catch(() => null);
-      if (cached && Array.isArray(cached.value.items)) {
-        cacheApplied = true;
-        setTopicPosts((items) => [...items, ...cached.value.items.filter((post) => !items.some((old) => old.id === post.id))]);
-        setTopicTotal(cached.value.total);
-        setTopicPage(nextPage);
-      }
-      const response = await fetch(`/api/v1/topics/${summary.id}?page=${nextPage}&limit=12`, { cache: "no-store" });
+      const response = await cloudFetch(`/api/v1/topics/${topicSummary.id}?page=${nextPage}&limit=12`);
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "内容读取失败");
       const page = result.data as TopicPageResponse;
-      if (requestSequence !== topicRequestSequence.current) return;
-      setTopicPosts((items) => [...items, ...page.items.filter((post) => !items.some((old) => old.id === post.id))]);
-      setTopicTotal(page.total);
-      setTopicPage(nextPage);
-      schedulePublicCacheWrite(cacheKey, page);
-      for (const item of page.items) schedulePublicCacheWrite(`post:${item.id}`, item);
-    } catch (error) {
-      if (requestSequence === topicRequestSequence.current && !cacheApplied) toast(error instanceof Error ? error.message : "内容读取失败");
-    } finally {
-      if (requestSequence === topicRequestSequence.current) setTopicLoading(false);
-    }
+      setTopicPosts((items) => [...items, ...page.items]); setTopicTotal(page.total); setTopicPage(nextPage);
+    } catch (error) { toast(error instanceof Error ? error.message : "内容读取失败"); }
+    finally { setTopicLoading(false); }
   };
   const closeTopicPage = () => {
     const backTab = topicReturnTab;
@@ -2337,26 +2924,69 @@ export default function Community() {
     requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[backTab] || 0, behavior: "instant" }));
     if (topicReturnPostId !== null) {
       const postId = topicReturnPostId;
-      topicReturnPostIdRef.current = null;
+      imageSwitchSequence.current += 1;
       setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
-    } else {
-      topicReturnPostIdRef.current = null;
     }
   };
+  const switchDiscoverChannel = (next: "community" | "ai") => {
+    if (discoverChannelBusy.current) {
+      queuedDiscoverChannel.current = next;
+      return;
+    }
+    if (next === discoverChannel) return;
+    discoverScrollPositions.current[discoverChannel] = window.scrollY;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setOutgoingDiscoverChannel(null);
+      setDiscoverChannelPhase(null);
+      setDiscoverChannel(next);
+      requestAnimationFrame(() => window.scrollTo({ top: discoverScrollPositions.current[next], behavior: "instant" }));
+      return;
+    }
+    discoverChannelBusy.current = true;
+    queuedDiscoverChannel.current = null;
+    setOutgoingDiscoverChannel(discoverChannel);
+    setDiscoverChannelPhase("primed");
+    setDiscoverChannel(next);
+    requestAnimationFrame(() => {
+      setDiscoverChannelPhase("running");
+      window.scrollTo({ top: discoverScrollPositions.current[next], behavior: "instant" });
+    });
+    discoverChannelTimer.current = window.setTimeout(() => {
+      discoverChannelTimer.current = null;
+      setOutgoingDiscoverChannel(null);
+      setDiscoverChannelPhase(null);
+      discoverChannelBusy.current = false;
+      const queued = queuedDiscoverChannel.current;
+      queuedDiscoverChannel.current = null;
+      if (queued && queued !== next) requestAnimationFrame(() => switchDiscoverChannelRef.current(queued));
+    }, 260);
+  };
+  switchDiscoverChannelRef.current = switchDiscoverChannel;
+  useEffect(() => () => {
+    if (discoverChannelTimer.current !== null) window.clearTimeout(discoverChannelTimer.current);
+  }, []);
+  const openAiPost = (item: Post, source: Element | null) => {
+    setPublicFeed((current) => current.some((post) => post.id === item.id) ? current : [...current, item]);
+    setFeedPostIds((current) => current.includes(item.id) ? current : [...current, item.id]);
+    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source)));
+  };
   useEffect(() => {
-    const isDiscover = tab === "discover" && modal !== "write";
+    const isDiscover = tab === "discover" && discoverChannel === "community" && modal !== "write";
     if (!isDiscover && modal !== "write") return;
     let alive = true;
-    const suffix = isDiscover ? "?featured=1" : topicSearch.trim() ? `?q=${encodeURIComponent(topicSearch.trim())}` : "";
-    void fetch(`/api/v1/topics${suffix}`).then(async (response) => {
+    const url = modal === "write" && writeChannel === "ai"
+      ? `/api/v1/categories?channel=ai&kind=tag${topicSearch.trim() ? `&q=${encodeURIComponent(topicSearch.trim())}` : ""}`
+      : `/api/v1/topics${isDiscover ? "?featured=1" : topicSearch.trim() ? `?q=${encodeURIComponent(topicSearch.trim())}` : ""}`;
+    void cloudFetch(url).then(async (response) => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "话题读取失败");
-      if (alive && Array.isArray(result.data)) setTopicChoices(result.data as TopicSummary[]);
+      const items = Array.isArray(result.data?.items) ? result.data.items : Array.isArray(result.data) ? result.data : [];
+      if (alive) setTopicChoices(items as TopicSummary[]);
     }).catch(() => {
       if (alive) setTopicChoices(tags.map((name, index) => ({ id: index + 1, name, description: "", postCount: 0, participantCount: 0 })));
     });
     return () => { alive = false; };
-  }, [tab, modal, topicSearch]);
+  }, [tab, modal, topicSearch, discoverChannel, writeChannel]);
   const createTopic = async () => {
     const name = topicSearch.trim().replace(/^#+/, "");
     if (!name) return;
@@ -2364,6 +2994,16 @@ export default function Community() {
     if (writeTopics.length >= 5) return toast("最多选择 5 个话题");
     setCreatingTopic(true);
     try {
+      if (writeChannel === "ai") {
+        const created = await cloudRequest("/api/v1/categories/tags", { name, channel: "ai" }) as { id?: number; name?: string } | null;
+        if (!created?.id || !created.name) throw new Error("自定义标签创建失败");
+        const topic: TopicSummary = { id: created.id, name: created.name, description: "自定义 AI 标签", postCount: 0, participantCount: 0 };
+        setTopicChoices((items) => [topic, ...items.filter((item) => item.name.toLocaleLowerCase("zh-CN") !== topic.name.toLocaleLowerCase("zh-CN"))]);
+        setWriteTopics((items) => items.includes(topic.name) ? items : [...items, topic.name]);
+        setTopicSearch("");
+        toast(`已创建 #${topic.name}，现在就能使用`);
+        return;
+      }
       const created = await cloudRequest("/api/v1/topics", { name }) as TopicSummary;
       if (!created?.name) throw new Error("话题创建失败");
       setTopicChoices((items) => [created, ...items.filter((item) => item.name.toLocaleLowerCase("zh-CN") !== created.name.toLocaleLowerCase("zh-CN"))]);
@@ -2373,102 +3013,87 @@ export default function Community() {
     } catch (error) { toast(error instanceof Error ? error.message : "话题创建失败"); }
     finally { setCreatingTopic(false); }
   };
+  const generateAiWorkbench = async () => {
+    if (!accountId) { toast("登录后可以使用 AI 创作工作台"); return; }
+    setAiWorkbenchBusy(true); setAiWorkbenchOutput(""); setAiResultApplied(false);
+    try {
+      setAiWorkbenchOutput("");
+      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag }) as { output?: unknown } | null;
+      if (typeof result?.output !== "string" || !result.output.trim()) throw new Error("登录状态已失效或 AI 没有返回内容，请重试");
+      setAiWorkbenchOutput(result.output);
+    } catch (error) { toast(error instanceof Error ? error.message : "AI 生成失败，请稍后重试"); }
+    finally { setAiWorkbenchBusy(false); }
+  };
+  const applyAiWorkbenchResult = () => {
+    if (!aiWorkbenchOutput.trim()) return;
+    setAiPreviousBody(body);
+    setAiPreviousTitle(title);
+    setAiPreviousTopics(writeTopics);
+    if (aiWorkbenchMode === "title") {
+      const suggestion = aiWorkbenchOutput.split("\n").map((line) => line.replace(/^\s*(?:#{1,6}\s*|\d+[.、)）]\s*|[-*+]\s*)/, "").trim()).find(Boolean);
+      if (suggestion) setTitle(suggestion.slice(0, 80));
+    } else if (aiWorkbenchMode === "polish") setBody(aiWorkbenchOutput.trim());
+    else if (aiWorkbenchMode === "topics") {
+      const knownTopics = new Set(topicChoices.map((item) => item.name));
+      const candidates = [...aiWorkbenchOutput.matchAll(/#([\u4e00-\u9fa5A-Za-z0-9_-]{2,20})/g)].map((match) => match[1]).filter((name) => knownTopics.has(name));
+      if (!candidates.length) { toast("建议中的话题不在社区话题列表中，可手动搜索添加"); return; }
+      setWriteTopics((current) => [...new Set([...current, ...candidates])].slice(0, 5));
+    } else setBody((current) => current.trim() ? `${current.trim()}\n\n${aiWorkbenchOutput.trim()}` : aiWorkbenchOutput.trim());
+    setAiResultApplied(true);
+    toast("建议已放入编辑区，可以继续修改");
+  };
+  const undoAiWorkbenchResult = () => {
+    if (aiPreviousBody !== null) setBody(aiPreviousBody);
+    if (aiPreviousTitle !== null) setTitle(aiPreviousTitle);
+    if (aiPreviousTopics !== null) setWriteTopics(aiPreviousTopics);
+    setAiPreviousBody(null); setAiPreviousTitle(null); setAiPreviousTopics(null); setAiResultApplied(false);
+    toast("已撤回 AI 建议");
+  };
+  const copyAiWorkbenchResult = async () => {
+    try { await navigator.clipboard.writeText(aiWorkbenchOutput); toast("AI 建议已复制"); }
+    catch { toast("复制失败，请检查剪贴板权限"); }
+  };
   const secondaryTitle = modal === "write"
     ? "取消"
     : tab === "settings"
-      ? settingsDetail ? settingsReturnTab === "mine" ? "我的" : "设置" : "我的"
+      ? settingsDetail ? settingsReturnTab === "mine" ? "我的" : "设置" : settingsPersonalOpen ? "设置" : "我的"
       : tab === "topic" ? "发现"
         : tab === "search" ? "搜索"
+        : tab === "notifications" ? "通知"
+        : tab === "exploration-center" ? "探索中心"
+        : tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain" ? secondaryReturnTab === "exploration-center" ? "探索中心" : "我的"
+        : tab === "shared-collection" ? "分享收藏夹"
         : tab === "about" || tab === "moderation" ? "设置"
-          : tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
-            : tab === "debug" ? "我的" : null;
+          : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的"
+            : tab === "creator-center" || tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
+            : null;
   const handleSecondaryBack = () => {
-    if (modal === "write") { setModal(null); return; }
+    if (modal === "write") { void closeComposer(); return; }
     if (tab === "settings" && settingsDetail) { closeSettingsDetail(); return; }
-    if (tab === "settings") { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
+    if (tab === "settings" && settingsPersonalOpen) { setSettingsPersonalOpen(false); return; }
+    if (tab === "settings") { setSettingsPersonalOpen(false); setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
     if (tab === "topic") { closeTopicPage(); return; }
     if (tab === "search") { closeSearch(); return; }
+    if (tab === "exploration-center") { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
+    if (tab === "notifications" || tab === "co-explore" || tab === "shared-collection" || tab === "monthly-recap" || tab === "card-chain") { returnToSecondaryTab(); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
-    if (tab === "my-content") { setTab(myContentReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" })); return; }
-    if (tab === "debug") { setTab("mine"); return; }
+    if (tab === "debug") {
+      setTab(debugReturnTab);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[debugReturnTab] || 0, behavior: "instant" }));
+      return;
+    }
+    if (tab === "creator-center" || tab === "my-content") {
+      setTab(myContentReturnTab);
+      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
+      return;
+    }
   };
-  nativeBackHandler.current = () => {
-    if (modal !== null) { setModal(null); return true; }
-    if (previewImage) { setPreviewImage(false); return true; }
-    if (authorProfile !== null) { setAuthorProfile(null); return true; }
-    if (detailMoreOpen) { setDetailMoreOpen(false); return true; }
-    if (viewerId !== null) { closeViewer(); return true; }
-    if (detail !== null) { closeDetail(); return true; }
-    if (tab === "messages") {
-      const chat = document.querySelector(".chat-screen");
-      if (chat && !chat.closest("[hidden]")) return false;
-    }
-    if (secondaryTitle !== null) { handleSecondaryBack(); return true; }
-    if (tab !== "today") {
-      setTab("today");
-      requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.today || 0, behavior: "instant" }));
-      return true;
-    }
-    return false;
-  };
-  nativeNavigationHandler.current = (payload) => {
-    const route = typeof payload.route === "string" ? payload.route : "";
-    if (route.length > 2048 || !route.startsWith("/") || route.startsWith("//") || route.includes("#") || route.includes("\\")) return false;
-    let target: URL;
-    try { target = new URL(route, window.location.origin); }
-    catch { return false; }
-    if (target.origin !== window.location.origin || target.pathname !== "/" || target.username || target.password) return false;
-    const params = [...target.searchParams.keys()];
-    if (params.some((name) => name !== "post" && name !== "auth" && name !== "conversation")) return false;
-    const postId = target.searchParams.get("post");
-    const auth = target.searchParams.get("auth");
-    const conversationId = target.searchParams.get("conversation");
-    if (target.searchParams.getAll("post").length > 1 || target.searchParams.getAll("auth").length > 1 ||
-        target.searchParams.getAll("conversation").length > 1) return false;
-    if (postId && (!/^[0-9]{1,20}$/.test(postId) || !Number.isSafeInteger(Number(postId)))) return false;
-    if (auth && auth !== "reset") return false;
-    if (conversationId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)) return false;
-    if ([postId, auth, conversationId].filter(Boolean).length > 1) return false;
-    if (auth === "reset") {
-      window.location.assign("/?auth=reset");
-      return true;
-    }
-    if (postId) {
-      if (new URLSearchParams(window.location.search).get("post") === postId) return true;
-      if (detail !== null || transitionBusy.current) {
-        window.location.assign(`/?post=${postId}`);
-        return true;
-      }
-      const id = Number(postId);
-      if (all.some((item) => item.id === id)) openPostRef.current(id, "discover");
-      else window.location.assign(`/?post=${postId}`);
-      return true;
-    }
-    if (conversationId) {
-      setMessageConversation(conversationId.toLowerCase());
-      setMessagesTabVisited(true);
-      setTab("messages");
-      return true;
-    }
-    setTab("today");
-    return true;
-  };
-  useEffect(() => {
-    const unsubscribeBack = subscribeNativeEvent("system.back", () => nativeBackHandler.current());
-    const unsubscribeNavigation = subscribeNativeEvent("navigation.open", (payload) => nativeNavigationHandler.current(payload));
-    const uninstallBridge = installNativeBridge();
-    return () => {
-      unsubscribeBack();
-      unsubscribeNavigation();
-      uninstallBridge();
-    };
-  }, []);
-  useEffect(() => {
-    if (ready) announceNativeReady();
-  }, [ready]);
   useEffect(() => {
     if (detail === null) return;
     setActiveImageIndex(0);
+    setDisplayedImageIndex(0);
+    setImageLoading(false);
+    setDetailImageDirection("next");
     setPreviewImage(false);
     setCommentsLoading(true);
     setCommentsError(false);
@@ -2476,43 +3101,25 @@ export default function Community() {
     setCommentTotal(0);
     setCommentHasMore(false);
     let alive = true;
-    const postId = detail;
-    const sortKey = detailSort === "最新" ? "new" : "hot";
-    const cacheKey = `comments:${postId}:${sortKey}:0`;
-    let cacheApplied = false;
-    let networkApplied = false;
-    const cached = readPublicCache<{ items: Comment[]; total: number }>(cacheKey, 2 * 60 * 1000);
-    const applyComments = (items: Comment[], total: number) => {
-      if (!alive) return;
-      const safeItems = items.map((comment) => ({ ...comment, liked: false }));
-      setState((current) => ({
-        ...current,
-        comments: [
-          ...current.comments.filter((comment) => comment.post !== postId || !comment.cloudId),
-          ...safeItems,
-        ],
-      }));
-      setCommentTotal(total);
-      setCommentOffset(safeItems.length);
-      setCommentHasMore(safeItems.length < total);
-      setCommentsLoading(false);
-    };
-    void cached.then((entry) => {
-      if (!alive || !entry || !Array.isArray(entry.value.items) || networkApplied) return;
-      cacheApplied = true;
-      applyComments(entry.value.items, Number(entry.value.total) || 0);
-    }).catch(() => undefined);
-    void fetch(`/api/library-comments?id=${postId}&offset=0&limit=40&sort=${sortKey}`, { cache: "no-store" })
-      .then((response) => response.json().then((result) => ({ response, result })))
-      .then(({ response, result }) => {
-        if (!alive || !response.ok || !Array.isArray(result.data?.items)) throw new Error("评论加载失败");
-        networkApplied = true;
-        const items = result.data.items as Comment[];
-        const total = Number(result.data.total) || 0;
-        applyComments(items, total);
-        schedulePublicCacheWrite(cacheKey, { items: items.map((comment) => ({ ...comment, liked: false })), total });
+    void fetch(`/api/library-comments?id=${detail}&offset=0&limit=40&sort=${detailSort === "最新" ? "new" : "hot"}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((result) => {
+        if (!alive) return;
+        if (result.data?.items && Array.isArray(result.data.items)) {
+          const items = result.data.items as Comment[];
+          setState((s) => ({
+            ...s,
+            comments: [
+              ...s.comments.filter((c) => c.post !== detail || !c.cloudId),
+              ...items,
+            ],
+          }));
+          setCommentTotal(result.data.total || 0);
+          setCommentOffset(items.length);
+          setCommentHasMore(items.length < (result.data.total || 0));
+        } else throw new Error("评论加载失败");
       })
-      .catch(() => { if (alive && !cacheApplied) setCommentsError(true); })
+      .catch(() => { if (alive) setCommentsError(true); })
       .finally(() => { if (alive) setCommentsLoading(false); });
     return () => {
       alive = false;
@@ -2537,7 +3144,7 @@ export default function Community() {
   const refreshFeed = async () => {
     if (tab === "today") {
       try {
-        const response = await fetch("/api/demo/cards", { cache: "no-store" });
+        const response = await cloudFetch("/api/demo/cards", { cache: "no-store" });
         const result = await response.json();
         if (!response.ok || !Array.isArray(result.data)) throw new Error();
         setState((current) => ({ ...current, cardIds: result.data.map((item: { id: number }) => item.id) }));
@@ -2548,13 +3155,7 @@ export default function Community() {
     }
     await loadPublicFeed(1, true, tab === "discover" ? category : "全部");
   };
-  const ratingIdsKey = useMemo(
-    () => [...new Set(all.map((post) => post.id))]
-      .filter((id) => !loadedRatingIds.current.has(id))
-      .sort((a, b) => a - b)
-      .join(","),
-    [all],
-  );
+  const ratingIdsKey = [...new Set(all.map((post) => post.id))].filter((id) => !loadedRatingIds.current.has(id)).sort((a, b) => a - b).join(",");
   useEffect(() => {
     if (!ready || !ratingIdsKey) return;
     const controller = new AbortController();
@@ -2573,28 +3174,35 @@ export default function Community() {
     return () => controller.abort();
   }, [ready, ratingIdsKey]);
   const filtered = useMemo(
-    () => rankRecommendations(
-      publicFeed.filter(
-        (p) =>
-          !state.dismissed?.includes(p.id) &&
-          (category === "全部" || p.tag === category),
-      ),
-      state.interests,
-      state.viewed,
-      state.ratings,
-      communityRatings,
-    ),
-    [
-      publicFeed,
-      category,
-      state.dismissed,
-      state.interests,
-      state.viewed,
-      state.ratings,
-      communityRatings,
-    ],
+    () => {
+      const postsById = new Map(publicFeed.map((post) => [post.id, post]));
+      return feedPostIds.flatMap((id) => {
+        const post = postsById.get(id);
+        return post && !state.dismissed?.includes(post.id) && (category === "全部" || post.tag === category)
+          ? [post]
+          : [];
+      });
+    },
+    [publicFeed, feedPostIds, category, state.dismissed],
   );
   const list = filtered.slice(0, page);
+  const discoverColumns = useMemo(() => {
+    const columnCount = state.discoverLayout === "single" ? 1 : discoverColumnCount;
+    const columns = Array.from({ length: columnCount }, () => [] as Post[]);
+    const heights = Array.from({ length: columnCount }, () => 0);
+    for (const post of filtered.slice(0, page)) {
+      let target = 0;
+      for (let index = 1; index < heights.length; index += 1) {
+        if (heights[index] < heights[target]) target = index;
+      }
+      columns[target].push(post);
+      const coverRatio = discoverCoverRatio(post.id).split("/").map(Number);
+      const coverHeight = coverRatio.length === 2 ? (coverRatio[1] / coverRatio[0]) * 100 : 125;
+      const textHeight = 48;
+      heights[target] += coverHeight + textHeight;
+    }
+    return columns;
+  }, [filtered, page, discoverColumnCount, state.discoverLayout]);
   useEffect(() => {
     if (
       !ready ||
@@ -2642,48 +3250,183 @@ export default function Community() {
       observer?.disconnect();
     };
   }, [detailReady, detail]);
-  const post = detail === null ? null : all.find((p) => p.id === detail);
-  const detailImages = post
+  const isImmersive = (tab === "messages" && (chatConversationOpen || messagePeer !== null)) || detail !== null || transitionPhase !== null;
+  const candidatePost = detail === null ? null : all.find((p) => p.id === detail);
+  const post = detail !== null && detailPostOverride?.id === detail ? detailPostOverride : candidatePost;
+  useEffect(() => {
+    if (detail === null || !post?.cloudId || !post.isPartial) return;
+    if (detailPostOverride?.id === detail && !detailPostOverride.isPartial) return;
+    const cached = detailPostCache.current.get(detail);
+    if (cached && Date.now() - cached.at < 45 * 60 * 1000) {
+      setDetailPostOverride(cached.post);
+      return;
+    }
+    const controller = new AbortController();
+    void cloudFetch("/api/demo/cards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: detail, resolve_images: true }),
+      signal: controller.signal,
+    }).then(async (response) => {
+      const result = await response.json();
+      if (!response.ok || !result.data || controller.signal.aborted) return;
+      const loaded = result.data as Post;
+      detailPostCache.current.delete(detail);
+      detailPostCache.current.set(detail, { post: loaded, at: Date.now() });
+      while (detailPostCache.current.size > 8) detailPostCache.current.delete(detailPostCache.current.keys().next().value as number);
+      setDetailPostOverride(loaded);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [detail, post?.cloudId, post?.isPartial, detailPostOverride?.id, detailPostOverride?.isPartial]);
+  const detailImages = useMemo(() => post
     ? (post.images?.filter(Boolean).length ? post.images.filter(Boolean) : post.image ? [post.image] : [])
-    : [];
-  const postCard = (p: Post, source: "today" | "discover" = "discover") => (
-    <button
-      className="post-card editorial-post"
+    : [], [post]);
+  const detailThumbnails = post?.thumbnailImages?.length ? post.thumbnailImages : detailImages;
+  const detailRetinaImages = post?.retinaImages || [];
+  const detailVideo = post?.video || post?.videos?.[0];
+  const preloadDetailImage = useCallback((src: string, priority: "low" | "high" = "low") => {
+    const cached = preloadedDetailImages.current.get(src);
+    if (cached) {
+      if (priority === "high") cached.image.fetchPriority = "high";
+      return cached.promise;
+    }
+    const image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = priority;
+    const loaded = new Promise<HTMLImageElement>((resolve, reject) => {
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("图片加载失败"));
+      image.src = src;
+      if (image.complete) {
+        if (image.naturalWidth > 0) resolve(image);
+        else reject(new Error("图片加载失败"));
+      }
+    }).then(async (readyImage) => {
+      try { await readyImage.decode(); } catch {}
+      return readyImage;
+    }).catch((error: unknown) => {
+      preloadedDetailImages.current.delete(src);
+      throw error;
+    });
+    preloadedDetailImages.current.set(src, { image, promise: loaded });
+    if (preloadedDetailImages.current.size > 36) {
+      const oldest = preloadedDetailImages.current.keys().next().value;
+      if (oldest && oldest !== src) preloadedDetailImages.current.delete(oldest);
+    }
+    return loaded;
+  }, []);
+  useEffect(() => {
+    if (detail === null || detailImages.length < 2) return;
+    const count = detailImages.length;
+    const adjacent = [...new Set([
+      (activeImageIndex + 1) % count,
+      (activeImageIndex - 1 + count) % count,
+    ])];
+    for (const index of adjacent) {
+      const src = detailImages[index];
+      if (src) void preloadDetailImage(src).catch(() => {});
+    }
+  }, [detail, detailImages, activeImageIndex, preloadDetailImage]);
+  const selectDetailImage = (nextIndex: number) => {
+    if (detailImages.length < 2) return;
+    const normalized = (nextIndex + detailImages.length) % detailImages.length;
+    if (normalized === activeImageIndex) return;
+    const forward = (normalized - activeImageIndex + detailImages.length) % detailImages.length;
+    const direction = forward <= detailImages.length / 2 ? "next" : "previous";
+    const sequence = ++imageSwitchSequence.current;
+    setActiveImageIndex(normalized);
+    setDetailImageDirection(direction);
+    // Gallery navigation always uses the directional horizontal blur-slide.
+    // Card-to-detail transitions are controlled separately by detailTransition.
+    if (normalized === displayedImageIndex) {
+      setImageLoading(false);
+      return;
+    }
+    setImageLoading(true);
+    void preloadDetailImage(detailImages[normalized], "high").then(() => {
+      if (sequence === imageSwitchSequence.current && detail !== null) {
+        setDisplayedImageIndex(normalized);
+        setImageLoading(false);
+      }
+    }).catch(() => {
+      if (sequence === imageSwitchSequence.current) {
+        setActiveImageIndex(displayedImageIndex);
+        setImageLoading(false);
+        toast("这张图片暂时无法加载，请稍后重试");
+      }
+    });
+  };
+  const postCard = (p: Post, source: "today" | "discover" = "discover", own = false, discoveryFeed = false, priority = false) => {
+    const rating = communityRatings[p.id];
+    if (discoveryFeed) return <DiscoveryPostCard
+      key={p.id}
+      post={p}
+      rating={rating}
+      liked={Boolean(state.liked?.includes(p.id))}
+      likeBusy={Boolean(discoveryLikeBusy[p.id])}
+      onLike={() => void toggleDiscoveryLike(p.id)}
+      onOpen={(element) => openPost(p.id, source, element)}
+      onAuthorOpen={setAuthorProfile}
+    />;
+    const rarityTier = p.rarityTier || (rating ? cardRarityTier(rating.average, rating.count) : "pending");
+    const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier;
+    const coverImage = p.image || p.images?.find(Boolean);
+    const coverVideo = p.video || p.videos?.[0];
+    return <button
+      className={`post-card editorial-post${discoveryFeed ? " discover-content-card" : ""}`}
       key={p.id}
       data-discover-id={p.id}
-      onPointerDown={(event) => prewarmNativeCardTransition(p.id, event.currentTarget)}
-      onClick={(event) => openPost(p.id, source, event.currentTarget)}
+      onClick={(event) => own && p.status === "draft" ? void openComposer(p) : openPost(p.id, source, event.currentTarget)}
     >
-      <div
-        className="post-cover editorial-cover"
-        style={{ background: coverColor(p.tag) }}
+      {(coverImage || coverVideo || discoveryFeed) && <div
+        className={`post-cover editorial-cover${discoveryFeed ? ` discover-post-cover${coverImage || coverVideo ? "" : " is-placeholder"}` : ""}`}
+        style={{ background: discoveryFeed && !coverImage && !coverVideo ? "linear-gradient(145deg,#30383d,#13171a)" : coverColor(p.tag), ...(own ? { aspectRatio: "3 / 4" } : source === "discover" ? { aspectRatio: discoverCoverRatio(p.id) } : {}) }}
       >
-        {(p.image || p.images?.[0]) && (
-          <img
-            src={feedImageSource(p.image || p.images?.[0])}
-            alt=""
-            loading="lazy"
+        {coverImage && <img
+            src={discoveryFeed ? feedImageSource(coverImage) : coverImage}
+            srcSet={!discoveryFeed && coverImage === p.image && p.imageRetina ? `${coverImage} 480w, ${p.imageRetina} 960w` : undefined}
+            sizes={state.discoverLayout === "single" ? "100vw" : "(min-width: 1600px) 20vw, (min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"}
+            alt={discoveryFeed ? p.title : ""}
+            loading={priority ? "eager" : "lazy"}
+            fetchPriority={priority ? "high" : "low"}
             decoding="async"
-            fetchPriority="low"
             onError={(e) => {
-              e.currentTarget.dataset.failed = "true";
+              if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
             }}
-          />
-        )}
-        <span>{p.cover}</span>
-      </div>
-      <div className="post-meta">
+          />}
+        {!coverImage && coverVideo && <video src={coverVideo} muted playsInline preload="metadata" aria-label="视频作品封面" />}
+        {discoveryFeed ? <>
+          <span className="post-cover-tag">{p.tag}</span>
+          <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`评级：${rarityLabel}`}>{rarityLabel}</i>
+          <strong className="post-cover-title">{p.title}</strong>
+        </> : <>
+          <i className={`post-cover-rarity rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有度`}>{rarityLabel}</i>
+          {p.cover && <span>{p.cover}</span>}
+        </>}
+      </div>}
+      <div className={`post-meta${discoveryFeed ? " discover-post-meta" : ""}`}>
+        {discoveryFeed ? <>
+          <span className="discover-post-author">{p.author}</span>
+          <span className="post-card-footer-trailing">
+            <span className={`post-card-like-count${state.liked?.includes(p.id) ? " is-liked" : ""}`} aria-label={`${p.likeCount ?? 0} 个赞`}><Heart size={12} fill={state.liked?.includes(p.id) ? "currentColor" : "none"} /> {p.likeCount ?? 0}</span>
+            <span className="post-read-action">阅读 ↗</span>
+          </span>
+        </> : <>
         <small>{p.tag}</small>
         <b>{p.title}</b>
-        <p className="post-summary">{p.body.slice(0, 100)}</p>
+        <p className="post-summary">{markdownToText(p.body).slice(0, 100)}</p>
         {communityRatings[p.id]?.count ? <span className={`post-card-rarity rarity-${cardRarity(communityRatings[p.id].average, communityRatings[p.id].count).replaceAll(" ", "")}`}><Star size={11} fill="currentColor"/> {cardRarity(communityRatings[p.id].average, communityRatings[p.id].count)} · {communityRatings[p.id].average.toFixed(1)}</span> : null}
-        <div>
+        <div className="post-card-footer">
           <span>{p.author}</span>
-          <span>{state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
+          <span className="post-card-footer-trailing">
+            {typeof p.likeCount === "number" && <span className={`post-card-like-count${state.liked?.includes(p.id) ? " is-liked" : ""}`} aria-label={`${p.likeCount} 个赞`}><Heart size={12} fill={state.liked?.includes(p.id) ? "currentColor" : "none"} /> {p.likeCount}</span>}
+            <span>{own && p.status === "draft" ? "编辑草稿" : own && p.status === "pending_review" ? "审核中" : own && p.status === "hidden" ? "审核未通过" : state.saved.includes(p.id) ? "♥ 已收藏" : "阅读 ↗"}</span>
+          </span>
         </div>
+        </>}
       </div>
-    </button>
-  );
+    </button>;
+  };
   const feed = (items: Post[]) => (
     <>
       <button
@@ -2692,17 +3435,30 @@ export default function Community() {
       >
         刷新内容 ↻
       </button>
-      {feedError && (
-        <button className="soft-button" onClick={() => void refreshFeed()}>
-          {feedError}
-        </button>
+      {feedError && items.length > 0 && (
+        <div className="feed-inline-error" role="status">
+          <span>{feedError}</span>
+          <button className="text-button" onClick={() => void refreshFeed()}>重试</button>
+        </div>
       )}
       {items.length ? (
-        <div className={`masonry editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`}>
-          {items.map((item) => postCard(item))}
+        <div className={`stable-editorial-feed${state.discoverLayout === "single" ? " single-column" : ""}`} style={{ "--masonry-columns": state.discoverLayout === "single" ? 1 : discoverColumnCount } as CSSProperties}>
+          {discoverColumns.map((column, index) => <div className="stable-editorial-column" key={`discover-column-${index}`}>
+            {column.map((item, itemIndex) => postCard(item, "discover", false, true, itemIndex === 0))}
+          </div>)}
+        </div>
+      ) : feedLoading || (tab === "discover" && feedLoadedTag !== category && !feedError) ? (
+        <div className="discover-loading" role="status" aria-live="polite">
+          <span>正在整理发现内容…</span>
+          <div><i/><i/><i/><i/></div>
+        </div>
+      ) : feedError ? (
+        <div className="empty discover-feed-error" role="alert">
+          <span>{feedError}</span>
+          <button className="text-button" onClick={() => void refreshFeed()}>重试</button>
         </div>
       ) : (
-        <div className="empty">这里暂时没有内容，试试其他话题。</div>
+        <div className="empty">{sort === "关注" ? accountId ? "还没有关注创作者，去搜索用户并打开主页关注他们。" : "登录后关注喜欢的创作者，这里会汇集他们的更新。" : "这里暂时没有内容，试试其他话题。"}</div>
       )}
       {(items.length < filtered.length || (tab === "discover" && feedHasMore)) && (
         <div ref={loadMoreRef} className="feed-sentinel">
@@ -2716,38 +3472,49 @@ export default function Community() {
   const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => (
     <button
       key={id}
-      className={tab === id || ((tab === "settings" || tab === "my-content") && id === "mine") || (tab === "topic" && id === "discover") ? "active" : ""}
+      className={tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "shared-collection") && id === "discover") || ((tab === "exploration-center" || tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain") && id === "mine") || (tab === "notifications" && id === "messages") ? "active" : ""}
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
-        if (detail !== null && history.state?.heikaDetail === detail) history.back();
-        else setDetail(null);
-        setDetailReady(false);
+        imageSwitchSequence.current += 1;
+        setImageLoading(false);
+        if (detail !== null) {
+          setDetail(null);
+          setDetailReady(false);
+          setTransitionPhase(null);
+          setDetailImageTransition(null);
+          transitionBusy.current = false;
+        }
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
     >
-      {id === "messages" && <><span className="sr-only">私聊</span><InboxBadge enabled={state.notifications.messages} /></>}
-      <Icon size={21} strokeWidth={1.8} />
+      <span className="bottom-nav-icon">
+        {id === "messages" && <InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} />}
+        <Icon size={21} strokeWidth={1.8} />
+      </span>
       <span>{label}</span>
     </button>
   );
 
-  const renderCandidate = (p: Post) => {
-    const revealed = state.revealed[p.id],
-      unlocked = Boolean(revealed),
-      rarityTier = state.rarityTiers[p.id] || revealed?.rarityTier,
+  const renderCandidate = (p: Post, deckPosition = candidates.findIndex((candidate) => candidate.id === p.id), showHistoricalReveal = false) => {
+    const historical = showHistoricalReveal || (deckPosition < 0 && Boolean(state.revealed[p.id]));
+    const unlocked = historical || opened.includes(p.id),
+      revealed = unlocked ? state.revealed[p.id] : undefined,
+      rarityTier = unlocked ? state.rarityTiers[p.id] || revealed?.rarityTier || p.rarityTier : undefined,
+      rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" || !rarityTier ? "" : rarityTier,
       rareTier = rarityTier === "S" || rarityTier === "SS" || rarityTier === "SSS" ? rarityTier : null;
     return (
       <button
         key={p.id}
         data-card-id={p.id}
         className={`candidate-feed-card flip-in-place${unlocked ? " is-unlocked" : ""}${justFlippedId === p.id ? " just-flipped" : ""}${detail === p.id ? " is-detail-source" : ""}`}
-        onClick={() => flip(p.id)}
-        aria-label={unlocked ? `阅读 ${revealed.title}${rareTier ? `，${rareTier}级稀有卡` : ""}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
+        onClick={() => historical ? openPost(p.id, "today") : flip(p.id)}
+        aria-label={unlocked ? `阅读 ${revealed?.title || "已翻开的卡片"}${rareTier ? `，${rareTier}级稀有卡` : ""}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
       >
         <span className="card-flip-inner">
           <span className="card-flip-face card-flip-front">
-            <span className="card-number">{String(p.id).padStart(2, "0")}</span>
+            <span className="card-number">{deckPosition >= 0 ? String(deckPosition + 1).padStart(2, "0") : "—"}</span>
+            {rarityLabel && <i className={`candidate-rarity-chip rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有卡`}>{rarityLabel}</i>}
             <span className="card-brand">黑卡 · HEIKA</span>
             <span className="card-prompt">轻触翻开</span>
           </span>
@@ -2757,14 +3524,14 @@ export default function Community() {
               background: revealed ? coverColor(revealed.tag) : "#e7e4dd",
             }}
           >
-            {rareTier && <i className={`candidate-rarity-chip rarity-tier-${rareTier}`} aria-label={`${rareTier}级稀有卡`}>{rareTier}</i>}
+            {rarityLabel && <i className={`candidate-rarity-chip rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有卡`}>{rarityLabel}</i>}
             {revealed?.image && (
               <img
                 src={revealed.image}
                 alt=""
                 loading="lazy"
                 onError={(e) => {
-                  e.currentTarget.dataset.failed = "true";
+                  if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
                 }}
               />
             )}
@@ -2788,152 +3555,82 @@ export default function Community() {
   }, []);
 
   useEffect(() => {
+    const refreshExperience = () => {
+      if (accountId) void cloudRequest("/api/v1/progression").then((summary) => { if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary); }).catch(() => {});
+    };
+    window.addEventListener("heika-experience-updated", refreshExperience);
+    return () => window.removeEventListener("heika-experience-updated", refreshExperience);
+  }, [accountId]);
+
+  useEffect(() => {
     if (!ready) return;
     let alive = true;
     let cleanup = () => {};
-    const isCurrent = (sequence: number) => alive && hydrationSequence.current === sequence;
-    let guestRecoverySequence = 0;
-    let localIdentityReady = false;
-    let pendingOnlineRestore = false;
-    let hydrateAccount = () => {};
-    const recoverOnNetworkRestore = () => {
-      document.querySelectorAll<HTMLImageElement>('img[data-failed="true"]').forEach((image) => {
-        const source = image.getAttribute("src");
-        if (!source) return;
-        try {
-          const url = new URL(source, window.location.href);
-          if (url.pathname !== "/api/v1/media" || !url.searchParams.has("path")) return;
-          url.searchParams.set("recovery", String(Date.now()));
-          delete image.dataset.failed;
-          image.src = url.href;
-        } catch { /* Leave unsupported image sources in their fallback state. */ }
-      });
-      if (!localIdentityReady) {
-        pendingOnlineRestore = true;
-        return;
-      }
-      const currentAccountId = accountIdRef.current;
-      if (currentAccountId) {
-        const accountKey = `heika-user-${currentAccountId}`;
-        if (!cloudHydrated.current || (staleCardMedia.current.key === accountKey && staleCardMedia.current.ids.size)) {
-          hydrateAccount();
-        }
-        return;
-      }
-      if (staleCardMedia.current.key !== "heika-demo-v1" || !staleCardMedia.current.ids.size) return;
-      const recoverySequence = ++guestRecoverySequence;
-      const ids = [...staleCardMedia.current.ids];
-      void fetch("/api/demo/cards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-        signal: AbortSignal.timeout(12000),
-      }).then((response) => response.json().then((result) => ({ response, result })))
-        .then(({ response, result }) => {
-          if (!alive || recoverySequence !== guestRecoverySequence || accountIdRef.current || !response.ok || !Array.isArray(result.data?.items)) return;
-          const recovered = result.data.items as Post[];
-          setState((previous) => ({
-            ...previous,
-            revealed: { ...previous.revealed, ...Object.fromEntries(recovered.map((post) => [post.id, normalizeCachedPost(post)])) },
-            rarityTiers: { ...previous.rarityTiers, ...Object.fromEntries(recovered.filter((post) => post.rarityTier).map((post) => [post.id, post.rarityTier!])) },
-          }));
-          for (const post of recovered) staleCardMedia.current.ids.delete(post.id);
-        }).catch(() => {});
-    };
     void browserDb()
-      .then(async (db) => {
-        const hydrate = async () => {
-          const sequence = ++hydrationSequence.current;
+      .then((db) => {
+        if (!alive) return;
+        let generation = 0;
+        let currentUserId: string | null | undefined;
+        let restoredUserId: string | null = null;
+        let hydrationTimer: ReturnType<typeof setTimeout> | undefined;
+        const hydrate = async (user: User | null, version: number) => {
+          const isCurrent = () => alive && version === generation;
+          if (!isCurrent()) return;
           cloudHydrated.current = false;
-          const {
-            data: { user },
-          } = await db.auth.getUser();
-          if (!isCurrent(sequence)) return;
-          const nextAccountId = user?.id || null;
-          const identityChanged = accountIdRef.current !== nextAccountId;
-          const restoreNeeded = identityChanged || !localIdentityReady;
-          accountIdRef.current = nextAccountId;
-          if (identityChanged) {
-            localIdentityReady = false;
-            setAccountReady(false);
-            stateRef.current = { ...initial, cardIds: stateRef.current.cardIds, comments: [] };
-            setState(stateRef.current);
-            staleCardMedia.current = {
-              key: user ? `heika-user-${user.id}` : "heika-demo-v1",
-              ids: new Set(),
-            };
-          }
+          setPublicBookmarksLoaded(false);
           setAccountId(user?.id || null);
+          setAccountReady(true);
           if (!user) {
-            setIsAdmin(false);
-            setExperienceSummary({ total: 0, membershipTier: "free", events: [] });
+            setIsStaff(false);
+            setAdminRole("member");
+            setPublicBookmarks(false);
+            setPublicBookmarksLoaded(true);
+            setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
             setStorageKey("heika-demo-v1");
-            if (restoreNeeded) {
-              const rawGuest = await loadCardStateSnapshot<unknown>("heika-demo-v1");
-              if (!isCurrent(sequence)) return;
-              staleCardMedia.current = { key: "heika-demo-v1", ids: new Set(cachedStateNeedingCardRefresh(rawGuest)) };
-              const guest = normalizeSavedState(rawGuest);
-              if (guest) {
-                stateRef.current = { ...initial, ...guest, cardIds: guest.cardIds?.length ? guest.cardIds : stateRef.current.cardIds, comments: [] };
-                setState(stateRef.current);
-              }
-            }
-            localIdentityReady = true;
-            setAccountReady(true);
-            if (pendingOnlineRestore && navigator.onLine) {
-              pendingOnlineRestore = false;
-              queueMicrotask(recoverOnNetworkRestore);
-            }
+            if (restoredUserId === null) return;
+            restoredUserId = null;
+            try {
+              const guest = JSON.parse(
+                localStorage.getItem("heika-demo-v1") || "null",
+              );
+              setState((s) => ({ ...initial, ...guest, comments: [], cardIds: s.cardIds }));
+            } catch { setState((s) => ({ ...initial, cardIds: s.cardIds })); }
             return;
           }
-          const accountKey = `heika-user-${user.id}`;
-          const rawSnapshot = restoreNeeded
-            ? await loadCardStateSnapshot<unknown>(accountKey)
-            : stateRef.current;
-          if (!isCurrent(sequence)) return;
-          const accountSnapshot = normalizeSavedState(rawSnapshot) || {};
-          if (identityChanged) {
-            staleCardMedia.current = {
-              key: accountKey,
-              ids: new Set(cachedStateNeedingCardRefresh(rawSnapshot)),
-            };
-          }
-          setStorageKey(accountKey);
-          if (restoreNeeded) {
-            stateRef.current = {
-              ...initial,
-              ...accountSnapshot,
-              cardIds: accountSnapshot.cardIds?.length ? accountSnapshot.cardIds : stateRef.current.cardIds,
-              comments: [],
-            };
-            setState(stateRef.current);
-          }
-          localIdentityReady = true;
-          setAccountReady(true);
-          if (pendingOnlineRestore && navigator.onLine) {
-            pendingOnlineRestore = false;
-            queueMicrotask(recoverOnNetworkRestore);
-          }
+          setIsStaff(false);
+          setAdminRole("member");
+          setPublicBookmarks(false);
+          setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
+          restoredUserId = user.id;
+          setStorageKey(`heika-user-${user.id}`);
+          setState((previous) => {
+            let local;
+            try { local = JSON.parse(localStorage.getItem(`heika-user-${user.id}`) || "null"); } catch {}
+            return { ...initial, ...local, comments: [], cardIds: previous.cardIds };
+          });
           void cloudRequest("/api/v1/progression").then((summary) => {
-            if (isCurrent(sequence) && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+            if (isCurrent() && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
           }).catch(() => {});
           try {
             const data = await cloudRequest("/api/v1/library-state");
-            if (!isCurrent(sequence) || !data) return;
-            const hasAdminAccess = data.profile?.role === "admin";
-            setIsAdmin(hasAdminAccess);
+            if (!isCurrent() || !data) return;
+            if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
+              setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
+            }
+            setPublicBookmarks(Boolean(data.profile?.show_bookmarks));
+            setPublicBookmarksLoaded(true);
+            const role = data.profile?.role === "admin" || data.profile?.role === "content_manager" || data.profile?.role === "reviewer" ? data.profile.role : "member";
+            setAdminRole(role);
+            setIsStaff(role !== "member");
             if (adminEntryPending.current) {
               adminEntryPending.current = false;
-              if (hasAdminAccess) setTab("moderation");
+              if (role !== "member") setTab("moderation");
               else toast("当前账号没有管理员权限。");
             }
-            const applyCloudState = (recovered: Post[]) => setState((previous) => {
-              const s: State = {
-                ...initial,
-                ...previous,
-                cardIds: previous.cardIds,
-                comments: [],
-              };
+            setStorageKey(`heika-user-${user.id}`);
+            setState((previous) => {
+              // Preserve local interactions made while cloud hydration was in flight.
+              const s: State = previous;
               const saved = [
                 ...new Set<number>([
                   ...data.bookmarks
@@ -2969,14 +3666,7 @@ export default function Community() {
                 profileDetails: hydrateProfileDetails(data.profileDetails),
                 saved,
                 opened,
-                rarityTiers: {
-                  ...rarityTiers,
-                  ...Object.fromEntries(recovered.filter((post) => post.rarityTier).map((post) => [post.id, post.rarityTier!])),
-                },
-                revealed: {
-                  ...s.revealed,
-                  ...Object.fromEntries(recovered.map((post) => [post.id, normalizeCachedPost(post)])),
-                },
+                rarityTiers,
                 own: [
                   ...new Map(
                     [...s.own.filter((p) => !p.cloudId), ...data.own].map(
@@ -3045,63 +3735,55 @@ export default function Community() {
                   : {}),
               };
             });
-            const openedIds = [...new Set<number>((data.interactions || [])
-              .filter((row: { opened_at?: string; posts?: { client_id?: number } | null }) => row.opened_at && row.posts?.client_id)
-              .map((row: { posts: { client_id: number } }) => Number(row.posts.client_id))
-              .filter((id: number) => Number.isSafeInteger(id) && id > 0))];
-            const cachedRevealed = accountSnapshot.revealed || {};
-            const staleForAccount = staleCardMedia.current.key === accountKey
-              ? staleCardMedia.current.ids
-              : new Set<number>();
-            const staleMediaIds = new Set<number>(openedIds.filter((id) =>
-              staleForAccount.has(id) || cachedPostNeedsRefresh((rawSnapshot as Partial<State> | null)?.revealed?.[id]),
-            ));
-            const missingIds = openedIds.filter((id) => !cachedRevealed[id] || staleMediaIds.has(id));
-            const recovered: Post[] = [];
-            for (let offset = 0; offset < missingIds.length; offset += 100) {
-              try {
-                const response = await fetch("/api/demo/cards", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ ids: missingIds.slice(offset, offset + 100) }),
-                  signal: AbortSignal.timeout(12000),
-                });
-                const result = await response.json();
-                if (isCurrent(sequence) && response.ok && Array.isArray(result.data?.items)) {
-                  recovered.push(...result.data.items as Post[]);
-                }
-              } catch {
-                // Keep the durable local snapshot available when the network is offline.
-              }
-              if (!isCurrent(sequence)) return;
-            }
-            for (const post of recovered) staleCardMedia.current.ids.delete(post.id);
-            applyCloudState(recovered);
             cloudHydrated.current = true;
           } catch (e) {
-            if (isCurrent(sequence)) toast(e instanceof Error ? e.message : "云端同步失败");
-          } finally {
-            if (isCurrent(sequence)) setAccountReady(true);
+            if (!isCurrent()) return;
+            setPublicBookmarksLoaded(true);
+            toast(e instanceof Error ? e.message : "云端同步失败");
           }
         };
-        hydrateAccount = () => { void hydrate(); };
-        window.addEventListener("online", recoverOnNetworkRestore);
-        const { data } = db.auth.onAuthStateChange(() =>
-          queueMicrotask(() => void hydrate()),
-        );
-        cleanup = () => {
-          data.subscription.unsubscribe();
-          window.removeEventListener("online", recoverOnNetworkRestore);
+        const scheduleHydration = (event: string, user: User | null) => {
+          const id = user?.id || null;
+          if (id === currentUserId && event !== "USER_UPDATED") return;
+          currentUserId = id;
+          setAccountReady(false);
+          const version = ++generation;
+          clearTimeout(hydrationTimer);
+          // Defer beyond the auth lock; microtasks can run while it is still held.
+          hydrationTimer = setTimeout(() => { void hydrate(user, version); }, 0);
         };
-        await hydrate();
+        const { data } = db.auth.onAuthStateChange((event, session) => {
+          scheduleHydration(event, session?.user || null);
+        });
+        cleanup = () => {
+          generation += 1;
+          clearTimeout(hydrationTimer);
+          data.subscription.unsubscribe();
+        };
       })
-      .catch(() => { if (alive) setAccountReady(true); });
+      .catch(() => {});
     return () => {
       alive = false;
-      hydrationSequence.current += 1;
       cleanup();
     };
-  }, [ready]);
+  }, [ready, toast]);
+  useEffect(() => {
+    if (!accountId) return;
+    let alive = true;
+    let remove = () => {};
+    void browserDb().then((db) => {
+      if (!alive) return;
+      const channel = db.channel(`membership-${accountId}`).on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${accountId}`,
+      }, (payload) => {
+        const tier = (payload.new as { membership_tier?: string }).membership_tier;
+        if (alive && (tier === "free" || tier === "plus" || tier === "pro"))
+          setExperienceSummary((current) => ({ ...current, membershipTier: tier }));
+      }).subscribe();
+      remove = () => { void db.removeChannel(channel); };
+    }).catch(() => {});
+    return () => { alive = false; remove(); };
+  }, [accountId]);
   useEffect(() => {
     const syncProfile = (event: Event) => {
       const detail = (event as CustomEvent<{ id?: string; nickname?: string; bio?: string; avatar?: string }>).detail;
@@ -3133,8 +3815,9 @@ export default function Community() {
     state.readingMode,
     state.notifications,
     state.interests,
+    toast,
   ]);
-  if (!ready || !accountReady)
+  if (!ready)
     return (
       <main className="app editorial-skeleton" aria-label="正在加载内容">
         <div className="skeleton-brand" />
@@ -3244,13 +3927,30 @@ export default function Community() {
         </footer>
       </main>
     );
+  const currentExperience = experienceProgress(experienceSummary.total);
+  const visibleOwnPosts = selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own;
+  const detailArticleContent = post ? (
+    <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载正文…</div>}>
+      <EditorialArticle post={post} />
+    </Suspense>
+  ) : null;
   return (
-    <main className={`app${secondaryTitle ? " has-secondary-header" : ""}`}>
-      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}`}>
-        {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand">黑卡 <i>HEIKA</i></span>}
-        <span className="demo-pill">
-          {accountId ? "已登录 · 云端同步" : "访客探索 · 登录后同步"}
-        </span>
+    <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
+      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}${tab === "discover" && !secondaryTitle ? " is-discover-topline" : ""}`}>
+        {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand"><span>黑卡</span><i>HEIKA</i></span>}
+        {tab === "discover" && !secondaryTitle ? <div className="discover-top-actions">
+          <button type="button" className={`topline-action${discoverSearchOpen ? " selected" : ""}`} aria-label={discoverSearchOpen ? "关闭搜索" : "搜索内容或用户"} aria-expanded={discoverSearchOpen} onClick={() => { setSearchDraft(searchTerm); setDiscoverSearchOpen((open) => !open); setDiscoverSettingsOpen(false); }}><Search size={19} strokeWidth={1.8}/></button>
+          <button type="button" className={`topline-action${discoverSettingsOpen ? " selected" : ""}`} aria-label="更多" aria-expanded={discoverSettingsOpen} aria-controls="discover-quick-settings" onClick={() => { setDiscoverSettingsOpen((open) => !open); setDiscoverSearchOpen(false); }}><MoreHorizontal size={21} strokeWidth={1.8}/></button>
+          {discoverSettingsOpen && <div className="discover-quick-settings" id="discover-quick-settings" role="group" aria-label="发现页浏览设置">
+            <span>浏览方式</span>
+            <button type="button" aria-pressed={state.discoverLayout === "waterfall"} className={state.discoverLayout === "waterfall" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "waterfall" })); setDiscoverSettingsOpen(false); }}><LayoutGrid size={16}/><span>双列瀑布流</span></button>
+            <button type="button" aria-pressed={state.discoverLayout === "single"} className={state.discoverLayout === "single" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "single" })); setDiscoverSettingsOpen(false); }}><List size={16}/><span>单列浏览</span></button>
+            <RecommendationControls accountId={accountId} onLogin={() => { setDiscoverSettingsOpen(false); setTab("messages"); }} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
+          </div>}
+        </div> : tab === "today" && !secondaryTitle ? <div className="discover-top-actions today-top-actions">
+          <button type="button" className="topline-action" aria-label="搜索内容或用户" onClick={() => { setSearchReturnTab("today"); setSearchDraft(searchTerm); setTab("search"); }}><Search size={19} strokeWidth={1.8}/></button>
+          <button type="button" className="topline-action" aria-label="打开通知" onClick={() => openNotifications("today")}><Bell size={19} strokeWidth={1.8}/></button>
+        </div> : tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : null}
       </header>
       {tab === "today" && (
         <section
@@ -3282,20 +3982,14 @@ export default function Community() {
             <div className="daily-quota-summary" role="status" aria-live="polite">
               <strong>今日已翻开 {Math.min(opened.length, dailyAllowance)} / {dailyAllowance} 张</strong>
               <span>{opened.length >= dailyAllowance ? "今日额度已用完，已解锁卡片仍可查看" : `还可翻开 ${dailyAllowance - opened.length} 张`}</span>
-              <button className="quota-plan-link" onClick={() => setModal("subscription")}><Crown size={14}/> 翻卡方案</button>
             </div>
           )}
           {state.homeMode === "waterfall" ? (
             <>
               <div className="candidate-feed waterfall-card-feed">
-                {visibleCandidates.map(renderCandidate)}
+                {visibleCandidates.map((candidate, index) => renderCandidate(candidate, index))}
               </div>
-              {visibleCandidates.length < candidates.length && (
-                <div ref={loadMoreRef} className="feed-sentinel">
-                  <span>继续浏览未解锁的卡片</span>
-                  <button onClick={() => setPage((count) => count + 12)}>加载更多</button>
-                </div>
-              )}
+              <p className="daily-deck-caption">今日卡池 · 50 张 · 翻卡次数将在明日自动重置</p>
             </>
           ) : (
             <>
@@ -3311,8 +4005,8 @@ export default function Community() {
                     <linearGradient id="facet-metal-d" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#34434a"/><stop offset=".46" stopColor="#8c999e"/><stop offset="1" stopColor="#4c5c63"/></linearGradient>
                   </defs>
                   {blackCardFacets.map((points, index) => {
-                    const hasUnlocked = candidates.some((candidate, candidatePosition) =>
-                      Boolean(state.revealed[candidate.id]) &&
+            const hasUnlocked = candidates.some((candidate, candidatePosition) =>
+                      opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]) &&
                       (state.facetSlots?.[candidate.id] ?? candidatePosition % blackCardFacets.length) === index,
                     );
                     const unavailable = !candidates.length || (!hasUnlocked && opened.length >= dailyAllowance);
@@ -3338,7 +4032,6 @@ export default function Community() {
               </div>
               <div className="black-card-quota-meta">
                 <p className="fineprint">每日基础 5 次{luckyBonusToday ? ` · 幸运加成 +${luckyBonusToday}` : ""} · 已选 {Math.min(opened.length, dailyAllowance)}/{dailyAllowance}</p>
-                <button className="quota-plan-link" onClick={() => setModal("subscription")}><Crown size={14}/> 翻卡方案</button>
               </div>
             </>
           )}
@@ -3350,27 +4043,27 @@ export default function Community() {
             <label className="search-page-field">
               <Search size={18} aria-hidden="true" />
               <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜内容、昵称或兴趣" aria-label="搜索内容或用户" maxLength={60} autoComplete="off" />
-              {searchDraft && <button type="button" aria-label="清除搜索词" onClick={() => { setSearchDraft(""); setSearchTerm(""); setSearchPosts([]); setSearchPeople([]); setSearchTotal(0); }}><X size={16}/></button>}
+              {searchDraft && <button type="button" aria-label="清除搜索词" onClick={() => { setSearchDraft(""); setSearchTerm(""); setSearchPosts([]); setSearchPeople([]); setSearchTotal(0); setSearchHasMore(false); searchCursorRef.current = null; }}><X size={16}/></button>}
             </label>
             <button className="search-page-submit" type="submit" disabled={!searchDraft.trim()}>搜索</button>
           </form>
           {searchTerm ? <>
             <div className="search-result-toolbar">
               <div className="search-result-tabs" role="tablist" aria-label="搜索范围">
-                {([ ["content", "内容"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); setSearchTotal(0); setSearchPosts([]); setSearchPeople([]); setSearchError(""); }}>{label}</button>)}
+                {([ ["content", "内容"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); searchCursorRef.current = null; setSearchTotal(0); setSearchHasMore(false); setSearchPosts([]); setSearchPeople([]); setSearchError(""); }}>{label}</button>)}
               </div>
-              <small>{searchLoading && searchPage === 1 ? "正在搜索" : `${searchTotal} 条结果`}</small>
+              <small>{searchLoading && searchPage === 1 ? "正在搜索" : searchKind === "content" ? `已加载 ${searchPosts.length} 条${searchHasMore ? "" : "结果"}` : `${searchTotal} 条结果`}</small>
             </div>
             {searchError && <div className="search-state search-error"><span>{searchError}</span><button onClick={() => setSearchRetry((n) => n + 1)}>重试</button></div>}
             {searchKind === "content" ? <div className="search-post-results" role="tabpanel">
-              {searchPosts.map((item) => <button className="search-post-result" key={item.id} onPointerDown={(event) => prewarmNativeCardTransition(item.id, event.currentTarget)} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
-                <span className="search-post-thumbnail">{item.image && <img src={item.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}<small>{item.tag}</small></span>
-                <span className="search-post-copy"><strong>{item.title}</strong><span>{item.body.slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
+              {searchPosts.map((item) => <button className="search-post-result" key={item.id} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
+                <span className="search-post-thumbnail">{item.image && <img src={item.image} srcSet={item.imageRetina ? `${item.image} 480w, ${item.imageRetina} 960w` : undefined} sizes="72px" alt="" loading="lazy" decoding="async" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}/>}<small>{item.tag}</small></span>
+                <span className="search-post-copy"><strong>{item.title}</strong><span>{markdownToText(item.body).slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
                 <ChevronRight size={17}/>
               </button>)}
               {!searchLoading && !searchError && !searchPosts.length && <div className="search-state">没有找到相关内容，试试更短的关键词。</div>}
               {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
-              {searchPosts.length < searchTotal && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多内容"}</button>}
+              {searchHasMore && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多内容"}</button>}
             </div> : <div className="search-people-results" role="tabpanel">
               {searchPeople.map((person) => <button className="search-person-result" key={person.id} onClick={() => setAuthorProfile(person.id)}>
                 <span className="search-person-avatar"><span>{(person.nickname || "探").slice(0, 1)}</span>{person.avatar_url && <img src={person.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}</span>
@@ -3389,22 +4082,35 @@ export default function Community() {
         </section>
       )}
       {tab === "discover" && (
-        <section className="page editorial-home">
-          <button className="search search-launch" onClick={openSearch}><Search size={18}/><span>搜索内容或用户</span><kbd>⌕</kbd></button>
-          <div className="discover-topic-list" aria-label="精选话题">
-            {topicChoices.map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
+        <section className="page editorial-home discover-page">
+          <div className="discover-channel-tabs" role="tablist" aria-label="发现频道">
+            <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>社区</span></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected ai-channel-active" : ""} onClick={() => switchDiscoverChannel("ai")}><span>AI 空间</span></button>
           </div>
-          <div className="filters editorial-filters">
-            {["全部", ...tags].map((t) => (
+          {discoverSearchOpen && <form className="discover-inline-search" role="search" onSubmit={(event) => { event.preventDefault(); setSearchReturnTab("discover"); submitSearch(searchDraft); setDiscoverSearchOpen(false); setTab("search"); }}>
+            <Search size={17} aria-hidden="true" />
+            <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜索标题、作者或内容" aria-label="搜索内容或用户" autoFocus maxLength={60} />
+            {searchDraft && <button type="button" aria-label="清除搜索内容" onClick={() => setSearchDraft("")}><X size={15}/></button>}
+            <button type="submit" className="discover-inline-search-submit" disabled={!searchDraft.trim()}>搜索</button>
+          </form>}
+          <div className={`discover-channel-content${discoverChannelPhase ? ` is-${discoverChannelPhase}` : ""}`}>
+          <div className={`discover-community-channel discover-channel-panel${discoverChannel === "community" ? " is-active" : ""}${outgoingDiscoverChannel === "community" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "community" && outgoingDiscoverChannel !== "community"}>
+          <div className="discover-category-nav" role="tablist" aria-label="发现内容分类">
+            {["全部", ...(communityCategories.length ? communityCategories : tags)].map((t) => (
               <button
                 key={t}
                 className={category === t ? "selected" : ""}
+                role="tab"
+                aria-selected={category === t}
                 onClick={() => {
+                  if (category === t) return;
                   setCategory(t);
                   setPublicFeed([]);
+                  setFeedPostIds([]);
                   setFeedPage(0);
                   setFeedTotal(0);
                   setFeedHasMore(false);
+                  feedCursor.current = null;
                   setFeedLoadedTag(null);
                   setPage(12);
                 }}
@@ -3413,27 +4119,44 @@ export default function Community() {
               </button>
             ))}
           </div>
-          {latestOpenedPost && (
+          {sort === "精选" && category === "全部" && latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">
               <div className="recent-flip-heading">
                 <div><small>RECENTLY REVEALED</small><h2 id="recent-flip-title">最近翻开的卡</h2></div>
                 <span>随时回来继续阅读</span>
               </div>
-              {renderCandidate(latestOpenedPost)}
+              {renderCandidate(latestOpenedPost, -1, true)}
             </section>
           )}
-          <div className="section-head editorial-section-head">
+          <div className="discover-topic-list" aria-label="精选话题">
+            {topicChoices.slice(0, 8).map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
+          </div>
+          {topicEvents.length > 0 && <section className="topic-events-section" aria-labelledby="topic-events-title"><div className="topic-events-heading"><div><small>COMMUNITY / OPEN CALL</small><h2 id="topic-events-title">本期话题共创</h2></div><span>{topicEvents.length} 个进行中</span></div><div className="topic-event-list">{topicEvents.map((event) => <article className="topic-event-card" key={event.id}><div className="topic-event-mark">#{event.topic}</div><div className="topic-event-copy"><h3>{event.title}</h3><p>{event.description}</p><small>{event.participantCount} 人参与 · {event.postCount} 篇内容 · 截止 {new Date(event.ends_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</small></div><button type="button" className={event.joined ? "joined" : ""} onClick={() => void joinTopicEvent(event)}>{event.joined ? "继续创作" : "加入共创"}</button></article>)}</div></section>}
+          <div className="discover-sort" role="group" aria-label="发现排序">
+            {["精选", "最新", "高分", "关注"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => { if (sort !== option) { setPublicFeed([]); setFeedPostIds([]); setFeedPage(0); setFeedTotal(0); setFeedHasMore(false); feedCursor.current = null; setFeedLoadedTag(null); setFeedLoadedSort(null); setPage(12); setSort(option); } }}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
+          </div>
+          {sort === "关注" && !accountId && <p className="fineprint follow-feed-hint">登录并关注创作者后，这里会集中显示他们的新内容。</p>}
+          <div className="section-head editorial-section-head discover-feed-heading">
             <h2>{category === "全部" ? "为你推荐" : category}</h2>
             <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
           </div>
           {feed(list)}
+          </div>
+          <div className={`discover-ai-channel discover-channel-panel${discoverChannel === "ai" ? " is-active" : ""}${outgoingDiscoverChannel === "ai" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "ai" && outgoingDiscoverChannel !== "ai"}>
+            <AISpace accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
+          </div>
+          </div>
         </section>
       )}
-      {tab === "topic" && !topicSummary && (
-        <section className="page editorial-home topic-detail-page" aria-busy={topicLoading}>
-          <p className="topic-empty-state">{topicLoading ? "正在打开话题…" : "话题暂时无法加载"}</p>
-        </section>
-      )}
+      {tab === "co-explore" && <CoExplore accountId={accountId} posts={publicFeed.length ? publicFeed : all} onLogin={() => setTab("messages")} onNotice={toast}/>}
+      {tab === "notifications" && <NotificationCenter accountId={accountId} onLogin={() => setTab("messages")} onOpenPost={(item) => {
+        const post = item.post_id ? all.find((candidate) => candidate.cloudId === item.post_id || candidate.id.toString() === item.post_id) || item.post : item.post;
+        if (post) { setPublicFeed((items) => items.some((candidate) => candidate.id === post.id) ? items : [...items, post]); requestAnimationFrame(() => openPost(post.id, "discover")); } else toast("这篇内容暂时不可用");
+      }}/ >}
+      {tab === "shared-collection" && <SharedCollection code={sharedCollectionCode} accountId={accountId} onNotice={toast} onLogin={() => setTab("messages")} onOpenPost={(post) => {
+        setPublicFeed((items) => items.some((item) => item.id === post.id) ? items : [...items, post]);
+        requestAnimationFrame(() => openPost(post.id, "discover"));
+      }}/>}
       {tab === "topic" && topicSummary && (
         <section className="page editorial-home topic-detail-page">
           <button className="back settings-back" onClick={closeTopicPage}><ArrowLeft size={18} /> 返回</button>
@@ -3443,6 +4166,7 @@ export default function Community() {
           <div className="topic-detail-stats">
             <span><strong>{topicSummary.postCount}</strong> 篇公开内容</span>
             <span><strong>{topicSummary.participantCount}</strong> 位创作者</span>
+            <TopicFollowButton topicId={topicSummary.id} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />
           </div>
           {topicPosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{topicPosts.map((item) => postCard(item, "discover"))}</div> : <p className="topic-empty-state">这个话题还没有公开内容，来分享你的第一篇发现。</p>}
           {topicPosts.length < topicTotal && <button className="feed-refresh" disabled={topicLoading} onClick={() => void loadMoreTopicPosts()}>{topicLoading ? "正在加载…" : "加载更多"}</button>}
@@ -3452,80 +4176,79 @@ export default function Community() {
         <div className="messages-tab-cache" hidden={tab !== "messages"}>
           <Messages
             initialPeer={messagePeer}
-            initialConversation={messageConversation}
             isActive={tab === "messages"}
             onPeerOpened={() => setMessagePeer(null)}
-            onConversationOpened={() => setMessageConversation(null)}
+            onConversationChange={setChatConversationOpen}
+            onOpenProfile={(id) => setAuthorProfile(id)}
+            onOpenNotifications={openNotifications}
+            onNotice={toast}
+            onOpenConversationPeer={(id) => { setMessagePeer(id); setTab("messages"); }}
+            messageNotificationsEnabled={state.notifications.messages}
           />
         </div>
       )}
       {tab === "settings" && settingsDetail === null && (
-        <section className="page settings-page">
-          <button className="back settings-back" onClick={() => {
+        <SettingsHome
+          theme={theme}
+          fontChoice={fontChoice}
+          bottomNavStyle={bottomNavStyle}
+          homeMode={state.homeMode}
+          readingMode={state.readingMode}
+          detailTransition={detailTransition}
+          discoverLayout={state.discoverLayout}
+          profileLayout={profileLayout}
+          messagesEnabled={state.notifications.messages}
+          accountId={accountId}
+          isStaff={isStaff}
+          onOpenDetail={openSettingsDetail}
+          onOpenAbout={openAboutPage}
+          onOpenContent={() => openMyContent("settings")}
+          onOpenCreator={() => openCreatorCenter("settings")}
+          onOpenFeedbackAdmin={() => openSettingsDetail("feedbackAdmin")}
+          onOpenModeration={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}
+          onBack={() => {
+            setSettingsPersonalOpen(false);
             setTab("mine");
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" }));
-          }}><ArrowLeft size={18} /> 我的</button>
-          <h1>设置<span className="red-dot">.</span></h1>
-          <p className="lead">按模块管理你的黑卡体验。</p>
-          <div className="settings-module">
-            <div className="settings-module-heading"><strong>外观</strong></div>
-            <div className="settings-list">
-              <button onClick={() => openSettingsDetail("theme")}><span>外观主题</span><small>{{dark:"深色",light:"浅色",system:"跟随系统"}[theme]}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("font")}><span>字体</span><small>{fontChoice === "oppo" ? "OPPO Sans 4.0" : "系统字体"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("bottomNav")}><span>底部导航</span><small>{bottomNavStyle === "glass" ? "悬浮玻璃" : "固定底栏"}</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          <div className="settings-module">
-            <div className="settings-module-heading"><strong>浏览与阅读</strong></div>
-            <div className="settings-list">
-              <button onClick={() => openSettingsDetail("homeMode")}><span>首页浏览模式</span><small>{state.homeMode === "waterfall" ? "瀑布流" : "黑卡"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("reading")}><span>阅读模式</span><small>{{standard:"标准模式",focus:"沉浸模式",night:"夜间模式"}[state.readingMode]}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("discoverLayout")}><span>发现页布局</span><small>{state.discoverLayout === "waterfall" ? "瀑布流" : "单列阅读"}</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          <div className="settings-module">
-            <div className="settings-module-heading"><strong>消息与隐私</strong></div>
-            <div className="settings-list">
-              <button onClick={() => openSettingsDetail("notifications")}><span>通知设置</span><small>{Object.values(state.notifications).some(Boolean)?"已开启":"已关闭"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("privacy")}><span>私聊权限与黑名单</span><small>接收范围与黑名单</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          <div className="settings-module">
-            <div className="settings-module-heading"><strong>账号</strong></div>
-            <div className="settings-list account-settings-list">
-              <button onClick={() => openSettingsDetail("profile")}><span>个人资料</span><ChevronRight size={16}/></button>
-              <button onClick={() => openSettingsDetail("interests")}><span>兴趣偏好</span><ChevronRight size={16}/></button>
-              <button onClick={() => openMyContent("settings")}><span>我的内容与草稿</span><small>{state.own.length ? `${state.own.length} 条内容` : "管理发布和草稿"}</small><ChevronRight size={16}/></button>
-              <button onClick={() => setTab("about")}><span>关于黑卡</span><small>{hasNativeBridge() ? "Android APP" : "版本 1.44"}</small><ChevronRight size={16}/></button>
-            </div>
-          </div>
-          {isAdmin && <div className="settings-module moderation-entry"><div className="settings-module-heading"><strong>安全管理</strong><small>管理员</small></div><div className="settings-list"><button onClick={() => { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><span>举报与内容审核</span><small>人工复核队列</small><ChevronRight size={16}/></button></div></div>}
-          {accountId && <p className="fineprint">当前账号数据会同步至云端。</p>}
-        </section>
+          }}
+        />
       )}
       {tab === "settings" && settingsDetail !== null && (
-        <section key={settingsDetail} className="page settings-page settings-detail-page">
+        <section key={settingsDetail} className={`page settings-page settings-detail-page${settingsDetail === "membership" ? " membership-settings-page" : ""}`}>
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
-          <div className="eyebrow">HEIKA / SETTINGS</div>
-          <h1>{({theme:"外观主题",font:"字体",bottomNav:"底部导航",discoverLayout:"发现页布局",homeMode:"首页浏览模式",reading:"阅读模式",notifications:"通知设置",profile:"个人资料",interests:"兴趣偏好",privacy:"私聊权限与黑名单",progression:"等级与奖励"})[settingsDetail]}</h1>
-          <p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "privacy" ? "管理私聊接收范围，并随时调整黑名单。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p>
+          {settingsDetail !== "membership" && <><div className="eyebrow">HEIKA / SETTINGS</div><h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
               <div className="experience-total-card"><span>当前等级</span><strong>LV.{progress.current.level}</strong><b>{experienceSummary.total} EXP</b><div className="experience-track"><i style={{ width: `${progress.percent}%` }} /></div><small>{progress.next ? `距离 LV.${progress.next.level} 还差 ${progress.next.threshold - experienceSummary.total} EXP` : "已达到当前最高等级"}</small></div>
               <div className="experience-rule-note"><strong>经验获取</strong><span>当天首次翻卡 +10 EXP · 每日最多 10 次翻卡计分</span><span>首次给每篇内容评分 +2 EXP · 每日最多 5 次</span><small>评分修改不会重复获得经验；给自己发布的内容评分不计入。</small></div>
-              <div className="experience-level-list"><h2>等级奖励</h2>{EXPERIENCE_LEVELS.map((item) => <div className={`experience-level-row${experienceSummary.total >= item.threshold ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}><strong>LV.{item.level}</strong><span>{item.reward}</span><small>{item.threshold} EXP</small>{experienceSummary.total >= item.threshold && <Check size={16}/>}</div>)}</div>
+              <div className="experience-level-list">
+                <h2>等级奖励</h2>
+                <p className="experience-reward-intro">达到经验要求后领取奖励，领取记录会同步保存到账号。</p>
+                {EXPERIENCE_LEVELS.map((item) => {
+                  const unlocked = experienceSummary.total >= item.threshold;
+                  const claimed = experienceSummary.claimedLevels.includes(item.level);
+                  return <div className={`experience-level-row${unlocked ? " unlocked" : ""}${item.level === progress.current.level ? " is-current" : ""}${claimed ? " is-claimed" : ""}`} aria-current={item.level === progress.current.level ? "step" : undefined} key={item.level}>
+                    <strong>LV.{item.level}</strong>
+                    <span className="experience-reward-copy"><b>{item.reward}</b><small>{item.description}</small></span>
+                    <small className="experience-reward-threshold">{item.threshold} EXP</small>
+                    {claimed ? <span className="experience-reward-state"><Check size={13}/> 已领取</span> : unlocked ? <button className="experience-reward-claim" type="button" disabled={rewardClaimBusyLevel !== null} onClick={() => void claimExperienceReward(item.level)}>{rewardClaimBusyLevel === item.level ? "领取中…" : "领取奖励"}</button> : <span className="experience-reward-state is-locked">未解锁</span>}
+                  </div>;
+                })}
+              </div>
               <div className="experience-rule-note"><strong>Plus / Pro 加成 · 当前 {experienceSummary.membershipTier.toUpperCase()}</strong><span>Plus 每日首次翻卡额外 +3 EXP · Pro 额外 +6 EXP。</span><small>会员等级由管理员根据已核验权益设置；订阅预览页不会自动开通会员。</small></div>
-              {!!experienceSummary.events.length && <div className="experience-level-list"><h2>最近经验</h2>{experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
+              {!!experienceSummary.events.length && <div className="experience-level-list"><button type="button" className="collapsible-panel-toggle" aria-expanded={recentExperienceOpen} onClick={() => setRecentExperienceOpen((open) => !open)}><h2>最近经验</h2><span>{experienceSummary.events.length} 条 <ChevronDown size={16}/></span></button>{recentExperienceOpen && experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : event.type === "mission" ? "创作者任务" : event.type === "daily_mission" ? "每日探索任务" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
-          {settingsDetail === "privacy" && <MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }}/ >}
+          {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
+          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} onNotice={toast} /> }
           {settingsDetail === "interests" && <div className="account-interests-page">
-            <div className="interest-page-note"><Sparkles size={16}/><span>偏好会自动保存在你的账号中。</span></div>
+            <div className="interest-page-note"><Sparkles size={16}/><span>兴趣保存在此设备，并按账号分别存储。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
               {tags.map((tag,index)=>{const InterestIcon=[Compass,Heart,Star,Sparkles][index%4];const selected=state.interests.includes(tag);return <button key={tag} className={`account-interest-option${selected?" selected":""}`} aria-pressed={selected} onClick={()=>update(current=>({...current,interests:current.interests.includes(tag)?current.interests.filter(item=>item!==tag):[...current.interests,tag]}))}><span><InterestIcon size={17}/></span><strong>{tag}</strong><i>{selected?<Check size={14}/>:null}</i></button>})}
             </div>
+            <FollowedTopicsSettings accountId={accountId} onOpen={(name) => { closeSettingsDetail(); void openTopic(name); }} onNotice={toast}/>
           </div>}
           {settingsDetail === "theme" && (
             <div className="preference-options" role="radiogroup" aria-label="外观主题">
@@ -3534,12 +4257,12 @@ export default function Community() {
           )}
           {settingsDetail === "font" && (
             <div className="preference-options" role="radiogroup" aria-label="字体选择">
-              {([['oppo','OPPO Sans 4.0','利落清晰，中文阅读更舒展'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
+              {([['oppo','OPPO Sans 4.0','已随应用提供；字体版权归 OPPO，未选中时使用系统字体'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "bottomNav" && (
             <div className="preference-options" role="radiogroup" aria-label="底部导航样式">
-              {([['glass','悬浮玻璃','轻透悬浮，保留页面呼吸感'],['fixed','固定底栏','贴合屏幕底部，稳定易触达']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`preference-option${bottomNavStyle===value?' selected':''}`} onClick={()=>setBottomNavStyle(value)}>{renderPreferencePreview('bottomNav',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{bottomNavStyle===value?'✓':''}</i></button>)}
+              {([['glass','悬浮玻璃','轻透悬浮，保留页面呼吸感'],['fixed','固定底栏','贴合屏幕底部，稳定易触达']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`preference-option${bottomNavStyle===value?' selected':''}`} onClick={()=>{localStorage.setItem("heika-bottom-nav-style-explicit","1");setBottomNavStyle(value)}}>{renderPreferencePreview('bottomNav',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{bottomNavStyle===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "discoverLayout" && (
@@ -3547,283 +4270,46 @@ export default function Community() {
               {([['waterfall','瀑布流','双列卡片，快速浏览更多内容'],['single','单列阅读','单列排版，适合连续阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.discoverLayout===value} className={`preference-option${state.discoverLayout===value?' selected':''}`} onClick={()=>update(current=>({...current,discoverLayout:value}))}>{renderPreferencePreview('discover',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.discoverLayout===value?'✓':''}</i></button>)}
             </div>
           )}
+          {settingsDetail === "profileLayout" && (
+            <div className="preference-options" role="radiogroup" aria-label="他人主页布局">
+              {([['masonry','大图瀑布流','用图片卡片快速浏览对方发布的内容'],['list','列表','以紧凑条目展示标题和发布时间']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={profileLayout===value} className={`preference-option${profileLayout===value?' selected':''}`} onClick={()=>setProfileLayout(value)}>{renderPreferencePreview('discover',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{profileLayout===value?'✓':''}</i></button>)}
+            </div>
+          )}
           {settingsDetail === "homeMode" && (
-            <div className="preference-options" role="radiogroup" aria-label="首页浏览模式">
+            <div className="preference-options" role="radiogroup" aria-label="首页浏览方式">
               {([['waterfall','瀑布流','未翻开前隐藏内容，每日选 5 张'],['blackcard','黑卡','逐张探索，每日最多翻开 5 张']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.homeMode===value} className={`preference-option${state.homeMode===value?' selected':''}`} onClick={()=>chooseHomeMode(value)}>{renderPreferencePreview('home',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.homeMode===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "reading" && (
             <div className="preference-options" role="radiogroup" aria-label="阅读模式">
-              {([['standard','标准模式','舒展排版与清晰层级'],['focus','专注模式','减少干扰，突出正文'],['night','夜间模式','深色背景，适合暗光阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.readingMode===value} className={`preference-option${state.readingMode===value?' selected':''}`} onClick={()=>chooseReadingMode(value)}>{renderPreferencePreview('reading',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.readingMode===value?'✓':''}</i></button>)}
+              {([['standard','标准','舒展排版与清晰层级'],['focus','专注','减少干扰，突出正文'],['night','夜间','深色背景，适合暗光阅读']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={state.readingMode===value} className={`preference-option${state.readingMode===value?' selected':''}`} onClick={()=>chooseReadingMode(value)}>{renderPreferencePreview('reading',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{state.readingMode===value?'✓':''}</i></button>)}
             </div>
           )}
-          {settingsDetail === "notifications" && (
-            <div className="preference-notifications">
-              <span className="preference-preview preview-notifications"><b>黑卡提醒</b><i/><i/><i/></span>
-              <p>{hasNativeBridge() ? "Android 系统授权与黑卡内部提醒偏好分别管理。" : "开启你关心的提醒。浏览器通知仍需系统许可。"}</p>
-              {hasNativeBridge() && <div className="permission-state" role="status">
-                <span>Android 系统通知：{systemNotificationLabel}</span>
-                <button type="button" className="soft-button" onClick={async () => {
-                  if (notificationPermission === "default") {
-                    try {
-                      const result = await requestNativeNotificationPermission();
-                      if (!result) return toast("无法读取 Android 通知权限");
-                      setNotificationPermission(result.permission ?? (result.granted ? "granted" : "denied"));
-                      setSystemNotificationsEnabled(result.enabled);
-                      if (!result.granted || !result.enabled) toast("Android 系统通知仍未开启");
-                    } catch {
-                      toast("无法请求 Android 通知权限");
-                    }
-                    return;
-                  }
-                  if (!(await openNativeNotificationSettings())) toast("无法打开 Android 通知设置");
-                }}>{notificationPermission === "default" ? "申请系统权限" : "管理系统权限"}</button>
-                <small>Android 后台推送服务尚未接通；此处开关仅保存黑卡提醒偏好。</small>
-              </div>}
-              {([['messages','消息通知','新消息提醒偏好'],['comments','评论回复提醒','有人回复时提醒偏好'],['daily','每日探索提醒','每日探索提醒偏好']] as const).map(([key,label,description])=><div className="switch-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><button type="button" role="switch" aria-checked={state.notifications[key]} aria-label={label} disabled={notificationPermission==='unsupported'} className={`toggle-switch ${state.notifications[key]?'on':''}`} onClick={()=>void toggleNotification(key)}><i/></button></div>)}
-              {!hasNativeBridge() && notificationPermission === "denied" && <div className="permission-state">浏览器通知权限已拒绝，请在站点设置中重新允许。</div>}
+          {settingsDetail === "detailTransition" && (
+            <div className="preference-options" role="radiogroup" aria-label="详情过渡效果">
+              {([
+                ["image-zoom", "连续展开", "保留封面放大进入详情、返回原卡片的连贯转场"],
+                ["blur-rise", "柔和上浮", "新图片从轻微柔焦与短距离上浮中清晰出现"],
+                ["ghost-handoff", "留影衔接", "上一张短暂留影，新图轻柔上浮；快速切换可立即接续"],
+              ] as const).map(([value, label, description]) => <button key={value} role="radio" aria-checked={detailTransition === value} className={`preference-option${detailTransition === value ? " selected" : ""}`} onClick={() => { localStorage.setItem("heika-detail-transition-explicit", "1"); setDetailTransition(value); }}>
+                <span className={`preference-preview preview-transition preview-transition-${value}`} aria-hidden="true"><i/><b/></span><span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{detailTransition === value ? "✓" : ""}</i>
+              </button>)}
             </div>
           )}
+          {settingsDetail === "notifications" && <NotificationSettings
+            accountId={accountId}
+            messagesEnabled={state.notifications.messages}
+            onMessagesChange={() => void toggleNotification("messages")}
+            onNotice={toast}
+          />}
+          {settingsDetail === "cache" && <CacheManager onNotice={toast} />}
+          {settingsDetail === "feedback" && <FeedbackForm accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
+          {settingsDetail === "feedbackAdmin" && <FeedbackAdmin />}
+
         </section>
       )}
-      {tab === "moderation" && isAdmin && <AdminModeration onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
-      {tab === "about" && (
-        <section className="page about-page">
-          <button className="back settings-back" onClick={() => setTab("settings")}><ArrowLeft size={18} /> 设置</button>
-          <div className="eyebrow">HEIKA / RELEASE NOTES</div>
-          <h1>关于黑卡<span className="red-dot">.</span></h1>
-          <p className="lead">黑卡 HEIKA · 版本 1.44</p>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.44</strong><small>2026.11.02</small></div><ul><li>密码找回支持通过 Supabase 一次性邮件链接验证身份并返回设置新密码。</li><li>保留验证码输入与 60 秒重发倒计时。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.42</strong><small>2026.11.02</small></div><ul><li>密码找回支持邮箱一次性验证码与备用恢复码。</li><li>账号安全页可生成一组仅展示一次、单次使用的备用恢复码。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.41</strong><small>2026.11.02</small></div><ul><li>发现内容改为分页加载，支持服务端话题筛选，首屏只请求 24 篇。</li><li>评分按批次请求，旧翻卡记录批量恢复。</li><li>本地状态改为延迟保存并排除评论缓存；消息后台暂停轮询，当前会话消息不再重复刷新收件箱。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.40</strong><small>2026.11.01</small></div><ul><li>增加平板与桌面端自适应布局，宽屏改用侧边主导航。</li><li>发现、我的、设置和管理后台使用多列内容布局。</li><li>桌面消息改为会话列表与聊天窗口并排，详情页扩展阅读与评论空间。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.39</strong><small>2026.11.01</small></div><ul><li>发现页搜索改为独立二级页面，支持搜索内容和公开用户资料。</li><li>内容支持标题、正文搜索；用户支持昵称、简介搜索和分页。</li><li>增加本机最近搜索与精选话题入口，并优化移动端搜索结果布局。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.37</strong><small>2026.11.01</small></div><ul><li>经验进度条改为纯深蓝纯色，修正个人页分隔线圆角。</li><li>翻卡图片区域加大，个人设置、调试等二级页面补齐统一入场动画。</li><li>消息页先恢复本地会话再显示登录入口，并保留已加载页面状态。</li><li>统一主按钮为低反光纯色，适配明暗主题。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.36</strong><small>2026.11.01</small></div><ul><li>切页使用统一模糊缩放过渡，移除旧页面上浮效果。</li><li>翻卡揭晓 S、SS、SSS 稀有等级，并在探索记录保留等级。</li><li>统一等级与订阅界面的圆角，经验进度条改为纯色。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.35</strong><small>2026.11.01</small></div><ul><li>为等级经验、选择菜单和个人资料控件补齐暗色主题样式。</li><li>移除经验等级卡片上多余的圆环装饰。</li></ul></div>
-          <div className="settings-module release-note"><div className="settings-module-heading"><strong>版本 1.34</strong><small>2026.11.01</small></div><ul><li>修复账号设置一级列表文字逐字换行与行高错乱。</li><li>增强等级经验、奖励和选择卡片的色彩层级。</li><li>统一页面、弹层、选项和开关的动效与 iOS 风格控件。</li><li>个人资料和管理后台选择器改为统一的质感菜单。</li></ul></div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.31</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>统一二级页顶栏返回操作，并将发布表单改为全屏编辑界面。</li>
-              <li>个人资料新增性别、MBTI、生日与爱好，可分别设置公开状态。</li>
-              <li>话题支持发布时自定义，发现页只展示热度靠前的话题。</li>
-              <li>私聊接收范围、黑名单和退出账号统一收纳到设置页。</li>
-              <li>个人资料与兴趣偏好改为独立二级页面，账号设置行项增加统一图标与排版。</li>
-              <li>调试模式新增管理员后台登录入口，并统一账号设置分组与列表样式。</li>
-              <li>补齐邮箱注册确认、密码找回与重置流程，注册时可设置昵称。</li>
-              <li>新增账号角色管理、用户检索和私信举报队列。</li>
-              <li>统一偏好设置二级页面，并新增主题、字体、导航与浏览模式的界面预览。</li>
-              <li>“我的”页改为收藏、点赞、探索日历和最近发现四个切换面板。</li>
-              <li>设置选项改为统一的二级选择页，个人发布与草稿单独收纳。</li>
-              <li>标签栏固定在顶部，切换加入柔和的滑动与内容过渡。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.26</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>亮色主题切换为纯白底色与冷灰分层。</li>
-              <li>底栏发布入口融入中央导航位，并统一设置选项样式。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.25</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>发布入口改为独立悬浮圆钮，与底部导航分层显示。</li>
-              <li>统一卡片、控件与弹层的克制圆角层级。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.24</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>发现页顶部保留最近翻开的卡，方便随时回看。</li>
-              <li>设置中可选择悬浮玻璃或固定底栏，选择会保存在本机。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.23</strong><small>2026.11.01</small></div>
-            <ul>
-              <li>统一发布、话题、详情、举报与审核页面的浅色和深色主题变量。</li>
-              <li>新增发现页瀑布流与单列阅读布局，并保留设备上的用户选择。</li>
-              <li>修复内容话题关联查询歧义，补充今日翻卡与主题页面浏览器回归。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.22</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>举报支持固定原因、补充说明与重复提交保护。</li>
-              <li>新增管理员举报与内容人工审核队列，记录处理说明和时间。</li>
-              <li>新发布或编辑的内容先保持待审核状态，通过后才公开；图片未启用自动识别。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.21</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>发布编辑器支持多图预览、排序、封面选择、移除与失败重试。</li>
-              <li>新增本机与账号草稿自动保存、恢复；图片关联草稿后再发布。</li>
-              <li>删除草稿时同步清理已上传图片，保留现有登录与文章权限校验。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.20</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>彩带加入长短形态，并改为单段线性落下，减少中途速度变化造成的顿挫。</li>
-              <li>提示、错误、评分和幸运奖励统一采用模糊渐入渐出反馈。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.19</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>翻卡彩带改为从屏幕顶部多点错落飘下，增加数量并放慢速度。</li>
-              <li>为彩带加入轻微横向漂移、旋转和不同落速，延长自然飘落层次。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.18</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>重整翻卡彩带起点与全屏扇形轨迹，按动画时长准确清理粒子。</li>
-              <li>避免关闭或跳转后彩带重新出现，并减少重复的幸运加成提示。</li>
-              <li>将幸运加成提示上移，降低与卡片内容重叠的情况。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.17</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>修正黑卡弹层与发现页到详情页的图片来源定位。</li>
-              <li>详情返回时固定恢复原页面滚动位置与图片锚点。</li>
-              <li>翻卡彩带从顶部单点扇形绽放至全屏，并微调会员页面圆角。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.16</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>彩带从屏幕上方中心散开，加入多色飘落并移除浅色遮罩。</li>
-              <li>详情页采用图片连续扩展与正文上推动效，返回时按原路径收回。</li>
-              <li>加入全体用户评分汇总，并将个人评分信号用于内容推荐。</li>
-              <li>菱形卡片为已翻开的切面使用独立金属色状态。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.15</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>精简翻卡方案页面，使用紧凑套餐选择与折叠说明。</li>
-              <li>优化浅色和深色主题下的订阅弹窗层级及安全区域适配。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.14</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>翻卡彩带改为从屏幕顶部向下飘落。</li>
-              <li>详情页改为图片淡出、内容从下方自然上推，移除拉伸卡片图的转场。</li>
-              <li>在「我的」增加 Plus / Pro 订阅与额外翻卡包入口。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.13</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>加入每日幸运翻卡加成与 Plus / Pro 方案说明入口。</li>
-              <li>翻卡庆祝扩展为全屏金属绽放，评分改为信号校准动效。</li>
-              <li>支付入口保持关闭，幸运次数和翻卡进度按每日记录保存。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.12</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>调整深色模式下已解锁菱面亮度，恢复金属切面的层次与卡面文字对比度。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.11</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>浅色主题调整为更明亮的冷白底色。</li>
-              <li>详情页移除分类示例标签与正文下方分割线，减少阅读干扰。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.10</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>将冷银金属、细分割线与精密栏目眉题延伸到首页、个人页和详情页。</li>
-              <li>黑卡切面加入银蓝渐变，详情无图内容使用同系列菱面视觉。</li>
-              <li>保留现有翻卡、收藏、消息、设置与主题交互。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.9</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>浅色瀑布流卡面提亮，并提升翻卡内容的文字对比度。</li>
-              <li>黑卡切面铺满卡面，改为不规则碎片拼接，消除上下空条。</li>
-              <li>翻卡背景改用柔和模糊，并加入轻盈彩带动效。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.8</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>增加黑卡主界面的可选菱面数量，展示更多内容入口。</li>
-              <li>统一顶部「黑卡 HEIKA」中英文间距与对齐。</li>
-              <li>精简发现页头部，并恢复用户手动确认翻卡。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.7</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>重构内容详情的阅读层级与底部互动栏。</li>
-              <li>新增图片预览、多图切换、评论排序与分层回复。</li>
-              <li>改进评论头像、点赞状态和可分享的详情链接。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.6</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>放大并重新对齐顶部「黑卡 HEIKA」标识。</li>
-              <li>移除黑卡菱面卡片的上下内描边与条带纹理。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.5</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>调试入口移至个人页，可一键重置个人资料、偏好、收藏与翻卡记录。</li>
-              <li>个人设置新增 OPPO Sans 4.0 与系统字体选项。</li>
-              <li>调整顶部黑卡标识的位置与比例。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.4</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>移除首页顶栏的浏览模式切换，品牌标题简化为「黑卡」。</li>
-              <li>瀑布流明确显示每日翻卡进度，并在额度用完时提示。</li>
-              <li>调试模式独立成页，详情操作改为图标按钮。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.3</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>首页顶部可直接切换瀑布流与黑卡流。</li>
-              <li>菱面选择仅保留在首页卡面，翻开后的黑卡移除菱形结构。</li>
-              <li>设置中新增调试模式，可重置新人开始界面。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.2</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>首次进入即可选择瀑布流或黑卡主页样式。</li>
-              <li>精简个人页信息，并统一设置项状态的右侧对齐。</li>
-              <li>调整浅色模式下的探索日历色阶。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.1</strong><small>2026.10.31</small></div>
-            <ul>
-              <li>首页标题更新为「保存黑卡」。</li>
-              <li>黑卡模式改为由可交互菱形切面组成的固定卡面，点选切面即可自动翻开新内容。</li>
-              <li>保留每日最多翻开 5 张的额度与已解锁记录。</li>
-            </ul>
-          </div>
-          <div className="settings-module release-note">
-            <div className="settings-module-heading"><strong>版本 1.0</strong><small>初始版本</small></div>
-            <ul><li>黑卡内容探索、瀑布流浏览与每日翻卡。</li><li>收藏、消息、私聊及主题设置。</li></ul>
-          </div>
-        </section>
-      )}
+      {tab === "moderation" && isStaff && <AdminModeration role={adminRole as "admin" | "content_manager" | "reviewer"} onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
+      {tab === "about" && <AboutHeika onBack={closeAboutPage} onFeedback={openFeedbackFromAbout} />}
       {tab === "debug" && (
         <section className="page debug-page">
           <div className="eyebrow">DEVELOPER TOOLS</div>
@@ -3831,7 +4317,7 @@ export default function Community() {
           <p className="lead">一键清空个人偏好、翻卡与收藏状态，重新开始新人引导。</p>
           <button className="debug-admin-entry" onClick={() => {
             if (accountId) {
-              if (isAdmin) { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }
+              if (isStaff) { setTab("moderation"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }
               else toast("当前账号没有管理员权限。");
               return;
             }
@@ -3840,7 +4326,7 @@ export default function Community() {
             requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
           }}>
             <span><ShieldCheck size={19}/></span>
-            <span><strong>{isAdmin ? "进入管理后台" : "管理员后台登录"}</strong><small>{isAdmin ? "账号、内容与社区举报管理" : "使用管理员账号登录后进入后台"}</small></span>
+            <span><strong>{isStaff ? "进入管理后台" : "管理员后台登录"}</strong><small>{isStaff ? "账号、内容与社区举报管理" : "使用管理员账号登录后进入后台"}</small></span>
             <ChevronRight size={17}/>
           </button>
           <button className="primary-button full debug-reset-button" disabled={resetBusy} onClick={() => void resetToFreshStart()}>
@@ -3850,58 +4336,28 @@ export default function Community() {
       )}
       {tab === "mine" && (
         <section className="page mine-page">
-          <h1 className="mine-title">我</h1>
-          <div className="profile-card">
-            <div className="avatar">
-              {state.avatar ? (
-                <img src={state.avatar} alt="头像" />
-              ) : (
-                state.name[0]
-              )}
+          <section className="mine-profile-hero" aria-label="个人资料">
+            <div className="profile-card mine-profile-card">
+              <div className="avatar">{state.avatar ? <img src={state.avatar} alt="头像" /> : state.name[0]}</div>
+              <div className="mine-profile-copy"><div className="mine-profile-name-row"><h2>{state.name}</h2><button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button></div><p>{state.bio || "记录生活，继续探索。"}</p>{accountId && <small className="mine-account-id">HEIKA ID · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
+              <button type="button" aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={18} /></button>
             </div>
-            <div>
-              <h2>{state.name}</h2>
-              <p>{state.bio}</p>
-            </div>
-            <button aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}>
-              <PenLine size={18} />
+            <div className="stats exploration-stats mine-profile-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>
+          </section>
+          <section className="mine-exploration-hub" aria-label="探索功能">
+            <DailyMissions accountId={accountId} onNotice={toast}/>
+            <button type="button" className="mine-exploration-entry" onClick={openExplorationCenter}>
+              <span className="mine-exploration-entry-icon"><Compass size={18}/></span>
+              <span><strong>探索中心</strong><small>好友探索 · 月报 · 接龙 · 日历 · 最近发现</small></span>
+              <ChevronRight size={18}/>
             </button>
-          </div>
-          <button className="experience-summary-card" onClick={() => openSettingsDetail("progression", "mine")}>
-            <span className="experience-summary-badge">LV.{experienceProgress(experienceSummary.total).current.level}</span>
-            <span className="experience-summary-copy"><strong>探索等级 · {experienceSummary.total} EXP</strong><small>{accountId ? experienceProgress(experienceSummary.total).next ? `距离 LV.${experienceProgress(experienceSummary.total).next!.level} 还差 ${experienceProgress(experienceSummary.total).next!.threshold - experienceSummary.total} EXP` : "已达到当前最高等级" : "登录后同步你的经验与奖励"}</small><i><b style={{ width: `${experienceProgress(experienceSummary.total).percent}%` }} /></i></span>
-            <ChevronRight size={17}/>
-          </button>
-          <div className="stats exploration-stats">
-            <div>
-              <strong>{openedIds.length}</strong>
-              <span>累计翻卡</span>
-            </div>
-            <div>
-              <strong>{streak}</strong>
-              <span>连续探索</span>
-            </div>
-            <div>
-              <strong>{state.saved.length}</strong>
-              <span>我的收藏</span>
-            </div>
-          </div>
-          <div className="mine-membership-section">
-              <div className="section-head"><h2>会员与翻卡额度</h2><span>PLUS / PRO</span></div>
-            <button className="mine-membership-card" onClick={() => setModal("subscription")}>
-              <span className="mine-membership-mark"><Crown size={19}/></span>
-              <span className="mine-membership-copy"><strong>订阅方案 · 额外翻卡</strong><small>Plus 每日 +4 次 · Pro 每日 +8 次</small></span>
-              <span className="mine-membership-count">今日 {dailyAllowance} 次</span>
-              <ChevronRight size={17}/>
-            </button>
-          </div>
+          </section>
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
               {([
+                ["works", "我的作品"],
                 ["favorites", "我的收藏"],
                 ["liked", "我的点赞"],
-                ["calendar", "我的探索日历"],
-                ["recent", "最近发现"],
               ] as const).map(([id, label]) => (
                 <button
                   key={id}
@@ -3917,80 +4373,109 @@ export default function Community() {
                   {label}
                 </button>
               ))}
-              <span className="mine-tab-indicator" style={{ transform: `translateX(${["favorites", "liked", "calendar", "recent"].indexOf(mineSection) * 100}%)` }} />
+              <span className="mine-tab-indicator" style={{ transform: `translateX(${["works", "favorites", "liked"].indexOf(mineSection) * 100}%)` }} />
             </div>
           </div>
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
+            {mineSection === "works" && (
+              <div className="mine-tab-content">
+                <div className="mine-works-heading"><div><span>共 {state.own.filter((post) => post.status === "published" || !post.status).length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
+                {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
+                {visibleOwnPosts.length ? <div className="masonry mine-works-masonry">{visibleOwnPosts.map((post) => <article className="mine-work-card" key={post.id}>
+                  {postCard(post, "discover", true)}
+                  <div className="mine-work-actions"><span>{post.pendingRevision?.status === "pending" ? "修改审核中 · 当前版本正常展示" : post.pendingRevision?.status === "rejected" ? "修改未通过 · 当前版本正常展示" : post.status === "draft" ? "草稿" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>{post.pendingRevision?.status === "pending" ? "编辑待审修改" : "编辑"}</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
+                </article>)}</div> : <div className="empty">{selectedSeriesId ? "这个系列还没有内容，发布时可以从系列菜单加入。" : "你发布的内容会以瀑布流卡片显示在这里。"}</div>}
+              </div>
+            )}
             {mineSection === "favorites" && (
               <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>我的收藏</h2><span>{favoritePosts.length} 篇</span></div>
+                <div className="mine-works-heading mine-panel-heading"><div><span>共 {favoritePostsForView.length} 篇收藏</span></div></div>
                 <div className="filters favorite-filters" role="group" aria-label="收藏来源">
                   {["全部", "今日翻卡", "发现"].map((source) => (
                     <button key={source} className={favoriteSource === source ? "selected" : ""} aria-pressed={favoriteSource === source} onClick={() => setFavoriteSource(source)}>{source}</button>
                   ))}
                 </div>
-                {favoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{favoritePosts.map((post) => postCard(post, state.revealed[post.id] ? "today" : "discover"))}</div> : <div className="empty">收藏的内容会集中保存在这里。</div>}
+                <div className="collection-toolbar">
+                  <label className="collection-search"><Search size={15}/><input aria-label="搜索收藏" placeholder="搜标题、话题或作者" value={favoriteSearch} onChange={(event) => setFavoriteSearch(event.target.value)}/>{favoriteSearch && <button type="button" aria-label="清空搜索" onClick={() => setFavoriteSearch("")}><X size={14}/></button>}</label>
+                  <div className="collection-create"><input aria-label="新收藏夹名称" maxLength={24} placeholder="新建收藏夹" value={newCollectionName} onChange={(event) => setNewCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveBookmarkCollection(); }}/><button type="button" disabled={!newCollectionName.trim()} onClick={() => void saveBookmarkCollection()}><Plus size={15}/>创建</button></div>
+                </div>
+                <div className="collection-collaboration"><span>加入朋友的收藏夹</span><input aria-label="收藏夹分享码" value={collectionInviteCode} maxLength={32} onChange={(event) => setCollectionInviteCode(event.target.value)} placeholder="粘贴分享码"/><button type="button" disabled={!accountId || collectionInviteCode.trim().length < 6} onClick={() => void joinBookmarkCollection()}>加入协作</button></div>
+                <div className="collection-chips" role="group" aria-label="收藏夹筛选">
+                  <button type="button" className={favoriteCollection === "all" ? "selected" : ""} onClick={() => setFavoriteCollection("all")}>全部收藏</button>
+                  <button type="button" className={favoriteCollection === "uncategorized" ? "selected" : ""} onClick={() => setFavoriteCollection("uncategorized")}>未分类</button>
+                  {bookmarkCollections.map((collection) => <span className="collection-chip" key={collection.id}>{editingCollection === collection.id ? <><input aria-label="收藏夹新名称" maxLength={24} value={editingCollectionName} onChange={(event) => setEditingCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameBookmarkCollection(collection); if (event.key === "Escape") setEditingCollection(null); }}/><button type="button" className="collection-delete" aria-label="保存收藏夹名称" onClick={() => void renameBookmarkCollection(collection)}><Check size={13}/></button><button type="button" className="collection-delete" aria-label="取消重命名" onClick={() => setEditingCollection(null)}><X size={12}/></button></> : <><button type="button" className={favoriteCollection === collection.id ? "selected" : ""} onClick={() => setFavoriteCollection(collection.id)}>{collection.name}{collection.role === "collaborator" ? " · 协作" : ""}</button>{collection.role !== "collaborator" && <><button type="button" className="collection-delete" aria-label={`分享收藏夹 ${collection.name}`} onClick={() => void shareBookmarkCollection(collection)}><Share2 size={12}/></button><button type="button" className="collection-delete" aria-label={`重命名收藏夹 ${collection.name}`} onClick={() => { setEditingCollection(collection.id); setEditingCollectionName(collection.name); }}><PenLine size={12}/></button><button type="button" className="collection-delete" aria-label={`删除收藏夹 ${collection.name}`} onClick={() => void deleteBookmarkCollection(collection)}><X size={12}/></button></>}</>}</span>)}
+                </div>
+                {organizedFavoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{organizedFavoritePosts.map((post) => <div className="organized-favorite-card" key={post.id}>{postCard(post, state.revealed[post.id] ? "today" : "discover")}{state.saved.includes(post.id) ? <label className="collection-assignment">整理到<ChoiceSelect label={`整理《${post.title}》到收藏夹`} value={bookmarkMembership[post.cloudId || ""] || ""} disabled={!accountId || !post.cloudId} onChange={(value) => void assignBookmarkCollection(post, value)} placeholder="未分类" options={[{value:"",label:"未分类"},...bookmarkCollections.map((collection) => ({value:collection.id,label:collection.name}))]}/></label> : <small className="collection-assignment shared-bookmark-note">朋友也收藏了这份灵感</small>}</div>)}</div> : <div className="empty">{favoritePostsForView.length ? "没有符合搜索条件的收藏。" : favoriteCollection !== "all" && favoriteCollection !== "uncategorized" ? "这个协作收藏夹还没有内容。" : "收藏的内容会集中保存在这里。"}</div>}
               </div>
             )}
             {mineSection === "liked" && (
               <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>我的点赞</h2><span>{likedPosts.length} 篇</span></div>
+                <div className="mine-works-heading mine-panel-heading"><div><span>共 {likedPosts.length} 篇点赞</span></div></div>
                 {likedPosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{likedPosts.map((post) => postCard(post, state.revealed[post.id] ? "today" : "discover"))}</div> : <div className="empty">点过赞的内容会显示在这里。</div>}
               </div>
             )}
-            {mineSection === "calendar" && (
-              <div className="mine-tab-content">
-                <div className="section-head exploration-calendar-heading mine-panel-heading"><h2>我的探索日历</h2><span>最近 28 天</span></div>
-                <div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
-                  {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
-                </div>
-                <div className="calendar-day-detail">
-                  <div><strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong><span>探索：{selectedDayIds.length} 张</span></div>
-                  {selectedDayIds.length ? <div className="calendar-posts">{selectedDayIds.map((id) => {
-                    const item = state.revealed[id] || all.find((post) => post.id === id);
-                    const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
-                    const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                    return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
-                  })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
-                </div>
-              </div>
-            )}
-            {mineSection === "recent" && (
-              <div className="mine-tab-content">
-                <div className="section-head mine-panel-heading"><h2>最近的发现</h2><span>最近 8 条</span></div>
-                {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => {
-                  const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
-                  const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                  return <button key={`${date}-${post.id}`} onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong></button>;
-                })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
-                <div id="flip-history" className="section-head mine-panel-heading"><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天</span></div>
-                {Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
-                  const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
-                  const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                  return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
-                })}</div>)}
-                {!Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
-              </div>
-            )}
           </div>
-          <div className="section-head profile-settings-entry">
-            <h2>设置</h2>
+        </section>
+      )}
+      {tab === "exploration-center" && (
+        <section className="page exploration-center-page">
+          <div className="exploration-center-intro"><span>HEIKA / EXPLORE</span><h1>探索中心</h1><p>和朋友一起发现，也回看自己的探索轨迹。</p></div>
+          <div className="exploration-center-actions" aria-label="探索功能">
+            <button type="button" onClick={() => openCoExplore("exploration-center")}><span><UsersRound size={18}/></span><span><strong>和朋友一起探索</strong><small>共同翻卡，分享发现</small></span><ChevronRight size={17}/></button>
+            <button type="button" onClick={() => openMineFeature("monthly-recap", "exploration-center")}><span><Sparkles size={18}/></span><span><strong>探索月报</strong><small>回看本月发现与稀有卡</small></span><ChevronRight size={17}/></button>
+            <button type="button" onClick={() => openMineFeature("card-chain", "exploration-center")}><span><GitBranch size={18}/></span><span><strong>卡片接龙</strong><small>从一张卡片续写故事</small></span><ChevronRight size={17}/></button>
           </div>
-          <button className="settings-entry-card" onClick={() => {
-            scrollPositions.current.mine = window.scrollY;
-            setTab("settings");
-            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-          }}>
-            <span><strong>个人设置</strong><small>外观、浏览、阅读与隐私偏好</small></span>
-            <ChevronRight size={18} />
-          </button>
-          <button className="settings-entry-card debug-entry-card" onClick={() => {
-            setTab("debug");
-            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-          }}>
-            <span><strong>调试模式</strong><small>重置为新人开始界面</small></span>
-            <ChevronRight size={18} />
-          </button>
+          <section className="exploration-center-section">
+            <div className="section-head exploration-calendar-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationCalendarOpen} aria-controls="exploration-calendar-content" onClick={() => setExplorationCalendarOpen((open) => !open)}><h2><CalendarDays size={17}/>探索日历</h2><span>最近 28 天 <ChevronDown size={16}/></span></button></div>
+            {explorationCalendarOpen && <div id="exploration-calendar-content"><div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
+              {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
+            </div>
+            <div className="calendar-day-detail">
+              <div><strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong><span>探索：{selectedDayIds.length} 张</span></div>
+              {selectedDayIds.length ? <div className="calendar-posts">{selectedDayIds.map((id) => {
+                const item = state.revealed[id] || all.find((post) => post.id === id);
+                const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15}/></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
+              })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
+            </div></div>}
+          </section>
+          <section className="exploration-center-section">
+            <div className="section-head exploration-center-subhead"><h2><History size={17}/>最近发现</h2><span>最近 8 条</span></div>
+            {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => {
+              const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
+              const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+              return <button key={`${date}-${post.id}`} onClick={() => setRecentPreview({ post, source: state.revealed[post.id] ? "today" : "discover" })}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong><small>点按预览</small></button>;
+            })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
+            <div id="flip-history" className="section-head exploration-history-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天 <ChevronDown size={16}/></span></button></div>
+            {explorationHistoryOpen && Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
+              const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+              const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+              return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
+            })}</div>)}
+            {explorationHistoryOpen && !Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
+          </section>
+        </section>
+      )}
+      {tab === "monthly-recap" && <ExplorationRecap opened={state.opened} rarityTiers={state.rarityTiers} posts={all} onNotice={toast} onBack={returnToSecondaryTab} backLabel={secondaryReturnTab === "exploration-center" ? "‹　探索中心" : "‹　我的"} />}
+      {tab === "card-chain" && <CardChainPanel accountId={accountId} posts={all} onLogin={() => setTab("messages")} onBack={returnToSecondaryTab} onNotice={toast} backLabel={secondaryReturnTab === "exploration-center" ? "‹　探索中心" : "‹　我的"} />}
+      {tab === "creator-center" && (
+        <section className="page my-content-page creator-dashboard-page">
+          <button className="back settings-back" onClick={() => {
+            setTab(myContentReturnTab);
+            requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
+          }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
+          <div className="eyebrow">CREATOR CENTER / HEIKA</div>
+          <h1>创作者中心<span className="red-dot">.</span></h1>
+          <p className="lead">查看公开内容表现与本周成长任务。</p>
+          <section className="creator-center" aria-label="创作者数据与成长任务">
+            <div className="creator-center-heading"><div><small>CREATOR / INSIGHTS</small><h2>创作数据</h2></div><span>{creatorCenter?.weekStart ? `本周任务 · ${creatorCenter.weekStart}` : "数据仅统计已公开内容"}</span></div>
+            {!accountId ? <div className="empty">登录后查看创作数据并领取每周经验。</div> : creatorCenterLoading && !creatorCenter ? <div className="creator-center-loading">正在汇总创作数据…</div> : <>
+              <div className="creator-metrics">{[["公开内容", creatorCenter?.insights.posts || 0], ["阅读", creatorCenter?.insights.views || 0], ["点赞", creatorCenter?.insights.likes || 0], ["收藏", creatorCenter?.insights.saves || 0], ["评论", creatorCenter?.insights.comments || 0]].map(([label, value]) => <div key={label}><strong>{Number(value).toLocaleString("zh-CN")}</strong><span>{label}</span></div>)}</div>
+              <div className="creator-missions"><div className="creator-subheading"><h3>本周成长任务</h3><span>每项 +20 EXP</span></div>{(creatorCenter?.missions || []).map((mission) => <div className="creator-mission-row" key={mission.key}><div className="creator-mission-copy"><strong>{mission.title}</strong><small>{mission.description}</small><span className="creator-mission-progress"><i><b style={{ width: `${Math.min(100, mission.progress / mission.target * 100)}%` }}/></i>{mission.progress}/{mission.target}</span></div><button type="button" disabled={mission.claimed || mission.progress < mission.target} onClick={() => void claimCreatorMission(mission.key)}>{mission.claimed ? "已领取" : "领取"}</button></div>)}</div>
+              {!!creatorCenter?.insights.topPosts.length && <div className="creator-top-posts"><h3>表现较好的内容</h3>{creatorCenter.insights.topPosts.map((post) => <div key={post.id}><span>{post.title}</span><small>{post.views} 阅读 · {post.likes} 赞 · {post.saves} 收藏</small></div>)}</div>}
+            </>}
+          </section>
         </section>
       )}
       {tab === "my-content" && (
@@ -3999,11 +4484,13 @@ export default function Community() {
             setTab(myContentReturnTab);
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
-          <div className="eyebrow">ACCOUNT / MY CONTENT</div>
-          <h1>我的内容<span className="red-dot">.</span></h1>
-          <p className="lead">管理已发布内容、审核状态与本机草稿。</p>
-          <button className="primary-button mine-create-button" onClick={() => void openComposer()}><Plus size={16} /> 发布内容</button>
-          {state.own.length ? state.own.map((post) => (
+          <div className="eyebrow">MY CONTENT / HEIKA</div>
+          <h1>作品管理<span className="red-dot">.</span></h1>
+          <p className="lead">整理系列、查看内容状态并管理草稿。</p>
+          <div className="series-manager"><div className="series-manager-heading"><strong>作品系列</strong><span>把有关联的内容整理成专栏</span></div><div className="series-create-form"><input aria-label="系列名称" maxLength={48} placeholder="例如：一周城市观察" value={seriesName} onChange={(event) => setSeriesName(event.target.value)}/><input aria-label="系列简介" maxLength={240} placeholder="一句话介绍（可选）" value={seriesDescription} onChange={(event) => setSeriesDescription(event.target.value)}/><button type="button" disabled={!accountId || seriesName.trim().length < 2} onClick={() => void createPostSeries()}><Plus size={15}/>新建</button></div>{creatorSeries.length > 0 && <div className="series-list">{creatorSeries.map((series) => <button type="button" className={selectedSeriesId === series.id ? "active" : ""} key={series.id} onClick={() => setSelectedSeriesId((current) => current === series.id ? "" : series.id)}><strong>{series.title}</strong><span>{series.description || "持续更新中"}</span><small>{series.postCount || 0} 篇</small></button>)}</div>}</div>
+          <div className="section-head"><h2>作品列表</h2><span>{visibleOwnPosts.length} 项</span></div>
+          {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
+          {visibleOwnPosts.length ? visibleOwnPosts.map((post) => (
             <div className="own-row" key={post.id}>
               <button onClick={() => post.status === "draft" ? void openComposer(post) : openPost(post.id)}>{post.status === "draft" ? `草稿 · ${post.title || "未命名内容"}` : post.status === "pending_review" ? `审核中 · ${post.title}` : post.status === "hidden" ? `审核未通过 · ${post.title}` : post.title}</button>
               <button aria-label="编辑" onClick={() => void openComposer(post)}><PenLine size={16} /></button>
@@ -4024,14 +4511,19 @@ export default function Community() {
           </span>
         </div>
       )}
-      {tab !== "search" && !(tab === "settings" && settingsDetail !== null) && <nav className={`bottom-nav${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`} aria-label="主导航">
-        {nav.slice(0, 2).map(renderNavButton)}
-        <button className="compose" aria-label="发布内容" onClick={() => void openComposer()}><Plus size={22} /></button>
-        {nav.slice(2).map(renderNavButton)}
-      </nav>}
+      <div className={`bottom-nav-shell${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`}>
+        <nav className="bottom-nav" aria-label="主导航">
+          {nav.slice(0, 2).map(renderNavButton)}
+          {nav.slice(2).map(renderNavButton)}
+        </nav>
+        <button type="button" className="compose" aria-label="发布内容" onClick={() => void openComposer()}>
+          <span className="bottom-nav-icon"><Plus size={25} strokeWidth={1.8} /></span>
+          <span>发布</span>
+        </button>
+      </div>
       {viewerId !== null && (
         <div
-          className="flip-overlay"
+          className={`flip-overlay${viewerPhase ? ` is-${viewerPhase}` : ""}`}
           onMouseDown={(e) => {
             if (e.target === e.currentTarget && flippingId === null)
               closeViewer();
@@ -4072,27 +4564,17 @@ export default function Community() {
           )}
           {(() => {
             const revealed = state.revealed[viewerId];
+            const revealImage = revealed?.image || revealed?.images?.find(Boolean);
+            const hasRevealImage = Boolean(revealImage);
+            const revealBody = revealed?.body?.trim() || "";
+            const isShortTextOnly = !hasRevealImage && revealBody.length <= 120;
             const rarityTier = state.rarityTiers[viewerId] || revealed?.rarityTier || "pending";
             const rarityLabel = cardRarityLabel(rarityTier);
             const rarityGrade = rarityTier === "ordinary" ? "N" : rarityTier === "pending" ? "待评" : rarityTier;
-            const stageRatio = viewerRect?.height
-              ? viewerRect.width / viewerRect.height
-              : 0.75;
-            const stageWidth = Math.max(1, Math.min(
-              430,
-              window.innerWidth - 28,
-              (window.innerHeight - 44) * stageRatio,
-            ));
             return (
               <div
                 ref={viewerStageRef}
                 className={`flip-stage ${viewerFlipped ? "is-flipped" : ""}`}
-                style={{
-                  "--flip-stage-width": `${stageWidth}px`,
-                  "--flip-stage-ratio": viewerRect?.height
-                    ? `${viewerRect.width} / ${viewerRect.height}`
-                    : "3 / 4",
-                } as CSSProperties}
               >
                 <div className="flip-inner">
                   <div className="flip-face flip-front flip-window-face">
@@ -4109,22 +4591,19 @@ export default function Community() {
                     )}
                   </div>
                   <div
-                    className={`flip-face flip-back flip-window-revealed${viewerRevealPhase === "rarity" ? " is-rarity-reveal" : ""}`}
+                    className={`flip-face flip-back flip-window-revealed${hasRevealImage ? " has-image" : " no-image"}${viewerRevealPhase === "rarity" ? " is-rarity-reveal" : ""}`}
                     data-window-card-id={viewerId}
-                    style={{ background: coverColor(revealed?.tag || "") }}
                   >
-                    <div className="flip-window-visual-fallback">
-                      {revealed?.cover || "HEIKA"}
-                    </div>
-                    {revealed?.image && (
+                    {hasRevealImage && (
                       <img
-                        src={revealed.image}
+                        src={revealImage || ""}
                         alt=""
                         onError={(e) => {
                           e.currentTarget.dataset.failed = "true";
                         }}
                       />
                     )}
+                    {hasRevealImage && <span className="flip-window-image-error" role="status">封面暂时无法加载</span>}
                     {viewerRevealPhase === "rarity" && (
                       <div className={`flip-rarity-reveal rarity-tier-${rarityTier}`} aria-live="polite">
                         <small>卡片稀有度</small>
@@ -4132,23 +4611,16 @@ export default function Community() {
                         <span>{rarityLabel}</span>
                       </div>
                     )}
-                    <div className={`window-reveal-copy${viewerRevealPhase === "rarity" ? " is-rarity-hidden" : ""}`} aria-hidden={viewerRevealPhase === "rarity" || undefined}>
+                    <div className={`window-reveal-copy${hasRevealImage ? " has-image" : " no-image"}${viewerRevealPhase === "rarity" ? " is-rarity-hidden" : ""}`} aria-hidden={viewerRevealPhase === "rarity" || undefined}>
                       <div className="window-reveal-meta"><small>{revealed?.tag || "HEIKA"}</small><i className={`rarity-inline-chip rarity-tier-${rarityTier}`}>{rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier}</i></div>
                       <h2>{revealed?.title || ""}</h2>
-                      <p>
-                        {revealed?.body?.slice(0, 220)}
-                        {(revealed?.body?.length || 0) > 220 ? "…" : ""}
-                      </p>
-                      <small className="window-quota">
-                        今日已翻 {opened.length} / {dailyAllowance} 张 · 还可翻 {Math.max(0, dailyAllowance - opened.length)} 张
-                      </small>
+                      <p>{hasRevealImage ? revealBody.slice(0, 220) : revealBody.slice(0, 2400)}</p>
                       <button
                         className="window-more"
                         disabled={!viewerFlipped || viewerPhase !== null || viewerRevealPhase === "rarity"}
-                        onPointerDown={(event) => prewarmNativeCardTransition(viewerId, event.currentTarget)}
                         onClick={(event) => openPost(viewerId, "today", event.currentTarget)}
                       >
-                        查看更多 <ArrowRight size={17} />
+                        {isShortTextOnly ? "查看详情" : "查看更多"} <ArrowRight size={17} />
                       </button>
                     </div>
                   </div>
@@ -4182,6 +4654,22 @@ export default function Community() {
                       setDetailMoreOpen(false);
                       toast("已减少类似内容推荐");
                     }}><ThumbsDown size={16} /> 不感兴趣</button>
+                    {post.authorId && <button onClick={() => {
+                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
+                      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_author", authorId: post.authorId }).then(() => {
+                        setPublicFeed((items) => items.filter((item) => item.authorId !== post.authorId));
+                        void loadPublicFeed(1, true, category);
+                        setDetailMoreOpen(false); toast("已减少这位创作者的推荐，可在推荐偏好中恢复");
+                      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
+                    }}><UserRound size={16} /> 减少此作者推荐</button>}
+                    {post.topics?.[0] && (() => { const firstTopic = post.topics[0]; return <button onClick={() => {
+                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
+                      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_topic", topic: firstTopic }).then(() => {
+                        setPublicFeed((items) => items.filter((item) => !item.topics?.includes(firstTopic)));
+                        void loadPublicFeed(1, true, category);
+                        setDetailMoreOpen(false); toast(`已减少 #${firstTopic} 推荐，可在推荐偏好中恢复`);
+                      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
+                    }}><ThumbsDown size={16} /> 减少 #{firstTopic}</button>; })()}
                     <button onClick={() => {
                       const url = `${location.origin}/?post=${post.id}`;
                       void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
@@ -4197,46 +4685,52 @@ export default function Community() {
             </header>
             <div className="detail-scroll" key={post.id}>
               <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
+                <div className="detail-article-column">
                 {detailImages.length > 0 && (
-                  <div className="detail-gallery" onTouchStart={(event) => { imageTouchStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => {
+                  <div className="detail-gallery" aria-busy={imageLoading} onPointerDown={(event) => {
+                    imageSwipeTriggered.current = false;
+                    if (event.pointerType === "mouse" || detailImages.length < 2 || (event.target as HTMLElement).closest(".detail-gallery-controls")) return;
+                    imageTouchStart.current = { x: event.clientX, y: event.clientY };
+                  }} onPointerUp={(event) => {
                     const start = imageTouchStart.current;
-                    const end = event.changedTouches[0]?.clientX;
                     imageTouchStart.current = null;
-                    if (start === null || end === undefined || detailImages.length < 2 || Math.abs(end - start) < 40) return;
-                    setActiveImageIndex((index) => (index + (end < start ? 1 : -1) + detailImages.length) % detailImages.length);
-                  }}>
-                  <button className="detail-image-button" onClick={() => setPreviewImage(true)} aria-label="查看大图">
-                    <img src={detailImages[activeImageIndex]} alt={`${post.title}，第 ${activeImageIndex + 1} 张`} loading="eager" fetchPriority="high" />
+                    if (!start || detailImages.length < 2) return;
+                    const deltaX = event.clientX - start.x;
+                    const deltaY = event.clientY - start.y;
+                    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
+                    imageSwipeTriggered.current = true;
+                    event.preventDefault();
+                    selectDetailImage(activeImageIndex + (deltaX < 0 ? 1 : -1));
+                    window.setTimeout(() => { imageSwipeTriggered.current = false; }, 0);
+                  }} onPointerCancel={() => { imageTouchStart.current = null; imageSwipeTriggered.current = false; }}>
+                  <button className={`detail-image-button detail-image-frame transition-${detailTransition} is-${detailImageDirection}`} onClick={(event) => {
+                    if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
+                    setPreviewImage(true);
+                  }} aria-label="查看大图">
+                    {(() => {
+                      const index = displayedImageIndex;
+                      const lowSrc = detailThumbnails[index] || detailImages[index];
+                      const highSrc = post.isPartial ? detailRetinaImages[index] || lowSrc : detailImages[index];
+                      return <ProgressiveImage
+                        key={`${lowSrc}:${highSrc}`}
+                        lowSrc={lowSrc}
+                        src={highSrc}
+                        alt={`${post.title}，第 ${index + 1} 张`}
+                        onHighReady={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
+                        onHighError={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
+                      />;
+                    })()}
                     <span>查看大图</span>
                   </button>
+                  {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
                   {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
-                    <button aria-label="上一张图片" onClick={() => setActiveImageIndex((index) => (index - 1 + detailImages.length) % detailImages.length)}><ArrowLeft size={15} /></button>
+                    <button type="button" aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
                     <span>{activeImageIndex + 1} / {detailImages.length}</span>
-                    <button aria-label="下一张图片" onClick={() => setActiveImageIndex((index) => (index + 1) % detailImages.length)}><ArrowRight size={15} /></button>
+                    <button type="button" aria-label="下一张图片" onClick={() => selectDetailImage(activeImageIndex + 1)}><ArrowRight size={15} /></button>
                   </div>}
                   </div>
                 )}
-                {!detailImages.length && (
-                  <div className="detail-metal-art" aria-hidden="true">
-                    <svg viewBox="0 0 100 100" role="presentation">
-                      <defs>
-                        <linearGradient id="detail-metal-one" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#d3dcdf"/><stop offset="1" stopColor="#485960"/></linearGradient>
-                        <linearGradient id="detail-metal-two" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#aebdc2"/><stop offset="1" stopColor="#26353c"/></linearGradient>
-                        <linearGradient id="detail-metal-three" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#778a92"/><stop offset="1" stopColor="#d0d9db"/></linearGradient>
-                        <linearGradient id="detail-metal-four" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#394a52"/><stop offset="1" stopColor="#aebcc1"/></linearGradient>
-                      </defs>
-                      <rect width="100" height="100" fill="#172126"/>
-                      <path d="M50 10 90 50 50 50Z" fill="url(#detail-metal-one)"/>
-                      <path d="M50 10 50 50 10 50Z" fill="url(#detail-metal-two)"/>
-                      <path d="M10 50 50 50 50 90Z" fill="url(#detail-metal-three)"/>
-                      <path d="M50 50 90 50 50 90Z" fill="url(#detail-metal-four)"/>
-                      <path d="M50 10 90 50 50 90 10 50Z" fill="none" stroke="#121a1e" strokeWidth=".8"/>
-                      <path d="M50 10V90M10 50H90" fill="none" stroke="#e0e7e8" strokeOpacity=".28" strokeWidth=".35"/>
-                      <rect x="2" y="2" width="96" height="96" fill="none" stroke="#c0cdd0" strokeOpacity=".42" strokeWidth=".45"/>
-                    </svg>
-                    <span>{post.tag} <i>· LUCENT</i></span>
-                  </div>
-                )}
+                {detailImages.length === 0 && detailVideo && <div className="detail-video"><video src={detailVideo} controls playsInline preload="metadata" aria-label={`${post.title} 视频`} /></div>}
                 <h1>{post.title}</h1>
                 <p className="byline">
                   {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}>{post.author} ↗</button> : post.author}
@@ -4245,22 +4739,26 @@ export default function Community() {
                 <button className="detail-reading-setting" onClick={() => setModal("reading")}>
                   阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
                 </button>
+                {post.seriesTitle && <div className="detail-series-badge"><span>系列</span><strong>{post.seriesTitle}</strong>{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
-                <EditorialArticle post={post} />
+                {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
+                {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}/></Suspense>}
+                {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
-                  <span>给这篇内容评分</span>
-                  <div>{[1, 2, 3, 4, 5].map((n) => (
-                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms` }} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
+                  <div className="detail-rating-main"><span>内容评分</span>
+                  <div className="detail-rating-stars" role="radiogroup" aria-label="选择内容星级">{[1, 2, 3, 4, 5].map((n) => (
+                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms`, "--star-delay": `${(n - 1) * 58}ms`, "--rating-color": RATING_COLORS[n - 1] } as CSSProperties} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
                       <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
                     </button>
-                  ))}</div>
-                  {communityRatings[post.id]?.count ? (
+                  ))}</div><span className="detail-rating-current">{state.ratings[post.id] ? `${state.ratings[post.id]} 星` : "未评分"}</span></div>
+                  {(state.ratings[post.id] || ratingPulse?.postId === post.id) && (communityRatings[post.id]?.count ? (
                     <small className="community-rating" aria-live="polite">
                       <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人 <i className={`rarity-badge rarity-${cardRarity(communityRatings[post.id].average, communityRatings[post.id].count).replaceAll(" ", "")}`}>{cardRarity(communityRatings[post.id].average, communityRatings[post.id].count)}</i>
                     </small>
-                  ) : <small className="community-rating">社区评分形成中</small>}
+                  ) : null)}
                   {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
                 </section>
+                </div>
                 <section id="detail-comments" className="detail-comments">
                   <div className="comments-heading">
                     <h2>评论 <span>· {commentTotal}</span></h2>
@@ -4276,20 +4774,22 @@ export default function Community() {
                     const roots = comments.filter((c) => !c.parent).sort((a, b) => detailSort === "最新" ? b.time - a.time : b.likes - a.likes || b.time - a.time);
                     return roots.length ? roots.map((c) => {
                       const children = comments.filter((item) => item.parent === c.id).sort((a, b) => a.time - b.time);
-                      const visibleChildren = expandedReplies[c.id] ? children : children.slice(0, 2);
                       const displayBody = expandedComments[c.id] || c.body.length <= 280 ? c.body : `${c.body.slice(0, 280)}…`;
+                      const renderReply = (child: Comment) => <div className="comment-reply" key={child.id}>
+                        <div className="comment-avatar small" aria-hidden="true"><span>{(child.name || "探").slice(0, 1)}</span>{child.avatar && <img src={child.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
+                        <div className="comment-reply-content"><div className="comment-reply-heading"><strong title={child.name || "探索者"}>{child.name || "探索者"}</strong><span>回复</span><strong title={child.replyToName || c.name || "探索者"}>{child.replyToName || c.name || "探索者"}</strong></div><p>{child.body}</p><div className="comment-meta comment-reply-meta"><time>{relativeTime(child.time)}</time><button className="comment-reply-action" onClick={() => focusReply(child.id, child.name)}>回复</button><button type="button" className={`comment-reply-like${child.liked ? " selected" : ""}`} aria-label={`${child.liked ? "取消点赞" : "点赞回复"}，${child.likes}`} aria-pressed={!!child.liked} onClick={() => void toggleCommentLike(child)}><Heart size={14} fill={child.liked ? "currentColor" : "none"}/><span>{child.likes}</span></button><details className="comment-actions-menu"><summary aria-label="回复操作"><MoreHorizontal size={16}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(child)}>复制</button>{(!child.cloudId || child.authorId === accountId) && <button onClick={() => void deleteComment(child)}>删除回复</button>}{child.cloudId && accountId && child.authorId !== accountId && <button onClick={() => { setReportCommentId(child.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报回复</button>}</div></details></div></div>
+                      </div>;
                       return <article className="comment" id={`comment-${c.id}`} data-comment-id={c.id} key={c.id}>
                         <div className="comment-avatar" aria-hidden="true"><span>{(c.name || "探").slice(0, 1)}</span>{c.avatar && <img src={c.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
                         <div className="comment-content">
-                          <div className="comment-heading"><strong className="comment-author" title={c.name || "探索者"}>{c.name || "探索者"}</strong>{post.authorId && c.authorId === post.authorId && <span className="comment-author-badge">作者</span>}<button className={`comment-like${c.liked ? " selected" : ""}`} aria-label={`${c.liked ? "取消点赞" : "点赞评论"}，${c.likes}`} aria-pressed={!!c.liked} onClick={() => void toggleCommentLike(c)}><Heart size={17} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button></div>
+                          <div className="comment-heading"><strong className="comment-author" title={c.name || "探索者"}>{c.name || "探索者"}</strong>{post.authorId && c.authorId === post.authorId && <span className="comment-author-badge">作者</span>}</div>
                           <p className={expandedComments[c.id] ? "comment-body expanded" : "comment-body"}>{displayBody}</p>
                           {c.body.length > 280 && <button className="comment-expand" onClick={() => setExpandedComments((current) => ({ ...current, [c.id]: !current[c.id] }))}>{expandedComments[c.id] ? "收起" : "展开全文"}</button>}
-                          <div className="comment-meta"><time dateTime={new Date(c.time).toISOString()}>{relativeTime(c.time)}</time><button className="comment-reply-action" onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={18}/></summary><div className="comment-actions-panel"><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
-                          {visibleChildren.length > 0 && <div className="comment-replies">{visibleChildren.map((child) => <div className="comment-reply" key={child.id}>
-                            <div className="comment-avatar small" aria-hidden="true"><span>{(child.name || "探").slice(0, 1)}</span>{child.avatar && <img src={child.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div><div><strong>{child.name || "探索者"}</strong>{child.parent ? <span> 回复 </span> : null}<p>{child.body}</p><div className="comment-meta"><time>{relativeTime(child.time)}</time><button onClick={() => { setReply(c.id); commentInputRef.current?.focus(); }}>回复</button></div></div>
-                          </div>)}</div>}
-                          {children.length > visibleChildren.length && <button className="expand-replies" onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: true }))}>展开更多回复（{children.length - visibleChildren.length}）</button>}
+                          <div className="comment-meta"><time dateTime={new Date(c.time).toISOString()}>{relativeTime(c.time)}</time><button className="comment-reply-action" onClick={() => focusReply(c.id, c.name)}>回复</button><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={18}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(c)}>复制</button><button onClick={() => focusReply(c.id, c.name)}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
+                          {children.length > 0 && <div className="comment-replies">{children.slice(0, 2).map(renderReply)}<div className={`comment-replies-extra${expandedReplies[c.id] ? " is-expanded" : ""}`} aria-hidden={!expandedReplies[c.id]} inert={!expandedReplies[c.id]}><div>{children.slice(2).map(renderReply)}</div></div></div>}
+                          {children.length > 2 && <button className="expand-replies" aria-expanded={!!expandedReplies[c.id]} onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: !s[c.id] }))}>{expandedReplies[c.id] ? "收起回复" : `展开 ${children.length - 2} 条回复`}</button>}
                         </div>
+                        <button className={`comment-like${c.liked ? " selected" : ""}`} aria-label={`${c.liked ? "取消点赞" : "点赞评论"}，${c.likes}`} aria-pressed={!!c.liked} onClick={() => void toggleCommentLike(c)}><Heart size={18} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button>
                       </article>;
                     }) : !commentsLoading && !commentsError && <p className="comments-empty">还没有评论，来聊聊你的想法。</p>;
                   })()}
@@ -4298,64 +4798,96 @@ export default function Community() {
               </div>
             </div>
             <form className="detail-action-bar" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
-              <div className={`detail-comment-input${reply ? " replying" : ""}`}>
+              <div className={`detail-comment-input${reply ? " replying" : ""}${commentInputExpanded || draft ? " expanded" : ""}`}>
                 <span className="comment-compose-avatar" aria-hidden="true"><span>{(state.name || "探").slice(0, 1)}</span>{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-                {reply && <span className="reply-label">回复 {state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => setReply(undefined)}><X size={13} /></button></span>}
-                <textarea ref={commentInputRef} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={1} maxLength={1000} aria-label="评论内容" />
+                {reply && <span className="reply-label">回复 @{replyTargetName || state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => { setReply(undefined); setReplyTargetName(undefined); }}><X size={13} /></button></span>}
+                <textarea ref={commentInputRef} value={draft} onFocus={() => setCommentInputExpanded(true)} onBlur={(event) => { if (!draft.trim() && !reply && !event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setCommentInputExpanded(false); }} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={commentInputExpanded || draft ? 3 : 1} maxLength={1000} aria-label="评论内容" />
                 {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
                 {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><Send size={17} /></button>}
               </div>
-              <button type="button" className={`bar-icon${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={state.liked?.includes(post.id) ? "取消点赞" : "点赞"} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
+              <button type="button" className={`bar-icon like-action${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
                 if (likeBusy) return;
                 const next = !state.liked?.includes(post.id);
                 setLikeBusy(true);
-                void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }))).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
-              }}><Heart size={21} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /></button>
+                void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => {
+                  const nextCount = Math.max(0, (detailLikeCounts[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1));
+                  setDetailLikeCounts((current) => ({ ...current, [post.id]: Math.max(0, (current[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1)) }));
+                  setPublicFeed((current) => current.map((item) => item.id === post.id ? { ...item, likeCount: nextCount } : item));
+                  update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }));
+                }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
+              }}><Heart size={19} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span className="detail-like-count">{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span></button>
               <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
               <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => {
                 const shareData = { title: post.title, text: post.body, url: `${location.origin}/?post=${post.id}` };
-                void (async () => {
-                  if (await shareViaNative(shareData)) return;
-                  if (navigator.share) {
-                    try { await navigator.share(shareData); }
-                    catch (error) {
-                      if (!(error instanceof DOMException && error.name === "AbortError")) toast("分享失败");
-                    }
-                    return;
-                  }
-                  try {
-                    await navigator.clipboard?.writeText(shareData.url);
-                    toast("链接已复制");
-                  } catch { toast("复制失败"); }
-                })();
+                if (navigator.share) void navigator.share(shareData).catch(() => {});
+                else void navigator.clipboard?.writeText(shareData.url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
               }}><Share2 size={20} /></button>
             </form>
           </div>
-          {previewImage && detailImages[activeImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[activeImageIndex]} alt={post.title} /></div>}
+          {previewImage && detailImages[displayedImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[displayedImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
         </div>
       )}
       {authorProfile && (
         <PublicProfile
           id={authorProfile}
-          onClose={() => setAuthorProfile(null)}
+          currentUserId={accountId}
+          accountReady={accountReady}
+          layout={profileLayout}
+          onClose={closeAuthorProfile}
+          onOpenMine={() => {
+            closeAuthorProfile();
+            setTab("mine");
+            requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          }}
+          onNotice={toast}
+          onSelectPost={(id) => {
+            closeAuthorProfile();
+            if (all.some((post) => post.id === id)) {
+              requestAnimationFrame(() => openPostRef.current(id, "discover"));
+              return;
+            }
+            void fetch("/api/v1/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [id] }) })
+              .then((response) => response.json())
+              .then(({ data }) => {
+                const post = data?.items?.[0] as Post | undefined;
+                if (!post) { toast("这篇内容暂时无法查看"); return; }
+                setPublicFeed((current) => current.some((item) => item.id === post.id) ? current : [...current, post]);
+                requestAnimationFrame(() => openPostRef.current(id, "discover"));
+              })
+              .catch(() => toast("内容加载失败，请稍后重试"));
+          }}
           onMessage={(id) => {
-            setAuthorProfile(null);
+            closeAuthorProfile();
             setMessagePeer(id);
             setTab("messages");
+            imageSwitchSequence.current += 1;
+            setImageLoading(false);
             setDetail(null);
             setViewerId(null);
           }}
         />
       )}
+      {recentPreview && (
+        <div className="recent-preview-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setRecentPreview(null); }}>
+          <section className="recent-preview-card" role="dialog" aria-modal="true" aria-labelledby="recent-preview-title">
+            <button type="button" className="recent-preview-close" aria-label="关闭预览" onClick={() => setRecentPreview(null)}><X size={19}/></button>
+            {recentPreview.post.image || recentPreview.post.images?.[0] ? <img className="recent-preview-image" src={recentPreview.post.image || recentPreview.post.images?.[0]} alt="" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /> : recentPreview.post.video && <video className="recent-preview-image" src={recentPreview.post.video} controls playsInline preload="metadata" aria-label="最近发现的视频" />}
+            {!recentPreview.post.image && !recentPreview.post.images?.[0] && !recentPreview.post.video && <div className="recent-preview-image recent-preview-placeholder" style={{ background: coverColor(recentPreview.post.tag) }} aria-hidden="true"><span>{recentPreview.post.tag}</span></div>}
+            <div className="recent-preview-copy"><small>{recentPreview.post.tag} · {recentPreview.post.author}</small><h2 id="recent-preview-title">{recentPreview.post.title}</h2><p>{markdownToText(recentPreview.post.body)}</p><button type="button" className="recent-preview-open" onClick={() => { const item = recentPreview; setRecentPreview(null); requestAnimationFrame(() => openPost(item.post.id, item.source)); }}>查看内容 <ArrowRight size={17}/></button></div>
+          </section>
+        </div>
+      )}
       {modal && (
         <div className={`modal-backdrop${modal === "write" ? " composer-backdrop" : ""}${modalClosing ? " is-closing" : ""}`} aria-hidden={modalClosing || undefined}>
           <div
-            className={`modal ${modal === "subscription" ? "subscription-dialog" : ""} ${modal === "write" ? "composer-modal" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
+            className={`modal ${modal === "write" ? "composer-modal" : ""} ${readingTransition ? `reading-${readingTransition}` : ""}`}
+            inert={modal === "write" && Boolean(composerPanel || composerMediaId)}
+            role={modal === "write" ? "dialog" : undefined} aria-modal={modal === "write" ? true : undefined} aria-label={modal === "write" ? "创作内容" : undefined}
           >
             {modal === "write" ? <header className="composer-topbar">
-              <button type="button" className="composer-back" onClick={() => setModal(null)} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
-              <strong>{editing ? "编辑内容" : "分享一篇内容"}</strong>
-              <span className="composer-topbar-status">{draftSaving ? "保存中" : draftSaved ? "已保存" : "草稿"}</span>
+              <button type="button" className="composer-back" onClick={() => void closeComposer()} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
+              <strong>创作内容</strong>
+              <button type="button" className="composer-preview-button" onClick={() => setComposerPanel("preview")}>预览</button>
             </header> : <button
               className="close"
               aria-label="关闭"
@@ -4371,57 +4903,6 @@ export default function Community() {
                 <fieldset className="report-reasons"><legend>选择原因</legend>{REPORT_REASONS.map((reason) => <label key={reason} className={reportReason === reason ? "selected" : ""}><input type="radio" name="report-reason" value={reason} checked={reportReason === reason} onChange={() => setReportReason(reason)} />{reason}</label>)}</fieldset>
                 <label className="report-note-label">补充说明 <span>选填</span><textarea value={reportNote} maxLength={300} onChange={(event) => setReportNote(event.target.value)} placeholder="可简要说明你认为不合适的部分" /></label>
                 <button className="primary-button full" disabled={!reportReason || reportSubmitting} onClick={() => void submitContentReport()}>{reportSubmitting ? "正在提交…" : "提交举报"}</button>
-              </div>
-            ) : modal === "subscription" ? (
-              <div className="subscription-layout">
-                <header className="subscription-header"><h2>翻卡计划</h2></header>
-                <div className="subscription-scroll">
-                  <div className="subscription-quota" aria-live="polite"><span>当前额度</span><strong>{dailyAllowance} 次</strong></div>
-                  <div className="subscription-section-label"><strong>选择套餐</strong></div>
-                  <div className="subscription-plans" role="group" aria-label="选择会员套餐">
-                    {membershipPlans.map((plan) => {
-                      const selected = selectedPlan === plan.id;
-                      return <button type="button" key={plan.id} className={`subscription-plan${selected ? " selected" : ""}`} aria-pressed={selected} onClick={() => setSelectedPlan(plan.id)}>
-                        <span className="subscription-plan-name">{plan.name}</span>
-                        <span className="subscription-plan-daily">{plan.dailyFlips} 次 <small>/ 日</small></span>
-                        <span className="subscription-plan-price">¥{plan.price}<small> / 月</small></span>
-                        <span className="subscription-plan-check" aria-hidden="true">{selected ? <Check size={15}/> : null}</span>
-                      </button>;
-                    })}
-                  </div>
-                  <button className="primary-button full subscription-continue" type="button" disabled={!selectedPlan} onClick={() => toast("当前仅预览，不会扣款")}>{selectedPlan ? `预览 ${membershipPlans.find((plan) => plan.id === selectedPlan)?.name} 订阅` : "请选择套餐"}</button>
-                  <p className="subscription-preview-note">当前仅预览 · 不会扣款或开通套餐</p>
-                  <section className="membership-disclosure-group">
-                    <button type="button" className="membership-disclosure" aria-expanded={extraPacksOpen} onClick={() => setExtraPacksOpen((open) => !open)}>
-                      <span><strong>额外翻卡包</strong><small>{selectedFlipPack ? `已选 +${selectedFlipPack} 次` : "一次性补充翻卡机会"}</small></span>
-                      <ChevronRight size={17}/>
-                    </button>
-                    <div className={`membership-collapsible${extraPacksOpen ? " open" : ""}`} aria-hidden={!extraPacksOpen} inert={!extraPacksOpen}>
-                      <div className="membership-collapsible-inner">
-                        <div className="extra-flip-options">
-                          {extraFlipPacks.map((count) => <button type="button" key={count} className={selectedFlipPack === count ? "selected" : ""} aria-pressed={selectedFlipPack === count} onClick={() => setSelectedFlipPack(count)}>
-                            <strong>+{count}</strong><span>次翻卡</span>
-                          </button>)}
-                        </div>
-                        {selectedFlipPack && <button className="soft-button full extra-pack-preview" type="button" onClick={() => toast("当前仅预览，不会扣款")}>预览 +{selectedFlipPack} 次卡包</button>}
-                        <p className="subscription-preview-note">一次性补充机会；当前仅预览，不会扣款。</p>
-                      </div>
-                    </div>
-                  </section>
-                  <section className="membership-disclosure-group rules-disclosure-group">
-                    <button type="button" className="membership-disclosure" aria-expanded={subscriptionRulesOpen} onClick={() => setSubscriptionRulesOpen((open) => !open)}>
-                      <span><strong>翻卡与订阅规则</strong><small>权益、概率与额度说明</small></span>
-                      <ChevronRight size={17}/>
-                    </button>
-                    <div className={`membership-collapsible${subscriptionRulesOpen ? " open" : ""}`} aria-hidden={!subscriptionRulesOpen} inert={!subscriptionRulesOpen}>
-                      <div className="membership-collapsible-inner subscription-rules-copy">
-                        <p>免费每日 5 次；Plus 每日共 9 次，Pro 每日共 13 次。会员次数按天刷新，幸运加成另行累计。</p>
-                        <p>每次翻卡的幸运奖励概率：+2 次 10%、+3 次 5%、+5 次 1.5%、+10 次 0.1%；幸运加成每日最多累计 10 次。</p>
-                        <p>额外翻卡包为一次性补充。当前页面仅供预览，不会扣款、创建订单或开通权益。</p>
-                      </div>
-                    </div>
-                  </section>
-                </div>
               </div>
             ) : modal === "browsing" ? (
               <>
@@ -4520,18 +5001,12 @@ export default function Community() {
                 <div className="eyebrow">PREFERENCES</div>
                 <h2>通知设置</h2>
                 <p className="settings-note">
-                  {hasNativeBridge() ? "Android 系统授权与黑卡内部提醒偏好分别管理。后台推送服务尚未接通，开关只保存账号提醒偏好。" : "通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。"}
+                  通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。
                 </p>
-                {hasNativeBridge() && <div className="permission-state" role="status">
-                  Android 系统通知：{systemNotificationLabel}
-                  <button type="button" className="soft-button" onClick={async () => {
-                    if (!(await openNativeNotificationSettings())) toast("无法打开 Android 通知设置");
-                  }}>管理系统权限</button>
-                </div>}
                 {notificationPermission === "unsupported" && (
                   <div className="permission-state">此浏览器不支持通知。</div>
                 )}
-                {!hasNativeBridge() && notificationPermission === "denied" && (
+                {notificationPermission === "denied" && (
                   <div className="permission-state">
                     浏览器通知权限已拒绝，请在站点设置中重新允许。
                   </div>
@@ -4623,25 +5098,51 @@ export default function Community() {
                 </button>
               </>
             ) : (
+              <div className="composer-workspace">
               <div className="composer-scroll">
-                <div className="eyebrow">CREATE / STORY</div>
-                <label>
-                  标题
-                  <input
-                    value={title}
-                    maxLength={80}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="给你的发现一个标题"
-                  />
-                </label>
-                <label>
-                  分类
-                  <select value={writeTag} onChange={(event) => setWriteTag(event.target.value)}>
-                    {tags.map((tag) => <option key={tag}>{tag}</option>)}
-                  </select>
-                </label>
-                <section className="composer-topic-section" aria-label="选择话题">
+                {!composerEditingPublished && <section className="composer-channel-picker" role="group" aria-label="发布内容类型"><strong>发布到</strong><div>{([["community", "社区作品"], ["ai", "AI 空间"]] as const).map(([value, label]) => <button type="button" key={value} className={writeChannel === value ? "selected" : ""} aria-pressed={writeChannel === value} onClick={() => void switchComposerChannel(value)}>{label}</button>)}</div></section>}
+                {writeChannel === "ai" && <section className="composer-ai-type"><label>AI 内容类型<ChoiceSelect label="AI 内容类型" value={writeContentType} onChange={(value) => setWriteContentType(value as AiContentType)} options={([["knowledge_article", "AI 知识文章"], ["agent", "Agent 智能体"], ["skill", "Skills 技能"], ["prompt", "Prompt 提示词"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"]] as const).map(([value,label]) => ({value,label}))}/></label><small>{writeContentType === "knowledge_article" ? "使用标准图文文章格式，支持 Markdown。" : "按类型填写结构化字段；发布后由管理员审核，并保留已发布版本。"}</small></section>}
+                <ComposerTextEditor title={title} body={body} error={composerValidation} onTitle={changeComposerTitle} onBody={changeComposerBody}/>
+                {writeChannel === "ai" && AI_EDITOR_FIELDS[writeContentType].length > 0 && <section className="composer-ai-resource-fields" aria-label="AI 资源信息"><div className="composer-section-heading"><span><strong>资源信息</strong><small>代码、安装命令和 Prompt 仅展示与复制，不会在服务器执行</small></span><span>{AI_EDITOR_FIELDS[writeContentType].filter((field) => field.required).length} 项必填</span></div>{AI_EDITOR_FIELDS[writeContentType].map((field) => <label key={field.key}>{field.label}{field.required && <i>必填</i>}{field.multiline ? <textarea value={aiResourceFields[field.key] || ""} maxLength={12000} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint} rows={field.key === "prompt" || field.key === "installation" || field.key === "steps" ? 6 : 3}/> : <input type={field.key.endsWith("_url") ? "url" : "text"} value={aiResourceFields[field.key] || ""} maxLength={1200} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint}/>}</label>)}</section>}
+                <section className="composer-media-picker" aria-label="选择图片或视频">
+                  <div className="composer-media-choices" role="group" aria-label="媒体类型">
+                    <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerVideo || composerImages.length >= 9 ? " disabled" : ""}`}>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploadingImages || Boolean(composerVideo) || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
+                      <span className="composer-media-choice-icon"><ImagePlus size={20}/></span>
+                      <span className="composer-media-choice-copy"><strong>图片</strong><small>{composerImages.length >= 9 ? "已达最多 9 张" : composerImages.length ? `已选 ${composerImages.length}/9 张 · 点此继续添加` : "JPG、PNG、WebP · 最多 9 张"}</small></span>
+                      <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
+                    </label>
+                    {VIDEO_UPLOAD_BETA_ENABLED && <label className={`composer-media-choice video${composerVideo ? " selected" : ""}${composerImages.length ? " disabled" : ""}`}>
+                      <input type="file" accept="video/mp4,video/webm" disabled={Boolean(composerImages.length)} onChange={(event) => { chooseComposerVideo(event.target.files?.[0] || null); event.currentTarget.value = ""; }}/>
+                      <span className="composer-media-choice-icon"><VideoIcon size={20}/></span>
+                      <span className="composer-media-choice-copy"><strong>视频 <i>Beta</i></strong><small>MP4、WebM · 最大 50 MB</small></span>
+                      <span className="composer-media-choice-mark">{composerVideo ? "已选" : "选择"}</span>
+                    </label>}
+                  </div>
+                  <p className="composer-media-hint">{VIDEO_UPLOAD_BETA_ENABLED ? "图片与视频可选其一 · 视频 Beta 最大 50 MB" : "最多 9 张图片 · 自动优化上传"}</p>
+                  {composerVideo && <section className="composer-video-section" aria-label="视频 Beta" aria-busy={composerVideo.status === "compressing" || composerVideo.status === "uploading"}>
+                    <div className="composer-video-card">
+                      <video src={composerVideo.url || undefined} controls playsInline preload="metadata" aria-label="视频预览" />
+                      <div className="composer-video-info"><strong>{composerVideo.name}</strong><small>{composerVideo.status === "compressing" ? `正在优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo.status === "failed" ? "上传失败，重新发布可重试" : composerVideo.status === "uploading" ? `正在上传 ${composerVideo.progress}%` : composerVideo.size ? `${(composerVideo.size / 1024 / 1024).toFixed(1)} MB · ${composerVideo.compressionNote || (composerVideo.path ? "已同步到草稿" : "等待上传")}` : "已同步到草稿"}</small></div>
+                      <button type="button" className="composer-video-remove" onClick={() => void removeComposerVideo()}>{composerVideo.status === "compressing" ? "取消" : "移除"}</button>
+                      {(composerVideo.status === "compressing" || composerVideo.status === "uploading") && <progress max={100} value={composerVideo.status === "compressing" ? composerVideo.compressionProgress || 0 : composerVideo.progress} aria-label={composerVideo.status === "compressing" ? `视频优化 ${composerVideo.compressionProgress || 0}%` : `视频上传 ${composerVideo.progress}%`} />}
+                    </div>
+                  </section>}
+                </section>
+                {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
+                <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("topics")}><span># 话题</span><small>{writeTopics.length ? writeTopics.map(topic=>`#${topic}`).join(" ") : "添加话题"}</small><ChevronRight size={16}/></button>
+                <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("settings")}><span>更多发布设置</span><small>{writeTag}{writeSeriesId ? " · 已选系列" : ""}{pollQuestion.trim() ? " · 已加投票" : ""}</small><ChevronRight size={16}/></button>
+                {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
+                <p className="fineprint">
+                  {accountId ? "草稿先保留在此设备；云端同步状态请查看底部提示。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
+                </p>
+              </div>
+              </div>
+            )}
+            {modal === "write" && composerPanel && <ComposerSheet title={composerPanel === "topics" ? "选择话题" : composerPanel === "settings" ? "更多发布设置" : "内容预览"} full={composerPanel === "preview"} onClose={() => setComposerPanel(null)}>
+              {composerPanel === "topics" ? <>                <section className="composer-topic-section" aria-label="选择话题">
                   <div className="composer-section-heading"><span><strong>话题</strong><small>选择已有话题，也可以创建自己的话题</small></span><span>{writeTopics.length}/5</span></div>
+                  {writeTopics.length > 0 && <div className="composer-selected-topics" aria-label="已选话题">{writeTopics.map((topic) => <button type="button" key={topic} onClick={() => setWriteTopics((current) => current.filter((item) => item !== topic))}>#{topic}<span aria-hidden="true">×</span></button>)}</div>}
                   <label className="composer-topic-search"><Search size={16} /><input value={topicSearch} onChange={(event) => setTopicSearch(event.target.value)} placeholder="搜索话题" aria-label="搜索话题" /></label>
                   <div className="composer-topic-options">
                     {topicChoices.filter((topic) => !topicSearch.trim() || topic.name.toLocaleLowerCase("zh-CN").includes(topicSearch.trim().toLocaleLowerCase("zh-CN"))).map(({ name: topic }) => {
@@ -4656,59 +5157,33 @@ export default function Community() {
                     {!topicChoices.length && !topicSearch.trim() && <small className="composer-topic-empty">正在加载话题…</small>}
                   </div>
                 </section>
-                <label>
-                  正文
-                  <textarea
-                    value={body}
-                    maxLength={5000}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder="写下你的观察、经验或想法"
-                    rows={7}
-                  />
+</> : composerPanel === "settings" ? <>                <label className="composer-category-field">
+                  {writeChannel === "ai" ? "AI 分类" : "分类"}
+                  <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={setWriteTag} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
                 </label>
-                <section className="composer-media-section" aria-label="内容图片">
-                  <div className="composer-section-heading"><span><strong>图片</strong><small>最多 9 张 · JPG、PNG、WebP，每张不超过 5 MB</small></span><span>{composerImages.length}/9</span></div>
-                  <div className="composer-image-grid">
-                    {composerImages.map((image, index) => (
-                      <figure className={`composer-image${coverIndex === index ? " is-cover" : ""}`} key={image.id}>
-                        <img src={image.url} alt={`第 ${index + 1} 张图片预览`} />
-                        {coverIndex === index && <span className="composer-cover-badge">封面</span>}
-                        {image.status === "uploading" && <span className="composer-image-state">上传中…</span>}
-                        {image.status === "failed" && <button type="button" className="composer-image-retry" disabled={uploadingImages} onClick={() => void retryComposerImage(image.id)}>上传失败 · 重试</button>}
-                        <div className="composer-image-tools">
-                          {coverIndex !== index && <button type="button" onClick={() => setCoverIndex(index)}>设为封面</button>}
-                          <button type="button" aria-label={`第 ${index + 1} 张前移`} disabled={!index} onClick={() => moveComposerImage(index, -1)}>←</button>
-                          <button type="button" aria-label={`第 ${index + 1} 张后移`} disabled={index === composerImages.length - 1} onClick={() => moveComposerImage(index, 1)}>→</button>
-                          <button type="button" aria-label={`移除第 ${index + 1} 张`} onClick={() => void removeComposerImage(index)}>移除</button>
-                        </div>
-                      </figure>
-                    ))}
-                    {composerImages.length < 9 && <label className="composer-image-add">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
-                      <Plus size={22} /><span>添加图片</span>
-                    </label>}
-                  </div>
-                  <p className="composer-draft-status" role="status">{draftSaving ? "正在同步草稿…" : draftSaved ? "草稿已自动保存" : "输入内容后自动保存草稿"}</p>
+                {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<ChoiceSelect label="加入作品系列" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入系列"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
+                <div className="composer-advanced">
+                  <div className="composer-advanced-content">
+                {writeChannel === "community" && <section className="composer-poll-editor" aria-label="添加投票">
+                  <div className="composer-section-heading"><span><strong>互动投票</strong><small>给帖子增加一个单选问题，读者可查看实时结果</small></span><span>{pollQuestion.trim() ? "已添加" : "可选"}</span></div>
+                  <input className="composer-poll-question" value={pollQuestion} maxLength={180} onChange={(event) => setPollQuestion(event.target.value)} placeholder="输入投票问题" aria-label="投票问题" />
+                  <div className="composer-poll-options">{pollOptions.map((option, index) => <div key={index}><span>{index + 1}</span><input value={option} maxLength={80} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`选项 ${index + 1}`} aria-label={`投票选项 ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label={`删除选项 ${index + 1}`} onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15}/></button>}</div>)}</div>
+                  {pollOptions.length < 4 && <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ""])}><Plus size={14}/>添加选项</button>}
+                </section>}
+                <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
+                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
+                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
                 </section>
-                <div className="preview">
-                  <strong>预览 · {title || "未命名内容"}</strong>
-                  <p>{body || "正文预览将显示在这里"}</p>
+                  </div>
                 </div>
-                {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
-                <p className="fineprint">
-                  {accountId ? "草稿会自动同步到当前账号，发布后图片与内容一并保存。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
-                </p>
-              </div>
-            )}
-            {modal === "write" && <footer className="composer-footer"><span><strong>{draftSaving ? "正在保存草稿" : draftSaved ? "草稿已保存" : "自动保存草稿"}</strong><small>{accountId ? "同步到当前账号" : "保存在此设备"}</small></span><button className="primary-button" disabled={uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={publish}>{uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
+            </ComposerSheet>}
+            {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button className="primary-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}
-      {notice && (
-        <div key={noticeId} role="status" className={`toast${noticeLeaving ? " is-leaving" : ""}`}>
-          {notice}
-        </div>
-      )}
+      {notice && <NoticeBanner key={notice.id} notice={notice} leaving={noticeLeaving} expanded={noticeExpanded} onExpand={expandNotice} onDismiss={dismissNotice} />}
     </main>
   );
 }

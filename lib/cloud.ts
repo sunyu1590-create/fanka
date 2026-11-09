@@ -19,3 +19,11 @@ export async function cloudRequest(
   if (!response.ok) throw new Error(result.error || "云端请求失败");
   return result.data;
 }
+
+export async function cloudFetch(path: string, init: RequestInit = {}) {
+  const db = await browserDb();
+  const { data } = await db.auth.getSession();
+  const headers = new Headers(init.headers);
+  if (data.session) headers.set("Authorization", `Bearer ${data.session.access_token}`);
+  return fetch(path, { ...init, headers });
+}

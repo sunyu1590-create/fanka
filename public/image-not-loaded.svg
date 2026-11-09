@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-label="当前图片未加载">
+  <rect width="640" height="480" fill="#e8e7e2"/>
+  <path d="M249 164h142a18 18 0 0 1 18 18v116a18 18 0 0 1-18 18H249a18 18 0 0 1-18-18V182a18 18 0 0 1 18-18Z" fill="none" stroke="#9a9b95" stroke-width="10"/>
+  <circle cx="280" cy="211" r="13" fill="#9a9b95"/>
+  <path d="m241 290 46-47 31 30 24-23 57 58H249Z" fill="#c2c1ba"/>
+  <text x="320" y="366" text-anchor="middle" fill="#777972" font-family="sans-serif" font-size="23">当前图片未加载</text>
+</svg>

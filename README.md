@@ -1,41 +1,47 @@
 # 黑卡 HEIKA
 
-移动端优先的兴趣内容社区原型。当前可运行的是**演示模式**：30 篇原创演示内容、每日最多五次翻卡、候选卡选择、双列发现信息流、筛选与搜索、内容详情、收藏、评分、评论、回复、发布文字内容、兴趣与个人记录。数据只保存在当前浏览器的 `localStorage` 中；清除浏览器数据会删除记录。演示模式没有真实身份验证、公共内容发布、服务端每日限制或跨设备同步。
+黑卡 HEIKA 是一个围绕每日翻卡、兴趣发现与社区交流构建的内容产品。用户可以探索推荐内容、阅读帖子与 AI 资源、收藏和评分内容，并参与评论、私信、发布及会员相关功能。
 
-## 快速体验（无需登录或配置 Supabase）
+## 当前版本
 
-当前网站默认运行在浏览器演示模式，不需要账号、密钥或数据库。兴趣设置可以跳过；收藏、评论和发布内容只保存在当前浏览器中。
+- 网站：`2.40.7`（`publish-vercel` 同步到 `main`）
+- Android：原生应用工程保留在 `android/`，应用 ID 为 `com.heika.community`；当前底包版本为 `2.2.3`。
+- 网站生产域名：`https://moonclean.shop`
 
-在包含 `package.json` 的 Fanka 项目根目录运行。若使用 VS Code 远程环境，可直接用 3001 端口：
+## 最近更新
 
-```bash
-npm ci
-npm run dev:3001
-```
+- 网站升级到 2.40.7，包含发现内容、AI 空间、会员、通知、资料和社区 API 的持续完善。
+- 更新全局动效与页面视觉一致性，优化公开主页及玻璃质感底部导航。
+- 保留 Android 原生关于页、通知权限与偏好设置、缓存刷新能力。
+- 保留首页已翻开卡片的冷启动恢复修复：账号隔离持久化、稳定图片引用、网络恢复后的内容同步与图片重试。
 
-随后在 VS Code 的“端口”面板打开 3001。若要使用默认端口 3000，则运行 `npm run dev`。
+## 项目结构
 
-## 本地启动
+- `app/`、`components/`：Next.js App Router 页面、服务端 API 与网站界面。
+- `lib/`：共享业务逻辑、数据访问、内容呈现与图片资源处理。
+- `supabase/`：数据库迁移、策略及相关配置。
+- `android/`：Kotlin Android 应用、WebView 容器及原生系统能力。
+- `mobile/`：Expo/React Native 辅助工程；APK 正式构建以 `android/` 原生工程为准。
 
-需要 Node.js 20.9+。请确认当前目录能看到 `package.json`，否则先切换到 Fanka 项目根目录。在本仓库运行：
+## 本地开发
+
+需要 Node.js 20.9 或更高版本：
 
 ```bash
 npm ci
 npm run dev
 ```
 
-打开 `http://localhost:3000`。验证：`npm test && npm run typecheck && npm run build`。
+默认打开 `http://localhost:3000`。常用验证命令：
 
-## 技术结构
+```bash
+npm run typecheck
+npm test
+npm run build
+```
 
-- Next.js App Router、React 19、TypeScript、原生 CSS；`app/` 是路由与设计样式，`components/Community.tsx` 实现演示交互，`lib/content.ts` 提供演示内容和确定性卡组。
-- `supabase/migrations/` 定义 PostgreSQL 表、RLS、每日卡组 RPC、私有图片桶、写入限制和演示内容种子；`app/api/v1/` 是服务端接口。接口清单和部署步骤见 [docs/api.md](docs/api.md)。迁移尚未在远程项目运行，前端演示页尚未接入这些接口。
-- 演示内容使用文字与色块封面，没有外部素材或虚构互动数据。
+Android APK 由 `.github/workflows/android-apk.yml` 中的 GitHub Actions 工作流构建。构建应使用最新成功的 Android 原生源代码版本，并从 `publish-vercel` 获取网站代码；不要从落后的 `main` 版本单独选取网站源代码。
 
-## 正式部署前需要完成
+## 技术栈
 
-创建 Supabase 项目，在服务端配置 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY`，应用迁移，再配置 Auth。每日卡组生成、翻卡和换卡已写为数据库 RPC；生产前仍须在真实项目验证权限、时区、并发和上传。随后把浏览器演示状态替换为经授权的 API 请求。应先完成这些步骤，才向真实用户开放注册与内容发布。绝不能把 service role key 放进浏览器。
-
-## 当前限制
-
-API 已有图片上传、评论、举报与管理员处理路由，但前端尚未接入。真实账号 UI、管理员界面、完整推荐排序、正式项目的数据库迁移验证与端到端权限测试尚未完成。当前界面仅用于交互与视觉体验。
+网站使用 Next.js、React、TypeScript 与原生 CSS；后端业务通过服务端 API 访问 Supabase。Android 使用 Kotlin 原生应用容器，并复用网站账号与业务 API。数据库迁移位于 `supabase/migrations/`。密钥应通过部署环境变量或 GitHub Secrets 配置，不得提交到仓库。

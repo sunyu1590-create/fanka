@@ -1,10 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function enterApp(page: import("@playwright/test").Page, options: {
-  role?: "user" | "admin";
-  openedIds?: number[];
-  holdFirstLibraryState?: { onStarted: () => void; wait: Promise<void> };
-} = {}) {
+async function enterApp(page: import("@playwright/test").Page, options: { role?: "user" | "admin"; noImage?: boolean; failedImage?: boolean } = {}) {
   await page.addInitScript(() => { Math.random = () => 0.999; });
   await page.route("**/api/client-config", (route) => route.fulfill({
     status: 200,
@@ -17,12 +13,8 @@ async function enterApp(page: import("@playwright/test").Page, options: {
   await page.route("**/api/demo/cards**", async (route) => {
     const request = route.request();
     if (request.method() === "POST") {
-      const body = request.postDataJSON() as { id?: number; ids?: number[] };
-      if (Array.isArray(body.ids)) {
-        await route.fulfill({ json: { data: { items: body.ids.map(fixturePost) } } });
-        return;
-      }
-      await route.fulfill({ json: { data: fixturePost(Number(body.id) || 1) } });
+      const body = request.postDataJSON() as { id?: number };
+      await route.fulfill({ json: { data: fixturePost(Number(body.id) || 1, !options.noImage, options.failedImage) } });
       return;
     }
     const url = new URL(request.url());
@@ -52,55 +44,111 @@ async function enterApp(page: import("@playwright/test").Page, options: {
       id: "acceptance-user", aud: "authenticated", role: "authenticated", email: "acceptance@example.test",
       app_metadata: { provider: "email", providers: ["email"] }, user_metadata: {}, created_at: "2026-11-01T00:00:00.000Z",
     } }));
-    let libraryStateRequests = 0;
-    await page.route("**/api/v1/library-state", async (route) => {
-      if (libraryStateRequests++ === 0 && options.holdFirstLibraryState) {
-        options.holdFirstLibraryState.onStarted();
-        await options.holdFirstLibraryState.wait;
-        await route.abort("internetdisconnected").catch(() => {});
-        return;
-      }
-      await route.fulfill({ json: { data: {
-        profile: { nickname: "验收用户", bio: "", avatar_url: null, role }, prefs: null,
-        bookmarks: [], interactions: (options.openedIds || []).map((id) => ({
-          opened_at: "2026-11-08T08:00:00.000Z", posts: { client_id: id },
-          rating: null, rarity_tier: "ordinary", liked: false, viewed_at: null, skipped_at: null,
-        })), interests: [], own: [],
-      } } });
-    });
+    await page.route("**/api/v1/library-state", (route) => route.fulfill({ json: { data: {
+      profile: { nickname: "验收用户", bio: "", avatar_url: null, role }, prefs: null,
+      bookmarks: [], interactions: [], interests: [], own: [],
+    } } }));
     await page.route("**/api/v1/admin/reports**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
     await page.route("**/api/v1/admin/posts**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
-    await page.route("**/api/v1/admin/message-reports**", (route) => route.fulfill({ json: { data: [] } }));
     await page.route("**/api/v1/admin/users**", (route) => route.fulfill({ json: { data: { items: [], total: 0 } } }));
+    await page.route("**/api/v1/admin/message-reports**", (route) => route.fulfill({ json: { data: [] } }));
+    await page.route("**/api/v1/admin/overview**", (route) => route.fulfill({ json: { data: { usersToday: 0, postsToday: 0, pending: 0, pendingReports: 0, aiResources: 0, views: 0, likes: 0, saves: 0, comments: 0 } } }));
   }
   await page.goto("/");
   const skip = page.getByRole("button", { name: /先随便看看/ });
   const navigation = page.getByRole("navigation", { name: "主导航" });
-  await expect.poll(async () => (await skip.isVisible().catch(() => false)) || await navigation.isVisible().catch(() => false)).toBeTruthy();
+  await expect.poll(async () => (await skip.isVisible().catch(() => false)) || await navigation.isVisible().catch(() => false), { timeout: 15_000 }).toBeTruthy();
   if (await skip.isVisible().catch(() => false)) await skip.click();
   await expect(navigation).toBeVisible();
 }
 
-function fixturePost(id: number) {
+async function setDiscoverLayout(page: import("@playwright/test").Page, layout: "单列阅读" | "瀑布流") {
+  await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: /发现页布局/ }).click();
+  await page.getByRole("radio", { name: new RegExp(layout) }).click();
+  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
+  await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
+}
+
+async function chooseDetailTransition(page: import("@playwright/test").Page, option: "连续展开" | "柔和上浮" | "留影衔接") {
+  await page.getByRole("button", { name: "我的" }).click();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: /详情过渡效果/ }).click();
+  await expect(page.getByRole("radiogroup", { name: "详情过渡效果" }).getByRole("radio")).toHaveCount(3);
+  await page.getByRole("radio", { name: new RegExp(option) }).click();
+  await page.getByRole("button", { name: "返回，当前页面：设置" }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("heika-detail-transition"))).toBe(
+    option === "连续展开" ? "image-zoom" : option === "柔和上浮" ? "blur-rise" : "ghost-handoff",
+  );
+  await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
+}
+
+function fixturePost(id: number, withImage = true, failedImage = false) {
+  const images = [
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E",
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%235c4d68'/%3E%3C/svg%3E",
+  ];
   return {
     id, cloudId: `cloud-post-${id}`, status: "published", tag: "生活", topics: ["生活"], title: `浏览器验收内容 ${id}`,
     body: "用于本地浏览器验收的内容正文。", cover: "安静观察日常",
-    author: "验收账号", date: "2026-11-01",
-    image: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E",
-    images: ["data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='420'%3E%3Crect width='640' height='420' fill='%233a4a50'/%3E%3C/svg%3E"],
+    author: "验收账号", authorId: "acceptance-author", authorAvatar: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23c9a54b'/%3E%3C/svg%3E", date: "2026-11-01", likeCount: 12,
+    ...(withImage ? { image: failedImage ? "https://example.test/broken-cover.jpg" : images[0], images: failedImage ? ["https://example.test/broken-cover.jpg"] : images } : {}),
     isDemo: true,
   };
 }
 
 test("warm and dark theme tokens render without horizontal overflow from 320px to wide desktop", async ({ page }) => {
-  for (const width of [320, 360, 375, 430, 768, 1280]) {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 320, height: 844 });
+  await enterApp(page);
+  for (const width of [320, 360, 375, 430, 768, 1024, 1280, 1440, 1920]) {
     await page.setViewportSize({ width, height: 844 });
-    await enterApp(page);
     const dimensions = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       content: document.documentElement.scrollWidth,
     }));
     expect(dimensions.content, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.viewport + 1);
+    const navigation = await page.locator(".bottom-nav-shell").boundingBox();
+    expect(navigation, `missing navigation at ${width}px`).not.toBeNull();
+    if (width >= 1200) {
+      expect(navigation!.x, `desktop rail should start at the left edge at ${width}px`).toBe(0);
+      expect(navigation!.width, `desktop rail width at ${width}px`).toBeCloseTo(220, 0);
+      expect(navigation!.height, `desktop rail should fill the screen at ${width}px`).toBeGreaterThanOrEqual(844);
+      expect((await page.locator(".app").boundingBox())!.x, `desktop content should clear the rail at ${width}px`).toBeGreaterThanOrEqual(220);
+    } else if (width >= 768) {
+      expect(navigation!.y, `tablet navigation should stay fixed at the bottom at ${width}px`).toBeGreaterThan(700);
+      const expectedWidth = Math.min(620, width - 24);
+      expect(navigation!.width, `tablet glass bar width at ${width}px`).toBeCloseTo(expectedWidth, 0);
+      expect(navigation!.x, `tablet glass bar should be centered at ${width}px`).toBeCloseTo((width - expectedWidth) / 2, 0);
+      const capsule = await page.locator(".bottom-nav").boundingBox();
+      const centers = await page.locator(".bottom-nav button").evaluateAll((buttons) => buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        return box.left + box.width / 2;
+      }));
+      expect(centers).toHaveLength(4);
+      for (const [index, ratio] of [0.125, 0.375, 0.625, 0.875].entries()) {
+        expect(Math.abs(centers[index] - (capsule!.x + capsule!.width * ratio)), `navigation item ${index + 1} should stay evenly spaced in its glass capsule at ${width}px`).toBeLessThanOrEqual(8);
+      }
+      const compose = await page.locator(".bottom-nav-shell>.compose").boundingBox();
+      expect(compose).not.toBeNull();
+      expect(compose!.x, `compose button should sit on the right at ${width}px`).toBeGreaterThan(capsule!.x + capsule!.width);
+      for (const button of await page.locator(".bottom-nav button").all()) {
+        const bounds = await button.boundingBox();
+        const separated = bounds!.x + bounds!.width <= compose!.x - 2 || compose!.x + compose!.width <= bounds!.x - 2;
+        expect(separated, `compose button should not cover a navigation target at ${width}px`).toBeTruthy();
+      }
+    } else {
+      expect(navigation!.y, `tablet and phone navigation should stay at the bottom at ${width}px`).toBeGreaterThan(700);
+      const expectedWidth = width <= 360 ? width - 16 : width - 24;
+      expect(navigation!.width, `floating navigation width at ${width}px`).toBeCloseTo(expectedWidth, 0);
+      expect(navigation!.x, `floating navigation should be centered at ${width}px`).toBeCloseTo((width - expectedWidth) / 2, 0);
+      expect(await page.locator(".bottom-nav button").count()).toBe(4);
+      await expect(page.locator(".bottom-nav-shell>.compose svg")).toBeVisible();
+      const capsule = await page.locator(".bottom-nav").boundingBox();
+      const compose = await page.locator(".bottom-nav-shell>.compose").boundingBox();
+      expect(compose!.x).toBeGreaterThan(capsule!.x + capsule!.width);
+    }
   }
 
   await page.evaluate(() => localStorage.setItem("heika-theme", "light"));
@@ -108,7 +156,7 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
   await enterApp(page);
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   const light = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim());
-  expect(light).toBe("#F8F7F4");
+  expect(light).toBe("#f6f5f1");
 
   await page.evaluate(() => localStorage.setItem("heika-theme", "dark"));
   await page.reload();
@@ -126,6 +174,66 @@ test("warm and dark theme tokens render without horizontal overflow from 320px t
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("dark");
 });
 
+test("discovery columns, desktop detail and settings adapt at every requested breakpoint", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await enterApp(page);
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  await expect(page.locator(".stable-editorial-feed .post-card").first()).toBeVisible();
+
+  for (const [width, expectedColumns] of [[375, 2], [430, 2], [768, 3], [1024, 3], [1280, 4], [1440, 4], [1920, 5]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => page.locator(".stable-editorial-feed").evaluate((feed) => getComputedStyle(feed).gridTemplateColumns.trim().split(/\s+/).length)).toBe(expectedColumns);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `horizontal overflow on discovery at ${width}px`).toBeLessThanOrEqual(1);
+  }
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail")).toBeVisible();
+  for (const [width, expectedColumns] of [[375, 1], [430, 1], [768, 1], [1024, 2], [1280, 2], [1440, 2], [1920, 2]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    const body = page.locator(".detail-body");
+    const display = await body.evaluate((element) => getComputedStyle(element).display);
+    const actualColumns = display === "grid"
+      ? await body.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)
+      : 1;
+    expect(actualColumns, `detail columns at ${width}px`).toBe(expectedColumns);
+    if (expectedColumns === 2) {
+      await expect.poll(() => page.locator(".detail-comments").evaluate((comments) => getComputedStyle(comments).overflowY)).toBe("auto");
+      const [articleBox, commentsBox] = await Promise.all([
+        page.locator(".detail-article-column").boundingBox(),
+        page.locator(".detail-comments").boundingBox(),
+      ]);
+      expect(articleBox, `article column missing at ${width}px`).not.toBeNull();
+      expect(commentsBox, `comments column missing at ${width}px`).not.toBeNull();
+      expect(articleBox!.x + articleBox!.width, `article and comments overlap at ${width}px`).toBeLessThanOrEqual(commentsBox!.x + 1);
+    } else {
+      const [articleBox, commentsBox] = await Promise.all([
+        page.locator(".detail-article-column").boundingBox(),
+        page.locator(".detail-comments").boundingBox(),
+      ]);
+      expect(articleBox, `article column missing at ${width}px`).not.toBeNull();
+      expect(commentsBox, `comments column missing at ${width}px`).not.toBeNull();
+      expect(commentsBox!.y, `comments should follow the article at ${width}px`).toBeGreaterThanOrEqual(articleBox!.y + articleBox!.height);
+    }
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `horizontal overflow in detail at ${width}px`).toBeLessThanOrEqual(1);
+  }
+  await page.getByRole("button", { name: "返回" }).click();
+
+  await page.getByRole("button", { name: "我的" }).click();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await expect(page.locator(".settings-desktop-nav")).toBeVisible();
+  await expect(page.locator(".settings-desktop-nav a")).toHaveCount(5);
+  await page.locator(".settings-desktop-nav a[href='#settings-group-1']").click();
+  await expect(page.locator("#settings-group-1")).toBeInViewport();
+
+  await page.getByRole("button", { name: "发布内容", exact: true }).click();
+  await expect(page.locator(".composer-modal")).toBeVisible();
+  await expect.poll(() => page.locator(".composer-workspace").evaluate((workspace) => getComputedStyle(workspace).display)).toBe("block");
+});
+
 test("today waterfall hides content before reveal, keeps card geometry, and enforces five reveals", async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 375, height: 812 });
@@ -136,13 +244,28 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   await expect.poll(() => cards.count()).toBeGreaterThanOrEqual(6);
 
   const first = cards.nth(0);
+  const firstCardId = await first.getAttribute("data-card-id");
   await expect(first.locator(".card-back-copy strong")).toHaveText("");
   const before = await first.boundingBox();
   await first.click();
   await expect(page.getByRole("button", { name: "确认翻开" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "今日已翻开 0 / 5 张" })).toBeVisible();
   await page.getByRole("button", { name: "确认翻开" }).click();
-  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
+  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 " + firstCardId);
+  const revealCard = page.locator(".flip-window-revealed");
+  await expect(revealCard).not.toHaveClass(/is-rarity-reveal/);
+  await expect(revealCard).toHaveClass(/has-image/);
+  await expect(revealCard.locator(".window-quota")).toHaveCount(0);
+  const [revealBox, imageBox] = await Promise.all([
+    revealCard.boundingBox(),
+    revealCard.locator(":scope > img").boundingBox(),
+  ]);
+  expect(revealBox).not.toBeNull();
+  expect(imageBox).not.toBeNull();
+  expect(imageBox!.height / revealBox!.height).toBeGreaterThanOrEqual(.64);
+  expect(imageBox!.height / revealBox!.height).toBeLessThanOrEqual(.66);
+  expect(await revealCard.evaluate((element) => getComputedStyle(element).borderRadius)).toBe("15px");
+  expect(await revealCard.locator(":scope > img").evaluate((image) => getComputedStyle(image).borderRadius)).toBe("0px");
   await page.locator(".flip-close").click({ timeout: 10_000 });
   await expect(first).toHaveClass(/is-unlocked/);
   await expect(first.locator(".card-back-copy strong")).not.toHaveText("");
@@ -177,276 +300,53 @@ test("today waterfall hides content before reveal, keeps card geometry, and enfo
   expect(Math.abs((await page.evaluate(() => window.scrollY)) - beforeDetailScroll)).toBeLessThanOrEqual(2);
 });
 
-test("account card snapshots restore matching title, body, and media across repeated cold page starts", async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.setViewportSize({ width: 375, height: 812 });
-  await enterApp(page, { role: "user" });
-  await page.getByRole("button", { name: "首页" }).click();
-  const card = page.locator('.candidate-feed-card[data-card-id="1"]');
-  await expect(card).toBeVisible();
-  await card.click();
-  await page.getByRole("button", { name: "确认翻开" }).click();
-  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
-  await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
-  await page.locator(".flip-close").click();
-
-  await expect.poll(() => page.evaluate(async () => {
-    const database = await new Promise<IDBDatabase | null>((resolve) => {
-      const request = indexedDB.open("heika-opened-card-state-v1", 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => resolve(null);
-    });
-    if (!database) return false;
-    return await new Promise<boolean>((resolve) => {
-      const request = database.transaction("snapshots").objectStore("snapshots").get("heika-user-acceptance-user");
-      request.onsuccess = () => resolve(request.result?.value?.revealed?.[1]?.title === "浏览器验收内容 1");
-      request.onerror = () => resolve(false);
-    });
-  })).toBe(true);
-
-  const navigation = page.getByRole("navigation", { name: "主导航" });
-  for (let start = 0; start < 20; start++) {
-    await page.reload();
-    await expect(navigation).toBeVisible();
-    const restoredCard = page.locator('.candidate-feed-card[data-card-id="1"]');
-    await expect(restoredCard).toHaveClass(/is-unlocked/);
-    await expect(restoredCard.locator(".card-back-copy strong")).toHaveText("浏览器验收内容 1");
-  }
-
-  await page.unroute("**/api/demo/cards**");
-  await page.route("**/api/demo/cards**", (route) => route.abort());
-  await page.unroute("**/api/v1/library-state");
-  await page.route("**/api/v1/library-state", (route) => route.abort());
-  await page.reload();
-  await expect(navigation).toBeVisible();
-  await expect(page.locator('.candidate-feed-card[data-card-id="1"] .card-back-copy strong')).toHaveText("浏览器验收内容 1");
-
-  await card.click();
-  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
-  await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
-  await expect(page.locator(".flip-window-revealed img")).toHaveAttribute("src", /^data:image\/svg\+xml,/);
-});
-
-test("cloud-opened cards fetch their content before the authenticated home is shown", async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await enterApp(page, { role: "user", openedIds: [1] });
-  await page.getByRole("button", { name: "首页" }).click();
-  const card = page.locator('.candidate-feed-card[data-card-id="1"]');
-  await expect(card).toHaveClass(/is-unlocked/);
-  await expect(card.locator(".card-back-copy strong")).toHaveText("浏览器验收内容 1");
-  await card.click();
-  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
-  await expect(page.locator(".flip-window-revealed p")).toContainText("用于本地浏览器验收的内容正文");
-});
-
-test("network recovery during the first cloud hydration retries the opened-card sync", async ({ page }) => {
-  let releaseFirstRequest = () => {};
-  let firstRequestStarted = () => {};
-  const firstRequest = new Promise<void>((resolve) => { firstRequestStarted = resolve; });
-  const firstRequestGate = new Promise<void>((resolve) => { releaseFirstRequest = resolve; });
-  await enterApp(page, { role: "user", openedIds: [1], holdFirstLibraryState: { onStarted: firstRequestStarted, wait: firstRequestGate } });
-  await firstRequest;
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
-
-  await page.getByRole("button", { name: "首页" }).click();
-  const card = page.locator('.candidate-feed-card[data-card-id="1"]');
-  await expect(card).toHaveClass(/is-unlocked/);
-  await expect(card.locator(".card-back-copy strong")).toHaveText("浏览器验收内容 1");
-  await expect(card.locator(".card-back-copy")).toContainText("阅读");
-  releaseFirstRequest();
-});
-
-test("a failed stable card image is re-requested when network connectivity returns", async ({ page }) => {
-  await enterApp(page);
-  const retry = await page.evaluate(() => {
-    const image = document.createElement("img");
-    image.dataset.failed = "true";
-    image.src = "/api/v1/media?path=public%2Foffline.webp&redirect=1&variant=card";
-    document.body.append(image);
-    window.dispatchEvent(new Event("online"));
-    const result = { src: image.src, failed: image.dataset.failed };
-    image.remove();
-    return result;
-  });
-  expect(new URL(retry.src).searchParams.has("recovery")).toBe(true);
-  expect(retry.failed).toBeUndefined();
-});
-
-test("discovery feed renders its local cache after a restart when the network is unavailable", async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await enterApp(page);
-  await page.getByRole("button", { name: "发现" }).click();
-  await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
-  await expect.poll(() => page.evaluate(async () => {
-    const database = await new Promise<IDBDatabase | null>((resolve) => {
-      const request = indexedDB.open("heika-public-content-v2", 1);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => resolve(null);
-    });
-    if (!database) return false;
-    return await new Promise<boolean>((resolve) => {
-      const request = database.transaction("entries").objectStore("entries").get("discover:全部:1");
-      request.onsuccess = () => resolve(Boolean(request.result?.value?.items?.length));
-      request.onerror = () => resolve(false);
-    });
-  })).toBe(true);
-
-  await page.unroute("**/api/demo/cards**");
-  await page.route("**/api/demo/cards**", (route) => route.abort());
-  await page.reload();
-  const navigation = page.getByRole("navigation", { name: "主导航" });
-  await expect(navigation).toBeVisible();
-  await page.getByRole("button", { name: "发现" }).click();
-  await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
-  await expect(page.locator(".editorial-feed .post-card").first()).toContainText("浏览器验收内容");
-});
-
-test("native flip and detail transitions preserve card ratio and animate the shared image with transforms", async ({ page }) => {
-  test.setTimeout(60_000);
-  await page.setViewportSize({ width: 375, height: 812 });
-  await page.addInitScript(() => {
-    window.HeikaNative = { postMessage: () => {}, onmessage: null };
-  });
-  await enterApp(page);
-  const nativeModalMotion = await page.evaluate(() => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "modal-backdrop";
-    const panel = document.createElement("div");
-    panel.className = "modal";
-    backdrop.append(panel);
-    document.body.append(backdrop);
-    const animation = panel.getAnimations()[0];
-    const keyframes = (animation?.effect as KeyframeEffect | null)?.getKeyframes() || [];
-    const result = {
-      backdropFilter: getComputedStyle(backdrop).backdropFilter,
-      animationName: getComputedStyle(panel).animationName,
-      keyframes: keyframes.map((frame) => Object.keys(frame)),
-    };
-    backdrop.remove();
-    return result;
-  });
-  expect(nativeModalMotion.backdropFilter).toBe("blur(3px)");
-  expect(nativeModalMotion.animationName).toBe("heika-native-modal-in");
-  expect(nativeModalMotion.keyframes.every((frame) => !frame.includes("filter"))).toBe(true);
-  await page.evaluate(() => {
-    const target = window as Window & { __heikaSharedImageKeyframes?: string[][] };
-    target.__heikaSharedImageKeyframes = [];
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (!(node instanceof HTMLImageElement) || node.getAttribute("aria-hidden") !== "true") continue;
-          const animation = node.getAnimations()[0];
-          const effect = animation?.effect as KeyframeEffect | null;
-          const keyframes = effect?.getKeyframes().map((frame) => Object.keys(frame));
-          if (keyframes) target.__heikaSharedImageKeyframes?.push(...keyframes);
-        }
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  });
-
+test("text-only today reveal fills the card, omits image placeholders, and opens details", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await enterApp(page, { noImage: true });
   await page.getByRole("button", { name: "首页" }).click();
   const card = page.locator(".candidate-feed-card").first();
-  await expect(card).toBeVisible();
-  const source = await card.boundingBox();
   await card.click();
-  const stage = page.locator(".flip-stage");
-  await expect(stage).toBeVisible();
-  await expect.poll(() => stage.evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running"))).toBe(true);
-  await page.evaluate(() => {
-    const message = {
-      version: 1,
-      id: "test-background-transition",
-      type: "event",
-      event: "app.lifecycle",
-      payload: { state: "background" },
-    };
-    window.HeikaNative?.onmessage?.(new MessageEvent("message", { data: JSON.stringify(message) }));
-  });
-  await expect.poll(() => stage.evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running"))).toBe(false);
-  await expect.poll(() => stage.evaluate((node) => getComputedStyle(node).transform)).toBe("none");
-  const stageRatio = await stage.evaluate((node) => {
-    const rect = node.getBoundingClientRect();
-    return rect.width / rect.height;
-  });
-  expect(Math.abs(stageRatio - (source?.width || 1) / (source?.height || 1))).toBeLessThan(0.025);
-
   await page.getByRole("button", { name: "确认翻开" }).click();
-  await expect(page.locator(".flip-window-revealed h2")).toHaveText("浏览器验收内容 1");
-  await page.getByRole("button", { name: "查看更多" }).click();
+  const reveal = page.locator(".flip-window-revealed");
+  await expect(reveal).not.toHaveClass(/is-rarity-reveal/);
+  await expect(reveal).toHaveClass(/no-image/);
+  await expect(reveal.locator(":scope > img")).toHaveCount(0);
+  await expect(reveal.locator(".flip-window-image-error,.flip-window-visual-fallback")).toHaveCount(0);
+  await expect(reveal.locator(".window-more")).toHaveText("查看详情");
+  await expect(reveal.locator(".window-quota")).toHaveCount(0);
+  const [revealBox, copyBox] = await Promise.all([reveal.boundingBox(), reveal.locator(".window-reveal-copy").boundingBox()]);
+  expect(revealBox).not.toBeNull();
+  expect(copyBox).not.toBeNull();
+  expect(Math.abs(copyBox!.height - revealBox!.height)).toBeLessThanOrEqual(3);
+  await reveal.locator(".window-more").click();
   await expect(page.locator(".detail")).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as Window & { __heikaSharedImageKeyframes?: string[][] }).__heikaSharedImageKeyframes?.length || 0)).toBeGreaterThan(0);
-  const keyframes = await page.evaluate(() => (window as Window & { __heikaSharedImageKeyframes?: string[][] }).__heikaSharedImageKeyframes || []);
-  expect(keyframes.every((keys) => keys.includes("transform"))).toBe(true);
-  expect(keyframes.some((keys) => keys.some((key) => ["left", "top", "width", "height"].includes(key)))).toBe(false);
-  await page.getByRole("button", { name: "返回" }).click();
-  await expect(page.locator(".flip-overlay")).toHaveCount(0);
 });
 
-test("native card transition uses the typed prepare, open, close, and release protocol", async ({ page }) => {
+test("failed reveal image stays in image layout and reports the load failure", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.addInitScript(() => {
-    const requests: { type: string; payload: Record<string, unknown> }[] = [];
-    const bridge = {
-      postMessage(raw: string) {
-        const request = JSON.parse(raw) as { version: number; id: string; type: string; payload?: Record<string, unknown> };
-        requests.push({ type: request.type, payload: request.payload || {} });
-        if (request.type === "card.transition.prepare" || request.type === "card.transition.start" ||
-            request.type === "card.transition.cancel" || request.type === "card.transition.release" || request.type === "capabilities.get") {
-          const data = request.type === "card.transition.prepare" ? { prepared: true } :
-            request.type === "card.transition.start" ? { accepted: true } : {};
-          window.setTimeout(() => bridge.onmessage?.(new MessageEvent("message", { data: JSON.stringify({
-            version: 1, id: request.id, type: "result", requestType: request.type, ok: true, data,
-          }) })), 0);
-          if (request.type === "card.transition.start") {
-            window.setTimeout(() => bridge.onmessage?.(new MessageEvent("message", { data: JSON.stringify({
-              version: 1, id: `native-finished-${requests.length}`, type: "event", event: "card.transition.finished",
-              payload: { transactionId: request.payload?.transactionId, completed: true },
-            }) })), 120);
-          }
-        }
-      },
-      onmessage: null as ((event: MessageEvent<string>) => void) | null,
-    };
-    (window as Window & { HeikaNative?: typeof bridge; __heikaNativeRequests?: typeof requests }).HeikaNative = bridge;
-    (window as Window & { __heikaNativeRequests?: typeof requests }).__heikaNativeRequests = requests;
-  });
-  await enterApp(page);
-  await page.getByRole("button", { name: "发现" }).click();
-  const card = page.locator(".editorial-feed .post-card").first();
-  await expect(card).toBeVisible();
-  await expect.poll(() => card.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
-  await card.click();
-  await expect(page.locator(".detail")).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as Window & { __heikaNativeRequests?: { type: string }[] }).__heikaNativeRequests?.some((entry) => entry.type === "card.transition.start"))).toBe(true);
-  await page.getByRole("button", { name: "返回" }).click();
-  await expect(page.locator(".flip-overlay")).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => {
-    const requests = (window as Window & { __heikaNativeRequests?: { type: string; payload: Record<string, unknown> }[] }).__heikaNativeRequests || [];
-    return requests.some((entry) => entry.type === "card.transition.start" && entry.payload.direction === "close") &&
-      requests.some((entry) => entry.type === "card.transition.release");
-  })).toBe(true);
+  await page.route("https://example.test/broken-cover.jpg", (route) => route.abort());
+  await enterApp(page, { failedImage: true });
+  await page.getByRole("button", { name: "首页" }).click();
+  await page.locator(".candidate-feed-card").first().click();
+  await page.getByRole("button", { name: "确认翻开" }).click();
+  const reveal = page.locator(".flip-window-revealed");
+  await expect(reveal).not.toHaveClass(/is-rarity-reveal/);
+  await expect(reveal).toHaveClass(/has-image/);
+  await expect(reveal).not.toHaveClass(/no-image/);
+  await expect(reveal.locator(".flip-window-image-error")).toBeVisible();
 });
 
 test("discovery, image detail, and publish composer remain responsive with soft keyboard focus", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await enterApp(page);
-  await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.getByRole("button", { name: /发现页布局/ }).click();
-  await page.getByRole("radio", { name: /单列阅读/ }).click();
-  await page.getByRole("button", { name: /返回，当前页面：设置/ }).click();
+  await setDiscoverLayout(page, "单列阅读");
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
-  await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("1");
-  await page.locator(".bottom-nav").getByRole("button", { name: "我的" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.getByRole("button", { name: /发现页布局/ }).click();
-  await page.locator(".settings-detail-page").getByRole("radio", { name: /瀑布流/ }).click();
-  await page.getByRole("button", { name: /返回，当前页面：设置/ }).click();
+  await expect.poll(() => page.locator(".stable-editorial-feed").evaluate((feed) => getComputedStyle(feed).gridTemplateColumns.split(" ").length)).toBe(1);
+  await setDiscoverLayout(page, "瀑布流");
   await page.locator(".bottom-nav").getByRole("button", { name: "发现" }).click();
-  await expect.poll(() => page.locator(".editorial-feed").evaluate((feed) => getComputedStyle(feed).columnCount)).toBe("2");
-  await expect(page.locator(".editorial-feed .post-card").first()).toBeVisible();
-  await page.locator(".editorial-feed .post-card").first().click();
+  await expect.poll(() => page.locator(".stable-editorial-feed").evaluate((feed) => getComputedStyle(feed).gridTemplateColumns.split(" ").length)).toBe(2);
+  await expect(page.locator(".stable-editorial-feed .post-card").first()).toBeVisible();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
   await expect(page.locator(".detail")).toBeVisible();
   await expect(page.locator(".detail-header")).toBeVisible();
   await expect(page.locator(".detail-more-button")).toBeVisible();
@@ -455,25 +355,164 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   await page.locator(".detail-topic-list").getByRole("button", { name: "#生活" }).click();
   await expect(page.locator(".topic-detail-page h1")).toHaveText("#生活");
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#0D0F12");
-  await page.getByRole("button", { name: /返回，当前页面：发现/ }).click();
+  await page.getByRole("button", { name: "返回，当前页面：发现" }).click();
   await expect(page.locator(".detail")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "返回" }).click();
   await page.getByRole("button", { name: "发布内容" }).click();
-  await expect(page.locator(".composer-topbar strong")).toHaveText("分享一篇内容");
+  await expect(page.locator(".composer-modal")).toBeVisible();
   await page.getByRole("textbox", { name: "标题" }).fill("浏览器验收草稿");
   await page.getByRole("textbox", { name: "正文" }).focus();
   await expect(page.getByRole("textbox", { name: "正文" })).toBeFocused();
-  await expect(page.getByRole("region", { name: "选择话题" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Markdown 工具栏" })).toBeVisible();
+  await page.getByRole("button", { name: /# 话题/ }).click();
+  await expect(page.getByRole("dialog", { name: "选择话题" })).toBeVisible();
+});
+
+test("detail transition choices persist and animate image changes without blocking rapid navigation", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enterApp(page);
+
+  await chooseDetailTransition(page, "柔和上浮");
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-blur-rise/);
+  await page.getByRole("button", { name: "下一张图片" }).click();
+  const image = page.locator(".detail-image-frame img.progressive-image-low").first();
+  await expect.poll(() => image.getAttribute("src")).toContain("5c4d68");
+  await expect.poll(() => image.evaluate((node) => getComputedStyle(node).animationName)).toBe("detail-image-enter-next");
+  await page.getByRole("button", { name: "返回" }).click();
+
+  await chooseDetailTransition(page, "留影衔接");
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-ghost-handoff/);
+  await page.getByRole("button", { name: "下一张图片" }).click();
+  await expect(page.locator(".detail-image-frame img.progressive-image-low").first()).toHaveAttribute("src", /5c4d68/);
+  await expect.poll(() => page.locator(".detail-image-frame img.progressive-image-low").first().evaluate((node) => getComputedStyle(node).animationName)).toBe("detail-image-enter-next");
+  await page.getByRole("button", { name: "上一张图片" }).click();
+  await expect.poll(() => page.locator(".detail-image-frame img.progressive-image-low").first().getAttribute("src")).toContain("3a4a50");
+  await expect(page.locator(".detail-gallery-controls")).toContainText("1 / 2");
+  await page.getByRole("button", { name: "返回" }).click();
+
+  await chooseDetailTransition(page, "连续展开");
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
+  await expect(page.locator(".detail-image-frame")).toHaveClass(/transition-image-zoom/);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("heika-detail-transition"))).toBe("image-zoom");
+});
+
+test("Glass Editorial discovery keeps live feed controls, media states, rating, likes and search", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  const discoveryRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/demo/cards" && url.searchParams.get("mode") === "discover") discoveryRequests.push(url.search);
+  });
+  let failLikeUpdate = false;
+  await page.route("**/api/v1/ratings**", (route) => route.fulfill({ json: { data: {} } }));
+  await page.route("**/api/v1/search**", (route) => route.fulfill({ json: { data: { items: [fixturePost(2)], total: 1, page: 1, limit: 12 } } }));
+  await enterApp(page, { role: "user" });
+  await page.route("**/api/v1/library-state", async (route) => {
+    if (route.request().method() !== "POST") { await route.fallback(); return; }
+    const body = route.request().postDataJSON() as { action?: string };
+    if (failLikeUpdate && body.action === "like") {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await route.fulfill({ status: 500, json: { error: "点赞保存失败" } });
+      return;
+    }
+    await route.fulfill({ json: { data: {} } });
+  });
+  const textPost = { ...fixturePost(2), image: undefined, images: undefined, thumbnailImages: undefined };
+  const brokenPost = { ...fixturePost(3), image: "/broken-cover.png", images: ["/broken-cover.png"], thumbnailImages: ["/broken-cover.png"] };
+  await page.route("**/api/demo/cards**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("mode") !== "discover") return route.continue();
+    await route.fulfill({ json: { data: { items: [fixturePost(1), textPost, brokenPost], total: 3, page: 1, limit: 24 } } });
+  });
+  await page.route("**/broken-cover.png**", (route) => route.fulfill({ status: 404, contentType: "image/png", body: "" }));
+  await page.getByRole("button", { name: "发现", exact: true }).click();
+  const feed = page.locator(".stable-editorial-feed");
+  const firstCard = page.locator(".heika-discovery-card").first();
+  await expect(firstCard).toBeVisible();
+  const discoverBackground = () => page.locator(".app.app-discover").evaluate((app) => getComputedStyle(app).getPropertyValue("--bg").trim());
+  expect(await discoverBackground()).toBe("#0D0F12");
+  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  expect(await discoverBackground()).toBe("#FAF9F6");
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  await expect(page.locator(".demo-pill")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "推荐" })).toHaveAttribute("aria-selected", "true");
+  await expect(firstCard.locator(".discovery-rating-label")).toContainText("待评级");
+  await expect(firstCard.locator(".discovery-author-name")).toHaveText("验收账号");
+  await expect(firstCard.locator(".discovery-author-avatar")).toHaveCount(0);
+  await expect(firstCard.locator(".discovery-author")).toHaveRole("button");
+  await expect(firstCard.locator(".discovery-like-count")).toHaveText("12");
+  const coverImage = firstCard.locator(".discovery-cover-open img");
+  await expect.poll(() => coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  const naturalRatio = await coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth / image.naturalHeight);
+  const renderedRatio = await coverImage.evaluate((image: HTMLImageElement) => image.getBoundingClientRect().width / image.getBoundingClientRect().height);
+  expect(Math.abs(renderedRatio - naturalRatio)).toBeLessThan(0.03);
+  const textCard = page.locator('.heika-discovery-card[data-discover-id="2"]');
+  await expect(textCard.locator(".discovery-cover.is-text-only")).toContainText("用于本地浏览器验收的内容正文");
+  const brokenCard = page.locator('.heika-discovery-card[data-discover-id="3"]');
+  await expect(brokenCard.locator(".discovery-image-error")).toBeVisible();
+  const brokenSizeBefore = await brokenCard.locator(".discovery-cover").boundingBox();
+  await brokenCard.getByRole("button", { name: "重试" }).click();
+  await expect(brokenCard.locator(".discovery-image-error")).toBeVisible();
+  const brokenSizeAfter = await brokenCard.locator(".discovery-cover").boundingBox();
+  expect(Math.abs((brokenSizeBefore?.height || 0) - (brokenSizeAfter?.height || 0))).toBeLessThanOrEqual(1);
+
+  const requestsBeforeLayout = discoveryRequests.length;
+  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("button", { name: "单列浏览" }).click();
+  await expect(feed).toHaveClass(/single-column/);
+  expect(discoveryRequests.length).toBe(requestsBeforeLayout);
+  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("button", { name: "双列瀑布流" }).click();
+  await expect(feed).not.toHaveClass(/single-column/);
+  expect(discoveryRequests.length).toBe(requestsBeforeLayout);
+
+  const categoryRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/demo/cards" && url.searchParams.get("mode") === "discover" && url.searchParams.get("tag") === "科技";
+  });
+  await page.getByRole("tab", { name: "科技" }).click();
+  await categoryRequest;
+  await page.getByRole("tab", { name: "推荐" }).click();
+  await expect(firstCard).toBeVisible();
+
+  await firstCard.getByRole("button", { name: "点赞" }).click();
+  await expect(firstCard.getByRole("button", { name: "取消点赞" })).toHaveAttribute("aria-pressed", "true");
+  failLikeUpdate = true;
+  await firstCard.getByRole("button", { name: "取消点赞" }).click();
+  await expect(firstCard.getByRole("button", { name: "点赞" })).toHaveAttribute("aria-pressed", "false");
+  await expect(firstCard.getByRole("button", { name: "取消点赞" })).toHaveAttribute("aria-pressed", "true");
+  failLikeUpdate = false;
+
+  await page.evaluate(() => window.scrollTo({ top: 180, behavior: "instant" }));
+  await page.waitForTimeout(30);
+  const scrollBeforeDetail = await page.evaluate(() => window.scrollY);
+  await firstCard.locator(".discovery-cover-open").click();
+  await expect(page.locator(".detail")).toBeVisible();
+  await page.getByRole("button", { name: "返回" }).click();
+  await expect(page.locator(".detail")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollBeforeDetail);
+
+  await page.getByRole("button", { name: "搜索内容或用户" }).click();
+  await page.getByRole("textbox", { name: "搜索内容或用户" }).fill("浏览器验收");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await expect(page.locator(".search-post-result").first()).toContainText("浏览器验收内容 2");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test("report sheet and admin queue use the same theme tokens for signed-in accounts", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
   await enterApp(page, { role: "admin" });
   await page.getByRole("button", { name: "发现" }).click();
-  await page.locator(".editorial-feed .post-card").first().click();
+  await page.locator(".stable-editorial-feed .post-card").first().click();
   await page.locator(".detail-more-button").click();
   await page.getByRole("button", { name: "举报内容" }).click();
   await expect(page.getByRole("heading", { name: "举报内容" })).toBeVisible();
@@ -484,14 +523,16 @@ test("report sheet and admin queue use the same theme tokens for signed-in accou
 
   await page.evaluate(() => localStorage.setItem("heika-theme", "light"));
   await page.reload();
-  await enterApp(page, { role: "admin" });
+  await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible({ timeout: 15_000 });
   await expect.poll(() => page.locator(":root").getAttribute("data-theme")).toBe("light");
   await page.getByRole("button", { name: "我的" }).click();
-  await page.getByRole("button", { name: /个人设置/ }).click();
-  await page.getByRole("button", { name: /举报与内容审核/ }).click();
-  await expect(page.getByRole("heading", { name: /管理后台/ })).toBeVisible();
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: /管理后台/ }).click();
+  await expect(page.getByRole("heading", { name: "管理后台" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /内容举报/ }).click();
+  await expect(page.getByRole("heading", { name: "内容举报" })).toBeVisible();
   await expect(page.getByText("当前没有符合条件的举报。" )).toBeVisible();
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#F8F7F4");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim())).toBe("#f6f5f1");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });

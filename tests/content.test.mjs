@@ -6,5 +6,5 @@ import {dailyCandidates,openDailyCard} from '../lib/daily.ts';
 test('Demo 内容至少 80 条，各话题不少于 10 条且 ID 唯一',()=>{assert.ok(posts.length>=80);assert.equal(new Set(posts.map(p=>p.id)).size,posts.length);for(const tag of ['生活','摄影','设计','科技','游戏','情感','知识','艺术'])assert.ok(posts.filter(p=>p.tag===tag).length>=10,tag)});
 test('同一日期与兴趣生成固定且不重复的五张卡',()=>{const a=deckFor('2026-10-30',['摄影','设计','生活']);const b=deckFor('2026-10-30',['摄影','设计','生活']);assert.equal(a.length,5);assert.equal(new Set(a.map(p=>p.id)).size,5);assert.deepEqual(a,b)});
 test('日期遵循指定时区',()=>{assert.equal(dayKey(new Date('2026-10-30T16:30:00Z'),'Asia/Shanghai'),'2026-10-31')});
-test('候选内容超过五张，保留旧卡组并优先展示兴趣内容',()=>{const cards=dailyCandidates(posts,['摄影'],[3,1]);assert.equal(cards.length,posts.length);assert.deepEqual(cards.slice(0,2).map(p=>p.id),[3,1]);assert.equal(new Set(cards.map(p=>p.id)).size,cards.length)});
+test('每日瀑布流固定展示 50 张卡，保留已生成的卡组',()=>{const cards=dailyCandidates(posts,['摄影'],[3,1],50,'2026-11-03');assert.equal(cards.length,50);assert.deepEqual(cards.slice(0,2).map(p=>p.id),[3,1]);assert.equal(new Set(cards.map(p=>p.id)).size,cards.length)});
 test('每日最多解锁五张，重复查看不扣额度',()=>{let opened=[];for(let id=1;id<=5;id++)opened=openDailyCard(opened,id);assert.deepEqual(openDailyCard(opened,3),opened);assert.deepEqual(openDailyCard(opened,6),opened);assert.equal(opened.length,5)});

@@ -5,15 +5,15 @@ import { validateTopicNames, MAX_POST_TOPICS } from "../lib/topic-validation.ts"
 import { tags } from "../lib/content.ts";
 import { topicDescriptions } from "../lib/topics.ts";
 
-test("发布图片仅允许受支持格式且大小不超过 5 MiB", () => {
+test("上传前接受受支持图片格式，大小由压缩阶段和服务器限制", () => {
   const files = [
     { name: "ok.jpg", type: "image/jpeg", size: COMPOSER_MAX_IMAGE_BYTES },
-    { name: "too-large.png", type: "image/png", size: COMPOSER_MAX_IMAGE_BYTES + 1 },
+    { name: "compressible.png", type: "image/png", size: COMPOSER_MAX_IMAGE_BYTES + 1 },
     { name: "unsupported.gif", type: "image/gif", size: 1024 },
     { name: "empty.webp", type: "image/webp", size: 0 },
   ];
   const result = validateComposerFiles(files, 0);
-  assert.deepEqual(result.accepted.map((file) => file.name), ["ok.jpg"]);
+  assert.deepEqual(result.accepted.map((file) => file.name), ["ok.jpg", "compressible.png"]);
   assert.match(result.error, /JPG、PNG、WebP/);
 });
 

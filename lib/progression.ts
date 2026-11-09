@@ -1,14 +1,14 @@
 export const EXPERIENCE_LEVELS = [
-  { level: 1, threshold: 0, reward: "黑卡探索者" },
-  { level: 2, threshold: 100, reward: "LV2 探索徽章" },
-  { level: 3, threshold: 240, reward: "头像边框" },
-  { level: 4, threshold: 430, reward: "专属卡背" },
-  { level: 5, threshold: 680, reward: "置顶收藏位 +1" },
-  { level: 6, threshold: 1000, reward: "个人页主题色" },
-  { level: 7, threshold: 1390, reward: "翻卡揭晓动效" },
-  { level: 8, threshold: 1850, reward: "置顶内容位 +1" },
-  { level: 9, threshold: 2380, reward: "探索者专属称号" },
-  { level: 10, threshold: 2980, reward: "黑卡收藏家边框" },
+  { level: 1, threshold: 0, reward: "黑卡探索者", description: "获得黑卡探索者身份。" },
+  { level: 2, threshold: 100, reward: "LV2 探索徽章", description: "在个人资料中展示 LV2 探索徽章。" },
+  { level: 3, threshold: 240, reward: "头像边框", description: "解锁个人头像的金属边框。" },
+  { level: 4, threshold: 430, reward: "专属卡背", description: "解锁专属黑卡卡背样式。" },
+  { level: 5, threshold: 680, reward: "置顶收藏位 +1", description: "收藏夹额外增加一个置顶位置。" },
+  { level: 6, threshold: 1000, reward: "个人页主题色", description: "解锁个人主页主题色。" },
+  { level: 7, threshold: 1390, reward: "翻卡揭晓动效", description: "解锁专属翻卡揭晓动效。" },
+  { level: 8, threshold: 1850, reward: "置顶内容位 +1", description: "作品额外增加一个置顶位置。" },
+  { level: 9, threshold: 2380, reward: "探索者专属称号", description: "解锁个人资料专属称号。" },
+  { level: 10, threshold: 2980, reward: "黑卡收藏家边框", description: "获得黑卡收藏家头像边框。" },
 ] as const;
 
 export function levelForExperience(total: number) {
