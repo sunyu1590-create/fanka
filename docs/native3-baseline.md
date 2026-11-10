@@ -78,3 +78,32 @@
 - APK：`HEIKA-2.3.6-17-debug.apk`、`HEIKA-2.3.6-17-release-unsigned.apk`；`applicationId=com.heika.community`。Release APK 未签名，仅供检查；Debug APK 为测试安装包。Artifact `HEIKA-Native-3-v42c428de3de9f21d206edc1e0d95a37ce025aea0`，ID `13765509856`，23,118,174 bytes，ZIP SHA-256 `4487b31d8ff27d7415808e7879004d5b113a3efeb94e8078c00351e6930442dd`，有效至 `2026-11-24 12:55 UTC`。下载：https://github.com/sunyu1590-create/fanka/actions/runs/42818911250/artifacts/13765509856
 - 网站端 53 个 Node 测试、TypeScript、ESLint 与 Next 构建通过；Android Run #54 曾因不可用图标引用失败，Run #56 因进度断言与网页四舍五入规则不一致失败，Run #58 已验证修复。当前本机仍无法下载 Gradle 分发包（`services.gradle.org` DNS 不可解析）。
 - 未进行真机、测试账号、跨设备奖励领取、双人探索/接龙线上 E2E。新增日历 API 尚在 PR #18，需部署后线上可用；此次未部署、未合并或发布 APK。
+
+## HEIKA Native 3.2 第一阶段：全局 UI 与核心动效
+
+- 开发目录仍为 `/workspace/heika-native3-followup`，从阶段 D 最新源码 `54e42440c06b7854097750078c2e460c6daee3d5` 增量开发；该 SHA 同时是阶段 D 分支 HEAD 和本轮前最新成功 APK 的源码。阶段 A、B、C、D 均在祖先提交中。
+- 开发分支 `codex/native32-phase1`。UI 源码提交 `aa59899b4acbce02f535a6d686810e0c0521fdb3`；编译修正和导航动效提交 `16a022ebddf69a0136fad4d9c5ca823a2af1f7bd`。最终 APK 对应源码 SHA 为 `16a022ebddf69a0136fad4d9c5ca823a2af1f7bd`。
+- Android 版本为 `2.3.6` / versionCode `19`（此前 versionCode `18`）。`applicationId=com.heika.community` 不变。
+- 全局颜色、字阶、边距、圆角、Material 控件形状和动效时长统一在 `HeikaTheme` / `HeikaComponents`；页面返回栏统一为原生图标，保留既有玻璃底部导航。导航切换使用 280ms 轻位移叠化，返回使用 220ms 轻位移叠化。
+- 首页翻卡保留原服务端额度、幂等确认和揭晓顺序；仅调整源卡到展开卡的位置/比例插值、圆角/阴影和 Haze 连续模糊，关闭时复用同一状态回到源位置。评分仍提交网页相同的 1–5 星服务端 API，采用网页对应星色和 58ms 阶梯反馈；评分均值、次数和成功动画只在服务端确认后更新。
+- 内容详情主图 0dp 圆角；多图使用原生横向分页且 `ContentScale.Fit` 保留图片比例。详情排序调整为媒体、分类/状态、标题、作者/时间、正文、类型字段和互动。探索中心/日历/双人探索/故事接龙重新整理层级和状态，日历请求失败时用占位符代替未确认的 0；故事时间线新增条目具有位置过渡。设置按账号、偏好、其他分组，保留原入口和服务端开关状态。
+- 消息列表和会话新增/插入动画；消息错误提供重试。AI 原生发现页默认切换为「最新」而非线上无精选资源的「推荐」，线上「最新」与「热门」各返回 2 项；选择「推荐」无结果时可直接进入最新内容。无假数据或本地评分算法。
+
+### 网页动画对照与 Compose 实现
+
+| 网页实现 | Compose 实现 |
+| --- | --- |
+| 翻卡读取起始卡片矩形，以 380ms `cubic-bezier(.22,.72,.18,1)` 扩展；背景模糊在 280ms 内渐进，关闭时反向，减少动态效果时立即落位。 | 使用起始矩形插值卡片平移与缩放，380ms 空间缓动；Haze 模糊、遮罩、阴影和圆角共享同一进度，收回时反向执行。翻开请求仍由服务端确认后才揭晓。 |
+| 评分为 1–5 星，星间延迟 58ms，颜色和均值来自真实评分；网页先播动效再等待请求。 | 星色与星间延迟沿用网页，缩放克制；均值平滑变化，提交中禁止重复点击。为了保证状态真实，成功动效在服务端成功返回后播放，失败保留原分数。 |
+| 详情图片共享元素进出为 320ms / 240ms，图片由列表矩形过渡至 0dp 圆角详情图。 | 详情图使用 0dp 圆角、多图原生分页与原比例；页面路由采用统一轻位移叠化。当前原生详情没有复刻网页的图片克隆矩形共享元素。 |
+| 发现标签指示线 240ms、内容交叉叠化 260ms；系统减少动态效果时停用。 | 频道/排序文字与指示线分别平滑变色和位移；导航页面以统一 280ms / 220ms 叠化加轻位移切换。 |
+| 网页弹窗遮罩 260ms、背景模糊至 7px；面板约 360ms 入场、210ms 退出。 | 使用 Compose 原生对话框与统一 12dp/16dp 形状；Compose 动画遵循系统 Animator 时长比例。当前没有给所有原生 AlertDialog 增加统一背景模糊层。 |
+
+### 线上问题复核与验证边界
+
+- 只读检查生产域名：探索日历 `GET /api/v1/exploration-calendar?month=2026-11` 返回 HTTP 404；阶段 D 对应网站 API 仍在 PR #18，未合并/部署。Android 保留真实 API、错误与重试，不以假数据掩盖；此项只有网站部署后才能在线恢复，本轮没有改网站代码。
+- 同一只读检查中 AI `sort=featured` 返回 200、`total=0`；`sort=latest` 和 `sort=popular` 均返回 200、`total=2`。新包默认显示最新资源，用户仍可查看精选筛选。
+- 针对截图时间的 Supabase 只读日志检查未发现 DM RPC 404；当时 profile/profile_attributes 请求为 200。已核实 `dm_inbox_summary()`、`open_dm(uuid)`、`send_dm(uuid,text,uuid,text)` 存在且授予 `authenticated` 执行权限。生产 `/api/v1/messages` 只读 GET 返回 404，因此没有把原生请求切到该未部署网站路由。消息页增加了重试入口；没有测试账号复现原请求，设备侧 404 的最终根因仍未确认。
+- 本机 Android Gradle 构建因 `services.gradle.org` DNS `UnknownHostException` 无法运行。GitHub Actions #67 暴露评分动画导入包名错误，已修正；Native 3.2 Run #68（ID `42839712520`，2026-11-10 15:08 UTC）最终成功：`testDebugUnitTest`、`lintDebug`、Debug 与 unsigned Release 构建、版本化产物准备及上传全部通过。
+- APK：`HEIKA-2.3.6-19-debug.apk`、`HEIKA-2.3.6-19-release-unsigned.apk`；`applicationId=com.heika.community`。Debug APK 可安装测试；Release APK 未签名，仅供检查。Artifact `HEIKA-Native-3-v16a022ebddf69a0136fad4d9c5ca823a2af1f7bd`，ID `13776955971`，23,184,408 bytes，ZIP SHA-256 `b2a3f1369ed4243cf42896b927ef99c73f0413a332e5a0a1e4d4fd1f2e76c7bd`，有效至 `2026-11-24 15:08 UTC`。下载：https://github.com/sunyu1590-create/fanka/actions/runs/42839712520/artifacts/13776955971
+- 未进行真机/模拟器、跨账号、跨设备、网络中断、横竖屏、低性能帧率或完整线上端到端验收；CI 构建成功不代表这些交互已在设备上确认。未合并 PR、未部署生产、未发布 APK。
