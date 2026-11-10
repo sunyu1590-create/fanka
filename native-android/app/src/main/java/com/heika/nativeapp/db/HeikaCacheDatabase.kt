@@ -41,13 +41,13 @@ interface HeikaCacheDao {
     @Query("DELETE FROM feed_cache WHERE cachedAt < :before")
     suspend fun expireFeeds(before: Long)
 
-    @Query("DELETE FROM feed_cache WHERE cacheKey = (SELECT cacheKey FROM feed_cache ORDER BY cachedAt ASC LIMIT 1)")
+    @Query("DELETE FROM feed_cache WHERE cacheKey = (SELECT cacheKey FROM feed_cache WHERE cacheKey NOT LIKE 'native-profile:%' ORDER BY cachedAt ASC LIMIT 1)")
     suspend fun removeOldestFeed()
 
     @Query("DELETE FROM feed_cache WHERE cacheKey LIKE '%' || :userId")
     suspend fun clearFeedForUser(userId: String)
 
-    @Query("SELECT COUNT(*) FROM feed_cache")
+    @Query("SELECT COUNT(*) FROM feed_cache WHERE cacheKey NOT LIKE 'native-profile:%'")
     suspend fun feedCount(): Int
 
     @Query("SELECT * FROM daily_state WHERE userId = :userId AND day = :day LIMIT 1")

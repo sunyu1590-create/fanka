@@ -259,8 +259,43 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/me", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun cachedMyProfile(userId: String): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get("native-profile:$userId")?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveMyProfileCache(userId: String, payload: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put("native-profile:$userId", payload.toString())
+    }
+
     suspend fun updateMyProfile(nickname: String, bio: String): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/me", method = "PATCH", body = JSONObject().put("nickname", nickname).put("bio", bio).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun updateBookmarksVisibility(visible: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me", method = "PATCH", body = JSONObject().put("show_bookmarks", visible).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun deleteMyPost(clientId: Int): JSONObject = withContext(Dispatchers.IO) {
+        require(clientId > 0) { "作品编号无效" }
+        request(
+            "/api/v1/library-state",
+            method = "POST",
+            body = JSONObject().put("action", "delete").put("id", clientId).toString(),
+            authenticated = true,
+        ) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun uploadMyAvatar(fileName: String, mimeType: String, bytes: ByteArray): JSONObject = withContext(Dispatchers.IO) {
+        require(bytes.size in 1..(2 * 1024 * 1024)) { "头像图片不能超过 2 MB" }
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
+            .build()
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/me/avatar", "Bearer $token", body)
+        val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
+        if (!response.isSuccessful || root.has("error")) throw IOException(root.optString("error").ifBlank { "头像上传失败（${response.code()}）" })
+        (root.opt("data") as? JSONObject) ?: root
     }
 
     suspend fun profile(userId: String): JSONObject = withContext(Dispatchers.IO) {
@@ -330,6 +365,14 @@ class HeikaRepository @Inject constructor(
 
     suspend fun progression(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/progression", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun dailyMissions(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/daily-missions", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun claimDailyMission(missionKey: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/daily-missions", method = "POST", body = JSONObject().put("missionKey", missionKey).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun uploadImage(postId: String, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int): JSONObject = withContext(Dispatchers.IO) {

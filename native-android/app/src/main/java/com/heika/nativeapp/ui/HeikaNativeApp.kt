@@ -48,12 +48,17 @@ import com.heika.nativeapp.feature.notifications.NotificationsScreen
 import com.heika.nativeapp.feature.notifications.ForegroundNoticeHost
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.profile.ProfileScreen
+import com.heika.nativeapp.feature.profile.ProfileViewModel
+import com.heika.nativeapp.feature.profile.EditProfileScreen
+import com.heika.nativeapp.feature.profile.ExplorationCenterScreen
+import com.heika.nativeapp.feature.profile.ManageWorksScreen
 import com.heika.nativeapp.feature.publish.PublishScreen
 import com.heika.nativeapp.feature.search.SearchScreen
 import com.heika.nativeapp.feature.FeedbackScreen
 import com.heika.nativeapp.feature.MembershipScreen
 import com.heika.nativeapp.feature.settings.AboutScreen
 import com.heika.nativeapp.feature.settings.SettingsScreen
+import com.heika.nativeapp.feature.settings.SettingsDetailScreen
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -129,6 +134,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                     )
                 }
                 composable("profile") {
+                    val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel()
                     ProfileScreen(
                         userId = null,
                         onBack = { nav.popBackStack() },
@@ -138,6 +144,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                         onMembership = { openDestination(HeikaDestination.Membership) },
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
                         onLogin = { nav.navigate("account") },
+                        onEditProfile = { nav.navigate("edit-profile") },
+                        onExplore = { nav.navigate("exploration") },
+                        onManageWorks = { nav.navigate("manage-works") },
+                        viewModel = profileViewModel,
                     )
                 }
                 composable("search") {
@@ -229,9 +239,37 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                 composable("settings") {
                     SettingsScreen(
                         onBack = { nav.popBackStack() },
-                        onAbout = { nav.navigate("about") },
-                        onAccount = { nav.navigate("account") },
+                        onSection = { section -> if (section == "about") nav.navigate("about") else nav.navigate("settings/$section") },
                     )
+                }
+                composable(
+                    route = "settings/{section}",
+                    arguments = listOf(navArgument("section") { type = NavType.StringType }),
+                ) { entry ->
+                    SettingsDetailScreen(
+                        section = entry.arguments?.getString("section").orEmpty(),
+                        onBack = { nav.popBackStack() },
+                        onAccount = { nav.navigate("account") },
+                        onEditProfile = { nav.navigate("edit-profile") },
+                        onMembership = { openDestination(HeikaDestination.Membership) },
+                        onAbout = { nav.navigate("about") },
+                        onNotifications = { openDestination(HeikaDestination.Notifications) },
+                    )
+                }
+                composable("edit-profile") {
+                    val currentEntry by nav.currentBackStackEntryAsState()
+                    val profileEntry = remember(currentEntry) { nav.getBackStackEntry("profile") }
+                    val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(profileEntry)
+                    EditProfileScreen(onBack = { nav.popBackStack() }, viewModel = profileViewModel)
+                }
+                composable("exploration") {
+                    ExplorationCenterScreen(onBack = { nav.popBackStack() })
+                }
+                composable("manage-works") {
+                    val currentEntry by nav.currentBackStackEntryAsState()
+                    val profileEntry = remember(currentEntry) { nav.getBackStackEntry("profile") }
+                    val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(profileEntry)
+                    ManageWorksScreen(onBack = { nav.popBackStack() }, onEdit = { post -> nav.navigate("publish?draftId=${post.id}") }, viewModel = profileViewModel)
                 }
                 composable("about") {
                     AboutScreen(onBack = { nav.popBackStack() }, onFeedback = { openDestination(HeikaDestination.Feedback) })

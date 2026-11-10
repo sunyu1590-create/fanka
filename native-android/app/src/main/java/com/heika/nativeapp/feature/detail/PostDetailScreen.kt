@@ -63,6 +63,7 @@ fun PostDetailScreen(
     viewModel: PostDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val readingMode by viewModel.readingMode.collectAsStateWithLifecycle()
     var draft by remember(post?.cloudId, postKey) { mutableStateOf("") }
     var replyTo by remember(post?.cloudId, postKey) { mutableStateOf<String?>(null) }
     var reportOpen by remember(post?.cloudId, postKey) { mutableStateOf(false) }
@@ -111,7 +112,9 @@ fun PostDetailScreen(
                             Text("${item.viewCount} 阅读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
                         Text(item.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, lineHeight = 31.sp, fontWeight = FontWeight.SemiBold)
-                        Text(item.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, lineHeight = 24.sp)
+                        val bodyFont = when (readingMode) { "focus" -> 16.sp; "night" -> 15.sp; else -> 14.sp }
+                        val bodyLine = when (readingMode) { "focus" -> 28.sp; "night" -> 27.sp; else -> 24.sp }
+                        Text(item.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = bodyFont, lineHeight = bodyLine)
                         item.tags.takeIf { it.isNotEmpty() }?.let { tags ->
                             Text(tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                         }

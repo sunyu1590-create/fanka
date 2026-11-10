@@ -92,6 +92,7 @@ fun DiscoveryScreen(
         onDispose { }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val feedLayout by viewModel.feedLayout.collectAsStateWithLifecycle()
     val posts = viewModel.posts.collectAsLazyPagingItems()
     val communityGrid = rememberLazyStaggeredGridState()
     val aiGrid = rememberLazyStaggeredGridState()
@@ -229,7 +230,7 @@ fun DiscoveryScreen(
         }
 
         val gridState = if (filter.channel == "community") communityGrid else aiGrid
-        FeedGrid(posts = posts, state = gridState, onPost = onPost, modifier = Modifier.weight(1f))
+        FeedGrid(posts = posts, state = gridState, onPost = onPost, columns = if (feedLayout == "single") 1 else 2, modifier = Modifier.weight(1f))
     }
 }
 
@@ -259,10 +260,11 @@ private fun FeedGrid(
     posts: androidx.paging.compose.LazyPagingItems<HeikaPost>,
     state: LazyStaggeredGridState,
     onPost: (HeikaPost) -> Unit,
+    columns: Int,
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Fixed(2),
+        columns = StaggeredGridCells.Fixed(columns.coerceIn(1, 2)),
         state = state,
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 9.dp, bottom = 128.dp),
@@ -298,7 +300,7 @@ private fun FeedGrid(
 }
 
 @Composable
-private fun FeedCard(post: HeikaPost, onClick: () -> Unit) {
+internal fun FeedCard(post: HeikaPost, onClick: () -> Unit) {
     val image = post.thumbnail
     Column(Modifier.fillMaxWidth()) {
         if (image != null) {

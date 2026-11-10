@@ -51,6 +51,10 @@ class HeikaImageCache @Inject constructor(
         mutableLoader.value.memoryCache?.clear()
     }
 
+    suspend fun sizeBytes(): Long = withContext(Dispatchers.IO) {
+        File(context.cacheDir, "heika-image-cache").walkTopDown().filter(File::isFile).sumOf { it.length() }
+    }
+
     private fun create(mb: Int): ImageLoader = ImageLoader.Builder(context)
         .memoryCache {
             MemoryCache.Builder()

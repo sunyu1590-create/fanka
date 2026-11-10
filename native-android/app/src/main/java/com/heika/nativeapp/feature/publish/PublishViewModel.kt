@@ -54,7 +54,7 @@ class PublishViewModel @Inject constructor(private val repository: HeikaReposito
         draftLoaded = true
         runCatching { repository.myLibraryState() }.onSuccess { profile ->
             val draft = profile.optJSONArray("own").jsonObjects().firstOrNull {
-                it.optString("status") == "draft" && (requestedId == null || it.optInt("id") == requestedId)
+                it.optString("status") in setOf("draft", "pending_review") && (requestedId == null || it.optInt("id") == requestedId)
             } ?: return@onSuccess
             val paths = draft.stringList("mediaPaths")
             val previews = draft.stringList("thumbnailImages").ifEmpty { draft.stringList("images") }

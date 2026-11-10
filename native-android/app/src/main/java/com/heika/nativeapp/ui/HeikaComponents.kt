@@ -123,7 +123,7 @@ fun GlassNavigationBar(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(37.dp)
-    val isDark = MaterialTheme.colorScheme.background == HeikaPalette.DarkBackground
+    val isDark = LocalHeikaDark.current
     val surface = MaterialTheme.colorScheme.surface
     Row(
         modifier = modifier.fillMaxWidth()

@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.HeikaRepository
+import com.heika.nativeapp.ui.NativePreferences
 import com.heika.nativeapp.data.jsonObjects
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -45,7 +48,9 @@ data class PostDetailState(
 class PostDetailViewModel @Inject constructor(
     private val repository: HeikaRepository,
     private val auth: AuthRepository,
+    preferences: NativePreferences,
 ) : ViewModel() {
+    val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
     private val mutableState = MutableStateFlow(PostDetailState())
     val state = mutableState.asStateFlow()
     private var loadedId: String? = null
