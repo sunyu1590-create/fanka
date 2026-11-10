@@ -4,6 +4,10 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
@@ -71,7 +75,9 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
 @Composable
-fun HeikaNativeApp(imageLoader: ImageLoader) {
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
     CompositionLocalProvider(LocalHeikaImageLoader provides imageLoader) {
         val context = LocalContext.current
         val nav = rememberNavController()
@@ -79,6 +85,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
         var homePreviewActive by remember { mutableStateOf(false) }
+        val navigationBlur by animateDpAsState(if (homePreviewActive) 22.dp else 0.dp, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing), label = "navigation-focus-blur")
         var chatConversationOpen by remember { mutableStateOf(false) }
         val selected = when (route) {
             "discovery" -> "discovery"
@@ -104,6 +111,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
             Box(
                 Modifier.fillMaxSize().hazeSource(hazeState),
             ) {
+                SharedTransitionLayout(Modifier.fillMaxSize()) {
+                val sharedTransitionScope = this
                 NavHost(
                     navController = nav,
                     startDestination = "home",
@@ -114,20 +123,40 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                         )
                         .imePadding(),
                     enterTransition = {
-                        fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
-                            slideInVertically(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) { it / 36 }
+                        when (pageTransition) {
+                            "crossfade" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
+                            "shared" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
+                                slideInVertically(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) { it / 72 }
+                            else -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
+                                slideInVertically(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) { it / 36 }
+                        }
                     },
                     exitTransition = {
-                        fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
-                            slideOutVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
+                        when (pageTransition) {
+                            "crossfade" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                            "shared" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
+                                slideOutVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 96 }
+                            else -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
+                                slideOutVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
+                        }
                     },
                     popEnterTransition = {
-                        fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
-                            slideInVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
+                        when (pageTransition) {
+                            "crossfade" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                            "shared" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
+                                slideInVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 96 }
+                            else -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
+                                slideInVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
+                        }
                     },
                     popExitTransition = {
-                        fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) +
-                            slideOutVertically(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) { it / 36 }
+                        when (pageTransition) {
+                            "crossfade" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
+                            "shared" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) +
+                                slideOutVertically(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) { it / 72 }
+                            else -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) +
+                                slideOutVertically(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) { it / 36 }
+                        }
                     },
                 ) {
                 composable("home") {
@@ -143,6 +172,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                         onSearch = { openDestination(HeikaDestination.Search) },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onPost = { post -> openDestination(post.destination()) },
+                        hazeState = hazeState,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                     )
                 }
                 composable("messages") {
@@ -187,6 +220,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                         onAuthor = { id -> openDestination(HeikaDestination.UserProfile(id)) },
                         onLogin = { nav.navigate("account") },
                         onShare = { post -> shareNativePost(context, post) },
+                        hazeState = hazeState,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                     )
                 }
                 composable(
@@ -278,6 +315,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                         onMembership = { openDestination(HeikaDestination.Membership) },
                         onAbout = { nav.navigate("about") },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
+                        onSection = { section -> nav.navigate("settings/$section") },
                     )
                 }
                 composable("edit-profile") {
@@ -367,6 +405,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                     }
                 }
                 }
+                }
             }
             if (showBottomBar) {
                 GlassNavigationBar(
@@ -375,7 +414,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                     onSelect = { target -> navigateTopLevel(nav, target) },
                     onPublish = { openDestination(HeikaDestination.Publish) },
                     modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp)
-                        .then(if (homePreviewActive) Modifier.blur(10.dp) else Modifier),
+                        .blur(navigationBlur),
                 )
             }
             ForegroundNoticeHost(

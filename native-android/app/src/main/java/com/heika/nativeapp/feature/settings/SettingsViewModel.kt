@@ -24,6 +24,8 @@ class SettingsViewModel @Inject constructor(
     val imageCacheMb = preferences.imageCacheMb.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 256)
     val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
+    val pageTransition = preferences.pageTransition.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "lift")
+    val fontChoice = preferences.fontChoice.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "system")
     private val mutableCommentsEnabled = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
     val commentsEnabled = mutableCommentsEnabled.asStateFlow()
     private val mutableNotificationsLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -159,6 +161,8 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setTheme(value: String) = viewModelScope.launch { preferences.setTheme(value) }
+    fun setPageTransition(value: String) = viewModelScope.launch { preferences.setPageTransition(value) }
+    fun setFontChoice(value: String) = viewModelScope.launch { preferences.setFontChoice(value) }
     fun setFeedLayout(value: String) = viewModelScope.launch { preferences.setFeedLayout(value) }
     fun setReadingMode(value: String) = viewModelScope.launch { preferences.setReadingMode(value) }
     fun setCacheCapacity(value: Int) = viewModelScope.launch { imageCache.resize(value) }

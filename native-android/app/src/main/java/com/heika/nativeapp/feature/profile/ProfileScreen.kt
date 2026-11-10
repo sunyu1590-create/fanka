@@ -203,7 +203,7 @@ fun ProfileScreen(
                         if (state.own && selected == "works") {
                             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("我的作品", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                                Text("作品管理  ›", Modifier.clickable(onClick = onManageWorks).padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                                Text("作品管理", Modifier.clickable(onClick = onManageWorks).padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                                 Text("${state.posts.size} 篇", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                             }
                         }

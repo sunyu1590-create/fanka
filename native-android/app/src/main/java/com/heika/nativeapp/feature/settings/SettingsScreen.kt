@@ -29,8 +29,11 @@ import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -61,9 +64,9 @@ import java.util.Locale
 data class SettingsEntry(val key: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 private val SettingGroups = listOf(
-    "账号" to listOf(SettingsEntry("account", "账号与安全", Icons.Outlined.AccountCircle), SettingsEntry("membership", "会员与支持", Icons.Outlined.ChevronRight)),
+    "账号" to listOf(SettingsEntry("account", "账号与安全", Icons.Outlined.AccountCircle), SettingsEntry("membership", "会员与支持", Icons.Outlined.StarOutline)),
     "偏好" to listOf(SettingsEntry("appearance", "外观与阅读", Icons.Outlined.ColorLens), SettingsEntry("notifications", "通知与消息", Icons.Outlined.NotificationsNone), SettingsEntry("storage", "存储与缓存", Icons.Outlined.Storage)),
-    "其他" to listOf(SettingsEntry("privacy", "隐私与权限", Icons.Outlined.PrivacyTip), SettingsEntry("about", "关于黑卡", Icons.Outlined.ChevronRight)),
+    "其他" to listOf(SettingsEntry("privacy", "隐私与权限", Icons.Outlined.PrivacyTip), SettingsEntry("about", "关于黑卡", Icons.Outlined.Info)),
 )
 
 @Composable
@@ -113,6 +116,7 @@ fun SettingsDetailScreen(
     onMembership: () -> Unit,
     onAbout: () -> Unit,
     onNotifications: () -> Unit,
+    onSection: (String) -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -120,6 +124,8 @@ fun SettingsDetailScreen(
     val theme by viewModel.theme.collectAsStateWithLifecycle()
     val layout by viewModel.feedLayout.collectAsStateWithLifecycle()
     val reading by viewModel.readingMode.collectAsStateWithLifecycle()
+    val pageTransition by viewModel.pageTransition.collectAsStateWithLifecycle()
+    val fontChoice by viewModel.fontChoice.collectAsStateWithLifecycle()
     val capacity by viewModel.imageCacheMb.collectAsStateWithLifecycle()
     val comments by viewModel.commentsEnabled.collectAsStateWithLifecycle()
     val notificationError by viewModel.notificationError.collectAsStateWithLifecycle()
@@ -143,7 +149,11 @@ fun SettingsDetailScreen(
         if (section == "storage") viewModel.refreshCacheUsage()
         if (section == "privacy") viewModel.loadPrivacySettings()
     }
-    val title = SettingGroups.flatMap { it.second }.firstOrNull { it.key == section }?.title ?: "设置"
+    val title = SettingGroups.flatMap { it.second }.firstOrNull { it.key == section }?.title ?: when (section) {
+        "transition" -> "页面切换动画"
+        "font" -> "字体"
+        else -> "设置"
+    }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(title, onBack)
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 7.dp, end = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -161,6 +171,17 @@ fun SettingsDetailScreen(
                     item { ChoiceRow(listOf("waterfall" to "双列瀑布流", "single" to "单列列表"), layout, viewModel::setFeedLayout) }
                     item { DetailHeading("阅读偏好") }
                     item { ChoiceRow(listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
+                    item { DetailHeading("交互") }
+                    item { SettingAction("页面切换动画", transitionLabel(pageTransition), { onSection("transition") }) }
+                    item { SettingAction("字体", "系统默认", { onSection("font") }) }
+                }
+                "transition" -> {
+                    item { DetailHeading("选择页面切换方式") }
+                    item { ChoiceList(listOf("lift" to "上下浮", "crossfade" to "叠化", "shared" to "连续开关"), pageTransition, viewModel::setPageTransition) }
+                }
+                "font" -> {
+                    item { DetailHeading("字体") }
+                    item { ChoiceList(listOf("system" to "系统默认"), fontChoice, viewModel::setFontChoice) }
                 }
                 "notifications" -> {
                     item { SettingAction("Android 系统通知", if (notificationsAllowed) "系统通知权限已开启" else "系统通知权限未开启", { requestOrOpenNotificationPermission(context, permissionLauncher::launch) }) }
@@ -210,6 +231,28 @@ private fun ChoiceRow(options: List<Pair<String, String>>, selected: String, onS
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         options.forEach { (value, label) -> FilterChip(label, selected == value, { onSelect(value) }, Modifier.weight(1f)) }
     }
+}
+
+@Composable
+private fun ChoiceList(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp)) {
+        options.forEachIndexed { index, (value, title) ->
+            Row(
+                Modifier.fillMaxWidth().clickable { onSelect(value) }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(title, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+                RadioButton(selected = selected == value, onClick = { onSelect(value) })
+            }
+            if (index < options.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .38f))
+        }
+    }
+}
+
+private fun transitionLabel(value: String) = when (value) {
+    "crossfade" -> "叠化"
+    "shared" -> "连续开关"
+    else -> "上下浮"
 }
 
 @Composable

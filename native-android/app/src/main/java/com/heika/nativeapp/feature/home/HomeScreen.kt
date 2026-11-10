@@ -292,7 +292,7 @@ private fun FlipPreviewOverlay(
             if (!opening && !revealing && !dismissing) {
                 handledCloseRequest = closeRequest
                 dismissing = true
-                progress.animateTo(0f, tween(HeikaMotion.transition, easing = HeikaMotion.spatialEasing))
+                progress.animateTo(0f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))
                 onDismiss()
             }
         }
@@ -302,7 +302,7 @@ private fun FlipPreviewOverlay(
         if (opening || revealing || dismissing) return
         dismissing = true
         scope.launch {
-            progress.animateTo(0f, tween(HeikaMotion.transition, easing = HeikaMotion.spatialEasing))
+            progress.animateTo(0f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))
             onDismiss()
         }
     }
@@ -315,8 +315,8 @@ private fun FlipPreviewOverlay(
                     state = hazeState,
                     style = HazeStyle(
                         backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = 0.18f * expand),
-                        tint = HazeTint(Color.Black.copy(alpha = 0.52f * expand)),
-                        blurRadius = 24.dp * expand,
+                        tint = HazeTint(Color.Black.copy(alpha = 0.60f * expand)),
+                        blurRadius = 34.dp * expand,
                         noiseFactor = 0.018f,
                         fallbackTint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = 0.78f * expand)),
                     ),
@@ -355,8 +355,7 @@ private fun FlipPreviewOverlay(
                     shape = RoundedCornerShape(HeikaRadii.dailyCard)
                     clip = true
                 }
-                .clip(RoundedCornerShape(HeikaRadii.dailyCard))
-                .border(1.dp, Color(0xFF9AA8AA).copy(alpha = 0.8f), RoundedCornerShape(HeikaRadii.dailyCard)),
+                .clip(RoundedCornerShape(HeikaRadii.dailyCard)),
         ) {
             if (rotation.value < 90f) {
                 PreviewCardBack(
@@ -471,12 +470,10 @@ private fun PreviewCardFront(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(post?.tag ?: "黑卡内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 Spacer(Modifier.weight(1f))
-                val rating = when {
-                    post == null -> "待评级"
-                    post.hasRating -> String.format(java.util.Locale.US, "☆  %.1f", post.ratingAverage)
-                    else -> "☆  待评级"
-                }
-                Text(rating, color = HeikaPalette.Gold, fontSize = 10.sp)
+                if (post?.hasRating == true) {
+                    Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(13.dp))
+                    Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 10.sp)
+                } else Text("待评级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
             }
             Text(
                 post?.title ?: "正在恢复卡片内容",
@@ -503,7 +500,7 @@ private fun PreviewCardFront(
             ) {
                 Text("查看更多", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.width(8.dp))
-                Text("→", fontSize = 20.sp)
+                Icon(com.heika.nativeapp.ui.HeikaIcons.Forward, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF17191C))
             }
         }
       }
@@ -612,7 +609,10 @@ private fun CardFront(post: HeikaPost?, modifier: Modifier = Modifier) {
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(post?.tag ?: "黑卡内容", color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
             Text(post?.title ?: "已翻开的卡片", color = Color.White, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (post?.hasRating == true) Text("☆  ${"%.1f".format(post.ratingAverage)}", color = HeikaPalette.Gold, fontSize = 11.sp)
+            if (post?.hasRating == true) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(13.dp))
+                Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 11.sp)
+            }
             if (post != null && post.rarityTier in setOf("ordinary", "S", "SS", "SSS")) {
                 Text(rarityLabel(post.rarityTier), color = HeikaPalette.Gold, fontSize = 10.sp)
             }

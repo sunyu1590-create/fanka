@@ -21,12 +21,21 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val imageCacheKey = intPreferencesKey("image_cache_mb")
     private val feedLayoutKey = stringPreferencesKey("feed_layout")
     private val readingModeKey = stringPreferencesKey("reading_mode")
+    private val pageTransitionKey = stringPreferencesKey("page_transition")
+    private val fontChoiceKey = stringPreferencesKey("font_choice")
     private val searchHistoryKey = stringPreferencesKey("search_history")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "dark" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
     val feedLayout: Flow<String> = dataStore.data.map { it[feedLayoutKey] ?: "waterfall" }
     val readingMode: Flow<String> = dataStore.data.map { it[readingModeKey] ?: "standard" }
+    val pageTransition: Flow<String> = dataStore.data.map { value ->
+        HeikaPageTransitions.normalize(value[pageTransitionKey].orEmpty())
+    }
+    /** Only fonts present in the APK may appear as choices. OPPO Sans is intentionally absent until redistribution is explicit. */
+    val fontChoice: Flow<String> = dataStore.data.map { value ->
+        HeikaFontCatalog.normalize(value[fontChoiceKey].orEmpty())
+    }
     val searchHistory: Flow<List<String>> = dataStore.data.map { values ->
         runCatching {
             val saved = JSONArray(values[searchHistoryKey].orEmpty())
@@ -39,6 +48,8 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     suspend fun setImageCacheMb(value: Int) { dataStore.edit { it[imageCacheKey] = value.coerceIn(256, 512) } }
     suspend fun setFeedLayout(value: String) { dataStore.edit { it[feedLayoutKey] = if (value == "single") "single" else "waterfall" } }
     suspend fun setReadingMode(value: String) { dataStore.edit { it[readingModeKey] = value.takeIf { it in setOf("standard", "focus", "night") } ?: "standard" } }
+    suspend fun setPageTransition(value: String) { dataStore.edit { it[pageTransitionKey] = HeikaPageTransitions.normalize(value) } }
+    suspend fun setFontChoice(value: String) { dataStore.edit { it[fontChoiceKey] = HeikaFontCatalog.normalize(value) } }
     suspend fun addRecentSearch(value: String) {
         val term = value.trim().take(60)
         if (term.isBlank()) return
@@ -51,4 +62,5 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
         }
     }
     suspend fun clearRecentSearches() { dataStore.edit { it.remove(searchHistoryKey) } }
+
 }

@@ -30,10 +30,12 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             val theme by preferences.theme.collectAsState(initial = "dark")
+            val pageTransition by preferences.pageTransition.collectAsState(initial = "lift")
+            val fontChoice by preferences.fontChoice.collectAsState(initial = "system")
             val loader by imageCache.loader.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val lightSystemBars = theme == "light" || (theme == "system" && !systemDark)
-            HeikaTheme(theme) {
+            HeikaTheme(theme, fontChoice) {
                 SideEffect {
                     window.statusBarColor = android.graphics.Color.TRANSPARENT
                     window.navigationBarColor = android.graphics.Color.TRANSPARENT
@@ -45,7 +47,7 @@ class MainActivity : ComponentActivity() {
                     controller.isAppearanceLightStatusBars = lightSystemBars
                     controller.isAppearanceLightNavigationBars = lightSystemBars
                 }
-                HeikaNativeApp(imageLoader = loader)
+                HeikaNativeApp(imageLoader = loader, pageTransition = pageTransition)
             }
         }
     }

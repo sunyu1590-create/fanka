@@ -404,7 +404,7 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
                     } else if (state.ownPick) {
                         item {
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("✦", color = MaterialTheme.colorScheme.primary, fontSize = 25.sp)
+                                androidx.compose.material3.Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
                                 Text("你的选择已锁定", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                 Text("朋友完成选择后，双方内容会一起揭晓。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                             }
@@ -518,7 +518,10 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
                         if (!chain.seedImage.isNullOrBlank()) AsyncImage(chain.seedImage, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(190.dp), contentScale = ContentScale.Crop)
                         Text(chain.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
                         Text(chain.prompt, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
-                        Text("查看起始作品 ›", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp).clickable { onSeedPost(chain.seedPostId) })
+                        Row(Modifier.padding(top = 9.dp).clickable { onSeedPost(chain.seedPostId) }, verticalAlignment = Alignment.CenterVertically) {
+                            Text("查看起始作品", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                            androidx.compose.material3.Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                        }
                     }
                 }
                 item { Text("故事进展 · ${chain.entries.size} 段", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
@@ -563,7 +566,7 @@ private fun CandidatePostRow(post: HeikaPost, selected: Boolean, enabled: Boolea
             Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(post.tag, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
         }
-        if (selected) Text("✓", color = MaterialTheme.colorScheme.primary, fontSize = 17.sp, modifier = Modifier.padding(horizontal = 4.dp))
+        if (selected) androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Check, contentDescription = "已选择", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 4.dp).size(18.dp))
     }
 }
 

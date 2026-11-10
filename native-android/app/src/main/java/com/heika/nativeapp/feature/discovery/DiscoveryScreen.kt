@@ -2,6 +2,10 @@ package com.heika.nativeapp.feature.discovery
 
 import android.util.Log
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -81,13 +85,23 @@ import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaRadii
+import com.heika.nativeapp.ui.HeikaMotion
+import com.heika.nativeapp.ui.HeikaGlassSurface
+import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.heikaSharedPostImage
+import dev.chrisbanes.haze.HazeState
 import java.util.Locale
 
 @Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
 fun DiscoveryScreen(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
     onPost: (HeikaPost) -> Unit,
+    hazeState: HazeState,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedElementsEnabled: Boolean,
     viewModel: DiscoveryViewModel = hiltViewModel(),
 ) {
     DisposableEffect(Unit) {
@@ -104,8 +118,10 @@ fun DiscoveryScreen(
     val tags = if (filter.channel == "community") state.communityTags else state.aiTags
     var communityCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var aiCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
-    val rangeDp = 42.dp + (if (tags.isNotEmpty()) 36.dp else 0.dp) +
-        (if (filter.channel == "ai") 36.dp else 0.dp) + 40.dp
+    var extraFiltersExpanded by rememberSaveable { mutableStateOf(false) }
+    val rangeDp = 42.dp + if (extraFiltersExpanded) {
+        (if (tags.isNotEmpty()) 36.dp else 0.dp) + (if (filter.channel == "ai") 36.dp else 0.dp) + 40.dp
+    } else 0.dp
     val density = LocalDensity.current
     val rangePx = with(density) { rangeDp.toPx() }
     val collapsedPx = if (filter.channel == "community") communityCollapsePx else aiCollapsePx
@@ -159,13 +175,15 @@ fun DiscoveryScreen(
                 },
             )
             androidx.compose.material3.IconButton(onClick = {
+                extraFiltersExpanded = !extraFiltersExpanded
                 if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
-            }, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Outlined.Tune, contentDescription = "筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            }, modifier = Modifier.size(40.dp)) {
+                Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
             }
         }
         Box(
             Modifier.fillMaxWidth()
+                .animateContentSize(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                 .height(with(density) { (rangePx - collapsedPx).coerceAtLeast(0f).toDp() })
                 .clipToBounds(),
         ) {
@@ -185,7 +203,7 @@ fun DiscoveryScreen(
                         CategoryTab(category.name, selected = filter.category?.id == category.id) { viewModel.selectCategory(category) }
                     }
                 }
-                if (tags.isNotEmpty()) {
+                if (extraFiltersExpanded && tags.isNotEmpty()) {
                     LazyRow(
                         Modifier.height(36.dp),
                         contentPadding = PaddingValues(horizontal = 19.dp),
@@ -198,7 +216,7 @@ fun DiscoveryScreen(
                         }
                     }
                 }
-                if (filter.channel == "ai") {
+                if (extraFiltersExpanded && filter.channel == "ai") {
                     val types = listOf(
                         null to "全部资源",
                         "knowledge_article" to "知识",
@@ -219,7 +237,7 @@ fun DiscoveryScreen(
                         }
                     }
                 }
-                LazyRow(
+                if (extraFiltersExpanded) LazyRow(
                     Modifier.height(40.dp),
                     contentPadding = PaddingValues(horizontal = 19.dp),
                     horizontalArrangement = Arrangement.spacedBy(23.dp),
@@ -239,6 +257,10 @@ fun DiscoveryScreen(
             modifier = Modifier.weight(1f),
             filter = filter,
             onSortChange = viewModel::selectSort,
+            hazeState = hazeState,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+            sharedElementsEnabled = sharedElementsEnabled,
         )
     }
 }
@@ -292,14 +314,13 @@ private fun SortTab(label: String, selected: Boolean, onClick: () -> Unit) {
         if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
         tween(200), label = "discover-sort-color",
     )
-    val indicatorWidth by animateDpAsState(if (selected) (label.length * 13).dp else 0.dp, tween(240), label = "discover-sort-indicator")
-    Column(
-        Modifier.clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+    Box(
+        Modifier.clip(RoundedCornerShape(9.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .10f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 6.dp),
     ) {
         Text(label, color = color, fontSize = 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-        Box(Modifier.width(indicatorWidth).height(2.dp).clip(RoundedCornerShape(1.dp)).background(MaterialTheme.colorScheme.primary))
     }
 }
 
@@ -312,6 +333,10 @@ private fun FeedGrid(
     modifier: Modifier = Modifier,
     filter: FeedFilter,
     onSortChange: (String) -> Unit,
+    hazeState: HazeState,
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    sharedElementsEnabled: Boolean,
 ) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(columns.coerceIn(1, 2)),
@@ -323,7 +348,7 @@ private fun FeedGrid(
     ) {
         items(count = posts.itemCount, key = posts.itemKey { it.cloudId }) { index ->
             val post = posts[index] ?: return@items
-            FeedCard(post, onClick = { onPost(post) })
+            FeedCard(post, onClick = { onPost(post) }, hazeState = hazeState, sharedTransitionScope = sharedTransitionScope, animatedVisibilityScope = animatedVisibilityScope, sharedElementsEnabled = sharedElementsEnabled)
         }
         when {
             posts.loadState.refresh is LoadState.Loading && posts.itemCount == 0 -> item(span = StaggeredGridItemSpan.FullLine) {
@@ -355,13 +380,33 @@ private fun FeedGrid(
 }
 
 @Composable
-internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier = Modifier) {
+@OptIn(ExperimentalSharedTransitionApi::class)
+internal fun FeedCard(
+    post: HeikaPost,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    sharedElementsEnabled: Boolean = false,
+) {
     val image = post.thumbnail
     Column(modifier.fillMaxWidth()) {
         if (image != null) {
             var imageFailed by remember(image, post.cloudId) { mutableStateOf(false) }
             var imageRetry by remember(image, post.cloudId) { mutableStateOf(0) }
             val ratio = remember(post.id) { listOf(.78f, .88f, 1.02f)[Math.floorMod(post.id, 3)] }
+            val sharedImageModifier = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+                with(sharedTransitionScope) {
+                    Modifier.heikaSharedPostImage(
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        postKey = post.cloudId.ifBlank { post.id.toString() },
+                        isDetail = false,
+                        enabled = true,
+                    )
+                }
+            } else Modifier
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.feedCard)).clickable(onClick = onClick)
                     .background(MaterialTheme.colorScheme.surfaceVariant).aspectRatio(ratio),
@@ -377,7 +422,7 @@ internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier =
                     request,
                     contentDescription = post.title,
                     imageLoader = LocalHeikaImageLoader.current,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(sharedImageModifier),
                     contentScale = ContentScale.Crop,
                     onState = { state -> imageFailed = state is AsyncImagePainter.State.Error },
                 )
@@ -392,10 +437,17 @@ internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier =
                     )
                 }
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .27f), Color.Transparent, Color.Black.copy(alpha = .7f)))))
-                Box(Modifier.align(Alignment.TopStart).padding(9.dp).clip(RoundedCornerShape(HeikaRadii.categoryTag)).background(Color.Black.copy(alpha = .46f)).padding(horizontal = 11.dp, vertical = 6.dp)) {
-                    Text(post.tag, color = Color.White, fontSize = 10.sp, maxLines = 1)
+                HeikaGlassSurface(
+                    hazeState = hazeState,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                    shape = RoundedCornerShape(HeikaRadii.categoryTag),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    emphasis = .9f,
+                    glassColor = Color(0xFF17181B),
+                ) {
+                    Text(post.tag, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp))
+                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), hazeState)
                 Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), color = Color.White, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         } else {
@@ -409,7 +461,7 @@ internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier =
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(post.tag, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.weight(1f))
-                    RatingTag(post)
+                    RatingTag(post, hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface)
                 }
                 Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
                 Text(post.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
@@ -424,16 +476,19 @@ internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier =
 }
 
 @Composable
-private fun RatingTag(post: HeikaPost, modifier: Modifier = Modifier) {
-    Row(
-        modifier.clip(RoundedCornerShape(HeikaRadii.ratingTag)).background(Color.Black.copy(alpha = .47f))
-            .border(1.dp, HeikaGold.copy(alpha = .5f), RoundedCornerShape(HeikaRadii.ratingTag))
-            .padding(horizontal = 9.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+private fun RatingTag(post: HeikaPost, modifier: Modifier = Modifier, hazeState: HazeState? = null, contentColor: Color = Color.White) {
+    HeikaGlassSurface(
+        hazeState = hazeState,
+        modifier = modifier,
+        shape = RoundedCornerShape(HeikaRadii.ratingTag),
+        contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp),
+        emphasis = .94f,
+        glassColor = if (contentColor == Color.White) Color(0xFF17181B) else null,
     ) {
-        Icon(Icons.Outlined.StarOutline, contentDescription = null, tint = HeikaGold, modifier = Modifier.size(14.dp))
-        Text(if (post.hasRating) String.format(Locale.US, "%.1f", post.ratingAverage) else "待评级", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(HeikaIcons.StarOutline, contentDescription = null, tint = HeikaGold, modifier = Modifier.size(14.dp))
+            Text(if (post.hasRating) String.format(Locale.US, "%.1f", post.ratingAverage) else "待评", color = contentColor, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+        }
     }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontFamily
 
 object HeikaRadii {
     val feedCard = 12.dp
@@ -84,8 +86,21 @@ object HeikaMotion {
 
 val LocalHeikaDark = staticCompositionLocalOf { true }
 
+/** Bundled font registry. Add a selectable family only after the licensed files ship in res/font. */
+object HeikaFontCatalog {
+    val availableChoices = setOf("system")
+    private val families = mapOf("system" to FontFamily.Default)
+    fun normalize(choice: String): String = choice.takeIf { it in availableChoices } ?: "system"
+    fun resolve(choice: String): FontFamily = families[normalize(choice)] ?: FontFamily.Default
+}
+
+object HeikaPageTransitions {
+    val choices = setOf("lift", "crossfade", "shared")
+    fun normalize(value: String): String = value.takeIf { it in choices } ?: "lift"
+}
+
 @Composable
-fun HeikaTheme(theme: String, content: @Composable () -> Unit) {
+fun HeikaTheme(theme: String, fontChoice: String = "system", content: @Composable () -> Unit) {
     val dark = when (theme) {
         "light" -> false
         "system" -> isSystemInDarkTheme()
@@ -125,6 +140,25 @@ fun HeikaTheme(theme: String, content: @Composable () -> Unit) {
         outline = animateColorAsState(targetScheme.outline, tween(HeikaMotion.transition, easing = HeikaMotion.standard), label = "theme-outline").value,
     )
     CompositionLocalProvider(LocalHeikaDark provides dark) {
-        MaterialTheme(colorScheme = scheme, shapes = HeikaShapes, content = content)
+        val family = HeikaFontCatalog.resolve(fontChoice)
+        val base = Typography()
+        val typography = base.copy(
+            displayLarge = base.displayLarge.copy(fontFamily = family),
+            displayMedium = base.displayMedium.copy(fontFamily = family),
+            displaySmall = base.displaySmall.copy(fontFamily = family),
+            headlineLarge = base.headlineLarge.copy(fontFamily = family),
+            headlineMedium = base.headlineMedium.copy(fontFamily = family),
+            headlineSmall = base.headlineSmall.copy(fontFamily = family),
+            titleLarge = base.titleLarge.copy(fontFamily = family),
+            titleMedium = base.titleMedium.copy(fontFamily = family),
+            titleSmall = base.titleSmall.copy(fontFamily = family),
+            bodyLarge = base.bodyLarge.copy(fontFamily = family),
+            bodyMedium = base.bodyMedium.copy(fontFamily = family),
+            bodySmall = base.bodySmall.copy(fontFamily = family),
+            labelLarge = base.labelLarge.copy(fontFamily = family),
+            labelMedium = base.labelMedium.copy(fontFamily = family),
+            labelSmall = base.labelSmall.copy(fontFamily = family),
+        )
+        MaterialTheme(colorScheme = scheme, shapes = HeikaShapes, typography = typography, content = content)
     }
 }

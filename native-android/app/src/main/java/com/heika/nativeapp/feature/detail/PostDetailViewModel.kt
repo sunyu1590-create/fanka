@@ -38,6 +38,7 @@ data class PostDetailState(
     val saved: Boolean = false,
     val rating: Int? = null,
     val ratingSending: Boolean = false,
+    val ratingError: String? = null,
     val ratingAnimationKey: Int = 0,
     val ratingAnimationScore: Int = 0,
     val average: Double? = null,
@@ -229,7 +230,7 @@ class PostDetailViewModel @Inject constructor(
             mutableState.update { it.copy(notice = "登录后可以为内容评分") }
             return@launch
         }
-        mutableState.update { it.copy(ratingSending = true, error = null, notice = null) }
+        mutableState.update { it.copy(ratingSending = true, ratingError = null, error = null, notice = null) }
         runCatching { repository.ratePost(post.id, value) }.onSuccess { result ->
             if (version != requestVersion) return@onSuccess
             val awarded = result.optJSONObject("experience")?.optInt("awarded", 0) ?: 0
@@ -239,12 +240,13 @@ class PostDetailViewModel @Inject constructor(
                     average = result.optDouble("average").takeIf { it.isFinite() },
                     ratingCount = result.optInt("count").coerceAtLeast(0),
                     ratingSending = false,
+                    ratingError = null,
                     ratingAnimationKey = it.ratingAnimationKey + 1,
                     ratingAnimationScore = result.optInt("myRating", value),
                     notice = if (awarded > 0) "评分已保存 · +$awarded EXP" else "评分已保存",
                 )
             }
-        }.onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(rating = old.rating, ratingSending = false, error = error.message ?: "评分失败") } }
+        }.onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(rating = old.rating, ratingSending = false, ratingError = error.message ?: "评分失败", error = error.message ?: "评分失败") } }
     }
 
     fun toggleFollow() = viewModelScope.launch {
