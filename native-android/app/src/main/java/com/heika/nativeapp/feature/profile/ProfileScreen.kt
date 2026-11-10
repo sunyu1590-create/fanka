@@ -213,7 +213,13 @@ fun ProfileScreen(
                     Text(when (selected) { "works" -> "还没有公开作品。"; "bookmarks" -> "还没有可见收藏。"; else -> "还没有点赞内容。" }, Modifier.fillMaxWidth().padding(vertical = 28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 }
                 items(posts, key = { it.cloudId.ifBlank { it.id.toString() } }) { post ->
-                    FeedCard(post) { if (post.rawJson.let { runCatching { org.json.JSONObject(it).optString("status") == "draft" }.getOrDefault(false) }) onDraft(post) else onPost(post) }
+                    FeedCard(post, onClick = {
+                        if (post.rawJson.let { runCatching { org.json.JSONObject(it).optString("status") == "draft" }.getOrDefault(false) }) {
+                            onDraft(post)
+                        } else {
+                            onPost(post)
+                        }
+                    })
                 }
                 if (state.loadingMore == when (selected) { "works" -> "own"; "bookmarks" -> "bookmarks"; else -> "liked" }) item(span = StaggeredGridItemSpan.FullLine) {
                     CircularProgressIndicator(Modifier.padding(14.dp).size(20.dp), strokeWidth = 2.dp)
