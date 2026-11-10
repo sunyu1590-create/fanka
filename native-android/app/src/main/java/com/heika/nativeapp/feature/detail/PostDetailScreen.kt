@@ -303,7 +303,7 @@ private fun RetryableDetailImage(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var attempt by remember(url, postId, variant) { mutableIntStateOf(0) }
+    var attempt by remember(url, postId, variant) { mutableStateOf(0) }
     var failed by remember(url, postId, variant) { mutableStateOf(false) }
     val request = remember(context, url, postId, variant, attempt) {
         ImageRequest.Builder(context).data(url)
