@@ -54,7 +54,7 @@
 
 开发前重新检查工作目录、Git 状态、远端 HEAD、最新成功 Actions Run 和 APK 版本；比较远端源码与工作区，再在包含全部有效成果的最新基线上增量修改。构建失败时修复当前代码，不回退旧底包。未经授权不强推或合并生产分支.
 
-## 阶段 C AI 专区增量开发（构建待验证）
+## 阶段 C AI 专区增量开发与构建
 
 - 开发分支：`codex/stage-c-ai-20261110`，从阶段 B 最新有效提交 `e1082b9b7d1d35107093dd4570aa24bf28a67f97` 创建；阶段 A/B 代码均保留。
 - 阶段 C 代码提交：`53c8cb4f61a045ce9b1b21f3e900c77afc5dec08`。
@@ -62,5 +62,9 @@
 - 已接入网页现有 `/api/v1/ai-space`、`/api/v1/ai-space/{id}/versions`、`/api/v1/ai-space/{id}/feedback`：原生 AI 详情字段、系统剪贴板、校验后的 HTTPS 外链、版本历史/错误重试和资源反馈；AI 发布、草稿恢复和已发布修订复用阶段 A 图片/草稿机制。
 - AI 搜索与筛选继续复用现有分页端点；社区与 AI 各自保存筛选状态。
 - 新增 `AiResourceRulesTest` 覆盖六种资源类型、必填字段和外链校验。
-- 本机 Gradle 测试/构建尚未执行：Gradle Wrapper 下载因 `services.gradle.org` DNS `UnknownHostException` 失败。GitHub Actions 构建待触发，当前代码尚未获得 CI 或设备验证。
-- 本次开始时最近成功 Android 构建仍是 Native workflow PR Run #48（ID `42790623935`），源码 `38f28da6d554111bc63c8cd4069c55f75ab4eda7`，versionCode 15。阶段 C 产物待 Actions 确认。
+- 最新阶段 C 分支文档提交：`fd316918bf242f254ee8613a23f8b27ea852ea66`；PR #17 仍开放、未合并，目标为阶段 B 分支。PR 详情显示可合并。
+- Native workflow PR Run **#51**（ID `42794350914`）于 `2026-11-10 10:00 UTC` 成功；PR head 为 `fd316918bf242f254ee8613a23f8b27ea852ea66`，Actions 对 PR 合并校验源码执行构建。Run：https://github.com/sunyu1590-create/fanka/actions/runs/42794350914
+- 测试、Lint、Debug APK、unsigned Release APK、产物准备及上传步骤全部成功。APK 配置：`applicationId=com.heika.community`、`versionName=2.3.6`、`versionCode=16`；产物名为 `HEIKA-2.3.6-16-debug.apk` 和 `HEIKA-2.3.6-16-release-unsigned.apk`。Release 包未签名，仅供检查；Debug APK 是可安装测试包。
+- Artifact：`HEIKA-Native-3-v17271a39f77c35ebdd3008ddb5323096001be58a`，ID `13752359398`，22,862,134 bytes，ZIP SHA-256 `d07e0c134b68a43abf467b48476d003006db9c98bdac0c2a9a94654b66c377e2`，有效至 `2026-11-24 10:00 UTC`。下载页：https://github.com/sunyu1590-create/fanka/actions/runs/42794350914/artifacts/13752359398
+- 本机 Gradle 测试/构建被 `services.gradle.org` DNS `UnknownHostException` 阻断；GitHub Actions 已在 Runner 完成对应测试和构建。未进行真机/模拟器、线上账号、AI 反馈提交及发布编辑审核端到端验证。
+- PR #17 的 Actions 运行由 PR 校验事件触发，Artifact 名中的 SHA 是 GitHub PR 合并校验引用；其对应 PR head 是上述 `fd3169…`，目标基线是阶段 B `e1082b9…`。未合并 PR，也未发布 APK。
