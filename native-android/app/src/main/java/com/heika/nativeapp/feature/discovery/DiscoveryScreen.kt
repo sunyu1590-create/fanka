@@ -1,6 +1,9 @@
 package com.heika.nativeapp.feature.discovery
 
 import android.util.Log
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -75,7 +79,6 @@ import com.heika.nativeapp.data.HeikaCategory
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BrandHeader
-import com.heika.nativeapp.ui.FilterChip
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaRadii
 import java.util.Locale
@@ -92,6 +95,7 @@ fun DiscoveryScreen(
         onDispose { }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val feedLayout by viewModel.feedLayout.collectAsStateWithLifecycle()
     val posts = viewModel.posts.collectAsLazyPagingItems()
     val communityGrid = rememberLazyStaggeredGridState()
     val aiGrid = rememberLazyStaggeredGridState()
@@ -100,8 +104,8 @@ fun DiscoveryScreen(
     val tags = if (filter.channel == "community") state.communityTags else state.aiTags
     var communityCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var aiCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
-    val rangeDp = (if (tags.isNotEmpty()) 55.dp else 0.dp) +
-        (if (filter.channel == "ai") 39.dp else 0.dp) + 49.dp + 35.dp
+    val rangeDp = 42.dp + (if (tags.isNotEmpty()) 36.dp else 0.dp) +
+        (if (filter.channel == "ai") 36.dp else 0.dp) + 40.dp
     val density = LocalDensity.current
     val rangePx = with(density) { rangeDp.toPx() }
     val collapsedPx = if (filter.channel == "community") communityCollapsePx else aiCollapsePx
@@ -135,24 +139,29 @@ fun DiscoveryScreen(
             }
         }
         Row(
-            Modifier.padding(start = 22.dp, top = 7.dp, bottom = 11.dp)
-                .clip(RoundedCornerShape(HeikaRadii.surface))
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .7f), RoundedCornerShape(HeikaRadii.surface))
-                .padding(4.dp),
+            Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            ChannelOption("社区", filter.channel == "community") { viewModel.selectChannel("community") }
-            ChannelOption("AI 空间", filter.channel == "ai") { viewModel.selectChannel("ai") }
-        }
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(22.dp),
-        ) {
-            item(key = "all-categories") {
-                CategoryTab("推荐", selected = filter.category == null) { viewModel.selectCategory(null) }
-            }
-            items(categories, key = { "category-${it.id}" }) { category ->
-                CategoryTab(category.name, selected = filter.category?.id == category.id) { viewModel.selectCategory(category) }
+            Text("发现", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(19.dp))
+            ChannelOption("精选", filter.channel == "community") { viewModel.selectChannel("community") }
+            Spacer(Modifier.width(17.dp))
+            ChannelOption("AI", filter.channel == "ai") { viewModel.selectChannel("ai") }
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${filter.category?.name ?: if (filter.channel == "community") "推荐" else "AI"} · ${filter.sort}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.clickable {
+                    if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
+                },
+            )
+            androidx.compose.material3.IconButton(onClick = {
+                if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
+            }, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Outlined.Tune, contentDescription = "筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
             }
         }
         Box(
@@ -163,14 +172,29 @@ fun DiscoveryScreen(
             Column(
                 Modifier.fillMaxWidth().height(rangeDp).offset { IntOffset(0, -collapsedPx.toInt()) },
             ) {
+                LazyRow(
+                    Modifier.height(42.dp),
+                    contentPadding = PaddingValues(horizontal = 19.dp),
+                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    item(key = "all-categories") {
+                        CategoryTab("推荐", selected = filter.category == null) { viewModel.selectCategory(null) }
+                    }
+                    items(categories, key = { "category-${it.id}" }) { category ->
+                        CategoryTab(category.name, selected = filter.category?.id == category.id) { viewModel.selectCategory(category) }
+                    }
+                }
                 if (tags.isNotEmpty()) {
                     LazyRow(
-                        contentPadding = PaddingValues(horizontal = 19.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                        Modifier.height(36.dp),
+                        contentPadding = PaddingValues(horizontal = 19.dp),
+                        horizontalArrangement = Arrangement.spacedBy(15.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        item(key = "all-tags") { FilterChip("全部话题", filter.topic == null, { viewModel.selectTopic(null) }) }
+                        item(key = "all-tags") { CompactFilter("全部话题", filter.topic == null) { viewModel.selectTopic(null) } }
                         items(tags.take(12), key = { "topic-${it.id}" }) { tag ->
-                            FilterChip("#${tag.name}", filter.topic == tag.name, { viewModel.selectTopic(if (filter.topic == tag.name) null else tag.name) })
+                            CompactFilter("#${tag.name}", filter.topic == tag.name) { viewModel.selectTopic(if (filter.topic == tag.name) null else tag.name) }
                         }
                     }
                 }
@@ -185,64 +209,46 @@ fun DiscoveryScreen(
                         "tutorial" to "教程",
                     )
                     LazyRow(
+                        Modifier.height(36.dp),
                         contentPadding = PaddingValues(horizontal = 19.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(15.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         items(types, key = { "ai-type-${it.first ?: "all"}" }) { (type, label) ->
-                            FilterChip(label, filter.contentType == type, { viewModel.selectContentType(type) })
+                            CompactFilter(label, filter.contentType == type) { viewModel.selectContentType(type) }
                         }
                     }
                 }
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 19.dp, vertical = 5.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Modifier.height(40.dp),
+                    contentPadding = PaddingValues(horizontal = 19.dp),
+                    horizontalArrangement = Arrangement.spacedBy(23.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val sorts = if (filter.channel == "community") listOf("推荐", "最新", "高评分", "关注") else listOf("推荐", "最新", "热门")
-                    items(sorts, key = { "sort-$it" }) { sort ->
-                        FilterChip(sort, filter.sort == sort, { viewModel.selectSort(sort) })
-                    }
-                }
-                Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        when (filter.sort) { "最新" -> "最新内容"; "高评分" -> "高评分内容"; "热门" -> "热门 AI 资源"; "关注" -> "关注动态"; else -> "为你推荐" },
-                        color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    val count = posts.itemCount
-                    Text(if (count > 0) "$count 篇内容" else "探索黑卡内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    items(sorts, key = { "sort-$it" }) { sort -> SortTab(sort, filter.sort == sort) { viewModel.selectSort(sort) } }
                 }
             }
         }
-        if (collapsedPx >= rangePx - 1f) {
-            Row(Modifier.fillMaxWidth().padding(start = 19.dp, end = 19.dp, top = 4.dp, bottom = 7.dp)) {
-                FilterChip("筛选 · ${filter.sort}", false, {
-                    if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
-                })
-                if (filter.topic != null) {
-                    Spacer(Modifier.width(8.dp))
-                    FilterChip("#${filter.topic}", true, {
-                        viewModel.selectTopic(null)
-                        if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
-                    })
-                }
-            }
-        }
-
         val gridState = if (filter.channel == "community") communityGrid else aiGrid
-        FeedGrid(posts = posts, state = gridState, onPost = onPost, modifier = Modifier.weight(1f))
+        FeedGrid(posts = posts, state = gridState, onPost = onPost, columns = if (feedLayout == "single") 1 else 2, modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
 private fun ChannelOption(label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.clip(RoundedCornerShape(12.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .18f) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
+    val color by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(220), label = "discover-channel-color",
+    )
+    val indicatorWidth by animateDpAsState(if (selected) 18.dp else 0.dp, tween(240), label = "discover-channel-indicator")
+    Column(
+        Modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(label, color = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+        Text(label, color = color, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+        Box(Modifier.width(indicatorWidth).height(2.dp).clip(RoundedCornerShape(1.dp)).background(MaterialTheme.colorScheme.primary))
     }
 }
 
@@ -255,14 +261,50 @@ private fun CategoryTab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun CompactFilter(label: String, selected: Boolean, onClick: () -> Unit) {
+    val color by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(180), label = "discover-filter-color",
+    )
+    Text(
+        label,
+        Modifier.clip(RoundedCornerShape(HeikaRadii.control)).clickable(onClick = onClick)
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .09f) else Color.Transparent)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        color = color,
+        fontSize = 11.sp,
+        fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+        maxLines = 1,
+    )
+}
+
+@Composable
+private fun SortTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    val color by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(200), label = "discover-sort-color",
+    )
+    val indicatorWidth by animateDpAsState(if (selected) (label.length * 13).dp else 0.dp, tween(240), label = "discover-sort-indicator")
+    Column(
+        Modifier.clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(label, color = color, fontSize = 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+        Box(Modifier.width(indicatorWidth).height(2.dp).clip(RoundedCornerShape(1.dp)).background(MaterialTheme.colorScheme.primary))
+    }
+}
+
+@Composable
 private fun FeedGrid(
     posts: androidx.paging.compose.LazyPagingItems<HeikaPost>,
     state: LazyStaggeredGridState,
     onPost: (HeikaPost) -> Unit,
+    columns: Int,
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Fixed(2),
+        columns = StaggeredGridCells.Fixed(columns.coerceIn(1, 2)),
         state = state,
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 9.dp, bottom = 128.dp),
@@ -298,9 +340,9 @@ private fun FeedGrid(
 }
 
 @Composable
-private fun FeedCard(post: HeikaPost, onClick: () -> Unit) {
+internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val image = post.thumbnail
-    Column(Modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxWidth()) {
         if (image != null) {
             var imageFailed by remember(image, post.cloudId) { mutableStateOf(false) }
             val ratio = remember(post.id) { listOf(.78f, .88f, 1.02f)[Math.floorMod(post.id, 3)] }

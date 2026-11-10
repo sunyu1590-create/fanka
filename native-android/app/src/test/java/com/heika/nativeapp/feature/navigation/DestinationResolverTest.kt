@@ -1,4 +1,4 @@
-package com.heika.nativeapp.feature.compat
+package com.heika.nativeapp.feature.navigation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -8,16 +8,21 @@ class DestinationResolverTest {
     private val uuid = "e5d8c3d2-cdc1-4d8e-9d18-a8823a7035d2"
 
     @Test
-    fun communityAndAiPostsRemainDistinct() {
-        val community = DestinationResolver.resolve(HeikaDestination.CommunityPost(42)) as DestinationTarget.Compatibility
-        val ai = DestinationResolver.resolve(HeikaDestination.AiResource(42, uuid)) as DestinationTarget.Compatibility
-        assertEquals("/?post=42", community.path)
-        assertEquals("/?aiPost=42&cloudId=$uuid", ai.path)
-        assertTrue(community.path != ai.path)
+    fun communityAndAiPostsResolveToNativeDetailRoutes() {
+        val community = DestinationResolver.resolve(HeikaDestination.CommunityPost(42)) as DestinationTarget.Native
+        val linkedCommunity = DestinationResolver.resolve(HeikaDestination.CommunityPost(42, uuid)) as DestinationTarget.Native
+        val cloudOnlyCommunity = DestinationResolver.resolve(HeikaDestination.CommunityPost(0, uuid)) as DestinationTarget.Native
+        val ai = DestinationResolver.resolve(HeikaDestination.AiResource(42, uuid)) as DestinationTarget.Native
+        assertEquals("post/client-42", community.route)
+        assertEquals("post/$uuid", linkedCommunity.route)
+        assertEquals("post/$uuid", cloudOnlyCommunity.route)
+        assertEquals("post/$uuid", ai.route)
+        assertEquals("community_post", linkedCommunity.type)
+        assertEquals("ai_resource", ai.type)
     }
 
     @Test
-    fun allExistingCompatibilityTargetsHaveExplicitRoutes() {
+    fun coreBusinessDestinationsResolveToNativeRoutes() {
         val targets = listOf(
             HeikaDestination.Messages,
             HeikaDestination.Conversation(uuid),
@@ -28,20 +33,20 @@ class DestinationResolverTest {
             HeikaDestination.Membership,
             HeikaDestination.Feedback,
             HeikaDestination.UserProfile(uuid),
-        ).map { DestinationResolver.resolve(it) as DestinationTarget.Compatibility }
+        ).map { DestinationResolver.resolve(it) as DestinationTarget.Native }
         assertEquals(
             listOf(
-                "/?nativeTab=messages&nativeBottomBar=1",
-                "/?nativeTab=messages&conversation=$uuid",
-                "/?nativeTab=mine&nativeBottomBar=1",
-                "/?nativeTab=search",
-                "/?nativeTab=publish",
-                "/?nativeTab=settings",
-                "/?nativeTab=membership",
-                "/?nativeTab=feedback",
-                "/?profile=$uuid",
+                "messages",
+                "conversation/$uuid",
+                "profile",
+                "search",
+                "publish",
+                "settings",
+                "membership",
+                "feedback",
+                "user/$uuid",
             ),
-            targets.map { it.path },
+            targets.map { it.route },
         )
     }
 

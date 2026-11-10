@@ -4,6 +4,10 @@ node_modules/
 android/.gradle/
 android/local.properties
 android/**/build/
+native-android/local.properties
+native-android/**/build/
+dist/
+out/
 android/**/release.keystore
 android/**/signing.properties
 .npm-cache/

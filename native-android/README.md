@@ -1,34 +1,27 @@
 # HEIKA Native 3.0
 
-This is an independent Kotlin/Jetpack Compose Android application. The legacy `android/` WebView application and `mobile/` reference project remain unchanged and are not used as the Native 3.0 launcher.
+Native 3.0 is the Kotlin and Jetpack Compose Android application in this directory. It starts directly in the native navigation graph; the legacy `android/` WebView app remains a separate reference project and is not packaged or launched by this application.
 
-## Current implementation boundary
+## Native application boundary
 
-- **Native Compose:** app launch, theme, floating glass navigation, today card deck, discovery community/AI feeds, notifications list, Android notification permission/channel, settings, account credentials, and app-specific About screen.
-- **First-party Web compatibility:** messaging, profile, post detail/comments, search, publishing, and feedback continue to use the existing `moonclean.shop` routes where those flows are not migrated yet. A WebView is created only when one of these routes is opened; it is not the app host or discovery renderer.
-- **Backend/data:** existing 2.40.7 APIs and Supabase Auth. Access/refresh credentials are stored encrypted using Android Keystore AES-GCM. The WebView can receive the active session only on the allow-listed first-party origin; session changes are read back through AndroidX WebKit's origin-restricted message listener.
-- **Notifications:** the in-app list, read state, server preference, Android 13 permission, and channel are implemented. Repository inspection found no FCM configuration or device-registration/delivery endpoint, so remote system push is explicitly not claimed as connected.
-- **About/update:** version comes from the installed package. Update checking is disabled because no reliable release feed exists. The website currently marks legal texts unavailable, which is reflected instead of linking to placeholder policies.
+- Compose owns launch, navigation, the glass bottom bar, home card deck, community and AI discovery, post details and comments, search, account login and recovery, profile and drafts, direct messages, notifications, publishing, settings, membership preview, feedback, and About.
+- Native destinations are typed in `feature/navigation/DestinationResolver.kt`. Content, user, and conversation routes retain their business identifiers; invalid targets show a native error screen instead of falling back to the website home.
+- The Native 3.0 module contains no WebView host or JavaScript bridge. The website remains the source of existing business APIs, account records, content, and moderation rules.
+- Session credentials are held in the existing Android Keystore-backed encrypted store. API requests use the website's existing authenticated routes and the public Supabase Auth configuration endpoint; no service-role key is packaged in the app.
 
-## Data APIs reused
+## Existing backend integration
 
-- `GET /api/demo/cards` and `POST /api/demo/cards`: daily candidate IDs and revealed content.
-- `GET /api/demo/cards?mode=discover&limit=24`: cursor-paged community discovery, tags/categories, ratings and likes.
-- `GET /api/v1/categories?channel=...&kind=...`: community/AI categories and topics.
-- `GET /api/v1/ai-space`: AI resources, category, type and sort filters.
-- `GET /api/v1/library-state` / `POST /api/v1/library-state`: existing account profile, opened interactions and daily history.
-- `GET/POST /api/v1/notifications` and `GET/PATCH /api/v1/settings/notifications`: existing notification list/read state and supported comment preference.
-- `GET /api/client-config`: public Supabase URL and anon/publishable key only.
+- Home and community discovery reuse the 2.40.7 card, category, rating, interaction, and media APIs. The two-column discovery list, paging, and bounded Coil memory/disk cache remain in place.
+- AI discovery reuses `/api/v1/ai-space` and the current category and resource data.
+- Detail, comments, rating, likes, bookmarks, creator follows, profiles, search, notification history, preferences, and progression reuse existing `/api/v1` routes.
+- Publishing uses the existing draft, media upload, topic validation, and moderation submission behavior. Draft media references are restored through the authenticated library-state API.
+- Direct messages use the existing `dm_inbox_summary`, `open_dm`, and `send_dm` database functions, with RLS and existing read-receipt records. The additive `/api/v1/messages` route is the narrow authenticated HTTP adapter used by the native UI.
+- Membership is display-only because the website has no active checkout or support transaction. The UI clearly labels plan values as a preview and does not fake purchases or entitlement changes.
+- Android permission state, notification channel, in-app notification center, read synchronization, and foreground notice UI are native. Repository inspection found no configured FCM credentials, device registration endpoint, or server delivery pipeline; remote system push is not claimed as connected.
 
-The discovery recommendation ranker mirrors the website's current client-side topic, interest, rating, freshness and diversity scoring on each API page. The home deck retains the site's 50-card deterministic daily candidate ordering, membership allowance, and bounded lucky bonus.
+## Version and build
 
-## Build
-
-```bash
-cd native-android
-./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
-```
-
-The Android workflow runs on relevant changes, pull requests, and manual dispatch. Debug is installable with the CI debug key. Release output is unsigned for inspection until the existing production signing certificate is supplied through GitHub Secrets; it is not an installable production upgrade package.
-
-Application ID remains `com.heika.community`; package version is `2.3.6` / code `12`. Code 12 advances the checked-in 2.3.6/code 11 configuration. No release signing certificate was found in the repository. A debug APK signed with a CI debug key cannot upgrade an APK signed by the production key.
+- Application ID: `com.heika.community`
+- App version: `2.3.6` (`versionCode` 13 in the checked-in Gradle config); website version `2.40.7` is independent.
+- Build from this directory with `./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease`.
+- The HEIKA Native 3.0 Actions workflow runs Android checks and uploads versioned APK artifacts. Debug is signed with the CI debug key. Release output remains unsigned until the production signing certificate is supplied through GitHub Secrets; it is not a production upgrade package.

@@ -25,6 +25,7 @@ data class HeikaPost(
     val viewCount: Int,
     val saved: Boolean,
     val rawJson: String,
+    val rarityTier: String = "pending",
 ) {
     val thumbnail: String? get() = thumbnails.firstOrNull() ?: images.firstOrNull()
     val hasRating: Boolean get() = ratingCount > 0 && ratingAverage != null
@@ -56,6 +57,7 @@ data class HeikaPost(
                 viewCount = json.optInt("viewCount"),
                 saved = json.optBoolean("saved"),
                 rawJson = json.toString(),
+                rarityTier = json.optString("rarityTier", "pending").takeIf { it in setOf("ordinary", "S", "SS", "SSS", "pending") } ?: "pending",
             )
         }
     }

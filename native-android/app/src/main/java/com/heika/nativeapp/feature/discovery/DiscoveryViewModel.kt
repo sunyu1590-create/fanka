@@ -13,6 +13,7 @@ import com.heika.nativeapp.data.FeedPageKey
 import com.heika.nativeapp.data.HeikaCategory
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.HeikaRepository
+import com.heika.nativeapp.ui.NativePreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -24,6 +25,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 
 data class DiscoveryUiState(
@@ -37,9 +40,10 @@ data class DiscoveryUiState(
 )
 
 @HiltViewModel
-class DiscoveryViewModel @Inject constructor(private val repository: HeikaRepository) : ViewModel() {
+class DiscoveryViewModel @Inject constructor(private val repository: HeikaRepository, preferences: NativePreferences) : ViewModel() {
     private val mutableState = MutableStateFlow(DiscoveryUiState())
     val state = mutableState.asStateFlow()
+    val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     private val filter = MutableStateFlow(FeedFilter())
 
     @OptIn(ExperimentalCoroutinesApi::class)
