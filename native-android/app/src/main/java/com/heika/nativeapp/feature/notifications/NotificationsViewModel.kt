@@ -40,7 +40,7 @@ class NotificationsViewModel @Inject constructor(
     private var requestGeneration = 0L
 
     fun load(force: Boolean = false): Job {
-        val requestedAccountId = auth.restore()?.userId
+        val requestedAccountId = auth.session.value?.userId
         if (!force && loadJob?.isActive == true && loadAccountId == requestedAccountId) return loadJob!!
         val generation = ++requestGeneration
         val job = viewModelScope.launch {

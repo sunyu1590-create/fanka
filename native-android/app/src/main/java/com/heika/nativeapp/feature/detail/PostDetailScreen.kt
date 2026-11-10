@@ -65,6 +65,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BackHeader
