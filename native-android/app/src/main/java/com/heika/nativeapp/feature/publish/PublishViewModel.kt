@@ -429,7 +429,7 @@ class PublishViewModel @Inject constructor(
     fun continueEditing() = mutableState.update { it.copy(showLeaveDialog = false) }
 
     fun leaveWithLocalCopy(onLeave: () -> Unit) = viewModelScope.launch {
-        persistLocalSnapshot()
+        if (!persistLocalSnapshot()) return@launch
         mutableState.update { it.copy(showLeaveDialog = false) }
         onLeave()
     }

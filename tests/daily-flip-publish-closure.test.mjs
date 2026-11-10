@@ -59,6 +59,7 @@ test("publish drafts keep ordered media paths and distinguish revision submissio
   assert.match(libraryRoute, /post_revisions/);
   assert.match(viewModel, /localIsNewUnsynced = local != null && local\.optInt\("draftId", -1\) <= 0 && needsServerSync/);
   assert.match(viewModel, /if \(\(localMatches && needsServerSync\) \|\| localIsNewUnsynced\) \{[\s\S]*scheduleSave\(\)/);
+  assert.match(viewModel, /fun leaveWithLocalCopy[\s\S]*if \(!persistLocalSnapshot\(\)\) return@launch/);
   assert.match(viewModel, /图片上传未完成，请重试/);
   assert.match(screen, /if \(image\.error != null\)[\s\S]*重试上传/);
   assert.match(mediaRoute, /if \(revisionMode\) return \{ path: paths\.original/);
