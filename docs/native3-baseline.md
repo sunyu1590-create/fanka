@@ -68,3 +68,13 @@
 - Artifact：`HEIKA-Native-3-v57ffab3af3e2565339e8beeb351e2ab975ba4657`，ID `13755145798`，22,862,133 bytes，ZIP SHA-256 `f8bdb8c909f3e5d54b826284bb0a3f80598e012e224b310e0e1bdcc77624cf90`，有效至 `2026-11-24 10:10 UTC`。下载页：https://github.com/sunyu1590-create/fanka/actions/runs/42795847117/artifacts/13755145798
 - 本机 Gradle 测试/构建被 `services.gradle.org` DNS `UnknownHostException` 阻断；GitHub Actions 已在 Runner 完成对应测试和构建。未进行真机/模拟器、线上账号、AI 反馈提交及发布编辑审核端到端验证。
 - PR #17 的 Actions 运行由 PR 校验事件触发，Artifact 名中的 SHA 是 GitHub PR 合并校验引用；其对应 PR head 是上述 `fd3169…`，目标基线是阶段 B `e1082b9…`。未合并 PR，也未发布 APK。
+
+## 阶段 D 探索生态原生化
+
+- 从阶段 C head `2d503eb76f4196af89eb812f753924acf3bdc782` 创建分支 `codex/stage-d-exploration-20261110`；阶段 A/B/C 成果均保留。PR #18 仍开放，目标为阶段 C 分支；未合并、未部署生产。
+- 阶段 D 实现提交：`dd68daccd0a52f265f70638ff38a9a646046f4fc`；构建修复提交：`44e436d1cfa857665bbd7209e6a7598b8042bbc3`（改用可用 Material 图标）；进度计算与测试修复提交：`4203dfd91662762504e2e28de279d6f93572577b`。最新源码为该 SHA。
+- Android 版本递增为 `2.3.6` / versionCode `17`。探索中心复用每日任务、成长 API；日历通过新增只读 `/api/v1/exploration-calendar` 读取账号时区下的翻卡记录；双人探索和故事接龙复用既有 API，服务端仍负责权限、保密揭晓、奖励和状态校验。
+- Native 3.0 Actions Run #58（ID `42818911250`）对应 PR #18 head SHA `4203dfd91662762504e2e28de279d6f93572577b`，单测、Lint、Debug 与 unsigned Release APK 构建、产物上传均成功。Run：https://github.com/sunyu1590-create/fanka/actions/runs/42818911250
+- APK：`HEIKA-2.3.6-17-debug.apk`、`HEIKA-2.3.6-17-release-unsigned.apk`；`applicationId=com.heika.community`。Release APK 未签名，仅供检查；Debug APK 为测试安装包。Artifact `HEIKA-Native-3-v42c428de3de9f21d206edc1e0d95a37ce025aea0`，ID `13765509856`，23,118,174 bytes，ZIP SHA-256 `4487b31d8ff27d7415808e7879004d5b113a3efeb94e8078c00351e6930442dd`，有效至 `2026-11-24 12:55 UTC`。下载：https://github.com/sunyu1590-create/fanka/actions/runs/42818911250/artifacts/13765509856
+- 网站端 53 个 Node 测试、TypeScript、ESLint 与 Next 构建通过；Android Run #54 曾因不可用图标引用失败，Run #56 因进度断言与网页四舍五入规则不一致失败，Run #58 已验证修复。当前本机仍无法下载 Gradle 分发包（`services.gradle.org` DNS 不可解析）。
+- 未进行真机、测试账号、跨设备奖励领取、双人探索/接龙线上 E2E。新增日历 API 尚在 PR #18，需部署后线上可用；此次未部署、未合并或发布 APK。
