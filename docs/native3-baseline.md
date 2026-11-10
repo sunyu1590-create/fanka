@@ -107,3 +107,18 @@
 - 本机 Android Gradle 构建因 `services.gradle.org` DNS `UnknownHostException` 无法运行。GitHub Actions #67 暴露评分动画导入包名错误，已修正；Native 3.2 Run #68（ID `42839712520`，2026-11-10 15:08 UTC）最终成功：`testDebugUnitTest`、`lintDebug`、Debug 与 unsigned Release 构建、版本化产物准备及上传全部通过。
 - APK：`HEIKA-2.3.6-19-debug.apk`、`HEIKA-2.3.6-19-release-unsigned.apk`；`applicationId=com.heika.community`。Debug APK 可安装测试；Release APK 未签名，仅供检查。Artifact `HEIKA-Native-3-v16a022ebddf69a0136fad4d9c5ca823a2af1f7bd`，ID `13776955971`，23,184,408 bytes，ZIP SHA-256 `b2a3f1369ed4243cf42896b927ef99c73f0413a332e5a0a1e4d4fd1f2e76c7bd`，有效至 `2026-11-24 15:08 UTC`。下载：https://github.com/sunyu1590-create/fanka/actions/runs/42839712520/artifacts/13776955971
 - 未进行真机/模拟器、跨账号、跨设备、网络中断、横竖屏、低性能帧率或完整线上端到端验收；CI 构建成功不代表这些交互已在设备上确认。未合并 PR、未部署生产、未发布 APK。
+
+## HEIKA Native 3.2 第二阶段：性能、稳定性与交互收口
+
+- 工程仍为 `/workspace/heika-native3-followup`，开发分支 `codex/native32-phase1`；从第一阶段最终文档提交 `a1ad0b954be2b5e6432e2facf66b56569fca0202` 增量开发，因此 A、B、C、D 与第一阶段源码均保留。
+- 第二阶段实现提交：`b2f0d8e66e4cd5867d553562a7751dc60998452c`；修正编译问题：`8a0cd1a1d9977196bfb31052f01cdf8653c830db`；补充图片失败重试及其编译修正：`715f1697b22e2f16e700ebd45ac06af8d098aecf`、`e6c087312b98f7afc9e13e541cdf70b833e7be20`。Run #73 构建的最后 Android 源码 SHA 为 `e6c087312b98f7afc9e13e541cdf70b833e7be20`。本节文档提交不改 Android 源码。
+- Android 版本递增为 `2.3.6` / versionCode `20`；`applicationId=com.heika.community` 不变。
+- 加载与缓存：个人资料、通知、帖子详情、AI 版本、私信列表及探索数据先显示账号/资源隔离的本地快照，再后台刷新；失败保留有效内容。请求代次阻止过期结果覆盖新页面或账号；个人资料、通知偏好和探索入口增加重复加载抑制。发现图与详情原图使用不同缓存键；图片失败可点击重试；调整图片缓存容量时保留旧 loader 30 秒，避免取消正在显示的请求。
+- 私信：Native 明确使用 Supabase Data API 的 `POST /rest/v1/rpc/dm_inbox_summary`、`open_dm`、`send_dm`，以及 `GET /rest/v1/dm_messages`、`POST /rest/v1/dm_reads`，不是 Next.js `/api/v1/messages`。会话资料批量读取；进入会话时才按新收到的消息标记已读；活动会话轮询间隔为 12 秒并以请求代次隔离切换中的旧响应。接口错误现包含服务名、路径、HTTP 状态及 PostgREST 错误码（如有）；新增测试锁定方法、路由、分页与时间戳编码。
+- 私信 404 根因证据：只读生产检查确认 `GET /api/v1/messages` 返回 Next.js 404，当前生产部署不含该网站路由；但 Native 3.2 源码走 Supabase Data API，未调用该路径。截图时间对应的 Supabase 只读日志未发现相应 DM RPC/Data API 请求，现有 RPC 与 authenticated 执行授权也已核实。因此，旧安装包实际请求的路径及截图 404 的最终来源仍不能从现有证据确定；本阶段没有把 404 当作成功，也没有用本地假响应掩盖问题。最终 APK 保留真实错误并增强诊断，未改网站或数据库。
+- 探索日历不依赖尚未部署的 `/api/v1/exploration-calendar`：以登录用户 JWT 读取受 RLS 约束的 `user_interactions.opened_at`，按 `/api/v1/me` 中的账号时区分日，分页统计月记录与连续天数，再读取真实内容详情；已只读核实表启用 RLS 且 authenticated 用户仅能按 `user_id=auth.uid()` 读取。没有新增表或更改数据库策略。
+- 翻卡仍由服务端确认额度和揭晓；展开/请求期间忽略其他卡片点击，避免 Mutex 排队触发第二次翻卡。评分仍使用网页 1–5 星 API，仅服务端成功响应后写入评分结果并播放完成状态；保留失败回滚与重复提交保护。AI 精选空数组保持有效空状态；详情图维持 0dp 直角。
+- 新增/扩展 Android 单测覆盖私信路由合同、账号缓存键隔离、探索时区/连续天数和缩略图/原图缓存分离。Run #70 与 #72 曾暴露两组编译错误，均已修正；最终 Native workflow Run #73（ID `42853543274`，2026-11-10）成功，`testDebugUnitTest`、`lintDebug`、Debug 与 unsigned Release 构建、版本化产物准备和上传全部通过。Run：https://github.com/sunyu1590-create/fanka/actions/runs/42853543274
+- Artifact `HEIKA-Native-3-ve6c087312b98f7afc9e13e541cdf70b833e7be20`，ID `13782351519`，23,238,221 bytes，ZIP SHA-256 `2d0043108cbabd414a654356a417e6bbe8f6dd2ed1a4956dbe2a0fa25a1b7d46`，有效至 `2026-11-24 16:28 UTC`。下载：https://github.com/sunyu1590-create/fanka/actions/runs/42853543274/artifacts/13782351519
+- APK：`HEIKA-2.3.6-20-debug.apk`（21,666,299 bytes，SHA-256 `795d8504068a3d169c1bd7861ca94273b953b6a5f0e57a4fb91799c6d5df9c28`）；`HEIKA-2.3.6-20-release-unsigned.apk`（2,615,571 bytes，SHA-256 `e9ea0d7ead6b0e0fa934243de4ea4bca54b0599cc298ff093bd0a217c688c895`）。Release APK 未签名，只供检查；Artifact 中两 APK 的哈希已从下载包独立复算。
+- 本地 Gradle wrapper 仍因 `services.gradle.org` DNS `UnknownHostException` 无法下载分发包；最终源码已由 GitHub Runner 完成全套单测、Lint 与构建。没有可用 Android 设备/模拟器或测试账号，因此未验收真机帧率、旋转/进程恢复、真实网络中断、跨账号私信、双设备及完整线上端到端场景；不能把 CI 构建称为真机验收。未修改网站源码、未合并 PR、未部署生产或发布 APK。
