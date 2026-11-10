@@ -43,6 +43,28 @@ class AuthRepository @Inject constructor(
 
     suspend fun currentToken(): String? = restore()?.accessToken
 
+    /** Calls Supabase's existing Data API with the user's JWT, preserving RLS. */
+    suspend fun dataApi(path: String, method: String = "GET", body: JSONObject? = null, prefer: String? = null): Any? = withContext(Dispatchers.IO) {
+        require(path.startsWith("/") && !path.startsWith("//")) { "请求地址无效" }
+        val session = restore() ?: throw IOException("请先登录后继续")
+        val config = getConfig()
+        val builder = Request.Builder().url("${config.url}/rest/v1$path")
+            .header("apikey", config.key)
+            .header("Authorization", "Bearer ${session.accessToken}")
+            .header("Accept", "application/json")
+            .method(method, if (method == "GET" || method == "HEAD") null else (body ?: JSONObject()).toString().toRequestBody(JSON))
+        prefer?.let { builder.header("Prefer", it) }
+        val request = builder.build()
+        val response = httpClient.newCall(request).execute()
+        val raw = response.body?.use { it.string() }.orEmpty()
+        val value = if (raw.isBlank()) JSONObject() else runCatching { org.json.JSONTokener(raw).nextValue() }.getOrElse { JSONObject() }
+        if (!response.isSuccessful) {
+            val message = (value as? JSONObject)?.optString("message").orEmpty()
+            throw SupabaseHttpException(response.code, message.ifBlank { "账号数据读取失败（${response.code}）" })
+        }
+        value
+    }
+
     suspend fun signIn(email: String, password: String) = withContext(Dispatchers.IO) {
         require(email.isNotBlank() && password.isNotEmpty()) { "请输入邮箱和密码" }
         val config = getConfig()
