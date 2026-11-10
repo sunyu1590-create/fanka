@@ -15,13 +15,13 @@ Native 3.0 is the Kotlin and Jetpack Compose Android application in this directo
 - AI discovery reuses `/api/v1/ai-space` and the current category and resource data.
 - Detail, comments, rating, likes, bookmarks, creator follows, profiles, search, notification history, preferences, and progression reuse existing `/api/v1` routes.
 - Publishing uses the existing draft, media upload, topic validation, and moderation submission behavior. Draft media references are restored through the authenticated library-state API.
-- Direct messages use the existing `dm_inbox_summary`, `open_dm`, and `send_dm` database functions, with RLS and existing read-receipt records. The additive `/api/v1/messages` route is the narrow authenticated HTTP adapter used by the native UI.
+- Direct messages use the signed-in user's JWT with PostgREST/RLS and the existing `dm_inbox_summary`, `open_dm`, and `send_dm` database functions plus `dm_messages` / `dm_reads`. The website `/api/v1/messages` adapter is separate and is not used by this native client.
 - Membership is display-only because the website has no active checkout or support transaction. The UI clearly labels plan values as a preview and does not fake purchases or entitlement changes.
 - Android permission state, notification channel, in-app notification center, read synchronization, and foreground notice UI are native. Repository inspection found no configured FCM credentials, device registration endpoint, or server delivery pipeline; remote system push is not claimed as connected.
 
 ## Version and build
 
 - Application ID: `com.heika.community`
-- App version: `2.3.6` (`versionCode` 13 in the checked-in Gradle config); website version `2.40.7` is independent.
+- App version: `2.3.6` (`versionCode` 19 in the checked-in Gradle config); website version `2.40.7` is independent.
 - Build from this directory with `./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease`.
 - The HEIKA Native 3.0 Actions workflow runs Android checks and uploads versioned APK artifacts. Debug is signed with the CI debug key. Release output remains unsigned until the production signing certificate is supplied through GitHub Secrets; it is not a production upgrade package.
