@@ -71,7 +71,9 @@ private class MorphingCardClip(
             if (denominator <= 1f) 1f else ((currentX * dx + currentY * dy + currentW * dw + currentH * dh) / denominator).coerceIn(0f, 1f)
         }
         val cardRadius = with(density) { HeikaRadii.feedCard.toPx() }
-        val radius = if (isDetail) cardRadius * (1f - fraction) else cardRadius * fraction
+        // The outgoing element owns the overlay clip: feed -> detail shrinks the radius,
+        // while detail -> feed grows it back from the square detail image.
+        val radius = if (isDetail) cardRadius * fraction else cardRadius * (1f - fraction)
         return Path().apply {
             addRoundRect(RoundRect(bounds, CornerRadius(radius, radius)))
         }
