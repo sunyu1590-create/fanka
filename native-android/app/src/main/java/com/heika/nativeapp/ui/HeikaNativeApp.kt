@@ -34,6 +34,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.navigation
 import androidx.navigation.navArgument
 import coil3.ImageLoader
 import com.heika.nativeapp.auth.AccountScreen
@@ -50,7 +51,12 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.profile.ProfileScreen
 import com.heika.nativeapp.feature.profile.ProfileViewModel
 import com.heika.nativeapp.feature.profile.EditProfileScreen
-import com.heika.nativeapp.feature.profile.ExplorationCenterScreen
+import com.heika.nativeapp.feature.exploration.CoExploreScreen
+import com.heika.nativeapp.feature.exploration.ExplorationCalendarScreen
+import com.heika.nativeapp.feature.exploration.ExplorationCenterScreen
+import com.heika.nativeapp.feature.exploration.ExplorationChainsViewModel
+import com.heika.nativeapp.feature.exploration.StoryChainDetailScreen
+import com.heika.nativeapp.feature.exploration.StoryChainListScreen
 import com.heika.nativeapp.feature.profile.ManageWorksScreen
 import com.heika.nativeapp.feature.publish.PublishScreen
 import com.heika.nativeapp.feature.search.SearchScreen
@@ -267,7 +273,59 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                     EditProfileScreen(onBack = { nav.popBackStack() }, viewModel = profileViewModel)
                 }
                 composable("exploration") {
-                    ExplorationCenterScreen(onBack = { nav.popBackStack() })
+                    ExplorationCenterScreen(
+                        onBack = { nav.popBackStack() },
+                        onCalendar = { nav.navigate("exploration/calendar") },
+                        onCoExplore = { nav.navigate("exploration/co-explore?inviteCode=") },
+                        onStoryChains = { nav.navigate("exploration/chains-graph") },
+                    )
+                }
+                composable("exploration/calendar") {
+                    ExplorationCalendarScreen(
+                        onBack = { nav.popBackStack() },
+                        onPost = { record ->
+                            if (record.channel == "ai") openDestination(HeikaDestination.AiResource(record.clientId, record.postId))
+                            else openDestination(HeikaDestination.CommunityPost(record.clientId, record.postId))
+                        },
+                    )
+                }
+                composable(
+                    route = "exploration/co-explore?inviteCode={inviteCode}",
+                    arguments = listOf(navArgument("inviteCode") { type = NavType.StringType; defaultValue = "" }),
+                ) { entry ->
+                    CoExploreScreen(
+                        onBack = { nav.popBackStack() },
+                        onLogin = { nav.navigate("account") },
+                        inviteCode = entry.arguments?.getString("inviteCode")?.takeIf(String::isNotBlank),
+                        onPost = { postId ->
+                            postId.toIntOrNull()?.let { openDestination(HeikaDestination.CommunityPost(it)) }
+                                ?: openDestination(HeikaDestination.CommunityPost(0, postId))
+                        },
+                    )
+                }
+                navigation(startDestination = "exploration/chains", route = "exploration/chains-graph") {
+                    composable("exploration/chains") { entry ->
+                        val graphEntry = remember(entry) { nav.getBackStackEntry("exploration/chains-graph") }
+                        val chainsViewModel: ExplorationChainsViewModel = hiltViewModel(graphEntry)
+                        StoryChainListScreen(
+                            onBack = { nav.popBackStack() },
+                            onOpen = { id -> nav.navigate("exploration/chains/$id") },
+                            viewModel = chainsViewModel,
+                        )
+                    }
+                    composable(
+                        route = "exploration/chains/{chainId}",
+                        arguments = listOf(navArgument("chainId") { type = NavType.StringType }),
+                    ) { entry ->
+                        val graphEntry = remember(entry) { nav.getBackStackEntry("exploration/chains-graph") }
+                        val chainsViewModel: ExplorationChainsViewModel = hiltViewModel(graphEntry)
+                        StoryChainDetailScreen(
+                            chainId = entry.arguments?.getString("chainId").orEmpty(),
+                            onBack = { nav.popBackStack() },
+                            onSeedPost = { id -> openDestination(HeikaDestination.CommunityPost(0, id)) },
+                            viewModel = chainsViewModel,
+                        )
+                    }
                 }
                 composable("manage-works") {
                     val currentEntry by nav.currentBackStackEntryAsState()

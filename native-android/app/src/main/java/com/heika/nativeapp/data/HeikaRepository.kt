@@ -443,12 +443,101 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/progression", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun claimExperienceReward(level: Int): JSONObject = withContext(Dispatchers.IO) {
+        require(level in 1..10)
+        request("/api/v1/progression", method = "POST", body = JSONObject().put("level", level).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun dailyMissions(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/daily-missions", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun claimDailyMission(missionKey: String): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/daily-missions", method = "POST", body = JSONObject().put("missionKey", missionKey).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun explorationSnapshot(userId: String): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get(explorationCacheKey("center", userId))?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveExplorationSnapshot(userId: String, value: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put(explorationCacheKey("center", userId), value.toString())
+    }
+
+    suspend fun explorationCalendar(userId: String, month: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        val key = explorationCacheKey("calendar-${month ?: "current"}", userId)
+        val path = month?.let { "/api/v1/exploration-calendar?month=${encode(it)}" } ?: "/api/v1/exploration-calendar"
+        val result = request(path, authenticated = true) as? JSONObject ?: JSONObject()
+        cache.put(key, result.toString())
+        result
+    }
+
+    suspend fun cachedExplorationCalendar(userId: String, month: String? = null): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get(explorationCacheKey("calendar-${month ?: "current"}", userId))?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun explorationRoom(userId: String, code: String): JSONObject = withContext(Dispatchers.IO) {
+        val key = explorationCacheKey("co-explore-${code.uppercase()}", userId)
+        cache.get(key)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+    }
+
+    suspend fun saveExplorationRoom(userId: String, code: String, value: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put(explorationCacheKey("co-explore-${code.uppercase()}", userId), value.toString())
+    }
+
+    suspend fun createCoExploreRoom(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/co-explore", method = "POST", body = JSONObject().put("action", "create").toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun joinCoExploreRoom(code: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/co-explore", method = "POST", body = JSONObject().put("action", "join").put("code", code.uppercase()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun coExploreRoom(code: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/co-explore?code=${encode(code.uppercase())}", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun pickCoExplorePost(code: String, postId: String, note: String): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            "/api/v1/co-explore",
+            method = "POST",
+            body = JSONObject().put("action", "pick").put("code", code.uppercase()).put("postId", postId).put("note", note.take(180)).toString(),
+            authenticated = true,
+        ) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun explorationChains(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/exploration-chains", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun cachedExplorationChains(userId: String): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get(explorationCacheKey("chains", userId))?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveExplorationChains(userId: String, value: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put(explorationCacheKey("chains", userId), value.toString())
+    }
+
+    suspend fun createExplorationChain(postId: String, title: String, prompt: String, content: String): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            "/api/v1/exploration-chains",
+            method = "POST",
+            body = JSONObject().put("action", "create").put("postId", postId).put("title", title).put("prompt", prompt).put("content", content).toString(),
+            authenticated = true,
+        ) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun contributeExplorationChain(chainId: String, content: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/exploration-chains", method = "POST", body = JSONObject().put("action", "contribute").put("chainId", chainId).put("content", content).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun closeExplorationChain(chainId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/exploration-chains", method = "POST", body = JSONObject().put("action", "close").put("chainId", chainId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun explorationCandidates(): List<HeikaPost> = withContext(Dispatchers.IO) {
+        val payload = request("/api/demo/cards?mode=discover&limit=24", includeSession = true) as? JSONObject ?: JSONObject()
+        payload.optJSONArray("items").jsonObjects().map(HeikaPost::from).filter { it.cloudId.isNotBlank() && it.id > 0 }
     }
 
     suspend fun uploadImage(postId: String, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int, revisionMode: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
@@ -516,6 +605,8 @@ class HeikaRepository @Inject constructor(
         // Signed-in recommendations, following feeds, and saved-state fields differ per user.
         auth.current()?.userId ?: "public",
     ).joinToString(":")
+
+    private fun explorationCacheKey(section: String, userId: String): String = "native-exploration:$section:$userId"
 
     private suspend fun request(
         path: String,

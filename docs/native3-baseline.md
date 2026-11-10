@@ -63,8 +63,8 @@
 - AI 搜索与筛选继续复用现有分页端点；社区与 AI 各自保存筛选状态。
 - 新增 `AiResourceRulesTest` 覆盖六种资源类型、必填字段和外链校验。
 - 最新阶段 C 分支文档提交：`fd316918bf242f254ee8613a23f8b27ea852ea66`；PR #17 仍开放、未合并，目标为阶段 B 分支。PR 详情显示可合并。
-- Native workflow PR Run **#51**（ID `42794350914`）于 `2026-11-10 10:00 UTC` 成功；PR head 为 `fd316918bf242f254ee8613a23f8b27ea852ea66`，Actions 对 PR 合并校验源码执行构建。Run：https://github.com/sunyu1590-create/fanka/actions/runs/42794350914
-- 测试、Lint、Debug APK、unsigned Release APK、产物准备及上传步骤全部成功。APK 配置：`applicationId=com.heika.community`、`versionName=2.3.6`、`versionCode=16`；产物名为 `HEIKA-2.3.6-16-debug.apk` 和 `HEIKA-2.3.6-16-release-unsigned.apk`。Release 包未签名，仅供检查；Debug APK 是可安装测试包。
-- Artifact：`HEIKA-Native-3-v17271a39f77c35ebdd3008ddb5323096001be58a`，ID `13752359398`，22,862,134 bytes，ZIP SHA-256 `d07e0c134b68a43abf467b48476d003006db9c98bdac0c2a9a94654b66c377e2`，有效至 `2026-11-24 10:00 UTC`。下载页：https://github.com/sunyu1590-create/fanka/actions/runs/42794350914/artifacts/13752359398
+- 阶段 C 的 PR Run #51（ID `42794350914`）曾成功；其后最新成功构建是 Native workflow PR Run **#52**（ID `42795847117`），完成于 `2026-11-10 10:03 UTC`，对应 PR #17 head `codex/stage-c-ai-20261110` / SHA `2d503eb76f4196af89eb812f753924acf3bdc782`。Run：https://github.com/sunyu1590-create/fanka/actions/runs/42795847117
+- Run #52 的测试、Lint、Debug APK、unsigned Release APK、产物准备及上传步骤全部成功。APK 配置：`applicationId=com.heika.community`、`versionName=2.3.6`、`versionCode=16`；Release 包未签名，仅供检查；Debug APK 是可安装测试包。
+- Artifact：`HEIKA-Native-3-v57ffab3af3e2565339e8beeb351e2ab975ba4657`，ID `13755145798`，22,862,133 bytes，ZIP SHA-256 `f8bdb8c909f3e5d54b826284bb0a3f80598e012e224b310e0e1bdcc77624cf90`，有效至 `2026-11-24 10:10 UTC`。下载页：https://github.com/sunyu1590-create/fanka/actions/runs/42795847117/artifacts/13755145798
 - 本机 Gradle 测试/构建被 `services.gradle.org` DNS `UnknownHostException` 阻断；GitHub Actions 已在 Runner 完成对应测试和构建。未进行真机/模拟器、线上账号、AI 反馈提交及发布编辑审核端到端验证。
 - PR #17 的 Actions 运行由 PR 校验事件触发，Artifact 名中的 SHA 是 GitHub PR 合并校验引用；其对应 PR head 是上述 `fd3169…`，目标基线是阶段 B `e1082b9…`。未合并 PR，也未发布 APK。
