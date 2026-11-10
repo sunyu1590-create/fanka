@@ -12,11 +12,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.YearMonth
 import javax.inject.Inject
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -58,6 +61,7 @@ class ExplorationViewModel @Inject constructor(
     private var generation = 0L
     private var activeUserId: String? = null
     private var loadingUserId: String? = null
+    private var lastLoadedAtByUser = mutableMapOf<String, Long>()
 
     init {
         viewModelScope.launch {
@@ -92,6 +96,7 @@ class ExplorationViewModel @Inject constructor(
 
     private fun loadFor(userId: String, force: Boolean) = viewModelScope.launch {
         if (!force && loadingUserId == userId) return@launch
+        if (!force && mutableState.value.accountId == userId && mutableState.value.error == null && System.currentTimeMillis() - (lastLoadedAtByUser[userId] ?: 0L) < 45_000L) return@launch
         loadingUserId = userId
         val requestGeneration = ++generation
         if (mutableState.value.accountId != userId) mutableState.value = ExplorationCenterState(accountId = userId)
@@ -137,6 +142,7 @@ class ExplorationViewModel @Inject constructor(
             )
             mutableState.value = next
             repository.saveExplorationSnapshot(userId, encodeSnapshot(next, missionsJson, progressionJson, calendarJson))
+            lastLoadedAtByUser[userId] = System.currentTimeMillis()
         } catch (error: Exception) {
             if (activeUserId == userId && requestGeneration == generation) {
                 mutableState.update { it.copy(loading = false, refreshing = false, error = error.message ?: "探索数据加载失败") }
@@ -245,12 +251,17 @@ class ExplorationCalendarViewModel @Inject constructor(
     val state = mutableState.asStateFlow()
     private var activeUserId: String? = null
     private var generation = 0L
+    private var calendarLoadJob: Job? = null
+    private var calendarRequestMonth: String? = null
+    private var lastLoadedCalendarKey: String? = null
+    private var lastLoadedCalendarAt = 0L
 
     init {
         viewModelScope.launch {
             auth.session.collect { session ->
                 if (session?.userId != activeUserId) {
                     val retainedMonth = mutableState.value.month
+                    calendarRequestMonth = null
                     activeUserId = session?.userId
                     generation++
                     mutableState.value = ExplorationCalendarState(accountId = session?.userId, loading = session != null)
@@ -262,20 +273,24 @@ class ExplorationCalendarViewModel @Inject constructor(
         }
     }
 
-    fun load(month: String? = mutableState.value.month, refresh: Boolean = false) = viewModelScope.launch {
+    fun load(month: String? = mutableState.value.month, refresh: Boolean = false): Job {
+        val requestedMonth = month ?: "current"
+        if (!refresh && calendarLoadJob?.isActive == true && calendarRequestMonth == requestedMonth) return calendarLoadJob!!
+        calendarRequestMonth = requestedMonth
+        val requestGeneration = ++generation
+        val job = viewModelScope.launch {
         val session = runCatching { auth.current() }.getOrNull()
         if (session == null) {
             activeUserId = null
-            generation++
             mutableState.value = ExplorationCalendarState(loading = false, error = "登录后查看探索日历")
             return@launch
         }
         if (activeUserId != session.userId) {
             activeUserId = session.userId
-            generation++
             mutableState.value = ExplorationCalendarState(accountId = session.userId, loading = true)
         }
-        val requestGeneration = ++generation
+        val loadedKey = "${session.userId}:$requestedMonth"
+        if (!refresh && lastLoadedCalendarKey == loadedKey && System.currentTimeMillis() - lastLoadedCalendarAt < 45_000L && mutableState.value.error == null) return@launch
         val cached = repository.cachedExplorationCalendar(session.userId, month)
         if (!refresh && cached != null && activeUserId == session.userId && requestGeneration == generation) {
             mutableState.value = parseCalendar(cached, session.userId).copy(loading = false, refreshing = true)
@@ -301,11 +316,17 @@ class ExplorationCalendarViewModel @Inject constructor(
                     selectedDate = mutableState.value.selectedDate?.takeIf { date -> date.startsWith(response.optString("month")) }
                         ?: response.optString("today").takeIf(String::isNotBlank),
                 )
+                lastLoadedCalendarKey = loadedKey
+                lastLoadedCalendarAt = System.currentTimeMillis()
             }
             .onFailure { error ->
                 if (activeUserId == session.userId && requestGeneration == generation) mutableState.update { it.copy(loading = false, refreshing = false, error = error.message ?: "日历加载失败") }
             }
         if (activeUserId == session.userId && requestGeneration == generation) mutableState.update { it.copy(loading = false, refreshing = false) }
+        }
+        calendarLoadJob = job
+        job.invokeOnCompletion { if (calendarLoadJob == job) calendarRequestMonth = null }
+        return job
     }
 
     fun selectDate(date: String) = mutableState.update { it.copy(selectedDate = date) }
@@ -370,6 +391,10 @@ class CoExploreViewModel @Inject constructor(
     private var activeUserId: String? = null
     private var generation = 0L
     private var requestedInviteCode: String? = null
+    private var roomRequestGeneration = 0L
+    private val candidatesMutex = Mutex()
+    private var candidateCacheUserId: String? = null
+    private var candidateCacheAt = 0L
 
     init {
         viewModelScope.launch {
@@ -377,6 +402,9 @@ class CoExploreViewModel @Inject constructor(
                 if (session?.userId != activeUserId) {
                     activeUserId = session?.userId
                     generation++
+                    roomRequestGeneration++
+                    candidateCacheUserId = null
+                    candidateCacheAt = 0L
                     mutableState.value = CoExploreRoomState(accountId = session?.userId, loading = session != null)
                     if (session != null) initialize(requestedInviteCode)
                 }
@@ -398,7 +426,12 @@ class CoExploreViewModel @Inject constructor(
             mutableState.value = CoExploreRoomState(accountId = session.userId, loading = true)
         }
         val token = ++generation
-        val candidates = runCatching { repository.communityPage(FeedFilter(), FeedPageKey()).posts.filter { it.cloudId.isNotBlank() } }.getOrDefault(emptyList())
+        val candidates = candidatesMutex.withLock {
+            if (candidateCacheUserId == session.userId && System.currentTimeMillis() - candidateCacheAt < 60_000L) mutableState.value.candidates
+            else runCatching { repository.communityPage(FeedFilter(), FeedPageKey()).posts.filter { it.cloudId.isNotBlank() } }
+                .getOrDefault(emptyList())
+                .also { candidateCacheUserId = session.userId; candidateCacheAt = System.currentTimeMillis() }
+        }
         if (activeUserId != session.userId || token != generation) return@launch
         mutableState.update { it.copy(candidates = candidates, loading = false) }
         if (!inviteCode.isNullOrBlank()) join(inviteCode)
@@ -410,6 +443,7 @@ class CoExploreViewModel @Inject constructor(
 
     fun create() = viewModelScope.launch {
         val userId = mutableState.value.accountId ?: return@launch
+        if (mutableState.value.busy) return@launch
         beginAction()
         runCatching { repository.createCoExploreRoom() }
             .onSuccess { result ->
@@ -423,6 +457,7 @@ class CoExploreViewModel @Inject constructor(
 
     fun join(code: String = mutableState.value.joiningCode) = viewModelScope.launch {
         val userId = mutableState.value.accountId ?: return@launch
+        if (mutableState.value.busy) return@launch
         val invite = code.trim().uppercase()
         if (invite.length < 6) { mutableState.update { it.copy(error = "请输入有效邀请码") }; return@launch }
         beginAction()
@@ -443,7 +478,7 @@ class CoExploreViewModel @Inject constructor(
         val userId = current.accountId ?: return@launch
         val code = current.inviteCode
         val postId = current.selectedPostId ?: return@launch
-        if (code.isBlank() || current.ownPick || current.guestId.isNullOrBlank()) return@launch
+        if (current.busy || code.isBlank() || current.ownPick || current.guestId.isNullOrBlank()) return@launch
         beginAction()
         runCatching { repository.pickCoExplorePost(code, postId, current.note) }
             .onSuccess {
@@ -454,15 +489,16 @@ class CoExploreViewModel @Inject constructor(
 
     private suspend fun loadRoom(code: String, notice: String?) {
         val userId = mutableState.value.accountId ?: return
+        val requestId = ++roomRequestGeneration
         val cached = repository.explorationRoom(userId, code)
-        if (cached.has("room") && activeUserId == userId) applyRoom(cached, userId, code, notice = null)
+        if (requestId == roomRequestGeneration && cached.has("room") && activeUserId == userId) applyRoom(cached, userId, code, notice = null)
         runCatching { repository.coExploreRoom(code) }
             .onSuccess { room ->
-                if (activeUserId != userId) return@onSuccess
+                if (activeUserId != userId || requestId != roomRequestGeneration) return@onSuccess
                 applyRoom(room, userId, code, notice)
             }
             .onFailure { error ->
-                if (activeUserId == userId) {
+                if (activeUserId == userId && requestId == roomRequestGeneration) {
                     val message = error.message ?: "房间加载失败"
                     val expired = message.contains("已过期") || message.contains("不存在或已过期")
                     mutableState.update { it.copy(busy = false, loading = false, expired = expired, error = message) }
@@ -540,11 +576,16 @@ class ExplorationChainsViewModel @Inject constructor(
     val state = mutableState.asStateFlow()
     private var activeUserId: String? = null
     private var generation = 0L
+    private var chainsLoadJob: Job? = null
+    private var chainsLoadUserId: String? = null
+    private var lastChainsLoadUserId: String? = null
+    private var lastChainsLoadAt = 0L
 
     init {
         viewModelScope.launch {
             auth.session.collect { session ->
                 if (session?.userId != activeUserId) {
+                    chainsLoadUserId = null
                     activeUserId = session?.userId
                     generation++
                     mutableState.value = ExplorationChainsState(accountId = session?.userId, loading = session != null)
@@ -554,20 +595,22 @@ class ExplorationChainsViewModel @Inject constructor(
         }
     }
 
-    fun load(force: Boolean = false) = viewModelScope.launch {
+    fun load(force: Boolean = false): Job {
+        if (!force && chainsLoadJob?.isActive == true && chainsLoadUserId == activeUserId) return chainsLoadJob!!
+        chainsLoadUserId = activeUserId
+        val token = ++generation
+        val job = viewModelScope.launch {
         val session = runCatching { auth.current() }.getOrNull()
         if (session == null) {
             activeUserId = null
-            generation++
             mutableState.value = ExplorationChainsState(loading = false, error = "登录后查看故事接龙")
             return@launch
         }
         if (activeUserId != session.userId) {
             activeUserId = session.userId
-            generation++
             mutableState.value = ExplorationChainsState(accountId = session.userId)
         }
-        val token = ++generation
+        if (!force && lastChainsLoadUserId == session.userId && System.currentTimeMillis() - lastChainsLoadAt < 45_000L && mutableState.value.error == null) return@launch
         val cached = repository.cachedExplorationChains(session.userId)
         if (!force && cached != null && activeUserId == session.userId && token == generation) {
             mutableState.value = parseChains(cached, session.userId).copy(loading = false, refreshing = true)
@@ -582,9 +625,15 @@ class ExplorationChainsViewModel @Inject constructor(
             val parsed = parseChains(chains, session.userId).copy(candidates = candidates)
             mutableState.value = parsed
             repository.saveExplorationChains(session.userId, chains)
+            lastChainsLoadUserId = session.userId
+            lastChainsLoadAt = System.currentTimeMillis()
         } catch (error: Exception) {
             if (activeUserId == session.userId && token == generation) mutableState.update { it.copy(loading = false, refreshing = false, error = error.message ?: "接龙加载失败") }
         }
+        }
+        chainsLoadJob = job
+        job.invokeOnCompletion { if (chainsLoadJob == job) chainsLoadUserId = null }
+        return job
     }
 
     fun selectPost(id: String) = mutableState.update { it.copy(selectedPostId = id) }

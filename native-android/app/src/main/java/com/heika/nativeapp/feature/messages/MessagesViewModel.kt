@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
@@ -48,6 +49,10 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     private var observedUserId: String? = null
     private var pollingJob: Job? = null
     private val sendMutex = kotlinx.coroutines.sync.Mutex()
+    private val inboxMutex = Mutex()
+    private val conversationMutex = Mutex()
+    private var conversationGeneration = 0L
+    private var retryReadFor: String? = null
 
     init {
         viewModelScope.launch {
@@ -56,6 +61,8 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
                 val currentUserId = mutableState.value.userId
                 if (currentUserId != session?.userId && observedUserId != session?.userId) {
                     pollingJob?.cancel()
+                    conversationGeneration++
+                    retryReadFor = null
                     observedUserId = session?.userId
                     mutableState.value = MessagesState(loading = session != null, userId = session?.userId, error = if (session == null) "登录后查看私信" else null)
                     if (session != null) load()
@@ -74,21 +81,41 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
             mutableState.value = MessagesState(loading = false, error = "登录后查看私信")
             return@launch
         }
-        mutableState.update { it.copy(userId = session.userId, loading = it.conversations.isEmpty(), error = null) }
+        if (!inboxMutex.tryLock()) return@launch
         val requestUser = session.userId
-        runCatching { repository.inbox() }.onSuccess { data ->
-            if (runCatching { auth.current()?.userId }.getOrNull() != requestUser) return@onSuccess
-            val items = data.optJSONArray("items").jsonObjects().map { row ->
-                val peer = parsePeer(row.optJSONObject("peer") ?: JSONObject())
-                NativeConversation(row.optString("conversation_id"), peer, row.optString("latest_body"), row.optInt("unread"), row.optString("created_at"))
+        try {
+            if (mutableState.value.userId != requestUser) {
+                conversationGeneration++
+                mutableState.value = MessagesState(userId = requestUser, loading = true)
             }
-            mutableState.update { it.copy(conversations = items, loading = false, error = null) }
-            if (!initialConversation.isNullOrBlank() && mutableState.value.activeId != initialConversation) {
-                val existing = items.firstOrNull { it.id == initialConversation }
-                mutableState.update { it.copy(activeId = initialConversation, activePeer = existing?.peer) }
-                loadConversation(initialConversation)
+            if (mutableState.value.conversations.isEmpty()) {
+                val cached = runCatching { repository.cachedInbox(requestUser) }.getOrNull()
+                if (cached != null && mutableState.value.userId == requestUser) {
+                    mutableState.update { it.copy(conversations = parseInbox(cached), loading = false) }
+                }
             }
-        }.onFailure { error -> mutableState.update { it.copy(loading = false, error = error.message ?: "消息列表加载失败") } }
+            mutableState.update { it.copy(userId = requestUser, loading = it.conversations.isEmpty(), error = null) }
+            runCatching { repository.inbox() }
+                .onSuccess { data ->
+                    if (runCatching { auth.current()?.userId }.getOrNull() != requestUser) return@onSuccess
+                    val items = parseInbox(data)
+                    mutableState.update { it.copy(conversations = items, loading = false, error = null) }
+                    runCatching { repository.saveInboxCache(requestUser, data) }
+                    if (!initialConversation.isNullOrBlank() && mutableState.value.activeId != initialConversation) {
+                        val existing = items.firstOrNull { it.id == initialConversation }
+                        conversationGeneration++
+                        mutableState.update { it.copy(activeId = initialConversation, activePeer = existing?.peer) }
+                        loadConversation(initialConversation)
+                    }
+                }
+                .onFailure { error ->
+                    if (runCatching { auth.current()?.userId }.getOrNull() == requestUser) {
+                        mutableState.update { it.copy(loading = false, error = error.message ?: "消息列表加载失败") }
+                    }
+                }
+        } finally {
+            inboxMutex.unlock()
+        }
     }
 
     fun refreshActive() = viewModelScope.launch {
@@ -102,7 +129,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
             while (true) {
                 val active = mutableState.value.activeId
                 if (active == null) load() else refreshActive()
-                delay(if (active == null) 20_000 else 6_000)
+                delay(if (active == null) 20_000 else 12_000)
             }
         }
     }
@@ -110,20 +137,43 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     fun stopForegroundSync() { pollingJob?.cancel(); pollingJob = null }
 
     private suspend fun loadConversation(id: String) {
+        if (!conversationMutex.tryLock()) return
+        val requestGeneration = conversationGeneration
+        val requestUserId = mutableState.value.userId
+        try {
         runCatching { repository.conversation(id) }.onSuccess { data ->
+            if (requestGeneration != conversationGeneration || mutableState.value.activeId != id || mutableState.value.userId != requestUserId) return@onSuccess
             val rows = data.optJSONArray("items").jsonObjects().map { row ->
                 NativeMessage(row.optString("id"), row.optString("conversation_id"), row.optString("sender_id"), row.optString("body"), row.optString("created_at"))
             }
+            val existingIds = mutableState.value.messages.asSequence().filter { it.conversationId == id }.map { it.id }.toSet()
+            val userId = requestUserId
+            val receivedNewMessage = rows.any { it.senderId != userId && it.id !in existingIds }
             mutableState.update { state ->
                 if (state.activeId != id) return@update state
                 val messages = if (state.activeId == id) (state.messages + rows).distinctBy { it.id }.sortedBy { it.createdAt } else rows
                 state.copy(messages = messages, historyHasMore = data.optBoolean("has_more"), loadingHistory = false, error = null)
             }
-            if (mutableState.value.activeId == id) {
+            if (receivedNewMessage || retryReadFor == id) {
                 runCatching { repository.markConversationRead(id) }
-                load()
+                    .onSuccess {
+                        retryReadFor = null
+                        mutableState.update { state ->
+                            if (state.activeId != id) state else state.copy(conversations = state.conversations.map { row -> if (row.id == id) row.copy(unread = 0) else row })
+                        }
+                    }
+                    .onFailure { retryReadFor = id }
             }
-        }.onFailure { error -> mutableState.update { it.copy(error = error.message ?: "会话加载失败") } }
+        }.onFailure { error ->
+            if (requestGeneration == conversationGeneration && mutableState.value.activeId == id) {
+                mutableState.update { it.copy(error = error.message ?: "会话加载失败") }
+            }
+        }
+        } finally {
+            conversationMutex.unlock()
+            val active = mutableState.value.activeId
+            if (requestGeneration != conversationGeneration && active != null) loadConversation(active)
+        }
     }
 
     fun loadOlderMessages() = viewModelScope.launch {
@@ -168,6 +218,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
                 if (id.isBlank()) mutableState.update { it.copy(loading = false, error = "会话未创建") }
                 else {
                     mutableState.update { it.copy(activeId = id, activePeer = peer, messages = emptyList(), loading = false) }
+                    conversationGeneration++
                     loadConversation(id)
                     load()
                 }
@@ -186,11 +237,17 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     }
 
     fun openConversation(item: NativeConversation) = viewModelScope.launch {
+        conversationGeneration++
+        retryReadFor = null
         mutableState.update { it.copy(activeId = item.id, activePeer = item.peer, messages = emptyList(), loading = true, error = null) }
         loadConversation(item.id)
     }
 
-    fun closeConversation() = mutableState.update { it.copy(activeId = null, activePeer = null, messages = emptyList(), draft = "") }
+    fun closeConversation() {
+        conversationGeneration++
+        retryReadFor = null
+        mutableState.update { it.copy(activeId = null, activePeer = null, messages = emptyList(), draft = "") }
+    }
     fun setDraft(value: String) = mutableState.update { it.copy(draft = value.take(2000)) }
 
     fun send() = viewModelScope.launch {
@@ -220,4 +277,9 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     }
 
     private fun parsePeer(json: JSONObject) = NativePeer(json.optString("id"), json.optString("nickname").ifBlank { "探索者" }, json.optString("avatar_url").takeIf(String::isNotBlank), json.optString("bio"))
+
+    private fun parseInbox(data: JSONObject): List<NativeConversation> = data.optJSONArray("items").jsonObjects().map { row ->
+        val peer = parsePeer(row.optJSONObject("peer") ?: JSONObject())
+        NativeConversation(row.optString("conversation_id"), peer, row.optString("latest_body"), row.optInt("unread"), row.optString("created_at"))
+    }
 }

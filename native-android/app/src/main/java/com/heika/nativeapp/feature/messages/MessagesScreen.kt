@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -45,6 +46,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.LocalHeikaImageLoader
 
 @Composable
 fun MessagesScreen(
@@ -58,6 +60,9 @@ fun MessagesScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val inboxListState = rememberLazyListState()
+    val peopleListState = rememberLazyListState()
+    val conversationListState = rememberLazyListState()
     LaunchedEffect(initialConversationId, initialPeerId) {
         if (!initialPeerId.isNullOrBlank()) {
             viewModel.load()
@@ -98,7 +103,7 @@ fun MessagesScreen(
                 }
                 if (state.query.length >= 2 && state.people.isNotEmpty()) {
                     Text("用户", Modifier.padding(start = 21.dp, top = 14.dp, bottom = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                    LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                    LazyColumn(state = peopleListState, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
                         items(state.people, key = { it.id }) { peer -> PeerRow(peer) { viewModel.openPeer(peer) } }
                     }
                 } else if (state.loading && state.conversations.isEmpty()) {
@@ -109,7 +114,7 @@ fun MessagesScreen(
                     }
                     Spacer(Modifier.weight(1f))
                 } else {
-                    LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 8.dp)) {
+                    LazyColumn(state = inboxListState, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 8.dp)) {
                         items(state.conversations, key = { it.id }) { item ->
                             Row(Modifier.animateItem()) { ConversationRow(item) { viewModel.openConversation(item) } }
                         }
@@ -120,7 +125,7 @@ fun MessagesScreen(
             val peer = state.activePeer
             BackHeader(peer?.name ?: "私信", { viewModel.closeConversation() }, trailing = if (peer != null) ({ Text("主页", Modifier.clickable { onProfile(peer.id) }.padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) }) else null)
             state.error?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), reverseLayout = false, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            LazyColumn(state = conversationListState, modifier = Modifier.weight(1f).fillMaxWidth(), reverseLayout = false, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 if (state.historyHasMore) item {
                     Text(if (state.loadingHistory) "正在加载…" else "加载更早消息", Modifier.fillMaxWidth().clickable(enabled = !state.loadingHistory) { viewModel.loadOlderMessages() }.padding(9.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                 }
@@ -172,6 +177,6 @@ private fun PeerRow(peer: NativePeer, onClick: () -> Unit) {
 
 @Composable
 private fun PeerAvatar(peer: NativePeer) {
-    if (peer.avatar != null) AsyncImage(peer.avatar, peer.name, modifier = Modifier.size(43.dp).clip(CircleShape))
+    if (peer.avatar != null) AsyncImage(peer.avatar, peer.name, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(43.dp).clip(CircleShape))
     else Text(peer.name.take(1), Modifier.size(43.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface).padding(top = 11.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
 }

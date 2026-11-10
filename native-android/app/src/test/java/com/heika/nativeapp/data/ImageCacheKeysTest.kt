@@ -18,4 +18,12 @@ class ImageCacheKeysTest {
         val updated = imageCacheKey("post-1", "https://moonclean.shop/media/b-480.webp?token=old", "feed-thumb")
         assertNotEquals(first, updated)
     }
+
+    @Test
+    fun imageVariantsUseIndependentCacheEntries() {
+        val image = "https://moonclean.shop/media/a.webp?token=current"
+        val thumbnail = imageCacheKey("post-1", image, "feed-thumb")
+        val original = imageCacheKey("post-1", image, "detail-full-0")
+        assertNotEquals(thumbnail, original)
+    }
 }

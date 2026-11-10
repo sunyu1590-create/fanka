@@ -48,6 +48,7 @@ import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.ViewModel
@@ -107,7 +108,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        AsyncImage(profile.avatar, "个人头像", contentScale = ContentScale.Crop, modifier = Modifier.size(88.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { imagePicker.launch("image/*") })
+                        AsyncImage(profile.avatar, "个人头像", imageLoader = LocalHeikaImageLoader.current, contentScale = ContentScale.Crop, modifier = Modifier.size(88.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { imagePicker.launch("image/*") })
                         Text("更换头像 · JPEG / PNG / WebP，最大 2 MB", Modifier.clickable { imagePicker.launch("image/*") }.padding(10.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                     }
                 }

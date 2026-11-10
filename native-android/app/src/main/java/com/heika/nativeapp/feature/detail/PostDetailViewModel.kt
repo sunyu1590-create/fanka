@@ -32,6 +32,7 @@ data class PostDetailState(
     val commentsHasMore: Boolean = false,
     val loadingMoreComments: Boolean = false,
     val loading: Boolean = true,
+    val refreshing: Boolean = false,
     val sending: Boolean = false,
     val liked: Boolean = false,
     val saved: Boolean = false,
@@ -64,63 +65,87 @@ class PostDetailViewModel @Inject constructor(
     private var loadedId: String? = null
     private var requestVersion = 0
     private var aiVersionRequest = 0
+    private var requestedVersionsFor: String? = null
     private var commentPage = 0
+    private var requestedKey: String? = null
 
-    fun load(post: HeikaPost) {
+    fun load(post: HeikaPost, force: Boolean = false) {
         val key = post.cloudId.ifBlank { post.id.toString() }
-        if (loadedId == key && mutableState.value.post != null) return
+        if (!force && loadedId == key && mutableState.value.post != null) return
         loadedId = key
+        requestedKey = key
         val version = ++requestVersion
         aiVersionRequest++
-        mutableState.value = PostDetailState(post = post, loading = true)
+        mutableState.value = PostDetailState(post = post, loading = false, refreshing = true)
         if (post.channel == "ai") loadAiVersions(post)
         viewModelScope.launch {
             runCatching { repository.postDetail(post) }
                 .onSuccess { detail ->
                     if (version != requestVersion) return@onSuccess
-                    mutableState.update { it.copy(post = detail, loading = false, error = null) }
-                    loadComments(detail)
-                    loadInteractions(detail)
+                    mutableState.update { it.copy(post = detail, loading = false, refreshing = false, error = null) }
+                    loadComments(detail, version)
+                    loadInteractions(detail, version)
                 }
-                .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(loading = false, error = error.message ?: "内容暂时无法加载") } }
+                .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(loading = false, refreshing = false, error = error.message ?: "内容暂时无法加载") } }
         }
     }
 
-    fun loadByKey(key: String) {
-        if (loadedId == key && mutableState.value.post != null) return
+    fun loadByKey(key: String, force: Boolean = false) {
+        if (!force && loadedId == key && mutableState.value.post != null) return
         loadedId = key
+        requestedKey = key
         val version = ++requestVersion
         aiVersionRequest++
         mutableState.value = PostDetailState(loading = true)
         viewModelScope.launch {
+            runCatching { repository.cachedPostDetail(key) }.getOrNull()?.let { cached ->
+                if (version == requestVersion) {
+                    mutableState.update { it.copy(post = cached, loading = false, refreshing = true, error = null) }
+                    if (cached.channel == "ai") loadAiVersions(cached)
+                }
+            }
             runCatching { repository.postDetailByKey(key) }
                 .onSuccess { detail ->
                     if (version != requestVersion) return@onSuccess
-                    mutableState.update { it.copy(post = detail, loading = false, error = null) }
-                    loadComments(detail)
-                    loadInteractions(detail)
+                    mutableState.update { it.copy(post = detail, loading = false, refreshing = false, error = null) }
+                    loadComments(detail, version)
+                    loadInteractions(detail, version)
                     if (detail.channel == "ai") loadAiVersions(detail)
                 }
-                .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(loading = false, error = error.message ?: "内容暂时无法加载") } }
+                .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(loading = false, refreshing = false, error = error.message ?: "内容暂时无法加载") } }
         }
     }
 
-    fun reload() { mutableState.value.post?.let { loadedId = null; load(it) } }
+    fun reload() {
+        val key = requestedKey ?: return
+        if (mutableState.value.post != null) load(mutableState.value.post!!, force = true) else loadByKey(key, force = true)
+    }
 
-    fun loadAiVersions(post: HeikaPost? = mutableState.value.post) {
+    fun loadAiVersions(post: HeikaPost? = mutableState.value.post, force: Boolean = false) {
         val resource = post ?: return
+        val requestedPostId = resource.cloudId.ifBlank { resource.id.toString() }
+        if (!force && requestedVersionsFor == requestedPostId) return
+        requestedVersionsFor = requestedPostId
         val requestId = ++aiVersionRequest
         viewModelScope.launch {
         if (resource.channel != "ai" || !isUuid(resource.cloudId)) return@launch
-        mutableState.update { it.copy(aiVersionsLoading = true, aiVersionsError = null) }
+        val resourceKey = resource.cloudId.ifBlank { resource.id.toString() }
+        val cached = runCatching { repository.cachedAiResourceVersions(resource.cloudId) }.getOrNull()
+        if (requestId != aiVersionRequest || mutableState.value.post?.let { it.cloudId.ifBlank { it.id.toString() } } != resourceKey) return@launch
+        if (cached != null) mutableState.update { it.copy(aiVersions = cached, aiVersionsLoading = false, aiVersionsError = null) }
+        else mutableState.update { it.copy(aiVersionsLoading = true, aiVersionsError = null) }
         runCatching { repository.aiResourceVersions(resource.cloudId) }
-            .onSuccess { versions -> if (requestId == aiVersionRequest) mutableState.update { it.copy(aiVersions = versions, aiVersionsLoading = false) } }
-            .onFailure { error -> if (requestId == aiVersionRequest) mutableState.update { it.copy(aiVersionsLoading = false, aiVersionsError = error.message ?: "版本记录加载失败") } }
+            .onSuccess { versions -> if (requestId == aiVersionRequest && mutableState.value.post?.let { it.cloudId.ifBlank { it.id.toString() } } == resourceKey) {
+                mutableState.update { it.copy(aiVersions = versions, aiVersionsLoading = false, aiVersionsError = null) }
+                runCatching { repository.saveAiResourceVersions(resource.cloudId, versions) }
+            } }
+            .onFailure { error -> if (requestId == aiVersionRequest && mutableState.value.post?.let { it.cloudId.ifBlank { it.id.toString() } } == resourceKey) mutableState.update { it.copy(aiVersionsLoading = false, aiVersionsError = if (cached == null) error.message ?: "版本记录加载失败" else null) } }
         }
     }
 
     fun submitAiFeedback(kind: String, details: String) = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
+        val version = requestVersion
         if (post.channel != "ai") return@launch
         if (runCatching { auth.current() != null }.getOrDefault(false).not()) {
             mutableState.update { it.copy(notice = "登录后可以提交资源反馈") }
@@ -129,11 +154,11 @@ class PostDetailViewModel @Inject constructor(
         if (mutableState.value.aiFeedbackSending) return@launch
         mutableState.update { it.copy(aiFeedbackSending = true, aiFeedbackSubmitted = false, error = null) }
         runCatching { repository.submitAiResourceFeedback(post.cloudId, kind, details) }
-            .onSuccess { mutableState.update { it.copy(aiFeedbackSending = false, aiFeedbackSubmitted = true, notice = "反馈已提交，管理员会核查") } }
-            .onFailure { error -> mutableState.update { it.copy(aiFeedbackSending = false, error = error.message ?: "反馈提交失败") } }
+            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(aiFeedbackSending = false, aiFeedbackSubmitted = true, notice = "反馈已提交，管理员会核查") } }
+            .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(aiFeedbackSending = false, error = error.message ?: "反馈提交失败") } }
     }
 
-    private fun loadComments(post: HeikaPost) = viewModelScope.launch {
+    private fun loadComments(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch {
         if (!isUuid(post.cloudId)) return@launch
         commentPage = 0
         runCatching { repository.comments(post.cloudId, 1) }.onSuccess { data ->
@@ -141,34 +166,39 @@ class PostDetailViewModel @Inject constructor(
                 val author = row.optJSONObject("author")
                 NativeComment(row.optString("id"), row.optString("parent_id").takeIf(String::isNotBlank), row.optString("body"), row.optString("author_id"), author?.optString("nickname").orEmpty().ifBlank { "探索者" }, row.optString("created_at"))
             }
-            commentPage = 1
-            mutableState.update { it.copy(comments = rows, commentsHasMore = data.optBoolean("has_more"), loadingMoreComments = false) }
-        }.onFailure { error -> mutableState.update { it.copy(error = error.message ?: "评论暂时无法加载") } }
+            if (version == requestVersion) {
+                commentPage = 1
+                mutableState.update { it.copy(comments = rows, commentsHasMore = data.optBoolean("has_more"), loadingMoreComments = false) }
+            }
+        }.onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(error = error.message ?: "评论暂时无法加载") } }
     }
 
     fun loadMoreComments() = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
+        val version = requestVersion
         if (!isUuid(post.cloudId) || !mutableState.value.commentsHasMore || mutableState.value.loadingMoreComments) return@launch
         val next = commentPage + 1
         mutableState.update { it.copy(loadingMoreComments = true) }
         runCatching { repository.comments(post.cloudId, next) }.onSuccess { data ->
+            if (version != requestVersion || mutableState.value.post?.cloudId != post.cloudId) return@onSuccess
             val rows = data.optJSONArray("items").jsonObjects().map { row ->
                 val author = row.optJSONObject("author")
                 NativeComment(row.optString("id"), row.optString("parent_id").takeIf(String::isNotBlank), row.optString("body"), row.optString("author_id"), author?.optString("nickname").orEmpty().ifBlank { "探索者" }, row.optString("created_at"))
             }
             commentPage = next
             mutableState.update { state -> state.copy(comments = (state.comments + rows).distinctBy { it.id }, commentsHasMore = data.optBoolean("has_more"), loadingMoreComments = false) }
-        }.onFailure { error -> mutableState.update { it.copy(loadingMoreComments = false, error = error.message ?: "更多评论加载失败") } }
+        }.onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(loadingMoreComments = false, error = error.message ?: "更多评论加载失败") } }
     }
 
-    private fun loadInteractions(post: HeikaPost) = viewModelScope.launch {
+    private fun loadInteractions(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch {
         val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
         val state = runCatching { repository.interactionState(post.id) }.getOrDefault(JSONObject())
         val rating = runCatching { repository.ratingState(post.id) }.getOrDefault(JSONObject())
+        if (version != requestVersion) return@launch
         mutableState.update { it.copy(liked = signedIn && state.optBoolean("liked"), saved = signedIn && state.optBoolean("saved"), rating = rating.optInt("myRating").takeIf { value -> value in 1..5 }, average = rating.optDouble("average").takeIf { value -> value > 0 }, ratingCount = rating.optInt("count")) }
         val authorId = post.authorId
         if (signedIn && authorId != null) {
-            runCatching { repository.creatorFollowState(authorId) }.onSuccess { follow -> mutableState.update { it.copy(following = follow.optBoolean("following")) } }
+            runCatching { repository.creatorFollowState(authorId) }.onSuccess { follow -> if (version == requestVersion) mutableState.update { it.copy(following = follow.optBoolean("following")) } }
         }
     }
 
@@ -177,6 +207,7 @@ class PostDetailViewModel @Inject constructor(
 
     private fun toggleInteraction(action: String) = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
+        val version = requestVersion
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
             mutableState.update { it.copy(notice = "请先登录后继续") }
             return@launch
@@ -186,12 +217,13 @@ class PostDetailViewModel @Inject constructor(
         val saved = if (action == "bookmark") !old.saved else old.saved
         mutableState.update { it.copy(liked = liked, saved = saved, error = null, notice = null) }
         runCatching { repository.setPostInteraction(post.id, action, if (action == "like") liked else saved) }
-            .onFailure { error -> mutableState.update { it.copy(liked = old.liked, saved = old.saved, error = error.message ?: "操作失败") } }
+            .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(liked = old.liked, saved = old.saved, error = error.message ?: "操作失败") } }
     }
 
     fun rate(value: Int) = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
         val old = mutableState.value
+        val version = requestVersion
         if (old.ratingSending || value !in 1..5) return@launch
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
             mutableState.update { it.copy(notice = "登录后可以为内容评分") }
@@ -199,6 +231,7 @@ class PostDetailViewModel @Inject constructor(
         }
         mutableState.update { it.copy(ratingSending = true, error = null, notice = null) }
         runCatching { repository.ratePost(post.id, value) }.onSuccess { result ->
+            if (version != requestVersion) return@onSuccess
             val awarded = result.optJSONObject("experience")?.optInt("awarded", 0) ?: 0
             mutableState.update {
                 it.copy(
@@ -211,21 +244,24 @@ class PostDetailViewModel @Inject constructor(
                     notice = if (awarded > 0) "评分已保存 · +$awarded EXP" else "评分已保存",
                 )
             }
-        }.onFailure { error -> mutableState.update { it.copy(rating = old.rating, ratingSending = false, error = error.message ?: "评分失败") } }
+        }.onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(rating = old.rating, ratingSending = false, error = error.message ?: "评分失败") } }
     }
 
     fun toggleFollow() = viewModelScope.launch {
-        val id = mutableState.value.post?.authorId ?: return@launch
+        val post = mutableState.value.post ?: return@launch
+        val id = post.authorId ?: return@launch
+        val version = requestVersion
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
             mutableState.update { it.copy(notice = "登录后可以关注创作者") }
             return@launch
         }
-        runCatching { repository.toggleCreatorFollow(id) }.onSuccess { result -> mutableState.update { it.copy(following = result.optBoolean("following"), notice = if (result.optBoolean("following")) "已关注" else "已取消关注") } }
-            .onFailure { error -> mutableState.update { it.copy(error = error.message ?: "关注操作失败") } }
+        runCatching { repository.toggleCreatorFollow(id) }.onSuccess { result -> if (version == requestVersion) mutableState.update { it.copy(following = result.optBoolean("following"), notice = if (result.optBoolean("following")) "已关注" else "已取消关注") } }
+            .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(error = error.message ?: "关注操作失败") } }
     }
 
     fun comment(body: String, parentId: String? = null) = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
+        val version = requestVersion
         if (!isUuid(post.cloudId)) {
             mutableState.update { it.copy(error = "这篇内容暂不支持评论") }
             return@launch
@@ -239,15 +275,17 @@ class PostDetailViewModel @Inject constructor(
         mutableState.update { it.copy(sending = true, error = null) }
         runCatching { repository.addComment(post.cloudId, text, parentId) }
             .onSuccess { item ->
+                if (version != requestVersion) return@onSuccess
                 val author = item.optJSONObject("author")
                 val comment = NativeComment(item.optString("id"), item.optString("parent_id").takeIf(String::isNotBlank), item.optString("body"), item.optString("author_id"), author?.optString("nickname").orEmpty().ifBlank { "我" }, item.optString("created_at"))
                 mutableState.update { it.copy(comments = listOf(comment) + it.comments, sending = false, notice = "评论已发送", commentSubmitted = it.commentSubmitted + 1) }
             }
-            .onFailure { error -> mutableState.update { it.copy(sending = false, error = error.message ?: "评论发送失败") } }
+            .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(sending = false, error = error.message ?: "评论发送失败") } }
     }
 
     fun report(reason: String, note: String) = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
+        val version = requestVersion
         if (!isUuid(post.cloudId)) {
             mutableState.update { it.copy(error = "该内容暂不支持举报") }
             return@launch
@@ -257,8 +295,9 @@ class PostDetailViewModel @Inject constructor(
             return@launch
         }
         runCatching { repository.reportPost(post.cloudId, reason, note) }.onSuccess { result ->
+            if (version != requestVersion) return@onSuccess
             mutableState.update { it.copy(notice = if (result.optBoolean("duplicate")) "你已举报过这篇内容，平台会继续处理" else "举报已提交，平台会进行人工复核") }
-        }.onFailure { error -> mutableState.update { it.copy(error = error.message ?: "举报提交失败") } }
+        }.onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(error = error.message ?: "举报提交失败") } }
     }
 
     private fun isUuid(value: String) = value.matches(Regex("(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"))

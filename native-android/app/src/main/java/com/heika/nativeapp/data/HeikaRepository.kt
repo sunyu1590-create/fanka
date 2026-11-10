@@ -6,11 +6,17 @@ import com.heika.nativeapp.db.DailyStateEntity
 import com.heika.nativeapp.db.FeedCache
 import com.heika.nativeapp.db.HeikaCacheDao
 import com.heika.nativeapp.feature.home.DailyDeckLogic
+import com.heika.nativeapp.feature.exploration.ExplorationCalendarLogic
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -108,9 +114,8 @@ class HeikaRepository @Inject constructor(
             page
         } catch (error: Exception) {
             if (key.cursorCreatedAt != null) throw error
-            val cached = cache.get(cacheKey)?.let(::parsePosts).orEmpty()
-            if (cached.isEmpty()) throw error
-            FeedPage(cached, hasMore = false)
+            val cachedPayload = cache.get(cacheKey) ?: throw error
+            FeedPage(parsePosts(cachedPayload), hasMore = false)
         }
     }
 
@@ -139,9 +144,8 @@ class HeikaRepository @Inject constructor(
             FeedPage(posts, page * 24 < total, nextPage = page + 1)
         } catch (error: Exception) {
             if (page != 1) throw error
-            val cached = cache.get(cacheKey)?.let(::parsePosts).orEmpty()
-            if (cached.isEmpty()) throw error
-            FeedPage(cached, hasMore = false)
+            val cachedPayload = cache.get(cacheKey) ?: throw error
+            FeedPage(parsePosts(cachedPayload), hasMore = false)
         }
     }
 
@@ -193,6 +197,14 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/notifications?limit=30", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun cachedNotifications(userId: String): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get(NativeCacheKeys.notifications(userId))?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveNotificationsCache(userId: String, value: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put(NativeCacheKeys.notifications(userId), value.toString())
+    }
+
     suspend fun notificationSettings(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/settings/notifications", authenticated = true) as? JSONObject ?: JSONObject()
     }
@@ -220,14 +232,26 @@ class HeikaRepository @Inject constructor(
     suspend fun postDetail(post: HeikaPost): HeikaPost = withContext(Dispatchers.IO) {
         val value = fetchPostDetail(post.cloudId, post.id)
         val json = value as? JSONObject ?: throw IOException("内容暂不可用")
-        HeikaPost.from(json)
+        HeikaPost.from(json).also { savePostDetail(post.cloudId.ifBlank { post.id.toString() }, it) }
     }
 
     suspend fun postDetailByKey(key: String): HeikaPost = withContext(Dispatchers.IO) {
         val id = key.removePrefix("client-").toIntOrNull() ?: 0
         val value = fetchPostDetail(key, id) as? JSONObject ?: throw IOException("内容暂不可用")
-        HeikaPost.from(value)
+        HeikaPost.from(value).also { savePostDetail(key, it) }
     }
+
+    suspend fun cachedPostDetail(key: String): HeikaPost? = withContext(Dispatchers.IO) {
+        val owner = auth.current()?.userId ?: "public"
+        cache.get(postDetailCacheKey(owner, key))?.let { raw -> runCatching { HeikaPost.from(JSONObject(raw)) }.getOrNull() }
+    }
+
+    private suspend fun savePostDetail(key: String, post: HeikaPost) {
+        val owner = auth.current()?.userId ?: "public"
+        cache.put(postDetailCacheKey(owner, key), post.rawJson)
+    }
+
+    private fun postDetailCacheKey(owner: String, key: String) = NativeCacheKeys.postDetail(owner, key)
 
     private suspend fun fetchPostDetail(cloudId: String, clientId: Int): Any? = if (isUuid(cloudId)) {
         request("/api/v1/posts/${encode(cloudId)}", includeSession = true)
@@ -284,11 +308,11 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun cachedMyProfile(userId: String): JSONObject? = withContext(Dispatchers.IO) {
-        cache.get("native-profile:$userId")?.let { runCatching { JSONObject(it) }.getOrNull() }
+        cache.get(NativeCacheKeys.profile(userId))?.let { runCatching { JSONObject(it) }.getOrNull() }
     }
 
     suspend fun saveMyProfileCache(userId: String, payload: JSONObject) = withContext(Dispatchers.IO) {
-        cache.put("native-profile:$userId", payload.toString())
+        cache.put(NativeCacheKeys.profile(userId), payload.toString())
     }
 
     suspend fun updateMyProfile(nickname: String, bio: String): JSONObject = withContext(Dispatchers.IO) {
@@ -351,6 +375,18 @@ class HeikaRepository @Inject constructor(
         payload.optJSONArray("items").jsonObjects()
     }
 
+    suspend fun cachedAiResourceVersions(postId: String): List<JSONObject>? = withContext(Dispatchers.IO) {
+        val owner = auth.current()?.userId ?: "public"
+        cache.get(NativeCacheKeys.aiVersions(owner, postId))?.let { raw ->
+            runCatching { JSONTokener(raw).nextValue() as? JSONArray }.getOrNull()?.jsonObjects()
+        }
+    }
+
+    suspend fun saveAiResourceVersions(postId: String, versions: List<JSONObject>) = withContext(Dispatchers.IO) {
+        val owner = auth.current()?.userId ?: "public"
+        cache.put(NativeCacheKeys.aiVersions(owner, postId), JSONArray(versions).toString())
+    }
+
     suspend fun submitAiResourceFeedback(postId: String, kind: String, details: String): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(postId)) { "AI 资源编号无效" }
         require(kind in setOf("broken_link", "unsafe", "outdated", "other")) { "反馈类型无效" }
@@ -397,29 +433,42 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun inbox(): JSONObject = withContext(Dispatchers.IO) {
-        val summaries = auth.dataApi("/rpc/dm_inbox_summary", "POST", JSONObject()) as? JSONArray ?: JSONArray()
+        val userId = auth.current()?.userId ?: throw IOException("请先登录后继续")
+        val summaries = auth.dataApi(NativeMessagesApi.INBOX_PATH, NativeMessagesApi.RPC_METHOD, JSONObject()) as? JSONArray ?: JSONArray()
+        val peersById = summaries.jsonObjects().map { row ->
+            row.optString(if (row.optString("user_a") == userId) "user_b" else "user_a")
+        }.filter(::isUuid).distinct().let { ids ->
+            if (ids.isEmpty()) emptyMap() else {
+                val rows = auth.dataApi("/profiles?select=id,nickname,bio,avatar_url&id=in.(${ids.joinToString(",")})") as? JSONArray
+                rows.jsonObjects().associateBy { it.optString("id") }
+            }
+        }
         val items = JSONArray()
         for (row in summaries.jsonObjects()) {
-            val userId = auth.current()?.userId ?: throw IOException("请先登录后继续")
             val peerId = row.optString(if (row.optString("user_a") == userId) "user_b" else "user_a")
-            val profiles = auth.dataApi("/profiles?select=id,nickname,bio,avatar_url&id=eq.${encode(peerId)}") as? JSONArray
-            items.put(JSONObject(row.toString()).put("peer", profiles?.optJSONObject(0) ?: JSONObject().put("id", peerId)))
+            items.put(JSONObject(row.toString()).put("peer", peersById[peerId] ?: JSONObject().put("id", peerId)))
         }
         JSONObject().put("items", items)
     }
 
+    suspend fun cachedInbox(userId: String): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get(NativeCacheKeys.messages(userId))?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveInboxCache(userId: String, value: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put(NativeCacheKeys.messages(userId), value.toString())
+    }
+
     suspend fun conversation(id: String, before: String? = null): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(id)) { "会话编号无效" }
-        val cursor = before?.let { "&created_at=lt.${encode(it)}" }.orEmpty()
-        val rows = auth.dataApi("/dm_messages?select=id,conversation_id,sender_id,body,created_at&conversation_id=eq.$id&order=created_at.desc,id.desc&limit=40$cursor") as? JSONArray ?: JSONArray()
+        val rows = auth.dataApi(NativeMessagesApi.messagesQuery(id, before), NativeMessagesApi.READ_METHOD) as? JSONArray ?: JSONArray()
         val items = JSONArray()
         for (index in rows.length() - 1 downTo 0) items.put(rows.getJSONObject(index))
-        if (before == null) markConversationRead(id)
         JSONObject().put("items", items).put("has_more", rows.length() == 40).put("next_before", items.optJSONObject(0)?.optString("created_at"))
     }
 
     suspend fun markConversationRead(id: String): JSONObject = withContext(Dispatchers.IO) {
-        auth.dataApi("/dm_reads?on_conflict=conversation_id,user_id", "POST", JSONObject().put("conversation_id", id).put("user_id", auth.current()?.userId).put("read_at", java.time.Instant.now().toString()), "resolution=merge-duplicates,return=minimal")
+        auth.dataApi("${NativeMessagesApi.READS_PATH}${NativeMessagesApi.READ_UPSERT_QUERY}", NativeMessagesApi.UPSERT_METHOD, JSONObject().put("conversation_id", id).put("user_id", auth.current()?.userId).put("read_at", java.time.Instant.now().toString()), "resolution=merge-duplicates,return=minimal")
         JSONObject().put("read", true)
     }
 
@@ -428,12 +477,12 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun openConversation(peerId: String): JSONObject = withContext(Dispatchers.IO) {
-        val id = auth.dataApi("/rpc/open_dm", "POST", JSONObject().put("peer", peerId)) as? String ?: throw IOException("暂时无法发起私聊")
+        val id = auth.dataApi(NativeMessagesApi.OPEN_PATH, NativeMessagesApi.RPC_METHOD, JSONObject().put("peer", peerId)) as? String ?: throw IOException("暂时无法发起私聊")
         JSONObject().put("conversation_id", id)
     }
 
     suspend fun sendMessage(conversationId: String, content: String, nonce: String): JSONObject = withContext(Dispatchers.IO) {
-        auth.dataApi("/rpc/send_dm", "POST", JSONObject().put("room", conversationId).put("content", content).put("nonce", nonce).put("image_path", JSONObject.NULL)) as? JSONObject ?: JSONObject()
+        auth.dataApi(NativeMessagesApi.SEND_PATH, NativeMessagesApi.RPC_METHOD, JSONObject().put("room", conversationId).put("content", content).put("nonce", nonce).put("image_path", JSONObject.NULL)) as? JSONObject ?: JSONObject()
     }
 
     suspend fun createOrUpdateDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String> = emptyList(), mediaPaths: List<String> = emptyList()): JSONObject = withContext(Dispatchers.IO) {
@@ -489,28 +538,76 @@ class HeikaRepository @Inject constructor(
 
     suspend fun explorationCalendar(userId: String, month: String? = null): JSONObject = withContext(Dispatchers.IO) {
         val key = explorationCacheKey("calendar-${month ?: "current"}", userId)
-        val library = request("/api/v1/library-state", authenticated = true) as? JSONObject ?: JSONObject()
-        val zone = runCatching { java.time.ZoneId.of(library.optJSONObject("profile")?.optString("timezone").orEmpty().ifBlank { "Asia/Shanghai" }) }.getOrDefault(java.time.ZoneId.of("Asia/Shanghai"))
-        val currentMonth = month ?: java.time.LocalDate.now(zone).toString().take(7)
-        val allOpened = library.optJSONArray("interactions").jsonObjects().mapNotNull { row ->
-            val stamp = row.optString("opened_at").takeIf(String::isNotBlank) ?: return@mapNotNull null
-            val date = runCatching { java.time.Instant.parse(stamp).atZone(zone).toLocalDate() }.getOrNull() ?: return@mapNotNull null
-            Triple(row, stamp, date.toString())
+        val session = auth.current() ?: throw IOException("登录后查看探索日历")
+        if (session.userId != userId) throw IOException("账号已切换，请重新加载探索日历")
+        val profilePayload = myProfile()
+        val timezone = (profilePayload.optJSONObject("profile") ?: profilePayload).optString("timezone").ifBlank { "Asia/Shanghai" }
+        val zone = runCatching { java.time.ZoneId.of(timezone) }.getOrDefault(java.time.ZoneId.of("Asia/Shanghai"))
+        val today = java.time.LocalDate.now(zone)
+        val currentMonth = month?.let { runCatching { java.time.YearMonth.parse(it).toString() }.getOrNull() }
+            ?: if (month == null) java.time.YearMonth.from(today).toString() else null
+            ?: throw IOException("月份无效")
+        val monthStart = java.time.YearMonth.parse(currentMonth).atDay(1)
+        val monthEnd = monthStart.plusMonths(1)
+        val monthOpens = mutableListOf<Triple<String, String, String>>()
+        val streakDates = mutableSetOf<java.time.LocalDate>()
+        var expectedStreakDate: java.time.LocalDate? = null
+        var streakFinished = false
+        var monthFinished = false
+        var offset = 0
+        while (!streakFinished || !monthFinished) {
+            val page = auth.dataApi(
+                "/user_interactions?select=post_id,opened_at&opened_at=not.is.null&order=opened_at.desc,post_id.asc&limit=500&offset=$offset",
+            ) as? JSONArray ?: JSONArray()
+            if (page.length() == 0) {
+                streakFinished = true
+                monthFinished = true
+                break
+            }
+            for (row in page.jsonObjects()) {
+                val stamp = row.optString("opened_at").takeIf(String::isNotBlank) ?: continue
+                val date = ExplorationCalendarLogic.localDate(stamp, zone) ?: continue
+                if (date >= monthStart && date < monthEnd) monthOpens += Triple(row.optString("post_id"), stamp, date.toString())
+                if (!streakFinished) {
+                    if (expectedStreakDate == null) expectedStreakDate = if (date == today) today else today.minusDays(1)
+                    val expected = expectedStreakDate!!
+                    when {
+                        date > expected -> Unit // duplicate opens for a day already counted, or today's open before yesterday's.
+                        date == expected -> {
+                            streakDates += date
+                            expectedStreakDate = date.minusDays(1)
+                        }
+                        else -> streakFinished = true
+                    }
+                }
+            }
+            offset += page.length()
+            val oldestDate = page.optJSONObject(page.length() - 1)?.optString("opened_at")?.let { ExplorationCalendarLogic.localDate(it, zone) }
+            if (oldestDate == null || oldestDate < monthStart) monthFinished = true
+            if (page.length() < 500) {
+                streakFinished = true
+                monthFinished = true
+            }
         }
-        val opened = allOpened.filter { it.third.startsWith(currentMonth) }
-        val records = JSONArray(); val counts = linkedMapOf<String, Int>()
-        for ((row, stamp, date) in opened) {
-            counts[date] = (counts[date] ?: 0) + 1
-            val postId = row.optString("post_id")
-            val post = runCatching { request("/api/v1/posts/${encode(postId)}", includeSession = true) as? JSONObject }.getOrNull() ?: continue
+        val counts = linkedMapOf<String, Int>()
+        monthOpens.forEach { (_, _, date) -> counts[date] = (counts[date] ?: 0) + 1 }
+        val postIds = monthOpens.map { it.first }.filter(::isUuid).distinct()
+        val postsById = coroutineScope {
+            val semaphore = Semaphore(6)
+            postIds.map { postId -> async {
+                postId to semaphore.withPermit {
+                    runCatching { request("/api/v1/posts/${encode(postId)}", includeSession = true) as? JSONObject }.getOrNull()
+                }
+            } }.awaitAll().toMap()
+        }
+        val records = JSONArray()
+        for ((postId, stamp, date) in monthOpens) {
+            val post = postsById[postId] ?: continue
             records.put(JSONObject().put("date", date).put("openedAt", stamp).put("post", post))
         }
-        val today = java.time.LocalDate.now(zone).toString()
-        val daySet = allOpened.map { it.third }.toSet(); var streak = 0; var cursor = java.time.LocalDate.now(zone)
-        if (!daySet.contains(today)) cursor = cursor.minusDays(1)
-        while (daySet.contains(cursor.toString())) { streak++; cursor = cursor.minusDays(1) }
         val days = JSONArray(); counts.forEach { (date, count) -> days.put(JSONObject().put("date", date).put("count", count)) }
-        val result = JSONObject().put("month", currentMonth).put("timeZone", zone.id).put("today", today).put("streak", streak).put("total", records.length()).put("days", days).put("records", records)
+        val result = JSONObject().put("month", currentMonth).put("timeZone", zone.id).put("today", today.toString())
+            .put("streak", ExplorationCalendarLogic.streak(streakDates, today)).put("total", monthOpens.size).put("days", days).put("records", records)
         cache.put(key, result.toString())
         result
     }
@@ -649,7 +746,7 @@ class HeikaRepository @Inject constructor(
         auth.current()?.userId ?: "public",
     ).joinToString(":")
 
-    private fun explorationCacheKey(section: String, userId: String): String = "native-exploration:$section:$userId"
+    private fun explorationCacheKey(section: String, userId: String): String = NativeCacheKeys.exploration(section, userId)
 
     private suspend fun request(
         path: String,
@@ -678,10 +775,19 @@ class HeikaRepository @Inject constructor(
         }
         val result = response
         val content = (if (result.isSuccessful) result.body() else result.errorBody())?.use { it.string() }.orEmpty()
-        val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue()
+        val root = if (content.isBlank()) JSONObject() else runCatching { JSONTokener(content).nextValue() }.getOrElse { JSONObject() }
         if (!result.isSuccessful) {
-            val message = (root as? JSONObject)?.optString("error").orEmpty()
-            throw IOException(message.ifBlank { "请求失败（${result.code()}）" })
+            val errorBody = root as? JSONObject ?: JSONObject()
+            val message = sequenceOf("error", "message", "details")
+                .map { errorBody.optString(it) }
+                .firstOrNull { it.isNotBlank() }
+            val endpoint = path.substringBefore('?')
+            val diagnostic = buildString {
+                append("HEIKA API ").append(method).append(' ').append(endpoint)
+                append(" 返回 HTTP ").append(result.code())
+                message?.let { append("：").append(it) }
+            }
+            throw IOException(diagnostic)
         }
         if (root is JSONObject && root.has("error") && !root.isNull("error")) throw IOException(root.optString("error"))
         return if (root is JSONObject && root.has("data")) root.opt("data") else root

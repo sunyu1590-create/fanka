@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -165,7 +166,12 @@ fun SettingsDetailScreen(
                     item { SettingAction("Android 系统通知", if (notificationsAllowed) "系统通知权限已开启" else "系统通知权限未开启", { requestOrOpenNotificationPermission(context, permissionLauncher::launch) }) }
                     item { DetailHeading("站内通知偏好") }
                     item { SwitchSetting("评论与回复", if (notificationsLoading) "正在读取网站账号偏好…" else "此开关与网站账号偏好同步", comments == true, enabled = comments != null) { viewModel.setCommentsEnabled(it) } }
-                    notificationError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) } }
+                    notificationError?.let { error -> item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(error, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            TextButton(onClick = { viewModel.loadNotificationSettings(force = true) }) { Text("重试") }
+                        }
+                    } }
                     item { Text("当前后端偏好接口仅提供评论与回复提醒；点赞、收藏和私信的独立偏好尚未接入。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(vertical = 10.dp)) }
                     item { SettingAction("通知中心", "查看站内通知与未读状态", onNotifications) }
                 }
@@ -180,7 +186,12 @@ fun SettingsDetailScreen(
                     item { SettingAction("系统应用权限", "在 Android 设置中查看和管理 HEIKA 权限", { openAppSettings(context) }) }
                     item { DetailHeading("账号隐私偏好") }
                     item { SwitchSetting("公开我的收藏", if (privacyLoading) "正在读取账号设置…" else "与当前 HEIKA 账号的公开设置同步", bookmarksVisible == true, enabled = bookmarksVisible != null && !privacyLoading) { viewModel.setBookmarksVisible(it) } }
-                    privacyError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) } }
+                    privacyError?.let { error -> item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(error, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            TextButton(onClick = { viewModel.loadPrivacySettings(force = true) }) { Text("重试") }
+                        }
+                    } }
                     item { Text("用户协议与隐私政策暂未在当前网站提供可用文本入口；因此此处不展示无效链接。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(vertical = 12.dp)) }
                 }
                 "about" -> item { SettingAction("关于黑卡", "版本、项目链接与意见反馈", onAbout) }

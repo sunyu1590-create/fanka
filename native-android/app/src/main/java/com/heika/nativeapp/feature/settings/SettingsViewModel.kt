@@ -42,23 +42,93 @@ class SettingsViewModel @Inject constructor(
     val privacyLoading = mutablePrivacyLoading.asStateFlow()
     private val mutablePrivacyError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     val privacyError = mutablePrivacyError.asStateFlow()
+    private var activeUserId: String? = null
+    private var notificationSettingsLoadedFor: String? = null
+    private var privacySettingsLoadedFor: String? = null
+    private var notificationRequestGeneration = 0L
+    private var privacyRequestGeneration = 0L
+    private var notificationRequestUserId: String? = null
+    private var privacyRequestUserId: String? = null
 
-    fun loadNotificationSettings() = viewModelScope.launch {
-        if (auth.restore() == null) { mutableNotificationError.value = "登录后同步站内通知偏好"; return@launch }
-        mutableNotificationsLoading.value = true
-        runCatching { repository.notificationSettings() }
-            .onSuccess { mutableCommentsEnabled.value = it.optBoolean("commentsEnabled", true); mutableNotificationError.value = null }
-            .onFailure { mutableNotificationError.value = it.message ?: "通知偏好读取失败" }
-            .also { mutableNotificationsLoading.value = false }
+    init {
+        viewModelScope.launch {
+            auth.session.collect { session ->
+                if (session?.userId != activeUserId) {
+                    activeUserId = session?.userId
+                    notificationSettingsLoadedFor = null
+                    privacySettingsLoadedFor = null
+                    notificationRequestGeneration++
+                    privacyRequestGeneration++
+                    notificationRequestUserId = null
+                    privacyRequestUserId = null
+                    mutableNotificationsLoading.value = false
+                    mutablePrivacyLoading.value = false
+                    mutableCommentsEnabled.value = null
+                    mutableBookmarksVisible.value = null
+                    mutableNotificationError.value = null
+                    mutablePrivacyError.value = null
+                }
+            }
+        }
     }
 
-    fun loadPrivacySettings() = viewModelScope.launch {
-        if (auth.restore() == null) { mutablePrivacyError.value = "登录后管理账号隐私偏好"; return@launch }
+    fun loadNotificationSettings(force: Boolean = false) = viewModelScope.launch {
+        val userId = auth.restore()?.userId
+        if (userId == null) { mutableNotificationError.value = "登录后同步站内通知偏好"; return@launch }
+        if (!force && notificationSettingsLoadedFor == userId && mutableCommentsEnabled.value != null) return@launch
+        if (mutableNotificationsLoading.value && notificationRequestUserId == userId) return@launch
+        val requestId = ++notificationRequestGeneration
+        notificationRequestUserId = userId
+        mutableNotificationsLoading.value = true
+        try {
+            val settings = repository.notificationSettings()
+            if (requestId == notificationRequestGeneration && auth.current()?.userId == userId) {
+                mutableCommentsEnabled.value = settings.optBoolean("commentsEnabled", true)
+                notificationSettingsLoadedFor = userId
+                mutableNotificationError.value = null
+            }
+        } catch (error: Exception) {
+            if (requestId == notificationRequestGeneration && auth.current()?.userId == userId) {
+                mutableNotificationError.value = error.message ?: "通知偏好读取失败"
+            }
+        } finally {
+            if (requestId == notificationRequestGeneration) {
+                notificationRequestUserId = null
+                mutableNotificationsLoading.value = false
+            }
+        }
+    }
+
+    fun loadPrivacySettings(force: Boolean = false) = viewModelScope.launch {
+        val userId = auth.restore()?.userId
+        if (userId == null) { mutablePrivacyError.value = "登录后管理账号隐私偏好"; return@launch }
+        if (!force && privacySettingsLoadedFor == userId && mutableBookmarksVisible.value != null) return@launch
+        if (mutablePrivacyLoading.value && privacyRequestUserId == userId) return@launch
+        val requestId = ++privacyRequestGeneration
+        privacyRequestUserId = userId
         mutablePrivacyLoading.value = true
-        runCatching { repository.myProfile() }
-            .onSuccess { data -> mutableBookmarksVisible.value = (data.optJSONObject("profile") ?: data).optBoolean("show_bookmarks"); mutablePrivacyError.value = null }
-            .onFailure { mutablePrivacyError.value = it.message ?: "隐私偏好读取失败" }
-            .also { mutablePrivacyLoading.value = false }
+        val cached = runCatching { repository.cachedMyProfile(userId) }.getOrNull()
+        if (requestId == privacyRequestGeneration && auth.current()?.userId == userId) cached?.let { data ->
+            val profile = data.optJSONObject("profile") ?: data
+            mutableBookmarksVisible.value = profile.optBoolean("show_bookmarks")
+        }
+        try {
+            val data = repository.myProfile()
+            if (requestId == privacyRequestGeneration && auth.current()?.userId == userId) {
+                mutableBookmarksVisible.value = (data.optJSONObject("profile") ?: data).optBoolean("show_bookmarks")
+                privacySettingsLoadedFor = userId
+                mutablePrivacyError.value = null
+            }
+        } catch (error: Exception) {
+            if (requestId == privacyRequestGeneration && auth.current()?.userId == userId) {
+                mutablePrivacyError.value = error.message ?: "隐私偏好读取失败"
+            }
+        } finally {
+            if (requestId == privacyRequestGeneration) {
+                privacyRequestUserId = null
+                mutablePrivacyLoading.value = false
+            }
+        }
     }
 
     fun setBookmarksVisible(value: Boolean) = viewModelScope.launch {

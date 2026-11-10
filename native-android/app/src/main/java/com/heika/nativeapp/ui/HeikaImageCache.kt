@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 
 val LocalHeikaImageLoader = staticCompositionLocalOf<ImageLoader> { error("HEIKA image loader is not initialized") }
@@ -30,6 +31,7 @@ class HeikaImageCache @Inject constructor(
     private val preferences: NativePreferences,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val retiredLoaders = java.util.concurrent.CopyOnWriteArrayList<ImageLoader>()
     private val mutableLoader = MutableStateFlow(create(256))
     val loader = mutableLoader.asStateFlow()
 
@@ -42,13 +44,21 @@ class HeikaImageCache @Inject constructor(
         if (mutableLoader.value.diskCache?.maxSize == capacity.toLong() * 1024 * 1024) return
         val old = mutableLoader.value
         mutableLoader.value = create(capacity)
-        old.shutdown()
+        retiredLoaders += old
+        scope.launch {
+            delay(30_000)
+            if (retiredLoaders.remove(old)) old.shutdown()
+        }
         preferences.setImageCacheMb(capacity)
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) {
         mutableLoader.value.diskCache?.clear()
         mutableLoader.value.memoryCache?.clear()
+        retiredLoaders.forEach { loader ->
+            loader.diskCache?.clear()
+            loader.memoryCache?.clear()
+        }
     }
 
     suspend fun sizeBytes(): Long = withContext(Dispatchers.IO) {

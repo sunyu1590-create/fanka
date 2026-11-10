@@ -79,6 +79,7 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaRadii
+import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import java.time.YearMonth
 import java.util.Locale
 
@@ -319,7 +320,7 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
             }
             items(state.records.filter { it.date == selectedDay }, key = { it.postId }) { record ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface).clickable { onPost(record) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!record.image.isNullOrBlank()) AsyncImage(record.image, null, Modifier.size(60.dp, 68.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                    if (!record.image.isNullOrBlank()) AsyncImage(record.image, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(60.dp, 68.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                     Column(Modifier.weight(1f).padding(start = 11.dp)) {
                         Text(record.tag, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                         Text(record.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
@@ -394,7 +395,7 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
                         item { Text("彼此的灵感已揭晓", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
                         items(state.picks, key = { it.userId }) { pick ->
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).clickable { pick.postId?.let(onPost) }.padding(12.dp)) {
-                                if (pick.image != null) AsyncImage(pick.image, null, Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(9.dp)), contentScale = ContentScale.Crop)
+                                if (pick.image != null) AsyncImage(pick.image, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(9.dp)), contentScale = ContentScale.Crop)
                                 Text("${pick.nickname} 分享了", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp))
                                 Text(pick.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 4.dp))
                                 if (pick.note.isNotBlank()) Text(pick.note, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(top = 7.dp))
@@ -455,7 +456,7 @@ fun StoryChainListScreen(onBack: () -> Unit, onOpen: (String) -> Unit, viewModel
                             val selected = state.selectedPostId == post.cloudId
                             Surface(onClick = { viewModel.selectPost(post.cloudId) }, shape = RoundedCornerShape(9.dp), color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant) {
                                 Row(Modifier.width(190.dp).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (!post.thumbnail.isNullOrBlank()) AsyncImage(post.thumbnail, null, Modifier.size(45.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
+                                    if (!post.thumbnail.isNullOrBlank()) AsyncImage(post.thumbnail, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(45.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
                                     Column(Modifier.weight(1f).padding(start = 8.dp)) {
                                         Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(post.tag, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, modifier = Modifier.padding(top = 3.dp))
@@ -514,7 +515,7 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
                 item {
                     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(13.dp)).clickable { onSeedPost(chain.seedPostId) }.padding(14.dp)) {
                         Text("${chain.seedTag.ifBlank { "探索" }} · ${chain.ownerName} 发起 · ${if (chain.status == "active") "进行中" else "已结束"}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                        if (!chain.seedImage.isNullOrBlank()) AsyncImage(chain.seedImage, null, Modifier.fillMaxWidth().padding(top = 10.dp).height(190.dp), contentScale = ContentScale.Crop)
+                        if (!chain.seedImage.isNullOrBlank()) AsyncImage(chain.seedImage, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(190.dp), contentScale = ContentScale.Crop)
                         Text(chain.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
                         Text(chain.prompt, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
                         Text("查看起始作品 ›", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp).clickable { onSeedPost(chain.seedPostId) })
@@ -557,7 +558,7 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
 @Composable
 private fun CandidatePostRow(post: HeikaPost, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surface).clickable(enabled = enabled, onClick = onClick).padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (!post.thumbnail.isNullOrBlank()) AsyncImage(post.thumbnail, null, Modifier.size(55.dp, 62.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+        if (!post.thumbnail.isNullOrBlank()) AsyncImage(post.thumbnail, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(55.dp, 62.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
         Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
             Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(post.tag, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))

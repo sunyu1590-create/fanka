@@ -152,6 +152,9 @@ class HomeViewModel @Inject constructor(
     fun flip(id: Int) = viewModelScope.launch {
         openMutex.withLock {
             val current = mutableState.value
+            // Ignore taps from a second card while the selected card is waiting for the
+            // server or its reveal animation. The mutex alone would queue a second flip.
+            if (current.openingId != null) return@withLock
             if (id in current.openedIds) return@withLock
             if (current.userId == HomeUiState.GUEST_ID && current.openedIds.size >= current.allowance) {
                 mutableState.value = current.copy(notice = "今天的翻卡次数已用完，已解锁内容仍可查看")

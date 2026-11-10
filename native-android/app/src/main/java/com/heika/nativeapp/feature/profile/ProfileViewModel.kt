@@ -10,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -57,6 +58,8 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
     private var lastRefreshAt: Long = 0L
     private var requestedOwnProfile = false
     private var loadGeneration = 0L
+    private var profileLoadJob: Job? = null
+    private var profileLoadRequestKey: String? = null
 
     init {
         viewModelScope.launch {
@@ -72,7 +75,12 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         }
     }
 
-    fun load(requestedId: String?, force: Boolean = false) = viewModelScope.launch {
+    fun load(requestedId: String?, force: Boolean = false): Job {
+        val requestKey = requestedId ?: "__own__"
+        if (!force && profileLoadJob?.isActive == true && profileLoadRequestKey == requestKey) return profileLoadJob!!
+        profileLoadRequestKey = requestKey
+        val generation = ++loadGeneration
+        val job = viewModelScope.launch {
         requestedOwnProfile = requestedId == null
         val session = runCatching { auth.current() }.getOrNull()
         if (requestedId == null && session == null) {
@@ -83,11 +91,10 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         val own = session?.userId == id
         if (!force && loadedFor == id && !mutableState.value.loading && System.currentTimeMillis() - lastRefreshAt < 60_000L) return@launch
         loadedFor = id
-        val generation = ++loadGeneration
 
         if (own && mutableState.value.profile == null) {
             runCatching { repository.cachedMyProfile(id) }.getOrNull()?.let { cached ->
-                mutableState.value = decodeSnapshot(cached, own = true).copy(loading = true, refreshing = true)
+                mutableState.value = decodeSnapshot(cached, own = true).copy(loading = false, refreshing = true)
             }
         } else if (mutableState.value.profile != null && mutableState.value.profile?.id == id) {
             mutableState.update { it.copy(loading = false, refreshing = true, error = null) }
@@ -169,6 +176,10 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         }.onFailure { error ->
             if (generation == loadGeneration && loadedFor == id) mutableState.update { it.copy(loading = false, refreshing = false, error = error.message ?: "个人主页刷新失败") }
         }
+        }
+        profileLoadJob = job
+        job.invokeOnCompletion { if (profileLoadJob == job) profileLoadRequestKey = null }
+        return job
     }
 
     fun loadMore(kind: String) = viewModelScope.launch {

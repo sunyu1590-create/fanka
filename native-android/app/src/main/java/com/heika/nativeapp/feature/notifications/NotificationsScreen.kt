@@ -71,7 +71,7 @@ fun NotificationsScreen(
     LaunchedEffect(Unit) { viewModel.load() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("通知中心", onBack) {
-            androidx.compose.material3.IconButton(onClick = viewModel::load) {
+            androidx.compose.material3.IconButton(onClick = { viewModel.load(force = true) }, enabled = !state.refreshing) {
                 Icon(Icons.Outlined.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -94,7 +94,7 @@ fun NotificationsScreen(
         )
         state.error?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         when {
-            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(23.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp) }
+            state.loading && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(23.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp) }
             !state.signedIn -> Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("登录后查看评论、回复和互动通知。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 Text("登录 / 注册", Modifier.clickable(onClick = onLogin).padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)

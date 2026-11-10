@@ -16,10 +16,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -57,14 +59,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.heika.nativeapp.data.HeikaPost
+import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.FilterChip
+import com.heika.nativeapp.ui.LocalHeikaImageLoader
 
 @Composable
 fun PostDetailScreen(
@@ -78,6 +84,8 @@ fun PostDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val readingMode by viewModel.readingMode.collectAsStateWithLifecycle()
+    val imageLoader = LocalHeikaImageLoader.current
+    val context = LocalContext.current
     var draft by remember(post?.cloudId, postKey) { mutableStateOf("") }
     var replyTo by remember(post?.cloudId, postKey) { mutableStateOf<String?>(null) }
     var reportOpen by remember(post?.cloudId, postKey) { mutableStateOf(false) }
@@ -103,7 +111,9 @@ fun PostDetailScreen(
             }
         } else {
             val item = state.post!!
+            val listState = rememberLazyListState()
             LazyColumn(
+                state = listState,
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
@@ -116,8 +126,14 @@ fun PostDetailScreen(
                                 Box(Modifier.fillMaxWidth().widthIn(max = 440.dp).aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                                         AsyncImage(
-                                            model = item.images[page],
+                                            model = remember(item.cloudId, item.images[page], page) {
+                                                ImageRequest.Builder(context).data(item.images[page])
+                                                    .memoryCacheKey(imageCacheKey(item.cloudId, item.images[page], "detail-full-$page"))
+                                                    .diskCacheKey(imageCacheKey(item.cloudId, item.images[page], "detail-full-$page"))
+                                                    .crossfade(150).build()
+                                            },
                                             contentDescription = "${item.title}，第 ${page + 1} 张",
+                                            imageLoader = imageLoader,
                                             contentScale = ContentScale.Fit,
                                             modifier = Modifier.fillMaxSize(),
                                         )
@@ -125,12 +141,18 @@ fun PostDetailScreen(
                                 }
                                 Text("${pagerState.currentPage + 1} / ${item.images.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
                             }
-                        } else item.images.forEach { image ->
+                        } else item.images.forEachIndexed { index, image ->
                             AsyncImage(
-                                model = image,
+                                model = remember(item.cloudId, image, index) {
+                                    ImageRequest.Builder(context).data(image)
+                                        .memoryCacheKey(imageCacheKey(item.cloudId, image, "detail-full-$index"))
+                                        .diskCacheKey(imageCacheKey(item.cloudId, image, "detail-full-$index"))
+                                        .crossfade(150).build()
+                                },
                                 contentDescription = item.title,
+                                imageLoader = imageLoader,
                                 contentScale = ContentScale.FillWidth,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp),
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -160,7 +182,7 @@ fun PostDetailScreen(
                                 versionsError = state.aiVersionsError,
                                 feedbackSending = state.aiFeedbackSending,
                                 feedbackSubmitted = state.aiFeedbackSubmitted,
-                                onRetryVersions = { viewModel.loadAiVersions(item) },
+                                onRetryVersions = { viewModel.loadAiVersions(item, force = true) },
                                 onSubmitFeedback = { kind, details -> viewModel.submitAiFeedback(kind, details) },
                             )
                         }

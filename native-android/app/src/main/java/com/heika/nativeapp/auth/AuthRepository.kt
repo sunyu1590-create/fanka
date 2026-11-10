@@ -59,8 +59,19 @@ class AuthRepository @Inject constructor(
         val raw = response.body?.use { it.string() }.orEmpty()
         val value = if (raw.isBlank()) JSONObject() else runCatching { org.json.JSONTokener(raw).nextValue() }.getOrElse { JSONObject() }
         if (!response.isSuccessful) {
-            val message = (value as? JSONObject)?.optString("message").orEmpty()
-            throw SupabaseHttpException(response.code, message.ifBlank { "账号数据读取失败（${response.code}）" })
+            val error = value as? JSONObject ?: JSONObject()
+            val message = sequenceOf("message", "details", "hint")
+                .map { error.optString(it) }
+                .firstOrNull { it.isNotBlank() }
+            val code = error.optString("code").takeIf(String::isNotBlank)
+            val endpoint = path.substringBefore('?')
+            val diagnostic = buildString {
+                append("Supabase Data API ").append(method).append(" /rest/v1").append(endpoint)
+                append(" 返回 HTTP ").append(response.code)
+                code?.let { append(" [").append(it).append(']') }
+                message?.let { append("：").append(it) }
+            }
+            throw SupabaseHttpException(response.code, diagnostic)
         }
         value
     }
