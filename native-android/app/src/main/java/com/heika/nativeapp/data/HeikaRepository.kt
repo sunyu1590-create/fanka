@@ -492,11 +492,12 @@ class HeikaRepository @Inject constructor(
         val library = request("/api/v1/library-state", authenticated = true) as? JSONObject ?: JSONObject()
         val zone = runCatching { java.time.ZoneId.of(library.optJSONObject("profile")?.optString("timezone").orEmpty().ifBlank { "Asia/Shanghai" }) }.getOrDefault(java.time.ZoneId.of("Asia/Shanghai"))
         val currentMonth = month ?: java.time.LocalDate.now(zone).toString().take(7)
-        val opened = library.optJSONArray("interactions").jsonObjects().mapNotNull { row ->
+        val allOpened = library.optJSONArray("interactions").jsonObjects().mapNotNull { row ->
             val stamp = row.optString("opened_at").takeIf(String::isNotBlank) ?: return@mapNotNull null
             val date = runCatching { java.time.Instant.parse(stamp).atZone(zone).toLocalDate() }.getOrNull() ?: return@mapNotNull null
-            if (date.toString().take(7) != currentMonth) null else Triple(row, stamp, date.toString())
+            Triple(row, stamp, date.toString())
         }
+        val opened = allOpened.filter { it.third.startsWith(currentMonth) }
         val records = JSONArray(); val counts = linkedMapOf<String, Int>()
         for ((row, stamp, date) in opened) {
             counts[date] = (counts[date] ?: 0) + 1
@@ -505,7 +506,8 @@ class HeikaRepository @Inject constructor(
             records.put(JSONObject().put("date", date).put("openedAt", stamp).put("post", post))
         }
         val today = java.time.LocalDate.now(zone).toString()
-        val daySet = opened.map { it.third }.toSet(); var streak = 0; var cursor = java.time.LocalDate.now(zone)
+        val daySet = allOpened.map { it.third }.toSet(); var streak = 0; var cursor = java.time.LocalDate.now(zone)
+        if (!daySet.contains(today)) cursor = cursor.minusDays(1)
         while (daySet.contains(cursor.toString())) { streak++; cursor = cursor.minusDays(1) }
         val days = JSONArray(); counts.forEach { (date, count) -> days.put(JSONObject().put("date", date).put("count", count)) }
         val result = JSONObject().put("month", currentMonth).put("timeZone", zone.id).put("today", today).put("streak", streak).put("total", records.length()).put("days", days).put("records", records)
