@@ -32,7 +32,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Sparkles
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.AlertDialog
@@ -133,7 +133,7 @@ fun ExplorationCenterScreen(
                 Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                            androidx.compose.material3.Icon(if (mission.claimed) Icons.Outlined.Star else Icons.Outlined.Sparkles, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+                            androidx.compose.material3.Icon(if (mission.claimed) Icons.Outlined.Star else Icons.Outlined.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
                         }
                         Column(Modifier.weight(1f).padding(start = 11.dp)) {
                             Text(mission.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -177,7 +177,7 @@ fun ExplorationCenterScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
                     ExplorationActionRow("双人探索", "邀请伙伴各自挑选，双方完成后共同揭晓", Icons.Outlined.Groups, onCoExplore)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("故事接龙", "从一篇作品开始，和探索者续写故事", Icons.Outlined.Sparkles, onStoryChains)
+                    ExplorationActionRow("故事接龙", "从一篇作品开始，和探索者续写故事", Icons.Outlined.AutoAwesome, onStoryChains)
                 }
             }
             if (state.events.isNotEmpty()) item {
