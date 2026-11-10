@@ -14,11 +14,13 @@
 
 ## 最近成功的远端构建
 
+- Native Android push Run **#28**，ID `42750160378`，Commit `7f521a8148170b619b20d7bb419d28e6e4c8546c`，成功；PR Run **#29**（ID `42750167340`）也成功。
+- Run #28 Artifact：`HEIKA-Native-3-v7f521a8148170b619b20d7bb419d28e6e4c8546c`，Artifact ID `13733561533`，21.6 MB，SHA-256 `7ef9d4ca69c00c571c4154236f67e47138d1c91ed405904a022acfbf8c8c00c4`。
 - Native Android push Run **#26**，ID `42657627969`，Commit `df3d8581859bd0f20ef3f8b1697d74b671b83f80`。
 - PR 验证 Run **#27**，ID `42657640472`，同一 Commit，成功。
 - [Run #26](https://github.com/sunyu1590-create/fanka/actions/runs/42657627969)；[Run #27](https://github.com/sunyu1590-create/fanka/actions/runs/42657640472)。
 - Run #26 Artifact：`HEIKA-Native-3-vdf3d8581859bd0f20ef3f8b1697d74b671b83f80`，含 `HEIKA-2.3.6-14-debug.apk` 和未签名 Release APK。未签名 Release 只供检查。
-- 本轮代码提交尚未推送；远端最新成功构建仍是 #27，不能视为包含本轮改动。
+- Run #28 对应本轮 Native 3.1 源码；此后只应在有新的 Android 源码提交时再产生新的 APP 构建。
 
 ## 本轮本地验证产物
 
