@@ -22,7 +22,9 @@ test("Native direct messages use existing database RPCs and read receipts", asyn
   assert.match(route, /db\.rpc\("open_dm"/);
   assert.match(route, /db\.rpc\("send_dm"/);
   assert.match(route, /from\("dm_reads"\)\.upsert/);
-  assert.match(screen, /viewModel\.refreshActive\(\)/);
+  assert.match(screen, /viewModel\.startForegroundSync\(\)/);
+  const repository = await read("native-android/app/src/main/java/com/heika/nativeapp/data/HeikaRepository.kt");
+  assert.match(repository, /markConversationRead\(id: String\)/);
   assert.match(screen, /initialPeerId/);
 });
 

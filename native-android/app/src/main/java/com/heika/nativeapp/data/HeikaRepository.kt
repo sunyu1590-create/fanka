@@ -354,6 +354,10 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/messages?conversation=${encode(id)}$cursor", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun markConversationRead(id: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "read").put("conversation", id).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun searchPeople(query: String): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "search").put("query", query).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
