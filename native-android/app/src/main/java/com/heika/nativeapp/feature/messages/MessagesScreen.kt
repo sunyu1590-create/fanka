@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,9 +39,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import com.heika.nativeapp.ui.BackHeader
-import kotlinx.coroutines.delay
 
 @Composable
 fun MessagesScreen(
@@ -53,18 +56,21 @@ fun MessagesScreen(
     viewModel: MessagesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(initialConversationId, initialPeerId) {
         if (!initialPeerId.isNullOrBlank()) {
             viewModel.load()
             viewModel.startWithPeer(initialPeerId)
         } else viewModel.load(initialConversationId)
     }
-    LaunchedEffect(state.activeId) {
-        onConversationChange(state.activeId != null)
-        while (true) {
-            delay(12_000)
-            if (state.activeId != null) viewModel.refreshActive() else viewModel.load()
+    LaunchedEffect(state.activeId) { onConversationChange(state.activeId != null) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) viewModel.startForegroundSync()
+            if (event == Lifecycle.Event.ON_STOP) viewModel.stopForegroundSync()
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); viewModel.stopForegroundSync() }
     }
     BackHandler(enabled = true) {
         if (state.activeId != null) viewModel.closeConversation() else onBack()
@@ -113,6 +119,11 @@ fun MessagesScreen(
                     val mine = message.senderId == state.userId
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
                         Text(message.body, Modifier.clip(RoundedCornerShape(15.dp)).background(if (mine) MaterialTheme.colorScheme.primary.copy(alpha = .17f) else MaterialTheme.colorScheme.surface).padding(horizontal = 13.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, lineHeight = 19.sp)
+                    }
+                }
+                items(state.pendingMessages, key = { "pending-${it.nonce}" }) { pending ->
+                    if (pending.conversationId == state.activeId && pending.failed) {
+                        Text("${pending.body}  ·  发送失败，点此重试", Modifier.fillMaxWidth().clickable { viewModel.retryMessage(pending.nonce) }.padding(8.dp), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                     }
                 }
                 if (state.messages.isEmpty() && !state.loading) item { Text("发送第一条消息，开始交流。", Modifier.fillMaxWidth().padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }

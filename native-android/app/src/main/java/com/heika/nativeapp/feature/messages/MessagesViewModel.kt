@@ -19,9 +19,11 @@ import org.json.JSONObject
 data class NativePeer(val id: String, val name: String, val avatar: String?, val bio: String)
 data class NativeConversation(val id: String, val peer: NativePeer, val latest: String, val unread: Int, val createdAt: String)
 data class NativeMessage(val id: String, val conversationId: String, val senderId: String, val body: String, val createdAt: String)
+data class PendingMessage(val nonce: String, val conversationId: String, val body: String, val failed: Boolean = false)
 data class MessagesState(
     val conversations: List<NativeConversation> = emptyList(),
     val messages: List<NativeMessage> = emptyList(),
+    val pendingMessages: List<PendingMessage> = emptyList(),
     val historyHasMore: Boolean = false,
     val loadingHistory: Boolean = false,
     val people: List<NativePeer> = emptyList(),
@@ -43,6 +45,8 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     private var openingPeerId: String? = null
     private var authInitialized = false
     private var observedUserId: String? = null
+    private var pollingJob: Job? = null
+    private val sendMutex = kotlinx.coroutines.sync.Mutex()
 
     init {
         viewModelScope.launch {
@@ -50,6 +54,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
                 if (!authInitialized) return@collect
                 val currentUserId = mutableState.value.userId
                 if (currentUserId != session?.userId && observedUserId != session?.userId) {
+                    pollingJob?.cancel()
                     observedUserId = session?.userId
                     mutableState.value = MessagesState(loading = session != null, userId = session?.userId, error = if (session == null) "登录后查看私信" else null)
                     if (session != null) load()
@@ -68,8 +73,10 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
             mutableState.value = MessagesState(loading = false, error = "登录后查看私信")
             return@launch
         }
-        mutableState.update { it.copy(userId = session.userId, loading = true, error = null) }
+        mutableState.update { it.copy(userId = session.userId, loading = it.conversations.isEmpty(), error = null) }
+        val requestUser = session.userId
         runCatching { repository.inbox() }.onSuccess { data ->
+            if (runCatching { auth.current()?.userId }.getOrNull() != requestUser) return@onSuccess
             val items = data.optJSONArray("items").jsonObjects().map { row ->
                 val peer = parsePeer(row.optJSONObject("peer") ?: JSONObject())
                 NativeConversation(row.optString("conversation_id"), peer, row.optString("latest_body"), row.optInt("unread"), row.optString("created_at"))
@@ -88,6 +95,19 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         loadConversation(id)
     }
 
+    fun startForegroundSync() {
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewModelScope.launch {
+            while (true) {
+                val active = mutableState.value.activeId
+                if (active == null) load() else refreshActive()
+                delay(if (active == null) 20_000 else 6_000)
+            }
+        }
+    }
+
+    fun stopForegroundSync() { pollingJob?.cancel(); pollingJob = null }
+
     private suspend fun loadConversation(id: String) {
         runCatching { repository.conversation(id) }.onSuccess { data ->
             val rows = data.optJSONArray("items").jsonObjects().map { row ->
@@ -96,7 +116,11 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
             mutableState.update { state ->
                 if (state.activeId != id) return@update state
                 val messages = if (state.activeId == id) (state.messages + rows).distinctBy { it.id }.sortedBy { it.createdAt } else rows
-                state.copy(messages = messages, historyHasMore = data.optBoolean("has_more"), loadingHistory = false, conversations = state.conversations.map { if (it.id == id) it.copy(unread = 0) else it }, error = null)
+                state.copy(messages = messages, historyHasMore = data.optBoolean("has_more"), loadingHistory = false, error = null)
+            }
+            if (mutableState.value.activeId == id) {
+                runCatching { repository.markConversationRead(id) }
+                load()
             }
         }.onFailure { error -> mutableState.update { it.copy(error = error.message ?: "会话加载失败") } }
     }
@@ -173,10 +197,25 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         val id = current.activeId ?: return@launch
         val text = current.draft.trim()
         if (text.isEmpty() || current.sending) return@launch
-        mutableState.update { it.copy(sending = true, error = null) }
-        runCatching { repository.sendMessage(id, text, UUID.randomUUID().toString()) }
-            .onSuccess { loadConversation(id); mutableState.update { it.copy(draft = "", sending = false) }; load() }
-            .onFailure { error -> mutableState.update { it.copy(sending = false, error = error.message ?: "消息发送失败") } }
+        sendWithNonce(id, text, UUID.randomUUID().toString())
+    }
+
+    fun retryMessage(nonce: String) = viewModelScope.launch {
+        val item = mutableState.value.pendingMessages.firstOrNull { it.nonce == nonce && it.failed } ?: return@launch
+        sendWithNonce(item.conversationId, item.body, item.nonce)
+    }
+
+    private suspend fun sendWithNonce(id: String, text: String, nonce: String) = sendMutex.withLock {
+        val owner = mutableState.value.userId ?: return@withLock
+        mutableState.update { it.copy(sending = true, error = null, pendingMessages = (it.pendingMessages.filterNot { p -> p.nonce == nonce } + PendingMessage(nonce, id, text))) }
+        val result = runCatching { repository.sendMessage(id, text, nonce) }
+        if (runCatching { auth.current()?.userId }.getOrNull() != owner || mutableState.value.activeId != id) return@withLock
+        result.onSuccess {
+            mutableState.update { s -> s.copy(draft = if (s.draft.trim() == text) "" else s.draft, sending = false, pendingMessages = s.pendingMessages.filterNot { p -> p.nonce == nonce }) }
+            loadConversation(id); load()
+        }.onFailure { error ->
+            mutableState.update { s -> s.copy(sending = false, pendingMessages = s.pendingMessages.map { p -> if (p.nonce == nonce) p.copy(failed = true) else p }, error = error.message ?: "发送失败，可重试") }
+        }
     }
 
     private fun parsePeer(json: JSONObject) = NativePeer(json.optString("id"), json.optString("nickname").ifBlank { "探索者" }, json.optString("avatar_url").takeIf(String::isNotBlank), json.optString("bio"))
