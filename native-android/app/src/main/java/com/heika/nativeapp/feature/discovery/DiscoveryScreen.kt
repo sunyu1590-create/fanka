@@ -360,13 +360,14 @@ internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier =
     Column(modifier.fillMaxWidth()) {
         if (image != null) {
             var imageFailed by remember(image, post.cloudId) { mutableStateOf(false) }
+            var imageRetry by remember(image, post.cloudId) { mutableStateOf(0) }
             val ratio = remember(post.id) { listOf(.78f, .88f, 1.02f)[Math.floorMod(post.id, 3)] }
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.feedCard)).clickable(onClick = onClick)
                     .background(MaterialTheme.colorScheme.surfaceVariant).aspectRatio(ratio),
             ) {
                 val context = LocalContext.current
-                val request = remember(image, post.cloudId) {
+                val request = remember(image, post.cloudId, imageRetry) {
                     ImageRequest.Builder(context).data(image)
                         .memoryCacheKey(imageCacheKey(post.cloudId, image, "feed-thumb"))
                         .diskCacheKey(imageCacheKey(post.cloudId, image, "feed-thumb"))
@@ -383,7 +384,9 @@ internal fun FeedCard(post: HeikaPost, onClick: () -> Unit, modifier: Modifier =
                 if (imageFailed) {
                     Text(
                         "图片暂不可用",
-                        Modifier.align(Alignment.Center).clip(RoundedCornerShape(9.dp)).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 10.dp, vertical = 7.dp),
+                        Modifier.align(Alignment.Center).clip(RoundedCornerShape(9.dp)).background(Color.Black.copy(alpha = .58f))
+                            .clickable { imageRetry++; imageFailed = false }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
                         color = Color.White.copy(alpha = .9f),
                         fontSize = 10.sp,
                     )

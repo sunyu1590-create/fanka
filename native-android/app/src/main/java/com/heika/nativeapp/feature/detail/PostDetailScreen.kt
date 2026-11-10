@@ -86,7 +86,6 @@ fun PostDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val readingMode by viewModel.readingMode.collectAsStateWithLifecycle()
     val imageLoader = LocalHeikaImageLoader.current
-    val context = LocalContext.current
     var draft by remember(post?.cloudId, postKey) { mutableStateOf("") }
     var replyTo by remember(post?.cloudId, postKey) { mutableStateOf<String?>(null) }
     var reportOpen by remember(post?.cloudId, postKey) { mutableStateOf(false) }
@@ -126,13 +125,8 @@ fun PostDetailScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Box(Modifier.fillMaxWidth().widthIn(max = 440.dp).aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                                        AsyncImage(
-                                            model = remember(item.cloudId, item.images[page], page) {
-                                                ImageRequest.Builder(context).data(item.images[page])
-                                                    .memoryCacheKey(imageCacheKey(item.cloudId, item.images[page], "detail-full-$page"))
-                                                    .diskCacheKey(imageCacheKey(item.cloudId, item.images[page], "detail-full-$page"))
-                                                    .crossfade(150).build()
-                                            },
+                                        RetryableDetailImage(
+                                            url = item.images[page], postId = item.cloudId, variant = "detail-full-$page",
                                             contentDescription = "${item.title}，第 ${page + 1} 张",
                                             imageLoader = imageLoader,
                                             contentScale = ContentScale.Fit,
@@ -143,13 +137,8 @@ fun PostDetailScreen(
                                 Text("${pagerState.currentPage + 1} / ${item.images.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
                             }
                         } else item.images.forEachIndexed { index, image ->
-                            AsyncImage(
-                                model = remember(item.cloudId, image, index) {
-                                    ImageRequest.Builder(context).data(image)
-                                        .memoryCacheKey(imageCacheKey(item.cloudId, image, "detail-full-$index"))
-                                        .diskCacheKey(imageCacheKey(item.cloudId, image, "detail-full-$index"))
-                                        .crossfade(150).build()
-                                },
+                            RetryableDetailImage(
+                                url = image, postId = item.cloudId, variant = "detail-full-$index",
                                 contentDescription = item.title,
                                 imageLoader = imageLoader,
                                 contentScale = ContentScale.FillWidth,
@@ -300,6 +289,48 @@ fun PostDetailScreen(
             confirmButton = { TextButton(onClick = { viewModel.report(reportReason, reportNote); reportOpen = false }) { Text("提交") } },
             dismissButton = { TextButton(onClick = { reportOpen = false }) { Text("取消") } },
         )
+    }
+}
+
+@Composable
+private fun RetryableDetailImage(
+    url: String,
+    postId: String,
+    variant: String,
+    contentDescription: String,
+    imageLoader: coil3.ImageLoader,
+    contentScale: ContentScale,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var attempt by remember(url, postId, variant) { mutableIntStateOf(0) }
+    var failed by remember(url, postId, variant) { mutableStateOf(false) }
+    val request = remember(context, url, postId, variant, attempt) {
+        ImageRequest.Builder(context).data(url)
+            .memoryCacheKey(imageCacheKey(postId, url, variant))
+            .diskCacheKey(imageCacheKey(postId, url, variant))
+            .crossfade(150).build()
+    }
+    Box(modifier) {
+        AsyncImage(
+            model = request,
+            contentDescription = contentDescription,
+            imageLoader = imageLoader,
+            contentScale = contentScale,
+            modifier = Modifier.fillMaxSize(),
+            onState = { failed = it is coil3.compose.AsyncImagePainter.State.Error },
+        )
+        if (failed) {
+            Text(
+                "图片加载失败 · 重试",
+                Modifier.align(Alignment.Center).clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .clickable { attempt++; failed = false }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                color = Color.White,
+                fontSize = 12.sp,
+            )
+        }
     }
 }
 
