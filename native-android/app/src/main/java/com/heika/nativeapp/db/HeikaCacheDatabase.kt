@@ -38,17 +38,26 @@ interface HeikaCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putFeed(value: FeedCacheEntity)
 
-    @Query("DELETE FROM feed_cache WHERE cachedAt < :before")
+    @Query("DELETE FROM feed_cache WHERE cachedAt < :before AND cacheKey NOT LIKE 'native-publish:%'")
     suspend fun expireFeeds(before: Long)
 
-    @Query("DELETE FROM feed_cache WHERE cacheKey = (SELECT cacheKey FROM feed_cache WHERE cacheKey NOT LIKE 'native-profile:%' ORDER BY cachedAt ASC LIMIT 1)")
+    @Query("DELETE FROM feed_cache WHERE cacheKey = (SELECT cacheKey FROM feed_cache WHERE cacheKey NOT LIKE 'native-profile:%' AND cacheKey NOT LIKE 'native-publish:%' ORDER BY cachedAt ASC LIMIT 1)")
     suspend fun removeOldestFeed()
 
-    @Query("DELETE FROM feed_cache WHERE cacheKey LIKE '%' || :userId")
+    @Query("DELETE FROM feed_cache WHERE cacheKey LIKE '%' || :userId AND cacheKey NOT LIKE 'native-publish:%'")
     suspend fun clearFeedForUser(userId: String)
 
-    @Query("SELECT COUNT(*) FROM feed_cache WHERE cacheKey NOT LIKE 'native-profile:%'")
+    @Query("SELECT COUNT(*) FROM feed_cache WHERE cacheKey NOT LIKE 'native-profile:%' AND cacheKey NOT LIKE 'native-publish:%'")
     suspend fun feedCount(): Int
+
+    @Query("SELECT * FROM feed_cache WHERE cacheKey = :key LIMIT 1")
+    suspend fun publishSnapshot(key: String): FeedCacheEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putPublishSnapshot(value: FeedCacheEntity)
+
+    @Query("DELETE FROM feed_cache WHERE cacheKey = :key")
+    suspend fun clearPublishSnapshot(key: String)
 
     @Query("SELECT * FROM daily_state WHERE userId = :userId AND day = :day LIMIT 1")
     suspend fun daily(userId: String, day: String): DailyStateEntity?

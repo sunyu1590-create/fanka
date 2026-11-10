@@ -69,8 +69,8 @@ class HomeViewModel @Inject constructor(
     private suspend fun load(userId: String) = loadMutex.withLock { loadLatest(userId) }
 
     private suspend fun loadLatest(userId: String) {
-        val day = LocalDate.now().toString()
-        val local = repository.dailyState(userId, day)
+        var day = LocalDate.now().toString()
+        var local = repository.dailyState(userId, day)
         var candidates = local?.candidateIds?.split(',')?.mapNotNull(String::toIntOrNull).orEmpty()
         var opened = local?.openedIds?.split(',')?.mapNotNull(String::toIntOrNull).orEmpty()
         var posts = decodePosts(local?.openedPosts.orEmpty())
@@ -84,29 +84,40 @@ class HomeViewModel @Inject constructor(
 
         var interests = emptySet<String>()
         if (userId != HomeUiState.GUEST_ID) {
-            runCatching { repository.myLibraryState() }.onSuccess { library ->
-                // Membership allowance is the base quota; the locally persisted daily
-                // lucky bonus must remain added after a cold start.
-                allowance = DailyDeckLogic.allowanceFor(library.optJSONObject("profile")?.optString("membership_tier")) + luckyBonus
-                val interestRows = library.optJSONArray("interests")
-                interests = buildSet {
-                    for (index in 0 until (interestRows?.length() ?: 0)) {
-                        interestRows?.optJSONObject(index)?.optJSONObject("interest_tags")?.optString("name")
-                            ?.takeIf(String::isNotBlank)?.let(::add)
-                    }
+            val libraryResult = runCatching { repository.myLibraryState() }
+            libraryResult.onSuccess { library ->
+                val flipState = library.optJSONObject("dailyFlipState")
+                val serverDay = flipState?.optString("localDate")?.takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
+                if (serverDay != null && serverDay != day) {
+                    day = serverDay
+                    local = repository.dailyState(userId, day)
+                    candidates = local?.candidateIds?.split(',')?.mapNotNull(String::toIntOrNull).orEmpty()
+                    opened = local?.openedIds?.split(',')?.mapNotNull(String::toIntOrNull).orEmpty()
+                    posts = decodePosts(local?.openedPosts.orEmpty())
                 }
-                val interactions = library.optJSONArray("interactions")
-                val fromServer = buildList {
+                val bonus = flipState?.optInt("bonus")
+                val fromServer = flipState?.optJSONArray("openedIds")?.let { ids ->
+                    buildList { for (index in 0 until ids.length()) ids.optInt(index).takeIf { it > 0 }?.let(::add) }
+                } ?: buildList {
+                    // Backwards compatibility while an older API response is still in use.
+                    val interactions = library.optJSONArray("interactions")
                     for (index in 0 until (interactions?.length() ?: 0)) {
                         val row = interactions?.optJSONObject(index) ?: continue
                         if (!row.optString("opened_at").startsWith(day)) continue
-                        val id = row.optJSONObject("posts")?.optInt("client_id") ?: 0
-                        if (id > 0) add(id)
+                        row.optJSONObject("posts")?.optInt("client_id")?.takeIf { it > 0 }?.let(::add)
                     }
                 }
-                opened = (opened + fromServer).distinct().take(allowance + 10)
+                if (flipState != null) {
+                    luckyBonus = bonus?.coerceIn(0, 10) ?: 0
+                    allowance = flipState.optInt("allowance", DailyDeckLogic.allowanceFor(library.optJSONObject("profile")?.optString("membership_tier")) + luckyBonus)
+                    opened = fromServer.distinct()
+                } else {
+                    allowance = DailyDeckLogic.allowanceFor(library.optJSONObject("profile")?.optString("membership_tier")) + luckyBonus
+                    opened = (opened + fromServer).distinct().take(allowance + 10)
+                }
                 candidates = (fromServer + candidates).distinct()
             }
+            libraryResult.onFailure { if (posts.isEmpty()) mutableState.value = mutableState.value.copy(error = it.message ?: "连接暂时中断") }
         }
 
         if (candidates.size < 50) {
@@ -142,37 +153,33 @@ class HomeViewModel @Inject constructor(
         openMutex.withLock {
             val current = mutableState.value
             if (id in current.openedIds) return@withLock
-            if (current.openedIds.size >= current.allowance) {
+            if (current.userId == HomeUiState.GUEST_ID && current.openedIds.size >= current.allowance) {
                 mutableState.value = current.copy(notice = "今天的翻卡次数已用完，已解锁内容仍可查看")
                 return@withLock
             }
             mutableState.value = current.copy(openingId = id, error = null, notice = null)
             runCatching {
-                repository.revealCard(id).also { post ->
-                    if (post.id != id) throw IOException("返回的卡片与所选卡片不一致")
-                }
+                confirmFlip(current, id)
             }
-                .onSuccess { post ->
+                .onSuccess { confirmed ->
                     val latest = mutableState.value
                     if (latest.userId != current.userId || latest.day != current.day || latest.openingId != id) return@onSuccess
-                    val extra = if (current.luckyBonus >= 10) 0 else DailyDeckLogic.luckyBonusFor(kotlin.random.Random.nextDouble()).coerceAtMost(10 - current.luckyBonus)
+                    val updatedDay = confirmed.localDate ?: current.day
+                    val extra = confirmed.bonusAwarded
+                    val opened = confirmed.openedIds ?: (latest.openedIds + id).distinct()
+                    val bonus = confirmed.bonusTotal ?: (latest.luckyBonus + extra).coerceAtMost(10)
+                    val allowance = confirmed.allowance ?: (latest.allowance + extra)
                     val updated = latest.copy(
+                        day = updatedDay,
                         openingId = null,
-                        openedIds = (latest.openedIds + id).distinct(),
-                        posts = latest.posts + (id to post),
-                        luckyBonus = latest.luckyBonus + extra,
-                        allowance = latest.allowance + extra,
+                        openedIds = opened,
+                        posts = latest.posts + (id to confirmed.post),
+                        luckyBonus = bonus,
+                        allowance = allowance,
                         notice = if (extra > 0) "幸运加成 +$extra 次" else null,
                     )
                     mutableState.value = updated
                     persist()
-                    if (current.userId != HomeUiState.GUEST_ID) {
-                        runCatching {
-                            if (auth.current()?.userId == current.userId) repository.recordOpen(id)
-                        }.onFailure {
-                            mutableState.value = mutableState.value.copy(notice = "已保存在本机，阅读记录稍后同步")
-                        }
-                    }
                 }
                 .onFailure {
                     val latest = mutableState.value
@@ -182,6 +189,48 @@ class HomeViewModel @Inject constructor(
                 }
         }
     }
+
+    private suspend fun confirmFlip(current: HomeUiState, id: Int): FlipConfirmation {
+        if (current.userId == HomeUiState.GUEST_ID) {
+            val post = repository.revealCard(id)
+            if (post.id != id) throw IOException("返回的卡片与所选卡片不一致")
+            val extra = if (current.luckyBonus >= 10) 0 else DailyDeckLogic.luckyBonusFor(kotlin.random.Random.nextDouble()).coerceAtMost(10 - current.luckyBonus)
+            return FlipConfirmation(post = post, bonusAwarded = extra, bonusTotal = current.luckyBonus + extra, allowance = current.allowance + extra)
+        }
+        if (auth.current()?.userId != current.userId) throw IOException("账号已切换，请重新加载首页")
+        val payload = repository.confirmDailyFlip(id, current.day)
+        val postJson = payload.optJSONObject("post") ?: throw IOException("翻卡内容暂不可用，请重试")
+        val post = HeikaPost.from(postJson)
+        if (post.id != id) throw IOException("返回的卡片与所选卡片不一致")
+        val state = payload.optJSONObject("flipState") ?: throw IOException("服务端未返回翻卡状态，请重试")
+        val openedIds = state.optJSONArray("openedIds")?.let { ids ->
+            buildList<Int> {
+                for (index in 0 until ids.length()) {
+                    val openedId = ids.optInt(index)
+                    if (openedId > 0) add(openedId)
+                }
+            }
+        } ?: throw IOException("服务端未返回已翻记录，请重试")
+        val localDate = state.optString("localDate").takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
+            ?: throw IOException("服务端翻卡日期无效，请重试")
+        return FlipConfirmation(
+            post = post,
+            localDate = localDate,
+            openedIds = openedIds,
+            bonusAwarded = if (state.optBoolean("idempotent")) 0 else state.optInt("bonusAwarded").coerceIn(0, 10),
+            bonusTotal = state.optInt("bonus").coerceIn(0, 10),
+            allowance = state.optInt("allowance").takeIf { it >= 0 } ?: current.allowance,
+        )
+    }
+
+    private data class FlipConfirmation(
+        val post: HeikaPost,
+        val localDate: String? = null,
+        val openedIds: List<Int>? = null,
+        val bonusAwarded: Int,
+        val bonusTotal: Int? = null,
+        val allowance: Int? = null,
+    )
 
     fun clearMessages() { mutableState.value = mutableState.value.copy(error = null, notice = null) }
 

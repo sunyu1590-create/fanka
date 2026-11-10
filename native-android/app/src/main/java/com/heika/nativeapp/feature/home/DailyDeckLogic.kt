@@ -3,6 +3,12 @@ package com.heika.nativeapp.feature.home
 import com.heika.nativeapp.data.HeikaPost
 
 object DailyDeckLogic {
+    fun flipIdempotencyKey(day: String, postId: Int): String {
+        require(day.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) { "翻卡日期无效" }
+        require(postId > 0) { "卡片编号无效" }
+        return "flip:$day:$postId"
+    }
+
     fun rankCandidates(ids: List<Int>, day: String, interests: Set<String>, posts: Map<Int, HeikaPost>): List<Int> =
         ids.sortedWith { left, right ->
             val leftInterest = if (posts[left]?.tag?.let(interests::contains) == true) 0 else 1

@@ -1,42 +1,48 @@
 # HEIKA Native 3.0 / 3.1 基线记录
 
-> 状态核验日期：2026-11-10。每次开发前重新核验远端分支及 Actions；记录中的 SHA 仅表示当时验证的源码，不是永久基线。
+> 状态核验日期：2026-11-10。每次开发前重新核验远端分支及 Actions；以下 SHA 是本次核验结果，不是永久基线。
 
 ## 唯一本地工程与当前有效源码
 
 - 目录：`/workspace/heika-native3-followup`
 - 仓库：`sunyu1590-create/fanka`
-- 开发分支：`codex/native3-full-native`
-- 本轮最新 Android 源码提交：`ebdf64efc55f28afe6895ed4c43f006412c8b246` (`fix: update profile feed card click call`)
-- 上一项功能提交：`8f2adb06bb09af2a1279c4712f8e61f54dcd51ac` (`feat: refine HEIKA content discovery and search`)
+- 阶段 A 开发分支：`codex/stage-a-flip-publish-20261110`，对应 PR #14，基线 `codex/native3-full-native@e78d91aea04595ff1e2c60d2a8b47d3da6589433`
+- 本轮 Native 源码提交：`6c6ae3e5cdda72cd3592fda673ed461aafb1b4d2` (`fix(publish): keep editor open when local snapshot fails`)；后续仅增加基线文档提交。
+- 工作区已与本轮 PR 分支中的代码逐文件核对，保留现有 Native 3.0 功能和阶段 A 改动。
 - 网站功能参考版本：2.40.7
 - Android：`applicationId=com.heika.community`、`versionName=2.3.6`、`versionCode=14`
-- 最近成功构建后仅有本文件可能产生文档记录提交；它不改变 APK 源码。以 Actions Run 的 `head_sha` 为实际 APK 源码版本。
 
 ## 最近成功的 GitHub Android 构建
 
-- Workflow：**HEIKA Native 3.0 Android**，push Run **#33**，ID `42755322468`
-- 源码提交：`ebdf64efc55f28afe6895ed4c43f006412c8b246`；分支：`codex/native3-full-native`
-- 状态：成功；单元测试、Android lint、Debug APK 与 unsigned Release APK 步骤均成功。
-- Run：https://github.com/sunyu1590-create/fanka/actions/runs/42755322468
-- Artifact：`HEIKA-Native-3-vebdf64efc55f28afe6895ed4c43f006412c8b246`；ID `13734869594`；约 21.7 MB；SHA-256 `1184b2bae2ea965c56e8f21f6038ce49a4d496d86dad648b2dc5a6bd85d6972d`；保留至 2026-11-24。
-- Artifact 页面：https://github.com/sunyu1590-create/fanka/actions/runs/42755322468/artifacts/13734869594
-- Workflow 根据 Gradle 配置生成 `HEIKA-2.3.6-14-debug.apk` 和 `HEIKA-2.3.6-14-release-unsigned.apk`。Debug 可安装；unsigned Release 仅供检查，不是正式发布包。
-- #31 曾因 `ProfileScreen.kt` 使用过期 `FeedCard` 调用方式而在 Kotlin 编译失败。该调用已修复并包含在 `ebdf64e`，#33 全流程通过。未使用本地 Android 构建。
+- Workflow：**HEIKA Native 3.0 Android**，push Run **#40**，ID `42768947213`；状态成功，完成于 `2026-11-10 06:38 UTC`。
+- 构建分支：`codex/stage-a-flip-publish-20261110`；源码提交精确对应 `6c6ae3e5cdda72cd3592fda673ed461aafb1b4d2`。
+- 检查：`testDebugUnitTest`、`lintDebug`、`assembleDebug`、`assembleRelease`、产物准备和上传全部成功。
+- Run：https://github.com/sunyu1590-create/fanka/actions/runs/42768947213
+- Artifact：`HEIKA-Native-3-v6c6ae3e5cdda72cd3592fda673ed461aafb1b4d2`；ID `13741590867`；22,785,893 bytes；Artifact ZIP SHA-256 `460122376c6eb74f19649c0d90891d988fd1a64410c64275f530ce519b7cafb5`；保留至 `2026-11-24 06:38 UTC`。
+- Artifact 页面：https://github.com/sunyu1590-create/fanka/actions/runs/42768947213/artifacts/13741590867
+- Workflow 依据 Gradle 配置生成 `HEIKA-2.3.6-14-debug.apk` 与 `HEIKA-2.3.6-14-release-unsigned.apk`。Debug APK 可安装；未签名 Release APK 仅供检查，不是正式发布包。
+- PR 校验 Run #41（ID `42768954983`）也成功；它使用 GitHub 合并校验提交 `8c6def940f7703a6f01c200cc4349788f3a339f1`，包含同一 PR 源码和基线 `e78d91a`。
 
-## 本轮验证范围
+## 阶段 A 变更与验证
 
-- Web：`npm run typecheck` 通过；`npm test` 通过（47/47）；定向 ESLint 0 error、22 warnings。
-- Android：GitHub Actions #33 中 `testDebugUnitTest`、`lintDebug`、`assembleDebug`、`assembleRelease` 均成功。
-- 本轮没有运行本地 Gradle 构建，也没有 Android 模拟器或真机验证。
-- `ProfileScreen.kt` 的兼容调用修复发生在 #31 的失败之后；相关 Web 文件在前一功能提交中已完成 typecheck、测试和 lint。
+- 翻卡：登录用户走 `get_daily_flip_state()` / `confirm_daily_flip()` 权威状态和按账号/本地日/卡片请求键幂等事务；游客继续使用公开 demo 卡片流程。服务端规则复用现有每日额度与奖励概率，客户端不再直接写 `opened_at`。
+- 发布：媒体上传复用 `upload_id`；单图进度/失败重试、排序与封面、待清理媒体重试和按账号隔离的 Room 快照/图片副本已接入。草稿、审核中修订、已发布修订分别处理。
+- Web：`npm test` 50/50 通过，`npm run typecheck` 通过，`npm run build` 通过（有既有 lint 警告）；`git diff --check` 通过。
+- Android：Run #40 的单测、Lint、Debug 与 unsigned Release 构建通过。未执行本地 Gradle 构建（此前 Gradle 下载域名 DNS 不可用），未进行 Android 真机或模拟器端到端测试。
+- 未使用真实线上账号执行翻卡、两设备并发、图片上传、审核或强制结束进程测试；这些仍需线上/设备验收。
+
+## 部署依赖与风险
+
+- Supabase 权威翻卡迁移已应用于项目 `sauknappipwkxloaovms`。网站 API/翻卡适配位于 PR #15，目标 `publish-vercel`，目前仍未合并或部署：https://github.com/sunyu1590-create/fanka/pull/15
+- 生产网站代码部署前，不能宣称网页与 Android 的线上翻卡闭环已共同生效。由于迁移收紧了客户端对 `opened_at` 的直接写入，网站 API 部署需与迁移保持协调。
+- 阶段 A Native 变更位于 PR #14，目前待审核/合入；本次未将任一 PR 合并到生产或主分支。
 
 ## 历史记录
 
-- 2026-11-10 之前的成功构建包括 Run #28（ID `42750160378`，源码 `7f521a8148170b619b20d7bb419d28e6e4c8546c`）及更早的 #26/#27。它们已被 Run #33 取代为最近成功构建。
+- 前一成功构建：Run #33（ID `42755322468`，源码 `ebdf64efc55f28afe6895ed4c43f006412c8b246`），已被本次 Run #40 取代。
 - Native 3.1 个人中心与设置改造提交：`8c70cea83b3bcf8ac8a08933bd4c1d651acafbb6`。
-- 基线整合前，本地修改曾通过 `stash@{0}` 保留；该恢复快照在确认不再需要前不要删除。
+- 基线整合前的 `stash@{0}` 恢复快照在确认不再需要前不要删除。
 
 ## 后续任务要求
 
-开发前重新检查工作目录、Git 状态、远端 HEAD、最新成功 Actions Run 和 APK 版本；比较远端源码与工作区，再在包含全部有效成果的最新基线上增量修改。构建失败时修复当前代码，不回退旧底包。未经授权不强推或合并生产分支。
+开发前重新检查工作目录、Git 状态、远端 HEAD、最新成功 Actions Run 和 APK 版本；比较远端源码与工作区，再在包含全部有效成果的最新基线上增量修改。构建失败时修复当前代码，不回退旧底包。未经授权不强推或合并生产分支.
