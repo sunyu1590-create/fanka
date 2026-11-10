@@ -167,6 +167,11 @@ export async function DELETE(req: NextRequest) {
     const postId = body.post_id ? uuid(body.post_id, "草稿") : null;
     const { data: linked, error: linkedError } = await db.from("post_media").select("post_id,thumbnail_path,retina_thumbnail_path").eq("storage_path", path).maybeSingle();
     dbError(linkedError);
+    if (linked?.post_id) {
+      const { data: linkedPost, error: linkedPostError } = await db.from("posts").select("status").eq("id", linked.post_id).eq("author_id", user!.id).maybeSingle();
+      dbError(linkedPostError);
+      if (linkedPost?.status === "published") throw new ApiError(409, "已发布作品的图片不能作为草稿资源删除");
+    }
     if (linked?.post_id && postId !== linked.post_id) throw new ApiError(403, "图片与草稿不匹配");
     if (postId && !linked) {
       const { data: post, error } = await db.from("posts").select("id").eq("id", postId).eq("author_id", user!.id).maybeSingle();

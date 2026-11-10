@@ -92,11 +92,11 @@ async function replaceTopics(db: SupabaseClient, postId: string, value: unknown)
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
-    const [profile, details, prefs, bookmarks, interactions, interests, own, revisions] =
+    const [profile, details, prefs, bookmarks, interactions, interests, own, revisions, flipState] =
       await Promise.all([
         db
           .from("profiles")
-          .select("nickname,bio,avatar_url,role,membership_tier,show_bookmarks")
+          .select("nickname,bio,avatar_url,role,membership_tier,show_bookmarks,timezone")
           .eq("id", user!.id)
           .single(),
         db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),
@@ -116,8 +116,9 @@ export async function GET(req: NextRequest) {
           .eq("user_id", user!.id),
         db.from("posts").select(libraryFields).eq("author_id", user!.id),
         db.from("post_revisions").select("post_id,payload,status,review_note").eq("author_id", user!.id),
+        db.rpc("get_daily_flip_state"),
       ]);
-    for (const r of [profile, details, prefs, bookmarks, interactions, interests, own, revisions])
+    for (const r of [profile, details, prefs, bookmarks, interactions, interests, own, revisions, flipState])
       dbError(r.error);
     const ownPosts = await presentMany(db, own.data as unknown as LibraryRow[]);
     const revisionRows = (revisions.data || []) as { post_id: string; payload: Record<string, unknown>; status: "pending" | "approved" | "rejected"; review_note: string | null }[];
@@ -137,6 +138,9 @@ export async function GET(req: NextRequest) {
         videos: Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.flatMap((path) => typeof path === "string" && /\.(?:mp4|webm)$/i.test(path) && revisionUrls.has(path) ? [revisionUrls.get(path)!] : []) : [],
       },
     }]));
+    const mediaPathsByPostId = new Map((own.data || [])
+      .map((row) => [row.id, ((row as unknown as LibraryRow).post_media || [])
+        .slice().sort((a, b) => a.sort_order - b.sort_order).map((media) => media.storage_path)]));
     return {
       profile: profile.data,
       profileDetails: details.data,
@@ -144,7 +148,12 @@ export async function GET(req: NextRequest) {
       bookmarks: bookmarks.data,
       interactions: interactions.data,
       interests: interests.data,
-      own: ownPosts.map((post) => ({ ...post, pendingRevision: post.cloudId ? revisionsByPost.get(post.cloudId) : undefined })),
+      dailyFlipState: flipState.data,
+      own: ownPosts.map((post) => ({
+        ...post,
+        ...(post.cloudId ? { mediaPaths: mediaPathsByPostId.get(post.cloudId) || [] } : {}),
+        pendingRevision: post.cloudId ? revisionsByPost.get(post.cloudId) : undefined,
+      })),
     };
   });
 }
@@ -153,6 +162,54 @@ export async function POST(req: NextRequest) {
     const { db, user } = await context(req);
     const b = await jsonBody(req);
     const action = b.action;
+    if (action === "flip" || action === "open") {
+      const clientId = Number(b.id);
+      if (!Number.isSafeInteger(clientId) || clientId < 1) throw new ApiError(400, "卡片编号无效");
+      const idempotencyKey = action === "flip"
+        ? textField(b.idempotencyKey, "翻卡请求编号", 1, 120)
+        : `legacy:${clientId}`;
+      const { data: post, error: postError } = await db
+        .from("posts")
+        .select(libraryFields)
+        .eq("client_id", clientId)
+        .eq("channel", "community")
+        .eq("status", "published")
+        .maybeSingle();
+      dbError(postError);
+      if (!post) throw new ApiError(404, "卡片内容不存在或已不可用");
+      const row = post as unknown as LibraryRow;
+      const { data: stats, error: statsError } = await db
+        .from("post_rating_stats")
+        .select("rating_count,rating_sum")
+        .eq("post_id", row.id)
+        .maybeSingle();
+      dbError(statsError);
+      const ratingCount = stats?.rating_count || 0;
+      const rarityTier = cardRarityTier(ratingCount ? stats!.rating_sum / ratingCount : 0, ratingCount);
+      const confirmed = await db.rpc("confirm_daily_flip", {
+        p_post_id: row.id,
+        p_idempotency_key: idempotencyKey,
+      });
+      if (confirmed.error?.message.includes("daily_flip_limit_reached")) throw new ApiError(409, "今天的翻卡次数已用完");
+      if (confirmed.error?.message.includes("daily_card_unavailable")) throw new ApiError(404, "卡片内容已不可用");
+      if (confirmed.error?.message.includes("idempotency_key_reused")) throw new ApiError(409, "翻卡请求编号已被使用，请重新打开卡片");
+      dbError(confirmed.error);
+      let experience: unknown = null;
+      if (row.author_id !== user!.id) {
+        const awarded = await db.rpc("record_experience_event", { p_event_type: "flip", p_post_id: row.id });
+        // The flip itself is already durable. If experience sync fails, retrying
+        // this same idempotent request retries the event without charging again.
+        if (!awarded.error) experience = awarded.data;
+      }
+      const presented = (await presentMany(db, [row]))[0];
+      const { data: likes, error: likesError } = await db.from("post_like_stats").select("like_count").eq("post_id", row.id).maybeSingle();
+      dbError(likesError);
+      return {
+        post: { ...presented, rarityTier, ratingAverage: ratingCount ? stats!.rating_sum / ratingCount : 0, ratingCount, likeCount: likes?.like_count || 0 },
+        flipState: confirmed.data,
+        experience,
+      };
+    }
     if (action === "reset") {
       const results = await Promise.all([
         db.from("user_interests").delete().eq("user_id", user!.id),
@@ -461,17 +518,6 @@ export async function POST(req: NextRequest) {
       dbError(viewError);
       return { saved: true, viewCount: Number(viewCount) || 0 };
     }
-    else if (action === "open") {
-      fields.opened_at = new Date().toISOString();
-      const { data: stats, error: statsError } = await db
-        .from("post_rating_stats")
-        .select("rating_count,rating_sum")
-        .eq("post_id", post!.id)
-        .maybeSingle();
-      dbError(statsError);
-      const count = stats?.rating_count || 0;
-      fields.rarity_tier = cardRarityTier(count ? (stats!.rating_sum / count) : 0, count);
-    }
     else if (action === "complete")
       fields.completed_at = new Date().toISOString();
     else if (action === "like") fields.liked = !!b.value;
@@ -479,14 +525,6 @@ export async function POST(req: NextRequest) {
     else throw new ApiError(400, "操作无效");
     const { error: write } = await db.from("user_interactions").upsert(fields);
     dbError(write);
-    if (action === "open" && post!.author_id !== user!.id) {
-      const { data: experience, error: experienceError } = await db.rpc(
-        "record_experience_event",
-        { p_event_type: "flip", p_post_id: post!.id },
-      );
-      dbError(experienceError);
-      return { saved: true, experience };
-    }
     return { saved: true };
   });
 }
