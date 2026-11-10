@@ -10,8 +10,8 @@ class ExplorationLogicTest {
     @Test fun progressionUsesWebsiteThresholdsAndClampsAtLevelTen() {
         assertEquals(1, ExplorationLogic.progression(0).current.level)
         assertEquals(2, ExplorationLogic.progression(100).current.level)
-        assertEquals(50, ExplorationLogic.progression(150).percent)
-        assertEquals(50, ExplorationLogic.progression(150).remaining)
+        assertEquals(36, ExplorationLogic.progression(150).percent)
+        assertEquals(90, ExplorationLogic.progression(150).remaining)
         assertEquals(10, ExplorationLogic.progression(10_000).current.level)
         assertEquals(100, ExplorationLogic.progression(10_000).percent)
     }

@@ -2,6 +2,7 @@ package com.heika.nativeapp.feature.exploration
 
 import java.time.DayOfWeek
 import java.time.YearMonth
+import kotlin.math.roundToInt
 
 data class ExperienceLevel(
     val level: Int,
@@ -40,7 +41,7 @@ object ExplorationLogic {
         return ExperienceProgress(
             current = current,
             next = next,
-            percent = if (next == null) 100 else (((safeTotal - current.threshold).toFloat() / span) * 100).toInt().coerceIn(0, 100),
+            percent = if (next == null) 100 else (((safeTotal - current.threshold).toFloat() / span) * 100).roundToInt().coerceIn(0, 100),
             remaining = next?.let { (it.threshold - safeTotal).coerceAtLeast(0) } ?: 0,
         )
     }
