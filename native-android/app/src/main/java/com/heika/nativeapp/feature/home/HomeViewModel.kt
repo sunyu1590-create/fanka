@@ -204,7 +204,12 @@ class HomeViewModel @Inject constructor(
         if (post.id != id) throw IOException("返回的卡片与所选卡片不一致")
         val state = payload.optJSONObject("flipState") ?: throw IOException("服务端未返回翻卡状态，请重试")
         val openedIds = state.optJSONArray("openedIds")?.let { ids ->
-            buildList { for (index in 0 until ids.length()) ids.optInt(index).takeIf { it > 0 }?.let(::add) }
+            buildList<Int> {
+                for (index in 0 until ids.length()) {
+                    val openedId = ids.optInt(index)
+                    if (openedId > 0) add(openedId)
+                }
+            }
         } ?: throw IOException("服务端未返回已翻记录，请重试")
         val localDate = state.optString("localDate").takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
             ?: throw IOException("服务端翻卡日期无效，请重试")
