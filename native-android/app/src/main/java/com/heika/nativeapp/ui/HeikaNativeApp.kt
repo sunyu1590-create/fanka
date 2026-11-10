@@ -139,7 +139,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                         userId = null,
                         onBack = { nav.popBackStack() },
                         onPost = { post -> openDestination(post.destination()) },
-                        onDraft = { post -> nav.navigate("publish?draftId=${post.id}") },
+                        onDraft = { post -> nav.navigate("publish?channel=${post.channel}&draftId=${post.id}") },
                         onSettings = { openDestination(HeikaDestination.Settings) },
                         onMembership = { openDestination(HeikaDestination.Membership) },
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
@@ -177,7 +177,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                         userId = entry.arguments?.getString("userId"),
                         onBack = { nav.popBackStack() },
                         onPost = { post -> openDestination(post.destination()) },
-                        onDraft = { post -> nav.navigate("publish?draftId=${post.id}") },
+                        onDraft = { post -> nav.navigate("publish?channel=${post.channel}&draftId=${post.id}") },
                         onSettings = { openDestination(HeikaDestination.Settings) },
                         onMembership = { openDestination(HeikaDestination.Membership) },
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
@@ -207,13 +207,17 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                     )
                 }
                 composable(
-                    route = "publish?draftId={draftId}",
-                    arguments = listOf(navArgument("draftId") { type = NavType.StringType; defaultValue = "0" }),
+                    route = "publish?channel={channel}&draftId={draftId}",
+                    arguments = listOf(
+                        navArgument("channel") { type = NavType.StringType; defaultValue = "community" },
+                        navArgument("draftId") { type = NavType.StringType; defaultValue = "0" },
+                    ),
                 ) { entry ->
                     PublishScreen(
                         onBack = { nav.popBackStack() },
                         onLogin = { nav.navigate("account") },
                         draftId = entry.arguments?.getString("draftId")?.toIntOrNull()?.takeIf { it > 0 },
+                        channel = entry.arguments?.getString("channel") ?: "community",
                         onPublished = { post ->
                             nav.popBackStack()
                             openDestination(post.destination())
@@ -269,7 +273,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                     val currentEntry by nav.currentBackStackEntryAsState()
                     val profileEntry = remember(currentEntry) { nav.getBackStackEntry("profile") }
                     val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(profileEntry)
-                    ManageWorksScreen(onBack = { nav.popBackStack() }, onEdit = { post -> nav.navigate("publish?draftId=${post.id}") }, viewModel = profileViewModel)
+                    ManageWorksScreen(onBack = { nav.popBackStack() }, onEdit = { post -> nav.navigate("publish?channel=${post.channel}&draftId=${post.id}") }, viewModel = profileViewModel)
                 }
                 composable("about") {
                     AboutScreen(onBack = { nav.popBackStack() }, onFeedback = { openDestination(HeikaDestination.Feedback) })

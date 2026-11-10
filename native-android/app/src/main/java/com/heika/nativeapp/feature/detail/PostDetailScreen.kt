@@ -115,6 +115,19 @@ fun PostDetailScreen(
                         val bodyFont = when (readingMode) { "focus" -> 16.sp; "night" -> 15.sp; else -> 14.sp }
                         val bodyLine = when (readingMode) { "focus" -> 28.sp; "night" -> 27.sp; else -> 24.sp }
                         Text(item.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = bodyFont, lineHeight = bodyLine)
+                        if (item.channel == "ai") {
+                            AiResourceDetails(
+                                contentType = item.contentType,
+                                resourceData = item.resourceData,
+                                versions = state.aiVersions,
+                                versionsLoading = state.aiVersionsLoading,
+                                versionsError = state.aiVersionsError,
+                                feedbackSending = state.aiFeedbackSending,
+                                feedbackSubmitted = state.aiFeedbackSubmitted,
+                                onRetryVersions = { viewModel.loadAiVersions(item) },
+                                onSubmitFeedback = { kind, details -> viewModel.submitAiFeedback(kind, details) },
+                            )
+                        }
                         item.tags.takeIf { it.isNotEmpty() }?.let { tags ->
                             Text(tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                         }

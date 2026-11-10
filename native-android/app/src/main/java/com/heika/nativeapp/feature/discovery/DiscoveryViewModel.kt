@@ -45,6 +45,8 @@ class DiscoveryViewModel @Inject constructor(private val repository: HeikaReposi
     val state = mutableState.asStateFlow()
     val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     private val filter = MutableStateFlow(FeedFilter())
+    private var communityFilter = FeedFilter()
+    private var aiFilter = FeedFilter(channel = "ai")
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val posts = filter.flatMapLatest { current ->
@@ -69,7 +71,11 @@ class DiscoveryViewModel @Inject constructor(private val repository: HeikaReposi
 
     fun selectChannel(channel: String) {
         if (channel !in setOf("community", "ai")) return
-        updateFilter { it.copy(channel = channel, category = null, topic = null, contentType = null, sort = "推荐") }
+        val current = filter.value
+        rememberChannelFilter(current)
+        val next = if (channel == "ai") aiFilter else communityFilter
+        filter.value = next
+        mutableState.update { it.copy(filter = next) }
     }
 
     fun selectCategory(category: HeikaCategory?) = updateFilter { it.copy(category = category) }
@@ -101,7 +107,12 @@ class DiscoveryViewModel @Inject constructor(private val repository: HeikaReposi
 
     private fun updateFilter(transform: (FeedFilter) -> FeedFilter) {
         filter.update { updated -> transform(updated) }
+        rememberChannelFilter(filter.value)
         mutableState.update { it.copy(filter = filter.value) }
+    }
+
+    private fun rememberChannelFilter(value: FeedFilter) {
+        if (value.channel == "ai") aiFilter = value else communityFilter = value
     }
 
 }

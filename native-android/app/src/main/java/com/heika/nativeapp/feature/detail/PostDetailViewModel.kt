@@ -42,6 +42,11 @@ data class PostDetailState(
     val error: String? = null,
     val notice: String? = null,
     val commentSubmitted: Int = 0,
+    val aiVersions: List<JSONObject> = emptyList(),
+    val aiVersionsLoading: Boolean = false,
+    val aiVersionsError: String? = null,
+    val aiFeedbackSending: Boolean = false,
+    val aiFeedbackSubmitted: Boolean = false,
 )
 
 @HiltViewModel
@@ -55,6 +60,7 @@ class PostDetailViewModel @Inject constructor(
     val state = mutableState.asStateFlow()
     private var loadedId: String? = null
     private var requestVersion = 0
+    private var aiVersionRequest = 0
     private var commentPage = 0
 
     fun load(post: HeikaPost) {
@@ -62,7 +68,9 @@ class PostDetailViewModel @Inject constructor(
         if (loadedId == key && mutableState.value.post != null) return
         loadedId = key
         val version = ++requestVersion
+        aiVersionRequest++
         mutableState.value = PostDetailState(post = post, loading = true)
+        if (post.channel == "ai") loadAiVersions(post)
         viewModelScope.launch {
             runCatching { repository.postDetail(post) }
                 .onSuccess { detail ->
@@ -79,6 +87,7 @@ class PostDetailViewModel @Inject constructor(
         if (loadedId == key && mutableState.value.post != null) return
         loadedId = key
         val version = ++requestVersion
+        aiVersionRequest++
         mutableState.value = PostDetailState(loading = true)
         viewModelScope.launch {
             runCatching { repository.postDetailByKey(key) }
@@ -87,12 +96,39 @@ class PostDetailViewModel @Inject constructor(
                     mutableState.update { it.copy(post = detail, loading = false, error = null) }
                     loadComments(detail)
                     loadInteractions(detail)
+                    if (detail.channel == "ai") loadAiVersions(detail)
                 }
                 .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(loading = false, error = error.message ?: "内容暂时无法加载") } }
         }
     }
 
     fun reload() { mutableState.value.post?.let { loadedId = null; load(it) } }
+
+    fun loadAiVersions(post: HeikaPost? = mutableState.value.post) {
+        val resource = post ?: return
+        val requestId = ++aiVersionRequest
+        viewModelScope.launch {
+        if (resource.channel != "ai" || !isUuid(resource.cloudId)) return@launch
+        mutableState.update { it.copy(aiVersionsLoading = true, aiVersionsError = null) }
+        runCatching { repository.aiResourceVersions(resource.cloudId) }
+            .onSuccess { versions -> if (requestId == aiVersionRequest) mutableState.update { it.copy(aiVersions = versions, aiVersionsLoading = false) } }
+            .onFailure { error -> if (requestId == aiVersionRequest) mutableState.update { it.copy(aiVersionsLoading = false, aiVersionsError = error.message ?: "版本记录加载失败") } }
+        }
+    }
+
+    fun submitAiFeedback(kind: String, details: String) = viewModelScope.launch {
+        val post = mutableState.value.post ?: return@launch
+        if (post.channel != "ai") return@launch
+        if (runCatching { auth.current() != null }.getOrDefault(false).not()) {
+            mutableState.update { it.copy(notice = "登录后可以提交资源反馈") }
+            return@launch
+        }
+        if (mutableState.value.aiFeedbackSending) return@launch
+        mutableState.update { it.copy(aiFeedbackSending = true, aiFeedbackSubmitted = false, error = null) }
+        runCatching { repository.submitAiResourceFeedback(post.cloudId, kind, details) }
+            .onSuccess { mutableState.update { it.copy(aiFeedbackSending = false, aiFeedbackSubmitted = true, notice = "反馈已提交，管理员会核查") } }
+            .onFailure { error -> mutableState.update { it.copy(aiFeedbackSending = false, error = error.message ?: "反馈提交失败") } }
+    }
 
     private fun loadComments(post: HeikaPost) = viewModelScope.launch {
         if (!isUuid(post.cloudId)) return@launch
