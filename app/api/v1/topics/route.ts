@@ -6,7 +6,7 @@ type TopicRow = { id: number; name: string };
 type TopicStats = { topic_id: number; post_count: number | string; participant_count: number | string };
 
 export async function GET(req: NextRequest) {
-  return respond(async () => {
+  const response = await respond(async () => {
     const { db } = await context(req, false);
     const query = (req.nextUrl.searchParams.get("q") || "").trim().toLocaleLowerCase("zh-CN");
     const [topics, stats] = await Promise.all([
@@ -20,19 +20,25 @@ export async function GET(req: NextRequest) {
       .filter((topic) => !query || topic.name.toLocaleLowerCase("zh-CN").includes(query))
       .map((topic) => {
         const count = counts.get(topic.id);
+        const postCount = Number(count?.post_count || 0);
+        const participantCount = Number(count?.participant_count || 0);
         return {
           id: topic.id,
           name: topic.name,
           description: topicDescriptions[topic.name] || "围绕这个话题，发现新的内容与观察。",
-          postCount: Number(count?.post_count || 0),
-          participantCount: Number(count?.participant_count || 0),
+          postCount,
+          participantCount,
+          // A transparent activity score from existing public counts; no synthetic trend data.
+          activityScore: postCount + participantCount,
         };
       });
     if (req.nextUrl.searchParams.get("featured") === "1") {
-      return results.sort((a, b) => b.postCount - a.postCount || b.participantCount - a.participantCount || a.id - b.id).slice(0, 6);
+      return results.sort((a, b) => b.activityScore - a.activityScore || b.postCount - a.postCount || a.id - b.id).slice(0, 8);
     }
     return results;
   });
+  if (response.ok) response.headers.set("Cache-Control", "public, max-age=0, s-maxage=45, stale-while-revalidate=90");
+  return response;
 }
 
 export async function POST(req: NextRequest) {

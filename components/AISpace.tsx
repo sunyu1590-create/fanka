@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { ArrowLeft, Bookmark, ChevronRight, Code2, Compass, ExternalLink, FileText, Search, Sparkles, Wrench } from "lucide-react";
+import { ArrowLeft, Bookmark, ChevronRight, Code2, Compass, ExternalLink, FileText, Search, Sparkles, Star, Wrench } from "lucide-react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import type { Post } from "@/lib/content";
 
@@ -189,7 +189,11 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     const Icon = typeIcons[post.contentType || "knowledge_article"] || FileText;
     return <article className="ai-resource-card" key={post.id}>
       <button className="ai-resource-open" type="button" data-discover-id={post.id} onClick={(event) => onOpen(post, event.currentTarget)}>
-        <span className="ai-resource-cover">{post.image ? <img src={post.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} /> : <span className="ai-resource-cover-mark"><Icon size={22}/></span>}<span className="ai-resource-kind"><Icon size={13}/>{typeLabels[post.contentType || "knowledge_article"] || "AI 内容"}</span></span>
+        <span className="ai-resource-cover">
+          {post.image ? <img src={post.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} /> : <span className="ai-resource-cover-mark"><Icon size={22}/></span>}
+          <span className="ai-resource-kind"><Icon size={13}/>{typeLabels[post.contentType || "knowledge_article"] || "AI 内容"}</span>
+          <span className="ai-resource-rating" aria-label={post.ratingCount && typeof post.ratingAverage === "number" ? "评分 " + post.ratingAverage.toFixed(1) : "待评级"}><Star size={12} fill="currentColor"/>{post.ratingCount && typeof post.ratingAverage === "number" ? post.ratingAverage.toFixed(1) : "待评级"}</span>
+        </span>
         <span className="ai-resource-copy"><small>{post.tag} · {post.author}</small><strong>{post.title}</strong><span>{post.body.replace(/[#*`>_\[\]()]/g, " ").replace(/\s+/g, " ").slice(0, 100)}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
       </button>
       <button type="button" className={`ai-resource-save${savedIds.has(post.id) ? " saved" : ""}`} aria-label={savedIds.has(post.id) ? "取消收藏" : "收藏资源"} onClick={(event) => void toggleSaved(post, event)}><Bookmark size={16} fill={savedIds.has(post.id) ? "currentColor" : "none"}/></button>
@@ -200,7 +204,15 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     <header className="ai-space-heading"><div><span>HEIKA / AI</span><h1>AI 空间</h1><p>智能体、工具与实战经验，汇集成可复用的知识。</p></div></header>
 
     {view === "home" && <>
-      <div className="ai-space-home-actions"><button type="button" onClick={() => setView("search")}><Search size={15}/>搜索 AI 内容</button><button type="button" onClick={() => setView("categories")}><Compass size={15}/>浏览分类</button></div>
+      <div className="ai-space-home-actions"><button type="button" onClick={() => setView("search")}><Search size={15}/>搜索 AI 内容</button></div>
+      <div className="ai-space-category-nav" role="group" aria-label="AI 内容分类">
+        <button type="button" onClick={() => changeCategory(null, "home")}>全部内容</button>
+        {categoriesByRoot.slice(0, 7).map((item) => <button type="button" key={item.id} onClick={() => changeCategory(item.id, "home")}>{item.name}</button>)}
+        <button type="button" onClick={() => setView("categories")}>更多分类 <ChevronRight size={13}/></button>
+      </div>
+      <div className="ai-type-filters" role="group" aria-label="AI 资源类型">
+        {Object.entries(typeLabels).map(([type, label]) => <button type="button" key={type} onClick={() => openTypeFeed(type)}>{label}</button>)}
+      </div>
       <div className="ai-space-editorial-home">
         {!!featured.length && <section className="ai-space-section ai-space-featured"><div className="ai-space-section-head"><div><small>CURATED</small><h2>精选推荐</h2></div><button type="button" onClick={() => openTypeFeed("")}>查看全部 <ChevronRight size={15}/></button></div><div className="ai-resource-grid">{featured.slice(0, 3).map(card)}</div></section>}
         {!!popular.length && <section className="ai-space-section"><div className="ai-space-section-head"><div><small>POPULAR</small><h2>热门资源</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}

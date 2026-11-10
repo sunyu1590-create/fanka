@@ -121,17 +121,36 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        val openedCount = state.openedIds.size.coerceAtMost(state.allowance)
+                        val progress by animateFloatAsState(
+                            targetValue = if (state.allowance > 0) openedCount.toFloat() / state.allowance else 0f,
+                            animationSpec = tween(260, easing = FastOutSlowInEasing),
+                            label = "daily-exploration-progress",
+                        )
                         Row(
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface))
-                                .background(MaterialTheme.colorScheme.surface)
-                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.58f), RoundedCornerShape(HeikaRadii.surface))
-                                .padding(horizontal = 17.dp, vertical = 15.dp),
+                            Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 1.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("今日已翻开 ${state.openedIds.size.coerceAtMost(state.allowance)} / ${state.allowance} 张", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.weight(1f))
-                            Text(if (state.remaining > 0) "还可翻开 ${state.remaining} 张" else "今天已经探索完成", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("今日探索", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (state.remaining > 0) "还可翻开 ${state.remaining} 张，继续发现新内容" else "今天的探索已经完成，明天再来看看",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                "$openedCount / ${state.allowance}",
+                                color = HeikaPalette.Gold,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        Box(Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.outline.copy(alpha = .38f))) {
+                            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(2.dp).background(MaterialTheme.colorScheme.primary))
                         }
                         state.notice?.let { NoticeLine(it, isError = false) }
                         state.error?.let { NoticeLine(it, isError = true, onRetry = viewModel::reload) }
@@ -199,10 +218,10 @@ private fun FlipCard(cardId: Int, number: Int, post: HeikaPost?, opened: Boolean
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(0.76f)
-            .shadow(3.dp, RoundedCornerShape(HeikaRadii.dailyCard))
+            .shadow(1.dp, RoundedCornerShape(HeikaRadii.dailyCard))
             .graphicsLayer { rotationY = rotation; cameraDistance = 14 * density }
             .clip(RoundedCornerShape(HeikaRadii.dailyCard))
-            .border(1.dp, Color(0xFF79868A).copy(alpha = 0.75f), RoundedCornerShape(HeikaRadii.dailyCard))
+            .border(1.dp, HeikaPalette.DailyCardRim.copy(alpha = 0.78f), RoundedCornerShape(HeikaRadii.dailyCard))
             .onGloballyPositioned { coordinates ->
                 val next = coordinates.boundsInRoot()
                 if (sourceBounds != next) sourceBounds = next
@@ -536,11 +555,10 @@ private fun FlipConfetti(enabled: Boolean) {
 
 @Composable
 private fun CardBack(number: Int, preview: Boolean = false) {
-    val shape = RoundedCornerShape(HeikaRadii.dailyCard)
-    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF263236), Color(0xFF10171B), Color(0xFF1A2327))))) {
+    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(HeikaPalette.DailyCardStart, HeikaPalette.DailyCardMiddle, HeikaPalette.DailyCardEnd)))) {
         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
             val inset = 1.dp.toPx()
-            drawRoundRect(color = Color(0xFFB9C6C8).copy(alpha = 0.62f), topLeft = androidx.compose.ui.geometry.Offset(inset, inset), size = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()), style = Stroke(1.dp.toPx()))
+            drawRoundRect(color = HeikaPalette.DailyCardRim.copy(alpha = 0.60f), topLeft = androidx.compose.ui.geometry.Offset(inset, inset), size = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()), style = Stroke(1.dp.toPx()))
             val path = Path().apply {
                 moveTo(size.width * .5f, size.height * .26f)
                 lineTo(size.width * .84f, size.height * .5f)
@@ -548,19 +566,18 @@ private fun CardBack(number: Int, preview: Boolean = false) {
                 lineTo(size.width * .16f, size.height * .5f)
                 close()
             }
-            drawPath(path, Color(0xFFBFC9CA).copy(alpha = .24f), style = Stroke(1.dp.toPx()))
+            drawPath(path, HeikaPalette.DailyCardMuted.copy(alpha = .25f), style = Stroke(1.dp.toPx()))
             for (line in 0..16) {
                 val x = size.width * (line / 16f)
                 drawLine(Color.White.copy(alpha = 0.035f), start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x - size.height * .24f, size.height), strokeWidth = 1.dp.toPx())
             }
         }
-        if (!preview) Text(number.toString().padStart(2, '0'), Modifier.align(Alignment.TopStart).padding(18.dp), color = Color(0xFFB7C3C5), fontSize = 14.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+        if (!preview) Text(number.toString().padStart(2, '0'), Modifier.align(Alignment.TopStart).padding(18.dp), color = HeikaPalette.DailyCardMuted, fontSize = 14.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("黑卡", color = Color(0xFFF0F0ED), fontSize = if (preview) 40.sp else 18.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
-            Text("H E I K A", Modifier.padding(top = if (preview) 6.dp else 0.dp), color = Color(0xFFC8CECF), fontSize = if (preview) 10.sp else 18.sp, letterSpacing = if (preview) 2.3.sp else 1.5.sp)
+            Text("黑卡", color = HeikaPalette.Ink, fontSize = if (preview) 40.sp else 18.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+            Text("H E I K A", Modifier.padding(top = if (preview) 6.dp else 0.dp), color = HeikaPalette.DailyCardMuted, fontSize = if (preview) 10.sp else 18.sp, letterSpacing = if (preview) 2.3.sp else 1.5.sp)
         }
-        if (!preview) Text("轻触翻开", Modifier.align(Alignment.BottomStart).padding(18.dp), color = Color(0xFFC1C6C7), fontSize = 12.sp, letterSpacing = 1.1.sp)
-        Box(Modifier.fillMaxSize().padding(3.dp).border(1.dp, Color.White.copy(alpha = .08f), shape))
+        if (!preview) Text("轻触翻开", Modifier.align(Alignment.BottomStart).padding(18.dp), color = HeikaPalette.DailyCardMuted, fontSize = 12.sp, letterSpacing = 1.1.sp)
     }
 }
 

@@ -15,4 +15,5 @@ export type TopicSummary = {
   description: string;
   postCount: number;
   participantCount: number;
+  activityScore?: number;
 };

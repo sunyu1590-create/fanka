@@ -311,9 +311,22 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/me/library?kind=$kind&page=${page.coerceAtLeast(1)}&limit=24", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    suspend fun search(query: String, kind: String = "content"): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun search(query: String, kind: String = "content", page: Int = 1, cursor: String? = null, limit: Int = 24): JSONObject = withContext(Dispatchers.IO) {
         require(kind == "content" || kind == "people")
-        request("/api/v1/search?q=${encode(query.take(60))}&kind=$kind&page=1&limit=24", includeSession = true) as? JSONObject ?: JSONObject()
+        val cursorQuery = cursor?.takeIf { kind == "content" }?.let { "&cursor=${encode(it)}" }.orEmpty()
+        request("/api/v1/search?q=${encode(query.take(60))}&kind=$kind&page=${page.coerceAtLeast(1)}&limit=${limit.coerceIn(1, 24)}$cursorQuery", includeSession = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun searchAi(query: String, page: Int = 1, limit: Int = 24): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/ai-space?q=${encode(query.take(60))}&page=${page.coerceAtLeast(1)}&limit=${limit.coerceIn(1, 24)}&sort=popular", includeSession = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun searchTopics(query: String? = null, featured: Boolean = false): JSONArray = withContext(Dispatchers.IO) {
+        val params = buildList {
+            query?.trim()?.takeIf(String::isNotBlank)?.let { add("q=${encode(it.take(60))}") }
+            if (featured) add("featured=1")
+        }.joinToString("&").takeIf(String::isNotBlank)?.let { "?$it" }.orEmpty()
+        request("/api/v1/topics$params") as? JSONArray ?: JSONArray()
     }
 
     suspend fun inbox(): JSONObject = withContext(Dispatchers.IO) {

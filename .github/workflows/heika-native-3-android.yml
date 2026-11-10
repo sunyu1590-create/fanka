@@ -6,12 +6,18 @@ on:
     paths:
       - "native-android/**"
       - "components/Community.tsx"
+      - "components/AISpace.tsx"
+      - "app/api/v1/topics/route.ts"
+      - "lib/topics.ts"
       - "app/design-system.css"
       - ".github/workflows/heika-native-3-android.yml"
   pull_request:
     paths:
       - "native-android/**"
       - "components/Community.tsx"
+      - "components/AISpace.tsx"
+      - "app/api/v1/topics/route.ts"
+      - "lib/topics.ts"
       - "app/design-system.css"
       - ".github/workflows/heika-native-3-android.yml"
   workflow_dispatch:

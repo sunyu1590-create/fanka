@@ -24,6 +24,11 @@ object HeikaRadii {
 
 object HeikaPalette {
     val Gold = Color(0xFFD5B96E)
+    val DailyCardStart = Color(0xFF28343A)
+    val DailyCardMiddle = Color(0xFF141B20)
+    val DailyCardEnd = Color(0xFF202A2F)
+    val DailyCardRim = Color(0xFF9BA9AD)
+    val DailyCardMuted = Color(0xFFC1CBCD)
     val DarkBackground = Color(0xFF0D0E10)
     val DarkSurface = Color(0xFF191B1E)
     val DarkRaised = Color(0xFF222429)
