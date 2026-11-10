@@ -476,6 +476,7 @@ export default function Community() {
   const [chatConversationOpen, setChatConversationOpen] = useState(false);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountTimezone, setAccountTimezone] = useState<string | null>(null);
   const [accountReady, setAccountReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [adminRole, setAdminRole] = useState<"member" | "admin" | "content_manager" | "reviewer">("member");
@@ -901,7 +902,7 @@ export default function Community() {
   const videoCompressionSequence = useRef(0);
   const videoCompressionAbort = useRef<AbortController | null>(null);
   const draftMediaBusy = useRef(new Set<string>());
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const zone = accountTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
   const selectedDay = selectedCalendarDate || today;
   const calendarDays = Array.from({ length: 28 }, (_, index) => {
@@ -2323,7 +2324,7 @@ export default function Community() {
       setViewerPhase("opening");
       return;
     }
-    if (opened.length >= dailyAllowance) {
+    if (!accountId && opened.length >= dailyAllowance) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
     }
@@ -2342,7 +2343,7 @@ export default function Community() {
       (candidate) => !opened.includes(candidate.id),
     );
     const unlocked = candidates.filter((candidate) => opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]));
-    const pool = opened.length < dailyAllowance ? [...available, ...unlocked] : unlocked;
+    const pool = opened.length < dailyAllowance || accountId ? [...available, ...unlocked] : unlocked;
     if (!pool.length) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
@@ -2365,7 +2366,7 @@ export default function Community() {
     const id = viewerId,
       used = state.opened[today] || [],
       scrollBefore = window.scrollY;
-    if (used.length >= dailyAllowance && !used.includes(id)) {
+    if (!accountId && used.length >= dailyAllowance && !used.includes(id)) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       closeViewer();
       return;
@@ -2373,36 +2374,73 @@ export default function Community() {
     flipBusy.current = true;
     setFlippingId(id);
     try {
-      const response = await cloudFetch("/api/demo/cards", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.data)
-        throw new Error(result.error || "卡片加载失败");
-      const lucky = used.includes(id) || luckyBonusToday >= 10
-        ? 0
-        : Math.min(drawLuckyBonus(), 10 - luckyBonusToday);
-      const nextLuckyBonus = lucky
-        ? { ...state.luckyBonus, [today]: luckyBonusToday + lucky }
-        : state.luckyBonus;
-      const rarityTier = (result.data.rarityTier || cardRarityTier(
+      let revealedData: Post;
+      let lucky = 0;
+      let authoritativeOpened: number[] | null = null;
+      let authoritativeDay = today;
+      let authoritativeAllowance = dailyAllowance;
+      let authoritativeBonus: number | null = null;
+      if (accountId) {
+        const confirmed = await cloudRequest("/api/v1/library-state", {
+          action: "flip",
+          id,
+          idempotencyKey: `flip:${today}:${id}`,
+        });
+        if (!confirmed?.post || !confirmed?.flipState) throw new Error("翻卡结果暂不可用，请重试");
+        revealedData = confirmed.post as Post;
+        authoritativeDay = String(confirmed.flipState.localDate || today);
+        authoritativeOpened = Array.isArray(confirmed.flipState.openedIds)
+          ? (confirmed.flipState.openedIds as unknown[]).map((value) => Number(value)).filter((value): value is number => Number.isSafeInteger(value) && value > 0)
+          : null;
+        authoritativeAllowance = Number(confirmed.flipState.allowance) || dailyAllowance;
+        const serverBonus = Number(confirmed.flipState.bonus);
+        if (Number.isFinite(serverBonus)) authoritativeBonus = Math.min(10, Math.max(0, serverBonus));
+        lucky = confirmed.flipState.idempotent ? 0 : Number(confirmed.flipState.bonusAwarded) || 0;
+        setAccountTimezone(typeof confirmed.flipState.timezone === "string" ? confirmed.flipState.timezone : accountTimezone);
+        if (["free", "plus", "pro"].includes(confirmed.flipState.membershipTier)) {
+          setExperienceSummary((current) => ({ ...current, membershipTier: confirmed.flipState.membershipTier }));
+        }
+        if (confirmed.experience) {
+          void cloudRequest("/api/v1/progression").then((summary) => {
+            if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+          }).catch(() => {});
+        }
+      } else {
+        const response = await cloudFetch("/api/demo/cards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.data) throw new Error(result.error || "卡片加载失败");
+        revealedData = result.data as Post;
+        lucky = used.includes(id) || luckyBonusToday >= 10
+          ? 0
+          : Math.min(drawLuckyBonus(), 10 - luckyBonusToday);
+      }
+      const nextLuckyBonus = { ...state.luckyBonus };
+      if (accountId && authoritativeBonus !== null) {
+        // The server's running bonus is account-wide; don't add it a second
+        // time when a timed-out request is retried idempotently.
+        nextLuckyBonus[authoritativeDay] = authoritativeBonus;
+      } else if (lucky > 0) {
+        nextLuckyBonus[authoritativeDay] = luckyBonusToday + lucky;
+      }
+      const rarityTier = (revealedData.rarityTier || cardRarityTier(
         communityRatings[id]?.average || 0,
         communityRatings[id]?.count || 0,
       )) as CardRarityTier;
-      const revealedPost: Post = { ...result.data, rarityTier };
-      const next = {
-        ...state,
+      const revealedPost: Post = { ...revealedData, rarityTier };
+      setState((current) => ({
+        ...current,
         luckyBonus: nextLuckyBonus,
-        revealed: { ...state.revealed, [id]: revealedPost },
-        rarityTiers: { ...state.rarityTiers, [id]: rarityTier },
+        revealed: { ...current.revealed, [id]: revealedPost },
+        rarityTiers: { ...current.rarityTiers, [id]: rarityTier },
         opened: {
-          ...state.opened,
-          [today]: openDailyCard(used, id, dailyAllowance),
+          ...current.opened,
+          [authoritativeDay]: authoritativeOpened || openDailyCard(current.opened[authoritativeDay] || used, id, authoritativeAllowance),
         },
-      };
-      setState(next);
+      }));
       setViewerFlipped(true);
       setViewerRevealPhase("rarity");
       if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
@@ -2415,12 +2453,6 @@ export default function Community() {
         setLuckyReward({ postId: id, amount: lucky });
         luckyRewardTimer.current = window.setTimeout(() => setLuckyReward(null), 3000);
       }
-      void cloudRequest("/api/v1/library-state", { action: "open", id }).then(async (saved) => {
-        if (accountId && saved?.experience) {
-          const summary = await cloudRequest("/api/v1/progression");
-          if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
-        }
-      }).catch(() => toast("阅读记录云端同步失败，本地已保留"));
       setJustFlippedId(id);
       cancelFlipRain();
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -2437,8 +2469,8 @@ export default function Community() {
       );
       window.setTimeout(() => setJustFlippedId(null), 950);
       if (!lucky) toast("已翻开 · 今日探索进度已更新");
-    } catch {
-      toast("内容加载失败，请重试");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "内容加载失败，请重试");
     } finally {
       setFlippingId(null);
       flipBusy.current = false;
@@ -3933,6 +3965,7 @@ export default function Community() {
           setAccountId(user?.id || null);
           setAccountReady(true);
           if (!user) {
+            setAccountTimezone(null);
             setIsStaff(false);
             setAdminRole("member");
             setPublicBookmarks(false);
@@ -3966,6 +3999,9 @@ export default function Community() {
           try {
             const data = await cloudRequest("/api/v1/library-state");
             if (!isCurrent() || !data) return;
+            const flipState = data.dailyFlipState;
+            if (typeof flipState?.timezone === "string") setAccountTimezone(flipState.timezone);
+            else if (typeof data.profile?.timezone === "string") setAccountTimezone(data.profile.timezone);
             if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
               setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
             }
@@ -4008,8 +4044,17 @@ export default function Community() {
                     rarityTiers[postId] = row.rarity_tier as CardRarityTier;
                 }
               }
+              const bonus = Number(flipState?.bonus);
+              const flipDate = typeof flipState?.localDate === "string" ? flipState.localDate : null;
+              const serverOpened = Array.isArray(flipState?.openedIds)
+                ? [...new Set((flipState.openedIds as unknown[]).map((value) => Number(value)).filter((id): id is number => Number.isSafeInteger(id) && id > 0))]
+                : null;
+              if (flipDate && serverOpened) opened[flipDate] = serverOpened;
+              const luckyBonus = { ...s.luckyBonus };
+              if (flipDate && Number.isFinite(bonus)) luckyBonus[flipDate] = Math.min(10, Math.max(0, bonus));
               return {
                 ...s,
+                luckyBonus,
                 onboardingDone:
                   previous.onboardingDone || Boolean(data.interests.length),
                 name: data.profile.nickname,

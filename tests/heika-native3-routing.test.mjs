@@ -30,9 +30,11 @@ test("Native publishing restores private draft media from the authenticated API"
   const route = await read("app/api/v1/library-state/route.ts");
   const screen = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/publish/PublishScreen.kt");
   const viewModel = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/publish/PublishViewModel.kt");
-  assert.match(route, /post\.status === "draft" \? \{ mediaPaths:/);
+  assert.match(route, /mediaPathsByPostId = new Map/);
+  assert.match(route, /post\.cloudId \? \{ mediaPaths: mediaPathsByPostId\.get\(post\.cloudId\)/);
   assert.match(viewModel, /repository\.myLibraryState\(\)/);
   assert.match(viewModel, /images = paths\.mapIndexed/);
   assert.match(screen, /PickMultipleVisualMedia/);
   assert.match(screen, /viewModel\.moveImage/);
+  assert.match(viewModel, /post\.optString\("status"\) == "published"/);
 });

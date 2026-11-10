@@ -23,4 +23,13 @@ class DailyDeckLogicTest {
         assertEquals(2, DailyDeckLogic.luckyBonusFor(0.165))
         assertEquals(0, DailyDeckLogic.luckyBonusFor(0.166))
     }
+
+    @Test
+    fun flipRetriesUseTheSameAccountDayAndCardIdempotencyKey() {
+        val first = DailyDeckLogic.flipIdempotencyKey("2026-11-10", 42)
+        assertEquals(first, DailyDeckLogic.flipIdempotencyKey("2026-11-10", 42))
+        assertEquals("flip:2026-11-10:42", first)
+        assertEquals(false, first == DailyDeckLogic.flipIdempotencyKey("2026-11-11", 42))
+        assertEquals(false, first == DailyDeckLogic.flipIdempotencyKey("2026-11-10", 43))
+    }
 }

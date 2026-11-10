@@ -192,7 +192,7 @@ fun HomeScreen(
                 opening = state.openingId == selected.id,
                 opened = selected.id in state.openedIds,
                 post = state.posts[selected.id],
-                canConfirm = state.remaining > 0,
+                canConfirm = state.remaining > 0 || state.userId != HomeUiState.GUEST_ID,
                 error = state.error,
                 closeRequest = closeRequest,
                 onConfirm = { viewModel.flip(selected.id) },

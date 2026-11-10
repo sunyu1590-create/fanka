@@ -5,6 +5,7 @@ import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.db.DailyStateEntity
 import com.heika.nativeapp.db.FeedCache
 import com.heika.nativeapp.db.HeikaCacheDao
+import com.heika.nativeapp.feature.home.DailyDeckLogic
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -154,6 +155,21 @@ class HeikaRepository @Inject constructor(
         val result = request("/api/demo/cards", method = "POST", body = JSONObject().put("id", id).toString()) as? JSONObject
             ?: throw IOException("卡片内容暂不可用")
         HeikaPost.from(result)
+    }
+
+    suspend fun confirmDailyFlip(clientId: Int, day: String): JSONObject = withContext(Dispatchers.IO) {
+        require(clientId > 0) { "卡片编号无效" }
+        require(day.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) { "翻卡日期无效" }
+        request(
+            "/api/v1/library-state",
+            method = "POST",
+            body = JSONObject()
+                .put("action", "flip")
+                .put("id", clientId)
+                .put("idempotencyKey", DailyDeckLogic.flipIdempotencyKey(day, clientId))
+                .toString(),
+            authenticated = true,
+        ) as? JSONObject ?: throw IOException("翻卡结果暂不可用，请重试")
     }
 
     suspend fun myLibraryState(): JSONObject = withContext(Dispatchers.IO) {
@@ -388,13 +404,13 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/daily-missions", method = "POST", body = JSONObject().put("missionKey", missionKey).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    suspend fun uploadImage(postId: String, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun uploadImage(postId: String, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int, revisionMode: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
         require(bytes.size in 1..(4 * 1024 * 1024)) { "单张图片须小于 4 MB" }
         val requestBody = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
-            .addFormDataPart("post_id", postId)
             .addFormDataPart("upload_id", uploadId)
             .addFormDataPart("sort_order", sortOrder.toString())
+            .addFormDataPart(if (revisionMode) "revision_post_id" else "post_id", postId)
             .build()
         val token = auth.currentToken() ?: throw IOException("请先登录后继续")
         val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/media", "Bearer $token", requestBody)
@@ -425,6 +441,21 @@ class HeikaRepository @Inject constructor(
         cacheDao.clearDailyForUser(userId)
         cacheDao.clearFeedForUser(userId)
         recommendationCache.remove(userId)
+    }
+
+    suspend fun localPublishSnapshot(userId: String): JSONObject? = withContext(Dispatchers.IO) {
+        if (!userId.matches(Regex("[0-9a-fA-F-]{36}"))) return@withContext null
+        cacheDao.publishSnapshot("native-publish:$userId")?.payload?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveLocalPublishSnapshot(userId: String, payload: JSONObject) = withContext(Dispatchers.IO) {
+        if (!userId.matches(Regex("[0-9a-fA-F-]{36}"))) return@withContext
+        cacheDao.putPublishSnapshot(com.heika.nativeapp.db.FeedCacheEntity("native-publish:$userId", payload.toString(), System.currentTimeMillis()))
+    }
+
+    suspend fun clearLocalPublishSnapshot(userId: String) = withContext(Dispatchers.IO) {
+        if (!userId.matches(Regex("[0-9a-fA-F-]{36}"))) return@withContext
+        cacheDao.clearPublishSnapshot("native-publish:$userId")
     }
 
     private suspend fun feedCacheKey(filter: FeedFilter): String = listOf(

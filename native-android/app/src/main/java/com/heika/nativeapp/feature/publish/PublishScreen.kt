@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,11 +75,12 @@ fun PublishScreen(
     val scope = rememberCoroutineScope()
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(draftId) { viewModel.resumeDraft(draftId) }
+    BackHandler(enabled = !state.loading && !state.publishing) { viewModel.saveDraft(onBack) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia((9 - state.images.size).coerceAtLeast(1))) { uris ->
         scope.launch {
             for (uri in uris) {
                 runCatching { prepareImage(context, uri) }
-                    .onSuccess { (name, mime, bytes) -> viewModel.addImage(uri, name, mime, bytes) }
+                    .onSuccess { (name, mime, bytes) -> viewModel.addImage(name, mime, bytes) }
                     .onFailure { viewModel.reportError(it.message ?: "无法读取所选图片") }
             }
         }
@@ -89,8 +92,8 @@ fun PublishScreen(
         }
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader("发布内容", onBack = { viewModel.saveDraft(onBack) }, trailing = {
-            Text(if (state.saving) "保存中" else "草稿", Modifier.clickable { viewModel.saveDraft() }.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+        BackHeader(if (state.revisionMode) "修改作品" else "发布内容", onBack = { viewModel.saveDraft(onBack) }, trailing = {
+            Text(if (state.saving) "保存中" else if (state.revisionMode) "保存修改" else "草稿", Modifier.clickable { viewModel.saveDraft() }.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         })
         if (state.error == "登录后可以发布内容") {
             Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -149,13 +152,29 @@ fun PublishScreen(
                                 AsyncImage(model = image.preview, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 IconButton(onClick = { viewModel.removeImage(image.key) }, modifier = Modifier.align(Alignment.TopEnd).size(29.dp)) { Icon(Icons.Outlined.Close, "移除图片", tint = MaterialTheme.colorScheme.onBackground) }
                                 if (image.progress) CircularProgressIndicator(Modifier.align(Alignment.Center).size(20.dp), strokeWidth = 2.dp)
-                                if (image.error != null) Text("失败", Modifier.align(Alignment.BottomCenter).background(MaterialTheme.colorScheme.error.copy(alpha = .9f)).padding(3.dp), color = MaterialTheme.colorScheme.onError, fontSize = 9.sp)
-                                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    IconButton(onClick = { viewModel.moveImage(image.key, -1) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.ChevronLeft, "图片前移", tint = MaterialTheme.colorScheme.onBackground) }
-                                    IconButton(onClick = { viewModel.moveImage(image.key, 1) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.ChevronRight, "图片后移", tint = MaterialTheme.colorScheme.onBackground) }
+                                Text(
+                                    if (state.images.firstOrNull()?.key == image.key) "封面" else "设为封面",
+                                    Modifier.align(Alignment.TopStart).padding(4.dp).clip(RoundedCornerShape(5.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .88f)).clickable { viewModel.setCover(image.key) }.padding(horizontal = 5.dp, vertical = 3.dp),
+                                    color = MaterialTheme.colorScheme.onSurface, fontSize = 8.sp,
+                                )
+                                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    if (image.error != null) {
+                                        if (image.localFilePath != null) {
+                                            TextButton(onClick = { viewModel.retryUpload(image.key) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) { Text("重试上传", color = MaterialTheme.colorScheme.error, fontSize = 9.sp) }
+                                        } else {
+                                            Text(image.error, color = MaterialTheme.colorScheme.error, fontSize = 8.sp, maxLines = 2)
+                                        }
+                                    }
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        IconButton(onClick = { viewModel.moveImage(image.key, -1) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.ChevronLeft, "图片前移", tint = MaterialTheme.colorScheme.onBackground) }
+                                        IconButton(onClick = { viewModel.moveImage(image.key, 1) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.ChevronRight, "图片后移", tint = MaterialTheme.colorScheme.onBackground) }
+                                    }
                                 }
                             }
                         }
+                    }
+                    if (state.pendingDeletePaths.isNotEmpty()) {
+                        TextButton(onClick = viewModel::retryRemovedImageCleanup) { Text("重试清理已移除图片（${state.pendingDeletePaths.size}）", color = MaterialTheme.colorScheme.error, fontSize = 10.sp) }
                     }
                 }
                 state.error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) } }
@@ -166,10 +185,19 @@ fun PublishScreen(
                 Spacer(Modifier.weight(1f))
                 Button(onClick = viewModel::publish, enabled = !state.publishing && !state.saving && state.categories.isNotEmpty()) {
                     if (state.publishing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    else { Icon(Icons.Outlined.Send, null); Text("提交") }
+                    else { Icon(Icons.Outlined.Send, null); Text(if (state.revisionMode) "提交修改" else "提交") }
                 }
             }
         }
+    }
+    if (state.showLeaveDialog) {
+        AlertDialog(
+            onDismissRequest = viewModel::continueEditing,
+            title = { Text("暂时无法同步到服务器") },
+            text = { Text("当前内容和未完成图片已保存在此设备。可以离开后稍后继续，也可以留在页面重试同步。") },
+            confirmButton = { TextButton(onClick = { viewModel.leaveWithLocalCopy(onBack) }) { Text("保留本机副本并离开") } },
+            dismissButton = { TextButton(onClick = viewModel::continueEditing) { Text("继续编辑") } },
+        )
     }
 }
 
