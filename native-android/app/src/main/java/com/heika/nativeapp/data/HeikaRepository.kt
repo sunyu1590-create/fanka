@@ -337,6 +337,49 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/ai-space?q=${encode(query.take(60))}&page=${page.coerceAtLeast(1)}&limit=${limit.coerceIn(1, 24)}&sort=popular", includeSession = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun aiResourceVersions(postId: String): List<JSONObject> = withContext(Dispatchers.IO) {
+        require(isUuid(postId)) { "AI 资源编号无效" }
+        val payload = request("/api/v1/ai-space/${encode(postId)}/versions", includeSession = true) as? JSONObject ?: JSONObject()
+        payload.optJSONArray("items").jsonObjects()
+    }
+
+    suspend fun submitAiResourceFeedback(postId: String, kind: String, details: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(postId)) { "AI 资源编号无效" }
+        require(kind in setOf("broken_link", "unsafe", "outdated", "other")) { "反馈类型无效" }
+        require(details.trim().length in 3..1000) { "反馈说明需为 3 到 1000 字" }
+        request(
+            "/api/v1/ai-space/${encode(postId)}/feedback",
+            method = "POST",
+            body = JSONObject().put("kind", kind).put("details", details.trim()).toString(),
+            authenticated = true,
+        ) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun mutateAiResource(
+        action: String,
+        id: String?,
+        title: String,
+        body: String,
+        category: String,
+        contentType: String,
+        resourceData: JSONObject,
+        topics: List<String>,
+        mediaPaths: List<String>,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(action == "draft" || action == "submit") { "AI 内容操作无效" }
+        require(contentType in aiResourceTypes) { "AI 内容类型无效" }
+        val payload = JSONObject()
+            .put("action", action).put("title", title).put("body", body).put("category", category)
+            .put("contentType", contentType).put("resourceData", resourceData)
+            .put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
+        id?.takeIf(String::isNotBlank)?.let {
+            require(isUuid(it)) { "AI 内容编号无效" }
+            payload.put("id", it)
+        }
+        request("/api/v1/ai-space", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject
+            ?: throw IOException("AI 内容暂不可用")
+    }
+
     suspend fun searchTopics(query: String? = null, featured: Boolean = false): JSONArray = withContext(Dispatchers.IO) {
         val params = buildList {
             query?.trim()?.takeIf(String::isNotBlank)?.let { add("q=${encode(it.take(60))}") }
@@ -447,20 +490,22 @@ class HeikaRepository @Inject constructor(
         recommendationCache.remove(userId)
     }
 
-    suspend fun localPublishSnapshot(userId: String): JSONObject? = withContext(Dispatchers.IO) {
+    suspend fun localPublishSnapshot(userId: String, channel: String = "community"): JSONObject? = withContext(Dispatchers.IO) {
         if (!userId.matches(Regex("[0-9a-fA-F-]{36}"))) return@withContext null
-        cacheDao.publishSnapshot("native-publish:$userId")?.payload?.let { runCatching { JSONObject(it) }.getOrNull() }
+        cacheDao.publishSnapshot(publishSnapshotKey(userId, channel))?.payload?.let { runCatching { JSONObject(it) }.getOrNull() }
     }
 
-    suspend fun saveLocalPublishSnapshot(userId: String, payload: JSONObject) = withContext(Dispatchers.IO) {
+    suspend fun saveLocalPublishSnapshot(userId: String, payload: JSONObject, channel: String = "community") = withContext(Dispatchers.IO) {
         if (!userId.matches(Regex("[0-9a-fA-F-]{36}"))) return@withContext
-        cacheDao.putPublishSnapshot(com.heika.nativeapp.db.FeedCacheEntity("native-publish:$userId", payload.toString(), System.currentTimeMillis()))
+        cacheDao.putPublishSnapshot(com.heika.nativeapp.db.FeedCacheEntity(publishSnapshotKey(userId, channel), payload.toString(), System.currentTimeMillis()))
     }
 
-    suspend fun clearLocalPublishSnapshot(userId: String) = withContext(Dispatchers.IO) {
+    suspend fun clearLocalPublishSnapshot(userId: String, channel: String = "community") = withContext(Dispatchers.IO) {
         if (!userId.matches(Regex("[0-9a-fA-F-]{36}"))) return@withContext
-        cacheDao.clearPublishSnapshot("native-publish:$userId")
+        cacheDao.clearPublishSnapshot(publishSnapshotKey(userId, channel))
     }
+
+    private fun publishSnapshotKey(userId: String, channel: String) = if (channel == "ai") "native-publish:ai:$userId" else "native-publish:$userId"
 
     private suspend fun feedCacheKey(filter: FeedFilter): String = listOf(
         filter.channel,
@@ -507,6 +552,8 @@ class HeikaRepository @Inject constructor(
         if (root is JSONObject && root.has("error") && !root.isNull("error")) throw IOException(root.optString("error"))
         return if (root is JSONObject && root.has("data")) root.opt("data") else root
     }
+
+    private val aiResourceTypes = setOf("knowledge_article", "agent", "skill", "prompt", "ai_tool", "tutorial")
 
     private suspend fun send(url: String, method: String, body: String?, token: String?): Response<ResponseBody> {
         val authorization = token?.let { "Bearer $it" }

@@ -46,6 +46,7 @@ data class PendingImage(
 
 data class PublishState(
     val title: String = "", val body: String = "", val topicText: String = "", val categories: List<HeikaCategory> = emptyList(),
+    val channel: String = "community", val contentType: String = "knowledge_article", val resourceData: Map<String, String> = emptyMap(),
     val category: String = "", val images: List<PendingImage> = emptyList(), val mediaPaths: List<String> = emptyList(),
     val pendingDeletePaths: List<String> = emptyList(),
     val draftId: Int? = null, val draftCloudId: String? = null, val accountId: String? = null, val revisionMode: Boolean = false,
@@ -54,6 +55,18 @@ data class PublishState(
     val error: String? = null, val notice: String? = null, val showLeaveDialog: Boolean = false,
     val publishedPost: JSONObject? = null,
 )
+
+private val AI_ARRAY_FIELDS = setOf("platforms", "environments", "use_cases", "variables")
+
+private fun stringFields(json: JSONObject): Map<String, String> = buildMap {
+    val keys = json.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        val value = json.opt(key)
+        val text = if (value is JSONArray) buildList { for (i in 0 until value.length()) add(value.optString(i)) }.joinToString("\n") else value?.takeUnless { it == JSONObject.NULL }?.toString().orEmpty()
+        if (text.isNotBlank()) put(key, text)
+    }
+}
 
 @HiltViewModel
 class PublishViewModel @Inject constructor(
@@ -94,9 +107,35 @@ class PublishViewModel @Inject constructor(
                 return@launch
             }
             mutableState.update { it.copy(accountId = session.userId) }
-            val categories = runCatching { repository.loadCategories("community", "category") }.getOrDefault(emptyList())
-            mutableState.update { it.copy(categories = categories, category = it.category.ifBlank { categories.firstOrNull()?.name.orEmpty() }, loading = false, error = if (categories.isEmpty()) "发布分类暂不可用，请重试" else it.error) }
+            mutableState.update { it.copy(loading = false) }
         }
+    }
+
+    suspend fun configureChannel(channel: String) {
+        val target = if (channel == "ai") "ai" else "community"
+        if (mutableState.value.channel == target && mutableState.value.categories.isNotEmpty()) return
+        mutableState.update { it.copy(channel = target, loading = true, category = "", error = null) }
+        val categories = runCatching { repository.loadCategories(target, "category") }.getOrDefault(emptyList())
+        mutableState.update { current -> current.copy(
+            channel = target,
+            categories = categories,
+            category = current.category.takeIf { value -> categories.any { it.name == value } } ?: categories.firstOrNull()?.name.orEmpty(),
+            loading = false,
+            error = if (categories.isEmpty()) "$target 分类暂不可用，请重试" else current.error,
+        ) }
+    }
+
+    fun switchChannel(channel: String) = viewModelScope.launch {
+        val target = if (channel == "ai") "ai" else "community"
+        val current = mutableState.value
+        if (current.channel == target || current.publishing || current.images.any(PendingImage::progress)) return@launch
+        persistLocalSnapshot()
+        saveDraftInternal()
+        val accountId = current.accountId
+        mutableState.value = PublishState(channel = target, accountId = accountId, loading = true)
+        draftLoaded = false
+        configureChannel(target)
+        resumeDraft()
     }
 
     fun resumeDraft(requestedId: Int? = null) = viewModelScope.launch {
@@ -108,19 +147,20 @@ class PublishViewModel @Inject constructor(
         }
         mutableState.update { it.copy(accountId = session.userId) }
 
-        val local = runCatching { repository.localPublishSnapshot(session.userId) }.getOrNull()
+        val local = runCatching { repository.localPublishSnapshot(session.userId, mutableState.value.channel) }.getOrNull()
         if (local != null && (requestedId == null || local.optInt("draftId", -1) == requestedId)) {
             restoreLocalSnapshot(local)
         }
 
         runCatching { repository.myLibraryState() }.onSuccess { profile ->
             val own = profile.optJSONArray("own").jsonObjects()
+            val expectedChannel = mutableState.value.channel
             val remote = if (requestedId != null) {
-                own.firstOrNull { it.optInt("id") == requestedId && it.optString("status") in setOf("draft", "pending_review", "published") }
+                own.firstOrNull { it.optInt("id") == requestedId && it.optString("channel").ifBlank { "community" } == expectedChannel && it.optString("status") in setOf("draft", "pending_review", "published") }
             } else {
                 val localDraftId = local?.optInt("draftId", -1)?.takeIf { it > 0 }
-                localDraftId?.let { id -> own.firstOrNull { it.optInt("id") == id && it.optString("status") in setOf("draft", "pending_review", "published") } }
-                    ?: own.filter { it.optString("status") in setOf("draft", "pending_review") }
+                localDraftId?.let { id -> own.firstOrNull { it.optInt("id") == id && it.optString("channel").ifBlank { "community" } == expectedChannel && it.optString("status") in setOf("draft", "pending_review", "published") } }
+                    ?: own.filter { it.optString("channel").ifBlank { "community" } == expectedChannel && it.optString("status") in setOf("draft", "pending_review") }
                         .maxByOrNull { it.optString("updatedAt") }
             }
             if (remote == null) {
@@ -158,6 +198,8 @@ class PublishViewModel @Inject constructor(
                 revisionMode = revisionMode,
                 serverStatus = post.optString("status").ifBlank { "draft" },
                 title = source.optString("title"), body = source.optString("body"),
+                contentType = source.optString("contentType").ifBlank { current.contentType },
+                resourceData = source.optJSONObject("resourceData")?.let(::stringFields).orEmpty().ifEmpty { current.resourceData },
                 category = source.optString("tag").ifBlank { current.category },
                 topicText = source.optJSONArray("topics")?.let { arr -> buildList { for (i in 0 until arr.length()) add(arr.optString(i)) }.joinToString(" ") } ?: "",
                 mediaPaths = paths,
@@ -207,6 +249,8 @@ class PublishViewModel @Inject constructor(
             revisionMode = snapshot.optBoolean("revisionMode"),
             serverStatus = snapshot.optString("serverStatus").ifBlank { "draft" },
             title = snapshot.optString("title"), body = snapshot.optString("body"), topicText = snapshot.optString("topicText"),
+            contentType = snapshot.optString("contentType").ifBlank { current.contentType },
+            resourceData = snapshot.optJSONObject("resourceData")?.let(::stringFields).orEmpty(),
             category = snapshot.optString("category").ifBlank { current.category },
             images = images, mediaPaths = images.mapNotNull(PendingImage::path),
             pendingDeletePaths = snapshot.optJSONArray("pendingDeletePaths")?.let { array -> buildList { for (i in 0 until array.length()) add(array.optString(i)) } }.orEmpty(),
@@ -220,6 +264,20 @@ class PublishViewModel @Inject constructor(
         mutableState.update { it.copy(title = title.take(80), body = body.take(5000), topicText = topicText.take(200), category = category, error = null) }
         scheduleSave()
         scheduleSnapshot()
+    }
+
+    fun setAiContentType(contentType: String) {
+        if (contentType !in AiResourceRules.contentTypes) return
+        mutableState.update { it.copy(contentType = contentType, error = null) }
+        needsServerSync = true
+        scheduleSave(); scheduleSnapshot()
+    }
+
+    fun editAiField(key: String, value: String) {
+        if (!key.matches(Regex("^[a-z][a-z0-9_]{0,39}$"))) return
+        mutableState.update { it.copy(resourceData = it.resourceData + (key to value.take(12000)), error = null) }
+        needsServerSync = true
+        scheduleSave(); scheduleSnapshot()
     }
 
     fun reportError(message: String) = mutableState.update { it.copy(error = message) }
@@ -257,10 +315,11 @@ class PublishViewModel @Inject constructor(
         val snapshot = JSONObject()
             .put("draftId", current.draftId).put("draftCloudId", current.draftCloudId)
             .put("revisionMode", current.revisionMode).put("serverStatus", current.serverStatus).put("title", current.title).put("body", current.body)
-            .put("topicText", current.topicText).put("category", current.category).put("images", images)
+            .put("topicText", current.topicText).put("category", current.category).put("channel", current.channel)
+            .put("contentType", current.contentType).put("resourceData", JSONObject(current.resourceData)).put("images", images)
             .put("pendingDeletePaths", JSONArray(current.pendingDeletePaths))
             .put("needsServerSync", needsServerSync).put("savedAt", System.currentTimeMillis())
-        return runCatching { repository.saveLocalPublishSnapshot(accountId, snapshot) }
+        return runCatching { repository.saveLocalPublishSnapshot(accountId, snapshot, current.channel) }
             .fold(
                 onSuccess = { true },
                 onFailure = { error ->
@@ -434,12 +493,49 @@ class PublishViewModel @Inject constructor(
         onLeave()
     }
 
+    private suspend fun saveRemoteDraft(current: PublishState, action: String): JSONObject {
+        val topics = parseTopics(current.topicText)
+        return if (current.channel == "ai") {
+            val resource = JSONObject()
+            current.resourceData.forEach { (key, value) ->
+                if (value.isBlank()) return@forEach
+                if (key in AI_ARRAY_FIELDS) resource.put(key, JSONArray(value.lines().map(String::trim).filter(String::isNotBlank)))
+                else resource.put(key, value.trim())
+            }
+            repository.mutateAiResource(
+                action = action,
+                id = current.draftCloudId,
+                title = current.title,
+                body = current.body,
+                category = current.category,
+                contentType = current.contentType,
+                resourceData = resource,
+                topics = topics,
+                mediaPaths = current.mediaPaths,
+            )
+        } else if (action == "submit") {
+            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths)
+        } else {
+            repository.createOrUpdateDraft(current.draftId, current.title, current.body, current.category.ifBlank { "生活" }, topics, current.mediaPaths)
+        }
+    }
+
+    private fun validateAiResource(current: PublishState) {
+        if (current.channel != "ai") return
+        val missing = AiResourceRules.missingRequiredFields(current.contentType, current.resourceData)
+        if (current.contentType !in AiResourceRules.contentTypes || missing.isNotEmpty()) {
+            throw IllegalArgumentException(if (missing.isNotEmpty()) "请补全必填资源字段：${missing.joinToString("、") { AiResourceRules.labels[it] ?: it }}" else "AI 资源类型无效")
+        }
+        val link = current.resourceData["source_url"].orEmpty().trim()
+        if (link.isNotEmpty() && !AiResourceRules.isSafeSourceUrl(link)) throw IllegalArgumentException("资源链接仅支持公开 HTTPS 地址")
+    }
+
     private suspend fun ensureDraft(): JSONObject = draftMutex.withLock {
         val current = mutableState.value
         ensureSameAccount(current.accountId)
         if (current.revisionMode) return@withLock JSONObject().put("id", current.draftId).put("cloudId", current.draftCloudId.orEmpty())
         if (current.draftId != null && !current.draftCloudId.isNullOrBlank()) return@withLock JSONObject().put("id", current.draftId).put("cloudId", current.draftCloudId)
-        val result = repository.createOrUpdateDraft(current.draftId, current.title, current.body, current.category.ifBlank { "生活" }, parseTopics(current.topicText), current.mediaPaths)
+        val result = saveRemoteDraft(current, "draft")
         val id = result.optInt("id")
         if (id <= 0) throw IllegalStateException("草稿编号无效")
         mutableState.update { it.copy(draftId = id, draftCloudId = result.optString("cloudId").takeIf(String::isNotBlank), serverStatus = result.optString("status").ifBlank { "draft" }) }
@@ -460,7 +556,7 @@ class PublishViewModel @Inject constructor(
         runCatching {
             ensureSameAccount(current.accountId)
             retryPendingDeletes()
-            repository.createOrUpdateDraft(current.draftId, current.title, current.body, current.category.ifBlank { "生活" }, parseTopics(current.topicText), current.mediaPaths)
+            saveRemoteDraft(current, "draft")
         }
             .fold(
                 onSuccess = { result ->
@@ -529,11 +625,12 @@ class PublishViewModel @Inject constructor(
             val latest = mutableState.value
             runCatching {
                 ensureSameAccount(latest.accountId)
-                repository.publishDraft(latest.draftId, latest.title, latest.body, latest.category, parseTopics(latest.topicText), latest.mediaPaths)
+                if (latest.channel == "ai") validateAiResource(latest)
+                saveRemoteDraft(latest, "submit")
             }
                 .onSuccess { result ->
                     clearLocalFiles(latest.images)
-                    latest.accountId?.let { repository.clearLocalPublishSnapshot(it) }
+                    latest.accountId?.let { repository.clearLocalPublishSnapshot(it, latest.channel) }
                     needsServerSync = false
                     mutableState.update { it.copy(publishing = false, serverStatus = result.optString("status").ifBlank { if (latest.revisionMode) "published" else "pending_review" }, notice = if (latest.revisionMode) "修改已提交审核，原作品保持发布" else "内容已提交审核", publishedPost = result) }
                 }
