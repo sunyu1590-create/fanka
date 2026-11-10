@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -111,10 +113,22 @@ fun HeikaNativeApp(imageLoader: ImageLoader) {
                             else Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
                         )
                         .imePadding(),
-                    enterTransition = { fadeIn(tween(190)) },
-                    exitTransition = { fadeOut(tween(150)) },
-                    popEnterTransition = { fadeIn(tween(160)) },
-                    popExitTransition = { fadeOut(tween(130)) },
+                    enterTransition = {
+                        fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
+                            slideInVertically(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) { it / 36 }
+                    },
+                    exitTransition = {
+                        fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
+                            slideOutVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
+                    },
+                    popEnterTransition = {
+                        fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
+                            slideInVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
+                    },
+                    popExitTransition = {
+                        fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) +
+                            slideOutVertically(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) { it / 36 }
+                    },
                 ) {
                 composable("home") {
                     HomeScreen(

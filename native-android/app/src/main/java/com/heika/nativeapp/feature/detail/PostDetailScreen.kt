@@ -1,7 +1,7 @@
 package com.heika.nativeapp.feature.detail
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.FilterChip
 
 @Composable
@@ -171,30 +172,47 @@ fun PostDetailScreen(
                             Text("${item.likeCount + if (state.liked) 1 else 0}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             IconButton(onClick = viewModel::toggleSaved) { Icon(Icons.Outlined.BookmarkBorder, "收藏", tint = if (state.saved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                             Text("${if (state.saved) "已收藏" else "收藏"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            Spacer(Modifier.weight(1f))
-                            if (state.average != null) {
-                                val average by animateFloatAsState(state.average!!.toFloat(), tween(300), label = "post-rating-average")
-                                androidx.compose.animation.AnimatedContent(state.ratingCount, label = "post-rating-count") { count ->
-                                    Text("${"%.1f".format(java.util.Locale.US, average)} · $count", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                                }
-                            }
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("内容评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
-                            (1..5).forEach { score ->
-                                RatingStar(
-                                    score = score,
-                                    selected = (state.rating ?: 0) >= score,
-                                    color = ratingColor(score),
-                                    animationKey = state.ratingAnimationKey,
-                                    animationScore = state.ratingAnimationScore,
-                                    enabled = !state.ratingSending,
-                                    onClick = { viewModel.rate(score) },
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 13.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("内容评分", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    androidx.compose.animation.AnimatedContent(state.ratingCount, label = "post-rating-count") { count ->
+                                        Text(if (count == 0) "暂无评分" else "$count 人评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                    }
+                                }
+                                val average by animateFloatAsState(
+                                    targetValue = state.average?.toFloat() ?: 0f,
+                                    animationSpec = tween(HeikaMotion.rating, easing = HeikaMotion.standard),
+                                    label = "post-rating-average",
+                                )
+                                Text(
+                                    state.average?.let { String.format(java.util.Locale.US, "%.1f", average) } ?: "待评分",
+                                    color = if (state.average != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = if (state.average != null) 22.sp else 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
                             }
-                            Spacer(Modifier.weight(1f))
-                            if (state.ratingSending) CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
-                            else Text(state.rating?.let { "已评 $it 星" } ?: "未评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                (1..5).forEach { score ->
+                                    RatingStar(
+                                        score = score,
+                                        selected = (state.rating ?: 0) >= score,
+                                        color = ratingColor(score),
+                                        animationKey = state.ratingAnimationKey,
+                                        animationScore = state.ratingAnimationScore,
+                                        enabled = !state.ratingSending,
+                                        onClick = { viewModel.rate(score) },
+                                    )
+                                }
+                                Spacer(Modifier.weight(1f))
+                                if (state.ratingSending) CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
+                                else Text(state.rating?.let { "已评 $it 星" } ?: "未评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                             Text("分享", Modifier.clickable { onShare(item) }.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)

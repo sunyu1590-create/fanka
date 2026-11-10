@@ -344,9 +344,8 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
         }
         if (state.accountId == null) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("和朋友一起发现灵感", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("登录后创建房间、选择作品并查看共同揭晓的结果。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                Button(onClick = onLogin, modifier = Modifier.padding(top = 16.dp)) { Text("登录后开始") }
+                Text("登录后使用双人探索", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Button(onClick = onLogin, modifier = Modifier.padding(top = 12.dp)) { Text("登录") }
             }
         } else {
             LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 8.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

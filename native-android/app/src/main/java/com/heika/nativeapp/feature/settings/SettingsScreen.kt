@@ -85,7 +85,7 @@ fun SettingsScreen(onBack: () -> Unit, onSection: (String) -> Unit) {
                                 androidx.compose.material3.Icon(
                                     entry.icon,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp),
                                 )
                                 Text(entry.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
