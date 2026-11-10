@@ -53,3 +53,14 @@
 ## 后续任务要求
 
 开发前重新检查工作目录、Git 状态、远端 HEAD、最新成功 Actions Run 和 APK 版本；比较远端源码与工作区，再在包含全部有效成果的最新基线上增量修改。构建失败时修复当前代码，不回退旧底包。未经授权不强推或合并生产分支.
+
+## 阶段 C AI 专区增量开发（构建待验证）
+
+- 开发分支：`codex/stage-c-ai-20261110`，从阶段 B 最新有效提交 `e1082b9b7d1d35107093dd4570aa24bf28a67f97` 创建；阶段 A/B 代码均保留。
+- 阶段 C 代码提交：`53c8cb4f61a045ce9b1b21f3e900c77afc5dec08`。
+- Android 版本：`2.3.6` / versionCode `16`（在阶段 B 的 15 上递增）。
+- 已接入网页现有 `/api/v1/ai-space`、`/api/v1/ai-space/{id}/versions`、`/api/v1/ai-space/{id}/feedback`：原生 AI 详情字段、系统剪贴板、校验后的 HTTPS 外链、版本历史/错误重试和资源反馈；AI 发布、草稿恢复和已发布修订复用阶段 A 图片/草稿机制。
+- AI 搜索与筛选继续复用现有分页端点；社区与 AI 各自保存筛选状态。
+- 新增 `AiResourceRulesTest` 覆盖六种资源类型、必填字段和外链校验。
+- 本机 Gradle 测试/构建尚未执行：Gradle Wrapper 下载因 `services.gradle.org` DNS `UnknownHostException` 失败。GitHub Actions 构建待触发，当前代码尚未获得 CI 或设备验证。
+- 本次开始时最近成功 Android 构建仍是 Native workflow PR Run #48（ID `42790623935`），源码 `38f28da6d554111bc63c8cd4069c55f75ab4eda7`，versionCode 15。阶段 C 产物待 Actions 确认。
