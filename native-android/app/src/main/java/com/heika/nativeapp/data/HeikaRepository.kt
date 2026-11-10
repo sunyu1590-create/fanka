@@ -124,7 +124,15 @@ class HeikaRepository @Inject constructor(
             filter.contentType?.let { append("&type=${encode(it)}") }
         }
         try {
-            val payload = request(query, includeSession = true) as? JSONObject ?: JSONObject()
+            val payload = try {
+                request(query, includeSession = true) as? JSONObject ?: JSONObject()
+            } catch (primary: Exception) {
+                // Older production deployments may not yet understand the native topic filter.
+                // Retry the same AI feed without that optional filter before showing an error.
+                if (filter.topic.isNullOrBlank()) throw primary
+                val compatible = query.replace("&topic=${encode(filter.topic)}", "")
+                request(compatible, includeSession = true) as? JSONObject ?: throw primary
+            }
             val posts = payload.optJSONArray("items").jsonObjects().map(HeikaPost::from)
             val total = payload.optInt("total")
             if (page == 1) cache.put(cacheKey, JSONArray(posts.map { JSONObject(it.rawJson) }).toString())
@@ -389,28 +397,43 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun inbox(): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/messages", authenticated = true) as? JSONObject ?: JSONObject()
+        val summaries = auth.dataApi("/rpc/dm_inbox_summary", "POST", JSONObject()) as? JSONArray ?: JSONArray()
+        val items = JSONArray()
+        for (row in summaries.jsonObjects()) {
+            val userId = auth.current()?.userId ?: throw IOException("请先登录后继续")
+            val peerId = row.optString(if (row.optString("user_a") == userId) "user_b" else "user_a")
+            val profiles = auth.dataApi("/profiles?select=id,nickname,bio,avatar_url&id=eq.${encode(peerId)}") as? JSONArray
+            items.put(JSONObject(row.toString()).put("peer", profiles?.optJSONObject(0) ?: JSONObject().put("id", peerId)))
+        }
+        JSONObject().put("items", items)
     }
 
     suspend fun conversation(id: String, before: String? = null): JSONObject = withContext(Dispatchers.IO) {
-        val cursor = before?.let { "&before=${encode(it)}" }.orEmpty()
-        request("/api/v1/messages?conversation=${encode(id)}$cursor", authenticated = true) as? JSONObject ?: JSONObject()
+        require(isUuid(id)) { "会话编号无效" }
+        val cursor = before?.let { "&created_at=lt.${encode(it)}" }.orEmpty()
+        val rows = auth.dataApi("/dm_messages?select=id,conversation_id,sender_id,body,created_at&conversation_id=eq.$id&order=created_at.desc,id.desc&limit=40$cursor") as? JSONArray ?: JSONArray()
+        val items = JSONArray()
+        for (index in rows.length() - 1 downTo 0) items.put(rows.getJSONObject(index))
+        if (before == null) markConversationRead(id)
+        JSONObject().put("items", items).put("has_more", rows.length() == 40).put("next_before", items.optJSONObject(0)?.optString("created_at"))
     }
 
     suspend fun markConversationRead(id: String): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "read").put("conversation", id).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+        auth.dataApi("/dm_reads?on_conflict=conversation_id,user_id", "POST", JSONObject().put("conversation_id", id).put("user_id", auth.current()?.userId).put("read_at", java.time.Instant.now().toString()), "resolution=merge-duplicates,return=minimal")
+        JSONObject().put("read", true)
     }
 
     suspend fun searchPeople(query: String): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "search").put("query", query).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+        request("/api/v1/search?kind=people&q=${encode(query.take(60))}&limit=20", includeSession = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun openConversation(peerId: String): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "open").put("peer", peerId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+        val id = auth.dataApi("/rpc/open_dm", "POST", JSONObject().put("peer", peerId)) as? String ?: throw IOException("暂时无法发起私聊")
+        JSONObject().put("conversation_id", id)
     }
 
     suspend fun sendMessage(conversationId: String, content: String, nonce: String): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/messages", method = "POST", body = JSONObject().put("action", "send").put("conversation", conversationId).put("content", content).put("nonce", nonce).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+        auth.dataApi("/rpc/send_dm", "POST", JSONObject().put("room", conversationId).put("content", content).put("nonce", nonce).put("image_path", JSONObject.NULL)) as? JSONObject ?: JSONObject()
     }
 
     suspend fun createOrUpdateDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String> = emptyList(), mediaPaths: List<String> = emptyList()): JSONObject = withContext(Dispatchers.IO) {
@@ -466,8 +489,26 @@ class HeikaRepository @Inject constructor(
 
     suspend fun explorationCalendar(userId: String, month: String? = null): JSONObject = withContext(Dispatchers.IO) {
         val key = explorationCacheKey("calendar-${month ?: "current"}", userId)
-        val path = month?.let { "/api/v1/exploration-calendar?month=${encode(it)}" } ?: "/api/v1/exploration-calendar"
-        val result = request(path, authenticated = true) as? JSONObject ?: JSONObject()
+        val library = request("/api/v1/library-state", authenticated = true) as? JSONObject ?: JSONObject()
+        val zone = runCatching { java.time.ZoneId.of(library.optJSONObject("profile")?.optString("timezone").orEmpty().ifBlank { "Asia/Shanghai" }) }.getOrDefault(java.time.ZoneId.of("Asia/Shanghai"))
+        val currentMonth = month ?: java.time.LocalDate.now(zone).toString().take(7)
+        val opened = library.optJSONArray("interactions").jsonObjects().mapNotNull { row ->
+            val stamp = row.optString("opened_at").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val date = runCatching { java.time.Instant.parse(stamp).atZone(zone).toLocalDate() }.getOrNull() ?: return@mapNotNull null
+            if (date.toString().take(7) != currentMonth) null else Triple(row, stamp, date.toString())
+        }
+        val records = JSONArray(); val counts = linkedMapOf<String, Int>()
+        for ((row, stamp, date) in opened) {
+            counts[date] = (counts[date] ?: 0) + 1
+            val postId = row.optString("post_id")
+            val post = runCatching { request("/api/v1/posts/${encode(postId)}", includeSession = true) as? JSONObject }.getOrNull() ?: continue
+            records.put(JSONObject().put("date", date).put("openedAt", stamp).put("post", post))
+        }
+        val today = java.time.LocalDate.now(zone).toString()
+        val daySet = opened.map { it.third }.toSet(); var streak = 0; var cursor = java.time.LocalDate.now(zone)
+        while (daySet.contains(cursor.toString())) { streak++; cursor = cursor.minusDays(1) }
+        val days = JSONArray(); counts.forEach { (date, count) -> days.put(JSONObject().put("date", date).put("count", count)) }
+        val result = JSONObject().put("month", currentMonth).put("timeZone", zone.id).put("today", today).put("streak", streak).put("total", records.length()).put("days", days).put("records", records)
         cache.put(key, result.toString())
         result
     }
