@@ -36,6 +36,9 @@ data class PostDetailState(
     val liked: Boolean = false,
     val saved: Boolean = false,
     val rating: Int? = null,
+    val ratingSending: Boolean = false,
+    val ratingAnimationKey: Int = 0,
+    val ratingAnimationScore: Int = 0,
     val average: Double? = null,
     val ratingCount: Int = 0,
     val following: Boolean = false,
@@ -189,14 +192,26 @@ class PostDetailViewModel @Inject constructor(
     fun rate(value: Int) = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
         val old = mutableState.value
+        if (old.ratingSending || value !in 1..5) return@launch
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
             mutableState.update { it.copy(notice = "登录后可以为内容评分") }
             return@launch
         }
-        mutableState.update { it.copy(rating = value, error = null) }
+        mutableState.update { it.copy(ratingSending = true, error = null, notice = null) }
         runCatching { repository.ratePost(post.id, value) }.onSuccess { result ->
-            mutableState.update { it.copy(average = result.optDouble("average"), ratingCount = result.optInt("count"), notice = "评分已保存") }
-        }.onFailure { error -> mutableState.update { it.copy(rating = old.rating, error = error.message ?: "评分失败") } }
+            val awarded = result.optJSONObject("experience")?.optInt("awarded", 0) ?: 0
+            mutableState.update {
+                it.copy(
+                    rating = result.optInt("myRating", value).takeIf { score -> score in 1..5 },
+                    average = result.optDouble("average").takeIf { it.isFinite() },
+                    ratingCount = result.optInt("count").coerceAtLeast(0),
+                    ratingSending = false,
+                    ratingAnimationKey = it.ratingAnimationKey + 1,
+                    ratingAnimationScore = result.optInt("myRating", value),
+                    notice = if (awarded > 0) "评分已保存 · +$awarded EXP" else "评分已保存",
+                )
+            }
+        }.onFailure { error -> mutableState.update { it.copy(rating = old.rating, ratingSending = false, error = error.message ?: "评分失败") } }
     }
 
     fun toggleFollow() = viewModelScope.launch {

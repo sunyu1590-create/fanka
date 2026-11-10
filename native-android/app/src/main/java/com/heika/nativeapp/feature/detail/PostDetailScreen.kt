@@ -1,5 +1,9 @@
 package com.heika.nativeapp.feature.detail
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +20,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -40,11 +49,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -96,12 +109,27 @@ fun PostDetailScreen(
             ) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        item.images.forEach { image ->
+                        if (item.images.size > 1) {
+                            val pagerState = rememberPagerState(pageCount = { item.images.size })
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.fillMaxWidth().widthIn(max = 440.dp).aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                                    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                                        AsyncImage(
+                                            model = item.images[page],
+                                            contentDescription = "${item.title}，第 ${page + 1} 张",
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                }
+                                Text("${pagerState.currentPage + 1} / ${item.images.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
+                            }
+                        } else item.images.forEach { image ->
                             AsyncImage(
                                 model = image,
                                 contentDescription = item.title,
                                 contentScale = ContentScale.FillWidth,
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)),
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -112,6 +140,13 @@ fun PostDetailScreen(
                             Text("${item.viewCount} 阅读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
                         Text(item.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, lineHeight = 31.sp, fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f).clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }) {
+                                Text(item.author, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text(item.date, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            }
+                            if (item.authorId != null) Text(if (state.following) "已关注" else "关注", Modifier.clickable { viewModel.toggleFollow() }.padding(horizontal = 10.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                        }
                         val bodyFont = when (readingMode) { "focus" -> 16.sp; "night" -> 15.sp; else -> 14.sp }
                         val bodyLine = when (readingMode) { "focus" -> 28.sp; "night" -> 27.sp; else -> 24.sp }
                         Text(item.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = bodyFont, lineHeight = bodyLine)
@@ -131,26 +166,35 @@ fun PostDetailScreen(
                         item.tags.takeIf { it.isNotEmpty() }?.let { tags ->
                             Text(tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                         }
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f).clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }) {
-                                Text(item.author, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                Text(item.date, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                            }
-                            if (item.authorId != null) Text(if (state.following) "已关注" else "关注", Modifier.clickable { viewModel.toggleFollow() }.padding(horizontal = 10.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                        }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             IconButton(onClick = viewModel::toggleLike) { Icon(Icons.Outlined.FavoriteBorder, "点赞", tint = if (state.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                             Text("${item.likeCount + if (state.liked) 1 else 0}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             IconButton(onClick = viewModel::toggleSaved) { Icon(Icons.Outlined.BookmarkBorder, "收藏", tint = if (state.saved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
                             Text("${if (state.saved) "已收藏" else "收藏"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             Spacer(Modifier.weight(1f))
-                            if (state.average != null) Text("★ ${"%.1f".format(state.average)} · ${state.ratingCount}", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("为内容评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                            (1..5).forEach { score ->
-                                Text(if ((state.rating ?: 0) >= score) "★" else "☆", Modifier.clickable { viewModel.rate(score) }.padding(4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 19.sp)
+                            if (state.average != null) {
+                                val average by animateFloatAsState(state.average!!.toFloat(), tween(300), label = "post-rating-average")
+                                androidx.compose.animation.AnimatedContent(state.ratingCount, label = "post-rating-count") { count ->
+                                    Text("${"%.1f".format(java.util.Locale.US, average)} · $count", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                                }
                             }
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("内容评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp))
+                            (1..5).forEach { score ->
+                                RatingStar(
+                                    score = score,
+                                    selected = (state.rating ?: 0) >= score,
+                                    color = ratingColor(score),
+                                    animationKey = state.ratingAnimationKey,
+                                    animationScore = state.ratingAnimationScore,
+                                    enabled = !state.ratingSending,
+                                    onClick = { viewModel.rate(score) },
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            if (state.ratingSending) CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
+                            else Text(state.rating?.let { "已评 $it 星" } ?: "未评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                             Text("分享", Modifier.clickable { onShare(item) }.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
@@ -216,4 +260,48 @@ fun PostDetailScreen(
             dismissButton = { TextButton(onClick = { reportOpen = false }) { Text("取消") } },
         )
     }
+}
+
+private val RatingColors = listOf(
+    Color(0xFFFF5D78),
+    Color(0xFFFF9452),
+    Color(0xFFEDBD36),
+    Color(0xFF65B95E),
+    Color(0xFF34AEB5),
+)
+
+private fun ratingColor(score: Int) = RatingColors[(score - 1).coerceIn(0, RatingColors.lastIndex)]
+
+@Composable
+private fun RatingStar(
+    score: Int,
+    selected: Boolean,
+    color: Color,
+    animationKey: Int,
+    animationScore: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val scale = remember { Animatable(1f) }
+    val tint by animateColorAsState(
+        targetValue = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f),
+        animationSpec = tween(190),
+        label = "rating-star-color-$score",
+    )
+    LaunchedEffect(animationKey, animationScore, score) {
+        if (animationKey == 0 || score > animationScore) return@LaunchedEffect
+        delay((score - 1) * 58L)
+        scale.animateTo(1.16f, tween(110))
+        scale.animateTo(1f, tween(180))
+    }
+    Text(
+        text = if (selected) "★" else "☆",
+        modifier = Modifier
+            .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 5.dp, vertical = 6.dp),
+        color = tint,
+        fontSize = 21.sp,
+        lineHeight = 23.sp,
+    )
 }

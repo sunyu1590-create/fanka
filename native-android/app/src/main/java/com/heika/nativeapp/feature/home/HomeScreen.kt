@@ -78,6 +78,7 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.HeikaPalette
+import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import dev.chrisbanes.haze.HazeStyle
@@ -274,13 +275,13 @@ private fun FlipPreviewOverlay(
     val centerY = with(density) { containerHeight.toPx() / 2f }
 
     LaunchedEffect(preview.id) {
-        progress.animateTo(1f, tween(390, easing = FastOutSlowInEasing))
+        progress.animateTo(1f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))
     }
     LaunchedEffect(opened) {
         if (opened && rotation.value < 180f) {
             revealing = true
             rarityPhase = true
-            rotation.animateTo(180f, tween(620, easing = FastOutSlowInEasing))
+            rotation.animateTo(180f, tween(520, easing = HeikaMotion.spatialEasing))
             revealing = false
             delay(900)
             rarityPhase = false
@@ -291,7 +292,7 @@ private fun FlipPreviewOverlay(
             if (!opening && !revealing && !dismissing) {
                 handledCloseRequest = closeRequest
                 dismissing = true
-                progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
+                progress.animateTo(0f, tween(HeikaMotion.transition, easing = HeikaMotion.spatialEasing))
                 onDismiss()
             }
         }
@@ -301,25 +302,26 @@ private fun FlipPreviewOverlay(
         if (opening || revealing || dismissing) return
         dismissing = true
         scope.launch {
-            progress.animateTo(0f, tween(330, easing = FastOutSlowInEasing))
+            progress.animateTo(0f, tween(HeikaMotion.transition, easing = HeikaMotion.spatialEasing))
             onDismiss()
         }
     }
 
     Box(Modifier.fillMaxSize()) {
+        val expand = progress.value.coerceIn(0f, 1f)
         Box(
             Modifier.fillMaxSize()
                 .hazeEffect(
                     state = hazeState,
                     style = HazeStyle(
-                        backgroundColor = Color(0xFF0D0F13),
-                        tint = HazeTint(Color.Black.copy(alpha = 0.52f)),
-                        blurRadius = 24.dp,
+                        backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = 0.18f * expand),
+                        tint = HazeTint(Color.Black.copy(alpha = 0.52f * expand)),
+                        blurRadius = 24.dp * expand,
                         noiseFactor = 0.018f,
-                        fallbackTint = HazeTint(Color(0xFF0D0F13).copy(alpha = 0.78f)),
+                        fallbackTint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = 0.78f * expand)),
                     ),
                 )
-                .background(Color.Black.copy(alpha = 0.42f))
+                .background(Color.Black.copy(alpha = 0.42f * expand))
                 .clickable(
                     enabled = !opening && !revealing && !dismissing,
                     indication = null,
@@ -331,7 +333,6 @@ private fun FlipPreviewOverlay(
             Modifier.align(Alignment.Center)
                 .width(targetWidth)
                 .aspectRatio(0.76f)
-                .shadow(18.dp, RoundedCornerShape(HeikaRadii.dailyCard))
                 .clickable(
                     indication = null,
                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
@@ -350,6 +351,9 @@ private fun FlipPreviewOverlay(
                     translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
                     rotationY = rotation.value
                     cameraDistance = cardCameraDistancePx
+                    shadowElevation = with(density) { (4.dp + 14.dp * p).toPx() }
+                    shape = RoundedCornerShape(HeikaRadii.dailyCard)
+                    clip = true
                 }
                 .clip(RoundedCornerShape(HeikaRadii.dailyCard))
                 .border(1.dp, Color(0xFF9AA8AA).copy(alpha = 0.8f), RoundedCornerShape(HeikaRadii.dailyCard)),
@@ -439,8 +443,13 @@ private fun PreviewCardFront(
     onOpenDetails: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val revealBlur by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (rarityPhase) 6f else 0f,
+        animationSpec = tween(HeikaMotion.transition, easing = HeikaMotion.standard),
+        label = "reveal-content-blur",
+    )
     Box(modifier.fillMaxSize().alpha(alpha).background(MaterialTheme.colorScheme.surface)) {
-      Column(Modifier.fillMaxSize().then(if (rarityPhase) Modifier.blur(9.dp) else Modifier)) {
+      Column(Modifier.fillMaxSize().blur(revealBlur.dp)) {
         val image = post?.thumbnail
         Box(Modifier.fillMaxWidth().weight(0.60f).background(MaterialTheme.colorScheme.surfaceVariant)) {
             if (image != null && post != null) {
@@ -527,7 +536,7 @@ private fun FlipConfetti(enabled: Boolean) {
     LaunchedEffect(enabled) {
         if (enabled) {
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(4_100, easing = LinearEasing))
+            progress.animateTo(1f, tween(1_650, easing = LinearEasing))
         }
     }
     if (!enabled || progress.value >= 1f) return
@@ -536,11 +545,11 @@ private fun FlipConfetti(enabled: Boolean) {
             Color(0xFFF2C45E), Color(0xFFF05F77), Color(0xFFFF963E), Color(0xFF55C99A),
             Color(0xFF43C7DF), Color(0xFF6F91F5), Color(0xFFB581E8), Color(0xFFF276C0),
         )
-        repeat(96) { index ->
-            val spread = index / 95f
-            val stagger = ((index * 37) % 96) / 95f
+        repeat(28) { index ->
+            val spread = index / 27f
+            val stagger = ((index * 17) % 28) / 27f
             val jitter = ((index * 13) % 90) / 1_000f
-            val start = .06f + stagger * .22f + jitter
+            val start = .04f + stagger * .16f + jitter
             val phase = ((progress.value - start) / .86f).coerceIn(0f, 1f)
             if (phase <= 0f || phase >= 1f) return@repeat
             val drift = (((index * 37) % 25) - 12) / 100f

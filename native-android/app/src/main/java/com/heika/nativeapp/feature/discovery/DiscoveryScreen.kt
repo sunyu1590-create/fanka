@@ -231,7 +231,15 @@ fun DiscoveryScreen(
             }
         }
         val gridState = if (filter.channel == "community") communityGrid else aiGrid
-        FeedGrid(posts = posts, state = gridState, onPost = onPost, columns = if (feedLayout == "single") 1 else 2, modifier = Modifier.weight(1f))
+        FeedGrid(
+            posts = posts,
+            state = gridState,
+            onPost = onPost,
+            columns = if (feedLayout == "single") 1 else 2,
+            modifier = Modifier.weight(1f),
+            filter = filter,
+            onSortChange = viewModel::selectSort,
+        )
     }
 }
 
@@ -302,6 +310,8 @@ private fun FeedGrid(
     onPost: (HeikaPost) -> Unit,
     columns: Int,
     modifier: Modifier = Modifier,
+    filter: FeedFilter,
+    onSortChange: (String) -> Unit,
 ) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(columns.coerceIn(1, 2)),
@@ -333,7 +343,12 @@ private fun FeedGrid(
                 androidx.compose.material3.TextButton(onClick = posts::retry, modifier = Modifier.fillMaxWidth()) { Text("加载更多失败 · 点击重试") }
             }
             posts.loadState.refresh is LoadState.NotLoading && posts.itemCount == 0 -> item(span = StaggeredGridItemSpan.FullLine) {
-                EmptyFeed(message = "这里暂时还没有内容，稍后再来看看。", onRetry = posts::refresh)
+                val noCuratedAi = filter.channel == "ai" && filter.sort == "推荐"
+                EmptyFeed(
+                    message = if (noCuratedAi) "暂无推荐内容" else "暂无内容",
+                    actionLabel = if (noCuratedAi) "查看最新内容" else "重新加载",
+                    onRetry = if (noCuratedAi) ({ onSortChange("最新") }) else posts::refresh,
+                )
             }
         }
     }
@@ -420,10 +435,10 @@ private fun RatingTag(post: HeikaPost, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EmptyFeed(message: String, onRetry: () -> Unit) {
+private fun EmptyFeed(message: String, actionLabel: String = "重新加载", onRetry: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 34.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-        androidx.compose.material3.OutlinedButton(onClick = onRetry) { Text("重新加载") }
+        androidx.compose.material3.OutlinedButton(onClick = onRetry) { Text(actionLabel) }
     }
 }
 

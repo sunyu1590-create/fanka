@@ -46,7 +46,8 @@ class DiscoveryViewModel @Inject constructor(private val repository: HeikaReposi
     val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     private val filter = MutableStateFlow(FeedFilter())
     private var communityFilter = FeedFilter()
-    private var aiFilter = FeedFilter(channel = "ai")
+    // Start from published content; 推荐 remains an explicit featured-only filter.
+    private var aiFilter = FeedFilter(channel = "ai", sort = "最新")
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val posts = filter.flatMapLatest { current ->

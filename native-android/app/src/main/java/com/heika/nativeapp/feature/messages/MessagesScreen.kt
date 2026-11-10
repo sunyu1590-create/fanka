@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -87,7 +88,14 @@ fun MessagesScreen(
                 }
             } else {
                 OutlinedTextField(value = state.query, onValueChange = viewModel::search, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), label = { Text("搜索用户") }, singleLine = true)
-                state.error?.let { Text(it, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                state.error?.let { message ->
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(message, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                        TextButton(onClick = {
+                            if (state.query.trim().length >= 2) viewModel.search(state.query) else viewModel.load()
+                        }) { Text("重试") }
+                    }
+                }
                 if (state.query.length >= 2 && state.people.isNotEmpty()) {
                     Text("用户", Modifier.padding(start = 21.dp, top = 14.dp, bottom = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
@@ -97,13 +105,14 @@ fun MessagesScreen(
                     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
                 } else if (state.conversations.isEmpty()) {
                     Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("从一段交流开始", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Text("搜索昵称，找到想联系的创作者。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        Text("暂无会话", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     }
                     Spacer(Modifier.weight(1f))
                 } else {
                     LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 8.dp)) {
-                        items(state.conversations, key = { it.id }) { item -> ConversationRow(item) { viewModel.openConversation(item) } }
+                        items(state.conversations, key = { it.id }) { item ->
+                            Row(Modifier.animateItem()) { ConversationRow(item) { viewModel.openConversation(item) } }
+                        }
                     }
                 }
             }
@@ -117,8 +126,8 @@ fun MessagesScreen(
                 }
                 items(state.messages, key = { it.id }) { message ->
                     val mine = message.senderId == state.userId
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
-                        Text(message.body, Modifier.clip(RoundedCornerShape(15.dp)).background(if (mine) MaterialTheme.colorScheme.primary.copy(alpha = .17f) else MaterialTheme.colorScheme.surface).padding(horizontal = 13.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, lineHeight = 19.sp)
+                    Row(Modifier.fillMaxWidth().animateItem(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+                        Text(message.body, Modifier.clip(RoundedCornerShape(12.dp)).background(if (mine) MaterialTheme.colorScheme.primary.copy(alpha = .17f) else MaterialTheme.colorScheme.surface).padding(horizontal = 13.dp, vertical = 9.dp), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, lineHeight = 19.sp)
                     }
                 }
                 items(state.pendingMessages, key = { "pending-${it.nonce}" }) { pending ->

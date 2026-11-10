@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +77,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.HeikaMotion
+import com.heika.nativeapp.ui.HeikaRadii
 import java.time.YearMonth
 import java.util.Locale
 
@@ -88,39 +100,41 @@ fun ExplorationCenterScreen(
         }
         LazyColumn(
             contentPadding = PaddingValues(start = 18.dp, top = 6.dp, end = 18.dp, bottom = 116.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(19.dp),
         ) {
             item {
-                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(18.dp)) {
-                        Text("HEIKA / EXPLORE", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, letterSpacing = 1.4.sp)
-                        Text("每一次发现，都在留下轨迹", Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                        val progress = ExplorationLogic.progression(state.experience)
-                        Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.Bottom) {
-                            Column(Modifier.weight(1f)) {
-                                Text("LV.${progress.current.level} · ${progress.current.reward}", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${state.experience} EXP${progress.next?.let { " · 距离 LV.${it.level} 还差 ${progress.remaining}" } ?: " · 已达当前最高等级"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("${state.streak} 天", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text("连续探索", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                            }
+                val progress = ExplorationLogic.progression(state.experience)
+                val animatedProgress by animateFloatAsState(
+                    targetValue = progress.percent / 100f,
+                    animationSpec = tween(HeikaMotion.rating, easing = HeikaMotion.standard),
+                    label = "exploration-level-progress",
+                )
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 15.dp, vertical = 14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("LV.${progress.current.level}", color = MaterialTheme.colorScheme.primary, fontSize = 25.sp, fontWeight = FontWeight.SemiBold)
+                        Text(progress.current.reward, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 10.dp).weight(1f))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${state.streak} 天", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("连续探索", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
-                        LinearProgressIndicator(
-                            progress = { progress.percent / 100f },
-                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(4.dp).clip(CircleShape),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        )
-                        progress.next?.let { Text("${progress.current.threshold} / ${it.threshold} EXP", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp)) }
+                    }
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier.fillMaxWidth().padding(top = 11.dp).height(4.dp).clip(CircleShape),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${state.experience} EXP", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                        Text(progress.next?.let { "距 LV.${it.level} 还差 ${progress.remaining}" } ?: "当前最高等级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     }
                 }
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("今日探索任务", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Text(state.serverDate?.let { "服务端日期 $it · 奖励按账号时区结算" } ?: "奖励由服务端状态确认", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                        Text("今日任务", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        state.serverDate?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp)) }
                     }
                     if (state.refreshing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
                 }
@@ -130,14 +144,11 @@ fun ExplorationCenterScreen(
             state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) } }
             items(state.missions, key = { it.key }) { mission ->
                 val canClaim = ExplorationLogic.canClaim(mission.progress, mission.target, mission.claimed, state.busyMission != null)
-                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                            androidx.compose.material3.Icon(if (mission.claimed) Icons.Outlined.Star else Icons.Outlined.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
-                        }
-                        Column(Modifier.weight(1f).padding(start = 11.dp)) {
-                            Text(mission.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text(mission.description, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(mission.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(mission.description, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
                         }
                         TextButton(onClick = { viewModel.claimMission(mission.key) }, enabled = canClaim) {
                             Text(when { mission.claimed -> "已领取"; state.busyMission == mission.key -> "领取中"; else -> if (canClaim) "领取" else "${mission.progress.coerceAtMost(mission.target)}/${mission.target}" }, fontSize = 11.sp)
@@ -145,14 +156,14 @@ fun ExplorationCenterScreen(
                     }
                     LinearProgressIndicator(
                         progress = { (mission.progress.toFloat() / mission.target.coerceAtLeast(1)).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().padding(start = 43.dp, top = 8.dp).height(3.dp).clip(CircleShape),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp).clip(CircleShape),
                         color = if (mission.claimed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
-                    Text("+${mission.points} EXP", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, modifier = Modifier.align(Alignment.End).padding(top = 4.dp))
+                    Text("+${mission.points} EXP", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, modifier = Modifier.align(Alignment.End).padding(top = 3.dp))
                 }
             }
-            item { Text("等级奖励", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
+            item { Text("等级奖励", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
             items(ExplorationLogic.levels, key = { "level-${it.level}" }) { level ->
                 val unlocked = state.experience >= level.threshold
                 val claimed = level.level in state.claimedLevels
@@ -171,13 +182,13 @@ fun ExplorationCenterScreen(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             }
             item {
-                Text("探索工具", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("探索", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 Column(Modifier.padding(top = 4.dp)) {
-                    ExplorationActionRow("探索日历", "按账号时区查看已翻开的记录", Icons.Outlined.CalendarMonth, onCalendar)
+                    ExplorationActionRow("探索日历", "翻卡记录", Icons.Outlined.CalendarMonth, onCalendar)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("双人探索", "邀请伙伴各自挑选，双方完成后共同揭晓", Icons.Outlined.Groups, onCoExplore)
+                    ExplorationActionRow("双人探索", "和伙伴共同揭晓", Icons.Outlined.Groups, onCoExplore)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("故事接龙", "从一篇作品开始，和探索者续写故事", Icons.Outlined.AutoAwesome, onStoryChains)
+                    ExplorationActionRow("故事接龙", "续写社区故事", Icons.Outlined.AutoAwesome, onStoryChains)
                 }
             }
             if (state.events.isNotEmpty()) item {
@@ -203,8 +214,8 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
     val context = LocalContext.current
     LaunchedEffect(viewModel) { viewModel.load(month = null) }
     val yearMonth = remember(state.month) { runCatching { YearMonth.parse(state.month) }.getOrElse { YearMonth.now() } }
-    val cells = remember(yearMonth) { ExplorationLogic.calendarCellDates(yearMonth) }
     val selectedDay = state.selectedDate
+    val metricsUnavailable = state.records.isEmpty() && state.counts.isEmpty() && (state.loading || state.error != null)
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("探索日历", onBack) {
             androidx.compose.material3.IconButton(onClick = { viewModel.load(refresh = true) }, enabled = !state.refreshing) {
@@ -217,7 +228,7 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
                     androidx.compose.material3.IconButton(onClick = { viewModel.shiftMonth(-1) }) { androidx.compose.material3.Icon(Icons.Outlined.ChevronLeft, "上个月") }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("${yearMonth.year}年${yearMonth.monthValue}月", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        Text("${state.streak} 天连续探索 · ${state.timeZone}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        Text("${if (metricsUnavailable) "—" else state.streak.toString()} 天连续探索 · ${state.timeZone}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     }
                     androidx.compose.material3.IconButton(onClick = { viewModel.shiftMonth(1) }, enabled = state.month?.let { it < (state.today?.take(7) ?: it) } ?: false) {
                         androidx.compose.material3.Icon(Icons.Outlined.ChevronRight, "下个月")
@@ -232,13 +243,23 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(13.dp)) {
                     Text(if (state.month == state.today?.take(7)) "本月探索月报" else "${yearMonth.monthValue}月探索月报", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Row(Modifier.fillMaxWidth().padding(top = 11.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        MonthMetric("${unique.size}", "张卡片")
-                        MonthMetric("$activeDays", "探索日")
-                        MonthMetric("${state.totalRecords}", "次发现")
-                        MonthMetric("$rareCount", "稀有卡")
+                        MonthMetric(if (metricsUnavailable) "—" else "${unique.size}", "张卡片")
+                        MonthMetric(if (metricsUnavailable) "—" else "$activeDays", "探索日")
+                        MonthMetric(if (metricsUnavailable) "—" else "${state.totalRecords}", "次发现")
+                        MonthMetric(if (metricsUnavailable) "—" else "$rareCount", "稀有卡")
                     }
-                    Text(favoriteTag?.let { "该月最常探索 · #$it" } ?: "该月最常探索 · 等待第一份灵感", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp))
+                    Text(
+                        when {
+                            metricsUnavailable -> "月报数据暂不可用"
+                            favoriteTag != null -> "该月最常探索 · #$favoriteTag"
+                            else -> "该月暂无探索记录"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
                     TextButton(
+                        enabled = !metricsUnavailable,
                         onClick = {
                             val summary = "${yearMonth.year}年${yearMonth.monthValue}月，我在黑卡探索了 ${unique.size} 张内容，点亮 $activeDays 天，发现稀有卡 $rareCount 张${favoriteTag?.let { "，最常探索「$it」" }.orEmpty()}。"
                             shareText(context, "我的黑卡月度探索", summary)
@@ -249,25 +270,35 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
             }
             state.error?.let { message -> item { InlineError(message) { viewModel.load(refresh = true) } } }
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { listOf("一", "二", "三", "四", "五", "六", "日").forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center) } }
-                    cells.chunked(7).forEach { week ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            week.forEach { day ->
-                                if (day == null) Spacer(Modifier.weight(1f).aspectRatio(1f)) else {
-                                    val date = "%04d-%02d-%02d".format(Locale.ROOT, yearMonth.year, yearMonth.monthValue, day)
-                                    val count = state.counts[date] ?: 0
-                                    val isSelected = selectedDay == date
-                                    Box(
-                                        Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(9.dp))
-                                            .background(if (count > 0) MaterialTheme.colorScheme.primary.copy(alpha = (0.18f + count * 0.14f).coerceAtMost(0.72f)) else MaterialTheme.colorScheme.surface)
-                                            .then(if (isSelected) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), RoundedCornerShape(9.dp)) else Modifier)
-                                            .clickable { viewModel.selectDate(date) },
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(day.toString(), color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                                            if (count > 0) Text("$count", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
+                AnimatedContent(
+                    targetState = yearMonth,
+                    transitionSpec = {
+                        (fadeIn(tween(HeikaMotion.transition)) + slideInHorizontally(tween(HeikaMotion.transition)) { it / 12 }) togetherWith
+                            (fadeOut(tween(HeikaMotion.transition)) + slideOutHorizontally(tween(HeikaMotion.transition)) { -it / 12 }) using SizeTransform(clip = false)
+                    },
+                    label = "exploration-calendar-month",
+                ) { month ->
+                    val monthCells = remember(month) { ExplorationLogic.calendarCellDates(month) }
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { listOf("一", "二", "三", "四", "五", "六", "日").forEach { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center) } }
+                        monthCells.chunked(7).forEach { week ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                week.forEach { day ->
+                                    if (day == null) Spacer(Modifier.weight(1f).aspectRatio(1f)) else {
+                                        val date = "%04d-%02d-%02d".format(Locale.ROOT, month.year, month.monthValue, day)
+                                        val count = state.counts[date] ?: 0
+                                        val isSelected = selectedDay == date
+                                        Box(
+                                            Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(HeikaRadii.control))
+                                                .background(if (count > 0) MaterialTheme.colorScheme.primary.copy(alpha = (0.14f + count * 0.13f).coerceAtMost(0.65f)) else MaterialTheme.colorScheme.surface)
+                                                .then(if (isSelected) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(HeikaRadii.control)) else Modifier)
+                                                .clickable { viewModel.selectDate(date) },
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(day.toString(), color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                                if (count > 0) Text("• $count", color = MaterialTheme.colorScheme.primary, fontSize = 8.sp, lineHeight = 9.sp)
+                                            }
                                         }
                                     }
                                 }
@@ -280,7 +311,7 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
                 Text(selectedDay ?: "选择日期", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 val dayRecords = state.records.filter { it.date == selectedDay }
                 if (dayRecords.isEmpty()) Text(
-                    if ((selectedDay?.let { state.counts[it] } ?: 0) > 0) "当天记录存在，但关联内容已不可用。" else "这一天没有已同步的翻卡记录。",
+                    if ((selectedDay?.let { state.counts[it] } ?: 0) > 0) "内容暂不可用" else "暂无记录",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(top = 10.dp, bottom = 16.dp),
@@ -319,9 +350,7 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
             }
         } else {
             LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 8.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                item {
-                    Text("各自挑一份想分享的内容，只有双方都完成选择后才会揭晓。房间规则与有效期由服务端决定。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
-                }
+                item { Text("邀请伙伴加入，双方各选一篇内容后共同揭晓。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
                 state.error?.let { message -> item { InlineError(message) { viewModel.refresh() } } }
                 state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) } }
                 if (state.inviteCode.isBlank()) {
@@ -336,7 +365,19 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
                     item {
                         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(15.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (state.guestId == null) "等待朋友加入" else "双人探索进行中", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                val roomStatus = when {
+                                    state.expired -> "已过期"
+                                    state.revealed -> "已完成"
+                                    state.guestId == null -> "等待加入"
+                                    state.ownPick -> "等待对方选择"
+                                    else -> "双方已加入 · 正在选择"
+                                }
+                                AnimatedContent(roomStatus, transitionSpec = {
+                                    (fadeIn(tween(HeikaMotion.control)) + slideInHorizontally(tween(HeikaMotion.control)) { it / 10 }) togetherWith
+                                        (fadeOut(tween(HeikaMotion.control)) + slideOutHorizontally(tween(HeikaMotion.control)) { -it / 10 })
+                                }, label = "co-explore-status") { status ->
+                                    Text(status, color = if (state.expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                }
                                 TextButton(onClick = { shareText(context, "和我一起探索黑卡", "https://moonclean.shop/?room=${state.inviteCode}") }) { androidx.compose.material3.Icon(Icons.Outlined.Share, null); Text("邀请") }
                             }
                             Text("邀请码  ${state.inviteCode}", color = MaterialTheme.colorScheme.primary, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
@@ -345,9 +386,9 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
                                 TextButton(onClick = { copyText(context, "HEIKA 邀请码", state.inviteCode) }) { androidx.compose.material3.Icon(Icons.Outlined.ContentCopy, null); Text("复制") }
                             }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                            Text("发起者  ·  ${if (state.hostId == state.accountId) "你已加入" else "已加入"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+                            Text("发起者  ·  ${if (state.hostId == state.accountId) "你" else "已加入"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
                             Text("伙伴  ·  ${if (state.guestId == null) "等待加入" else if (state.guestId == state.accountId) "你已加入" else "已加入"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
-                            TextButton(onClick = viewModel::refresh, modifier = Modifier.align(Alignment.End)) { androidx.compose.material3.Icon(Icons.Outlined.Refresh, null); Text("刷新房间状态") }
+                            if (!state.expired && !state.revealed) TextButton(onClick = viewModel::refresh, modifier = Modifier.align(Alignment.End)) { androidx.compose.material3.Icon(Icons.Outlined.Refresh, null); Text("刷新") }
                         }
                     }
                     if (state.revealed) {
@@ -407,9 +448,6 @@ fun StoryChainListScreen(onBack: () -> Unit, onOpen: (String) -> Unit, viewModel
             state.error?.let { message -> item { InlineError(message) { viewModel.load(force = true) } } }
             state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) } }
             item {
-                Text("从一张已发布作品开始，邀请探索者写下各自的下一段。服务端会校验参与次数、内容长度和关闭状态。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 17.sp)
-            }
-            item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("发起一个新故事", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text("选择起始作品", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
@@ -437,11 +475,11 @@ fun StoryChainListScreen(onBack: () -> Unit, onOpen: (String) -> Unit, viewModel
                     ) { Text(if (state.busy) "正在发起…" else "发布并邀请续写") }
                 }
             }
-            item { Text("正在接续的故事", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp)) }
+            item { Text("接龙中的故事", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp)) }
             if (state.loading && state.items.isEmpty()) item { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
-            if (!state.loading && state.items.isEmpty()) item { Text("还没有正在接续的故事，从一篇喜欢的作品开始吧。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(vertical = 20.dp)) }
+            if (!state.loading && state.items.isEmpty()) item { Text("暂无内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(vertical = 20.dp)) }
             items(state.items, key = { it.id }) { chain ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).clickable { onOpen(chain.id) }.padding(12.dp)) {
+                Column(Modifier.fillMaxWidth().animateItem().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).clickable { onOpen(chain.id) }.padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${chain.seedTag.ifBlank { "探索" }} · ${chain.ownerName}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, modifier = Modifier.weight(1f))
                         Text(if (chain.status == "active") "进行中" else "已结束", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
@@ -475,9 +513,9 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
                 state.error?.let { message -> item { InlineError(message) { viewModel.load(force = true) } } }
                 state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) } }
                 item {
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).clickable { onSeedPost(chain.seedPostId) }.padding(14.dp)) {
+                    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(13.dp)).clickable { onSeedPost(chain.seedPostId) }.padding(14.dp)) {
                         Text("${chain.seedTag.ifBlank { "探索" }} · ${chain.ownerName} 发起 · ${if (chain.status == "active") "进行中" else "已结束"}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                        if (!chain.seedImage.isNullOrBlank()) AsyncImage(chain.seedImage, null, Modifier.fillMaxWidth().padding(top = 10.dp).height(190.dp).clip(RoundedCornerShape(10.dp)), contentScale = ContentScale.Crop)
+                        if (!chain.seedImage.isNullOrBlank()) AsyncImage(chain.seedImage, null, Modifier.fillMaxWidth().padding(top = 10.dp).height(190.dp), contentScale = ContentScale.Crop)
                         Text(chain.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
                         Text(chain.prompt, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
                         Text("查看起始作品 ›", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp).clickable { onSeedPost(chain.seedPostId) })
@@ -485,7 +523,7 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
                 }
                 item { Text("故事进展 · ${chain.entries.size} 段", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                 items(chain.entries, key = { it.id }) { entry ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Row(Modifier.fillMaxWidth().animateItem(), verticalAlignment = Alignment.Top) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(Modifier.size(25.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { Text("${chain.entries.indexOf(entry) + 1}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp) }
                             if (chain.entries.lastOrNull()?.id != entry.id) Box(Modifier.width(1.dp).height(58.dp).background(MaterialTheme.colorScheme.outlineVariant))
@@ -552,9 +590,14 @@ private fun rarityLabel(tier: String): String = when (tier) {
 
 @Composable
 private fun InlineError(message: String, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.errorContainer).padding(12.dp)) {
-        Text(message, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 11.sp)
-        TextButton(onClick = onRetry, modifier = Modifier.align(Alignment.End)) { Text("重试") }
+    val shape = RoundedCornerShape(HeikaRadii.control)
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.28f), shape).padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(message, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        TextButton(onClick = onRetry) { Text("重试") }
     }
 }
 

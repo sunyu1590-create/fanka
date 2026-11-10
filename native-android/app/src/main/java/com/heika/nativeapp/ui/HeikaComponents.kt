@@ -1,8 +1,10 @@
 package com.heika.nativeapp.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +28,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -78,12 +81,14 @@ fun BrandHeader(
 @Composable
 fun BackHeader(title: String, onBack: () -> Unit, trailing: @Composable (() -> Unit)? = null) {
     Row(
-        modifier = Modifier.height(58.dp).padding(horizontal = 18.dp),
+        modifier = Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("‹", color = MaterialTheme.colorScheme.onBackground, fontSize = 32.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 5.dp))
-        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+        }
+        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.pageTitle, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         trailing?.invoke()
     }
 }
@@ -91,7 +96,7 @@ fun BackHeader(title: String, onBack: () -> Unit, trailing: @Composable (() -> U
 @Composable
 fun SectionLabel(title: String, subtitle: String? = null, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.sectionTitle, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
         subtitle?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
     }
@@ -100,17 +105,32 @@ fun SectionLabel(title: String, subtitle: String? = null, modifier: Modifier = M
 @Composable
 fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(HeikaRadii.control)
+    val chipBackground by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+        tween(HeikaMotion.control),
+        label = "filter-chip-background",
+    )
+    val chipBorder by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
+        tween(HeikaMotion.control),
+        label = "filter-chip-border",
+    )
+    val chipText by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(HeikaMotion.control),
+        label = "filter-chip-text",
+    )
     Box(
         modifier
             .clip(shape)
-            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
-            .border(BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)), shape)
+            .background(chipBackground)
+            .border(BorderStroke(1.dp, chipBorder), shape)
             .clickable(onClick = onClick)
-            .defaultMinSize(minHeight = 39.dp)
+            .defaultMinSize(minHeight = 42.dp)
             .padding(horizontal = 15.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+        Text(label, color = chipText, fontSize = HeikaType.secondary, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
     }
 }
 
@@ -193,6 +213,16 @@ fun GlassNavigationBar(
 private fun RowScope.NavigationItem(key: String, label: String, selected: String, onSelect: (String) -> Unit) {
     val active = selected == key
     val scale by animateFloatAsState(if (active) 1f else 0.96f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 560f), label = "nav-scale")
+    val labelColor by animateColorAsState(
+        if (active) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(HeikaMotion.control),
+        label = "nav-label-color-$key",
+    )
+    val iconColor by animateColorAsState(
+        if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(HeikaMotion.control),
+        label = "nav-icon-color-$key",
+    )
     Column(
         modifier = Modifier
             .weight(1f)
@@ -204,9 +234,9 @@ private fun RowScope.NavigationItem(key: String, label: String, selected: String
         verticalArrangement = Arrangement.Center,
     ) {
         AnimatedContent(targetState = active, label = "nav-icon") { isSelected ->
-            NavigationGlyph(key, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            NavigationGlyph(key, if (isSelected) iconColor else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(label, color = if (active) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+        Text(label, color = labelColor, fontSize = 12.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
 

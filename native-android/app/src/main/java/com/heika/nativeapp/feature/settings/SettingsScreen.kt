@@ -57,12 +57,12 @@ import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.FilterChip
 import java.util.Locale
 
-data class SettingsEntry(val key: String, val title: String, val subtitle: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+data class SettingsEntry(val key: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 private val SettingGroups = listOf(
-    "账号与个人" to listOf(SettingsEntry("account", "账号与安全", "个人资料、当前账号与退出登录", Icons.Outlined.AccountCircle), SettingsEntry("membership", "会员与支持", "查看现有会员权益与支持方式", Icons.Outlined.ChevronRight)),
-    "偏好设置" to listOf(SettingsEntry("appearance", "外观与阅读", "主题、信息流布局与阅读偏好", Icons.Outlined.ColorLens), SettingsEntry("notifications", "通知与消息", "系统权限与站内通知偏好", Icons.Outlined.NotificationsNone), SettingsEntry("storage", "存储与缓存", "图片缓存额度与占用", Icons.Outlined.Storage)),
-    "其他" to listOf(SettingsEntry("privacy", "隐私与权限", "应用权限与账号隐私", Icons.Outlined.PrivacyTip), SettingsEntry("about", "关于黑卡", "版本、项目与反馈", Icons.Outlined.ChevronRight)),
+    "账号" to listOf(SettingsEntry("account", "账号与安全", Icons.Outlined.AccountCircle), SettingsEntry("membership", "会员与支持", Icons.Outlined.ChevronRight)),
+    "偏好" to listOf(SettingsEntry("appearance", "外观与阅读", Icons.Outlined.ColorLens), SettingsEntry("notifications", "通知与消息", Icons.Outlined.NotificationsNone), SettingsEntry("storage", "存储与缓存", Icons.Outlined.Storage)),
+    "其他" to listOf(SettingsEntry("privacy", "隐私与权限", Icons.Outlined.PrivacyTip), SettingsEntry("about", "关于黑卡", Icons.Outlined.ChevronRight)),
 )
 
 @Composable
@@ -72,19 +72,28 @@ fun SettingsScreen(onBack: () -> Unit, onSection: (String) -> Unit) {
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 110.dp)) {
             SettingGroups.forEach { (heading, entries) ->
                 item(key = "heading-$heading") {
-                    Text(heading, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+                    Text(heading, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp, bottom = 9.dp))
                 }
-                items(entries.size, key = { "${heading}-${entries[it].key}" }) { index ->
-                    val entry = entries[index]
-                    Row(Modifier.fillMaxWidth().clickable { onSection(entry.key) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                        androidx.compose.material3.Icon(entry.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(21.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(entry.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text(entry.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                item(key = "group-$heading") {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp)) {
+                        entries.forEachIndexed { index, entry ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { onSection(entry.key) }.padding(vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    entry.icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp),
+                                )
+                                Text(entry.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                IconChevron()
+                            }
+                            if (index < entries.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .42f), modifier = Modifier.padding(start = 48.dp))
                         }
-                        IconChevron()
                     }
-                    if (index < entries.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .4f))
                 }
             }
         }

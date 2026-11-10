@@ -348,6 +348,7 @@ data class CoExploreRoomState(
     val expiresAt: String = "",
     val ownPick: Boolean = false,
     val revealed: Boolean = false,
+    val expired: Boolean = false,
     val picks: List<CoExplorePick> = emptyList(),
     val candidates: List<HeikaPost> = emptyList(),
     val selectedPostId: String? = null,
@@ -461,7 +462,11 @@ class CoExploreViewModel @Inject constructor(
                 applyRoom(room, userId, code, notice)
             }
             .onFailure { error ->
-                if (activeUserId == userId) mutableState.update { it.copy(busy = false, loading = false, error = error.message ?: "房间已失效或加载失败") }
+                if (activeUserId == userId) {
+                    val message = error.message ?: "房间加载失败"
+                    val expired = message.contains("已过期") || message.contains("不存在或已过期")
+                    mutableState.update { it.copy(busy = false, loading = false, expired = expired, error = message) }
+                }
             }
     }
 
@@ -487,6 +492,7 @@ class CoExploreViewModel @Inject constructor(
                 hostId = roomJson.optString("host_id"), guestId = roomJson.optString("guest_id").takeIf(String::isNotBlank),
                 prompt = roomJson.optString("prompt", "今天最想和朋友分享哪一份灵感？"), expiresAt = roomJson.optString("expires_at"),
                 ownPick = room.optBoolean("ownPick"), revealed = room.optBoolean("revealed"), picks = picks,
+                expired = false,
                 selectedPostId = null, note = "", joiningCode = code, busy = false, loading = false, error = null, notice = notice,
             )
         }

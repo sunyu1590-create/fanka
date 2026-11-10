@@ -9,16 +9,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Android
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,19 +46,14 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                         Text("黑卡", color = MaterialTheme.colorScheme.primary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Text("黑卡 HEIKA", color = MaterialTheme.colorScheme.onBackground, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp))
-                    Row(Modifier.padding(top = 8.dp).clip(RoundedCornerShape(30.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 11.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Icon(Icons.Outlined.Android, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                        Text("ANDROID APP", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, letterSpacing = 1.1.sp)
-                    }
-                    Text("每一次翻开，都是一次新的发现。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp))
                     Text("版本 ${version.first} · 构建 ${version.second}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .75f), fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp))
                 }
             }
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("关于黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text("黑卡是一款独立开发的内容探索应用，希望让每一次翻开都带来新的阅读与发现。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
-                    Text("个人开发者 · 为热爱创作与探索而制作", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text("黑卡是一款独立开发的内容探索应用。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
+                    Text("个人开发者", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
             }
             item { AboutAction("检查更新", "当前发布渠道尚未提供可靠的更新检查服务", enabled = false) { } }
@@ -67,9 +61,6 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
             item { AboutAction("官方网站", "moonclean.shop", enabled = true) { openExternal(context, "https://moonclean.shop/") } }
             item { AboutAction("GitHub 项目", "查看黑卡公开项目", enabled = true) { openExternal(context, BuildConfig.GITHUB_URL) } }
             item { AboutAction("用户协议与隐私政策", "网站当前标注协议文本尚未开放", enabled = false) { } }
-            item {
-                Text("HEIKA · 探索值得留下的内容", Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 10.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f), fontSize = 10.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
         }
     }
 }
