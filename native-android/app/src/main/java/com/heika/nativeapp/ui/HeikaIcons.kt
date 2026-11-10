@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Explore
@@ -31,6 +32,7 @@ object HeikaIcons {
     val Back: ImageVector = Icons.AutoMirrored.Outlined.ArrowBack
     val Forward: ImageVector = Icons.AutoMirrored.Outlined.ArrowForward
     val Close: ImageVector = Icons.Outlined.Close
+    val Check: ImageVector = Icons.Outlined.Check
     val Home: ImageVector = Icons.Outlined.Home
     val Discovery: ImageVector = Icons.Outlined.Explore
     val Messages: ImageVector = Icons.Outlined.ChatBubbleOutline

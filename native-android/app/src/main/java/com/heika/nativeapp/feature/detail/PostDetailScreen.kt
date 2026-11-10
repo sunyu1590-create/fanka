@@ -464,7 +464,7 @@ private fun RatingStar(
             .graphicsLayer { scaleX = scale.value * pressScale; scaleY = scale.value * pressScale }
             .selectable(selected = selected, interactionSource = interaction, indication = null, enabled = enabled, role = Role.RadioButton) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
             .padding(horizontal = 5.dp, vertical = 7.dp).size(28.dp),
-        color = tint,
+        tint = tint,
     )
 }
 

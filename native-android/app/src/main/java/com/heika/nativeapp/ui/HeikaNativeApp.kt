@@ -74,7 +74,6 @@ import com.heika.nativeapp.feature.settings.SettingsDetailScreen
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
-@Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
 package com.heika.nativeapp.feature.search
 
 import androidx.compose.animation.animateColorAsState

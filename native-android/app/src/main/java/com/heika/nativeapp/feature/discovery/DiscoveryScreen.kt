@@ -325,6 +325,7 @@ private fun SortTab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
 private fun FeedGrid(
     posts: androidx.paging.compose.LazyPagingItems<HeikaPost>,
     state: LazyStaggeredGridState,

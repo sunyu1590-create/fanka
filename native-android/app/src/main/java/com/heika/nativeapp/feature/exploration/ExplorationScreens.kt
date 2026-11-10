@@ -566,7 +566,7 @@ private fun CandidatePostRow(post: HeikaPost, selected: Boolean, enabled: Boolea
             Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(post.tag, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
         }
-        if (selected) androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Check, contentDescription = "已选择", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 4.dp).size(18.dp))
+        if (selected) androidx.compose.material3.Icon(com.heika.nativeapp.ui.HeikaIcons.Check, contentDescription = "已选择", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 4.dp).size(18.dp))
     }
 }
 

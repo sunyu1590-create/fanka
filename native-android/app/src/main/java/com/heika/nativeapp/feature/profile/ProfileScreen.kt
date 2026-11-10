@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
 package com.heika.nativeapp.feature.profile
 
 import androidx.compose.animation.core.animateDpAsState
