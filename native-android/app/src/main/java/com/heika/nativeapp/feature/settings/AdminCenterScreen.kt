@@ -285,7 +285,10 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
                     Text("选择话题", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     if (topics != null) (0 until topics.length()).forEach { index ->
                         val topic = topics.optJSONObject(index) ?: return@forEach
-                        TextButton(onClick = { topicName = topic.optString("name") }) { Text(if (topicName == topic.optString("name")) "✓ ${topic.optString("name")}" else topic.optString("name")) }
+                        TextButton(onClick = { topicName = topic.optString("name") }) {
+                            if (topicName == topic.optString("name")) Icon(HeikaIcons.Check, null, modifier = Modifier.size(17.dp))
+                            Text(topic.optString("name"))
+                        }
                     }
                     OutlinedTextField(eventTitle, { eventTitle = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("活动标题") }, singleLine = true)
                     OutlinedTextField(eventDescription, { eventDescription = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("活动说明") }, minLines = 2, maxLines = 4)
