@@ -1,5 +1,6 @@
 @file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 
+import com.heika.nativeapp.ui.HeikaIcons
 package com.heika.nativeapp.feature.search
 
 import androidx.compose.animation.animateColorAsState
@@ -28,12 +29,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -89,7 +84,7 @@ fun SearchScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground) }
+            IconButton(onClick = onBack) { Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground) }
             OutlinedTextField(
                 value = state.query,
                 onValueChange = viewModel::setQuery,
@@ -105,7 +100,7 @@ fun SearchScreen(
                 }),
                 trailingIcon = {
                     if (state.query.isNotEmpty()) IconButton(onClick = { viewModel.setQuery("") }) {
-                        Icon(Icons.Outlined.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(HeikaIcons.Close, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
             )
@@ -136,7 +131,7 @@ fun SearchScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(error, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                TextButton(onClick = viewModel::search) { Icon(Icons.Outlined.Refresh, null, Modifier.size(16.dp)); Text("重试") }
+                TextButton(onClick = viewModel::search) { Icon(HeikaIcons.Retry, null, Modifier.size(16.dp)); Text("重试") }
             }
         }
 
@@ -197,7 +192,7 @@ private fun SearchLanding(
                     Text("按内容量与参与人数排序", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                 }
                 if (state.loadingHotTopics) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                else IconButton(onClick = onRetryTopics) { Icon(Icons.Outlined.Refresh, "刷新热搜", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+                else IconButton(onClick = onRetryTopics) { Icon(HeikaIcons.Retry, "刷新热搜", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
             }
         }
         if (state.hotTopicsError != null && state.hotTopics.isEmpty()) {
@@ -220,7 +215,7 @@ private fun SearchLanding(
             item(key = "recent-heading") {
                 Row(Modifier.fillMaxWidth().padding(top = 25.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("最近搜索", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    TextButton(onClick = onClearRecent) { Icon(Icons.Outlined.DeleteOutline, null, Modifier.size(16.dp)); Text("清除", fontSize = 11.sp) }
+                    TextButton(onClick = onClearRecent) { Icon(HeikaIcons.DeleteOutline, null, Modifier.size(16.dp)); Text("清除", fontSize = 11.sp) }
                 }
             }
             items(state.recentSearches, key = { "recent-$it" }) { term ->
@@ -229,7 +224,7 @@ private fun SearchLanding(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(11.dp),
                 ) {
-                    Icon(Icons.Outlined.Search, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(HeikaIcons.Search, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(term, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
                 }
             }

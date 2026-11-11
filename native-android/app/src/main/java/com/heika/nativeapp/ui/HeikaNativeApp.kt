@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
@@ -32,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -87,7 +85,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
         val route = backStack?.destination?.route.orEmpty()
         val sharedPosts = remember { mutableStateMapOf<String, HeikaPost>() }
         var homePreviewActive by remember { mutableStateOf(false) }
-        val navigationBlur by animateDpAsState(if (homePreviewActive) 22.dp else 0.dp, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing), label = "navigation-focus-blur")
         var chatConversationOpen by remember { mutableStateOf(false) }
         val selected = when (route) {
             "discovery" -> "discovery"
@@ -217,6 +214,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
+                        hazeState = hazeState,
                         viewModel = profileViewModel,
                     )
                 }
@@ -263,6 +261,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
+                        hazeState = hazeState,
                     )
                 }
                 composable(
@@ -440,8 +439,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     hazeState = hazeState,
                     onSelect = { target -> navigateTopLevel(nav, target) },
                     onPublish = { openDestination(HeikaDestination.Publish) },
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp)
-                        .blur(navigationBlur),
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
+                    blurEnabled = !homePreviewActive,
                 )
             }
             ForegroundNoticeHost(

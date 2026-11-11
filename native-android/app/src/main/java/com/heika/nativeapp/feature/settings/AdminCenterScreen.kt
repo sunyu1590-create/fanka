@@ -23,18 +23,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Assignment
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Flag
-import androidx.compose.material.icons.outlined.Gavel
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.ManageAccounts
-import androidx.compose.material.icons.outlined.Policy
-import androidx.compose.material.icons.outlined.ReportProblem
-import androidx.compose.material.icons.outlined.SettingsSuggest
-import androidx.compose.material.icons.outlined.SmartToy
-import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -139,34 +127,34 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
     )
 }
 
-private data class AdminModuleSpec(val key: String, val title: String, val detail: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val countKey: String? = null)
+private data class AdminModuleSpec(val key: String, val title: String, val detail: String, val iconRes: Int, val countKey: String? = null)
 private data class AdminModuleGroup(val title: String, val modules: List<AdminModuleSpec>)
 
 private val adminModuleGroups = listOf(
     AdminModuleGroup("审核与举报", listOf(
-        AdminModuleSpec("posts", "作品审核", "新投稿与已发布作品的修改", Icons.Outlined.Assignment, "pending"),
-        AdminModuleSpec("reports", "内容举报", "查看并处理作品与评论举报", Icons.Outlined.Flag),
-        AdminModuleSpec("dm-reports", "私信举报", "处理用户提交的私信举报", Icons.Outlined.ChatBubbleOutline),
-        AdminModuleSpec("appeals", "申诉处理", "复核内容、账号与举报申诉", Icons.Outlined.Policy),
+        AdminModuleSpec("posts", "作品审核", "新投稿与已发布作品的修改", com.heika.nativeapp.ui.HeikaIconRes.Content, "pending"),
+        AdminModuleSpec("reports", "内容举报", "查看并处理作品与评论举报", com.heika.nativeapp.ui.HeikaIconRes.Report),
+        AdminModuleSpec("dm-reports", "私信举报", "处理用户提交的私信举报", com.heika.nativeapp.ui.HeikaIconRes.Comment),
+        AdminModuleSpec("appeals", "申诉处理", "复核内容、账号与举报申诉", com.heika.nativeapp.ui.HeikaIconRes.Shield),
     )),
     AdminModuleGroup("社区治理", listOf(
-        AdminModuleSpec("comments", "评论管理", "搜索、隐藏或恢复评论", Icons.Outlined.ChatBubbleOutline),
-        AdminModuleSpec("keywords", "关键词规则", "管理发布与互动拦截规则", Icons.Outlined.Tag),
-        AdminModuleSpec("topic-events", "话题共创", "创建和管理社区共创活动", Icons.Outlined.Groups),
-        AdminModuleSpec("audit", "操作记录", "查看管理员处理历史", Icons.Outlined.Gavel),
+        AdminModuleSpec("comments", "评论管理", "搜索、隐藏或恢复评论", com.heika.nativeapp.ui.HeikaIconRes.Comment),
+        AdminModuleSpec("keywords", "关键词规则", "管理发布与互动拦截规则", com.heika.nativeapp.ui.HeikaIconRes.Tag),
+        AdminModuleSpec("topic-events", "话题共创", "创建和管理社区共创活动", com.heika.nativeapp.ui.HeikaIconRes.CoExplore),
+        AdminModuleSpec("audit", "操作记录", "查看管理员处理历史", com.heika.nativeapp.ui.HeikaIconRes.Gavel),
     )),
     AdminModuleGroup("账号与工具", listOf(
-        AdminModuleSpec("users", "账号管理", "角色、会员与社区发言限制", Icons.Outlined.ManageAccounts),
-        AdminModuleSpec("user-feedback", "用户反馈", "查看并处理用户意见", Icons.Outlined.ReportProblem),
+        AdminModuleSpec("users", "账号管理", "角色、会员与社区发言限制", com.heika.nativeapp.ui.HeikaIconRes.BusinessUser),
+        AdminModuleSpec("user-feedback", "用户反馈", "查看并处理用户意见", com.heika.nativeapp.ui.HeikaIconRes.Warning),
     )),
     AdminModuleGroup("AI 内容运营", listOf(
-        AdminModuleSpec("ai", "AI 资源审核", "审核 AI 专区内容", Icons.Outlined.SmartToy),
-        AdminModuleSpec("ai-feedback", "AI 资源反馈", "处理资源失效与内容反馈", Icons.Outlined.ReportProblem),
-        AdminModuleSpec("categories", "分类管理", "维护社区与 AI 分类", Icons.Outlined.Tag),
-        AdminModuleSpec("ai-settings", "AI 工作台", "配置服务端 AI 能力", Icons.Outlined.SettingsSuggest),
+        AdminModuleSpec("ai", "AI 资源审核", "审核 AI 专区内容", com.heika.nativeapp.ui.HeikaIconRes.Robot),
+        AdminModuleSpec("ai-feedback", "AI 资源反馈", "处理资源失效与内容反馈", com.heika.nativeapp.ui.HeikaIconRes.Warning),
+        AdminModuleSpec("categories", "分类管理", "维护社区与 AI 分类", com.heika.nativeapp.ui.HeikaIconRes.Tag),
+        AdminModuleSpec("ai-settings", "AI 工作台", "配置服务端 AI 能力", com.heika.nativeapp.ui.HeikaIconRes.Settings),
     )),
     AdminModuleGroup("运营配置", listOf(
-        AdminModuleSpec("recommendation-settings", "推荐配置", "设置每日内容来源配比", Icons.Outlined.SettingsSuggest),
+        AdminModuleSpec("recommendation-settings", "推荐配置", "设置每日内容来源配比", com.heika.nativeapp.ui.HeikaIconRes.Settings),
     )),
 )
 
@@ -256,7 +244,7 @@ private fun AdminModuleRow(module: AdminModuleSpec, overview: JSONObject?, onCli
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(module.icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(9.dp))
+        Icon(androidx.compose.ui.res.painterResource(module.iconRes), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(9.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(module.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             Text(module.detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)

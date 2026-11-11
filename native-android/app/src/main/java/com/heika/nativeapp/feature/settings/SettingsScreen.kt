@@ -1,5 +1,7 @@
 package com.heika.nativeapp.feature.settings
 
+import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaIconRes
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -23,29 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.ColorLens
-import androidx.compose.material.icons.outlined.NotificationsNone
-import androidx.compose.material.icons.outlined.PrivacyTip
-import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.ArrowForwardIos
-import androidx.compose.material.icons.outlined.NotificationsActive
-import androidx.compose.material.icons.outlined.TextFields
-import androidx.compose.material.icons.outlined.ViewAgenda
-import androidx.compose.material.icons.outlined.AutoAwesomeMotion
-import androidx.compose.material.icons.outlined.FontDownload
-import androidx.compose.material.icons.outlined.CleaningServices
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Logout
-import androidx.compose.material.icons.outlined.Policy
-import androidx.compose.material.icons.outlined.Security
-import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.Feedback
-import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.RadioButton
@@ -79,12 +58,12 @@ import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.FilterChip
 import java.util.Locale
 
-data class SettingsEntry(val key: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+data class SettingsEntry(val key: String, val title: String, val iconRes: Int)
 
 private val SettingGroups = listOf(
-    "账号" to listOf(SettingsEntry("account", "账号与安全", Icons.Outlined.AccountCircle), SettingsEntry("membership", "会员与支持", Icons.Outlined.StarOutline)),
-    "偏好" to listOf(SettingsEntry("appearance", "外观与阅读", Icons.Outlined.ColorLens), SettingsEntry("notifications", "通知与消息", Icons.Outlined.NotificationsNone), SettingsEntry("storage", "存储与缓存", Icons.Outlined.Storage)),
-    "其他" to listOf(SettingsEntry("privacy", "隐私与权限", Icons.Outlined.PrivacyTip), SettingsEntry("about", "关于黑卡", Icons.Outlined.Info)),
+    "账号" to listOf(SettingsEntry("account", "账号与安全", HeikaIconRes.Profile), SettingsEntry("membership", "会员与支持", HeikaIconRes.StarOutline)),
+    "偏好" to listOf(SettingsEntry("appearance", "外观与阅读", HeikaIconRes.Magic), SettingsEntry("notifications", "通知与消息", HeikaIconRes.Notifications), SettingsEntry("storage", "存储与缓存", HeikaIconRes.Storage)),
+    "其他" to listOf(SettingsEntry("privacy", "隐私与权限", HeikaIconRes.Privacy), SettingsEntry("about", "关于黑卡", HeikaIconRes.Info)),
 )
 
 @Composable
@@ -107,7 +86,7 @@ fun SettingsScreen(onBack: () -> Unit, onSection: (String) -> Unit) {
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 androidx.compose.material3.Icon(
-                                    entry.icon,
+                                    androidx.compose.ui.res.painterResource(entry.iconRes),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp),
@@ -137,7 +116,7 @@ fun SettingsScreen(onBack: () -> Unit, onSection: (String) -> Unit) {
 }
 
 @Composable
-private fun IconChevron() = androidx.compose.material3.Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f), modifier = Modifier.size(18.dp))
+private fun IconChevron() = androidx.compose.material3.Icon(com.heika.nativeapp.ui.HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f), modifier = Modifier.size(18.dp))
 
 @Composable
 fun SettingsDetailScreen(
@@ -328,7 +307,7 @@ private fun ChoiceList(options: List<Pair<String, String>>, selected: String, on
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                androidx.compose.material3.Icon(settingIcon(title), null, tint = if (selected == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(21.dp))
+                androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(title)), null, tint = if (selected == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(21.dp))
                 Text(title, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                 RadioButton(selected = selected == value, onClick = { onSelect(value) })
             }
@@ -349,7 +328,7 @@ private fun readingLabel(value: String) = when (value) { "focus" -> "专注"; "n
 @Composable
 private fun SettingAction(title: String, subtitle: String, onClick: () -> Unit, enabled: Boolean = true) {
     Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).clip(RoundedCornerShape(10.dp)).clickable(enabled, onClick = onClick).padding(vertical = 9.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        androidx.compose.material3.Icon(settingIcon(title), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
+        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(title)), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 3.dp))
@@ -361,7 +340,7 @@ private fun SettingAction(title: String, subtitle: String, onClick: () -> Unit, 
 @Composable
 private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(vertical = 7.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        androidx.compose.material3.Icon(settingIcon(title), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
+        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(title)), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
@@ -370,25 +349,24 @@ private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, ena
     }
 }
 
-private fun settingIcon(title: String): androidx.compose.ui.graphics.vector.ImageVector = when {
-    title.contains("主题") -> Icons.Outlined.ColorLens
-    title.contains("布局") -> Icons.Outlined.ViewAgenda
-    title.contains("阅读") -> Icons.Outlined.TextFields
-    title.contains("动画") -> Icons.Outlined.AutoAwesomeMotion
-    title.contains("字体") -> Icons.Outlined.FontDownload
-    title.contains("通知") || title.contains("评论与回复") -> Icons.Outlined.NotificationsActive
-    title.contains("缓存") || title.contains("清理") || title.contains("容量") -> Icons.Outlined.CleaningServices
-    title.contains("资料") -> Icons.Outlined.Edit
-    title.contains("退出") -> Icons.Outlined.Logout
-    title.contains("隐私") || title.contains("公开") -> Icons.Outlined.Policy
-    title.contains("安全") || title.contains("权限") -> Icons.Outlined.Security
-    title.contains("网页") || title.contains("链接") -> Icons.Outlined.Language
-    title.contains("反馈") -> Icons.Outlined.Feedback
-    title.contains("图片") -> Icons.Outlined.Image
-    title.contains("会员") -> Icons.Outlined.StarOutline
-    else -> Icons.Outlined.ArrowForwardIos
+private fun settingIcon(title: String): Int = when {
+    title.contains("主题") -> com.heika.nativeapp.ui.HeikaIconRes.Magic
+    title.contains("布局") -> com.heika.nativeapp.ui.HeikaIconRes.List
+    title.contains("阅读") -> com.heika.nativeapp.ui.HeikaIconRes.Text
+    title.contains("动画") -> com.heika.nativeapp.ui.HeikaIconRes.Album
+    title.contains("字体") -> com.heika.nativeapp.ui.HeikaIconRes.Font
+    title.contains("通知") || title.contains("评论与回复") -> com.heika.nativeapp.ui.HeikaIconRes.Notifications
+    title.contains("缓存") || title.contains("清理") || title.contains("容量") -> com.heika.nativeapp.ui.HeikaIconRes.Storage
+    title.contains("资料") -> com.heika.nativeapp.ui.HeikaIconRes.Edit
+    title.contains("退出") -> com.heika.nativeapp.ui.HeikaIconRes.Logout
+    title.contains("隐私") || title.contains("公开") -> com.heika.nativeapp.ui.HeikaIconRes.Privacy
+    title.contains("安全") || title.contains("权限") -> com.heika.nativeapp.ui.HeikaIconRes.Shield
+    title.contains("网页") || title.contains("链接") -> com.heika.nativeapp.ui.HeikaIconRes.Globe
+    title.contains("反馈") -> com.heika.nativeapp.ui.HeikaIconRes.Comment
+    title.contains("图片") -> com.heika.nativeapp.ui.HeikaIconRes.Image
+    title.contains("会员") -> com.heika.nativeapp.ui.HeikaIconRes.StarOutline
+    else -> com.heika.nativeapp.ui.HeikaIconRes.Forward
 }
-
 private fun requestOrOpenNotificationPermission(context: Context, launch: (String) -> Unit) {
     if (Build.VERSION.SDK_INT >= 33 && !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
         val activity = context as? Activity

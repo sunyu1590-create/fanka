@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.widget.VideoView
+import android.widget.MediaController
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.PickVisualMediaRequest
@@ -20,17 +22,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,13 +40,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,6 +60,7 @@ import coil3.compose.AsyncImage
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.FilterChip
+import com.heika.nativeapp.ui.HeikaIcons
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -75,8 +78,14 @@ fun PublishScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showVideoBeta by remember { mutableStateOf(false) }
+    var selectedVideo by remember { mutableStateOf<Uri?>(null) }
+    val publishListState = rememberLazyListState()
     LaunchedEffect(draftId, channel) { viewModel.configureChannel(channel); viewModel.resumeDraft(draftId) }
-    BackHandler(enabled = !state.loading && !state.publishing) { viewModel.saveDraft(onBack) }
+    BackHandler(enabled = showVideoBeta || (!state.loading && !state.publishing)) {
+        if (showVideoBeta) showVideoBeta = false else viewModel.saveDraft(onBack)
+    }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> selectedVideo = uri }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia((9 - state.images.size).coerceAtLeast(1))) { uris ->
         scope.launch {
             for (uri in uris) {
@@ -92,7 +101,13 @@ fun PublishScreen(
             if (post != null) onPublished(post)
         }
     }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    if (showVideoBeta) {
+        VideoBetaScreen(
+            selectedVideo = selectedVideo,
+            onBack = { showVideoBeta = false },
+            onChooseVideo = { videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+        )
+    } else Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(if (state.revisionMode) "修改作品" else "发布内容", onBack = { viewModel.saveDraft(onBack) }, trailing = {
             Text(if (state.saving) "保存中" else if (state.revisionMode) "保存修改" else "草稿", Modifier.clickable { viewModel.saveDraft() }.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         })
@@ -111,6 +126,7 @@ fun PublishScreen(
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
         } else {
             androidx.compose.foundation.lazy.LazyColumn(
+                state = publishListState,
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(horizontal = 19.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -124,7 +140,7 @@ fun PublishScreen(
                         BasicTextField(
                             value = state.body,
                             onValueChange = { viewModel.edit(body = it) },
-                            modifier = Modifier.fillMaxWidth().height(220.dp).padding(top = 12.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 176.dp, max = 300.dp).padding(top = 12.dp),
                             textStyle = androidx.compose.ui.text.TextStyle(color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, lineHeight = 23.sp),
                             decorationBox = { inner ->
                                 if (state.body.isEmpty()) Text("分享内容、观点或使用体验…", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 13.sp)
@@ -132,6 +148,66 @@ fun PublishScreen(
                             },
                         )
                         Text("${state.body.length}/5000", Modifier.align(Alignment.End), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("添加图片", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${state.images.size}/9 · 首张图片作为封面", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+                            }
+                            TextButton(onClick = { showVideoBeta = true }) { Icon(HeikaIcons.Video, null); Text("视频 Beta") }
+                        }
+                        if (state.images.isEmpty()) {
+                            Column(
+                                Modifier.fillMaxWidth().height(164.dp).clip(RoundedCornerShape(14.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(HeikaIcons.Image, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
+                                Text("选择图片", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp))
+                                Text("JPG、PNG 或 WebP，最多 9 张", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                            }
+                        } else {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                state.images.forEach { image ->
+                                    androidx.compose.foundation.layout.Box(Modifier.size(width = 124.dp, height = 158.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface)) {
+                                        AsyncImage(model = image.preview, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                        IconButton(onClick = { viewModel.removeImage(image.key) }, modifier = Modifier.align(Alignment.TopEnd).size(40.dp)) { Icon(HeikaIcons.Close, "移除图片", tint = MaterialTheme.colorScheme.onBackground) }
+                                        if (image.progress) CircularProgressIndicator(Modifier.align(Alignment.Center).size(22.dp), strokeWidth = 2.dp)
+                                        Text(
+                                            if (state.images.firstOrNull()?.key == image.key) "封面" else "设为封面",
+                                            Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface).clickable { viewModel.setCover(image.key) }.padding(horizontal = 7.dp, vertical = 5.dp),
+                                            color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp,
+                                        )
+                                        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = .94f)), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            if (image.error != null) {
+                                                if (image.localFilePath != null) TextButton(onClick = { viewModel.retryUpload(image.key) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) { Text("重试上传", color = MaterialTheme.colorScheme.error, fontSize = 10.sp) }
+                                                else Text(image.error, color = MaterialTheme.colorScheme.error, fontSize = 9.sp, maxLines = 2)
+                                            }
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                                IconButton(onClick = { viewModel.moveImage(image.key, -1) }, modifier = Modifier.size(40.dp)) { Icon(HeikaIcons.Back, "图片前移", tint = MaterialTheme.colorScheme.onBackground) }
+                                                IconButton(onClick = { viewModel.moveImage(image.key, 1) }, modifier = Modifier.size(40.dp)) { Icon(HeikaIcons.Forward, "图片后移", tint = MaterialTheme.colorScheme.onBackground) }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (state.images.size < 9) Column(
+                                    Modifier.size(width = 124.dp, height = 158.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .clickable { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(HeikaIcons.Add, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
+                                    Text("添加图片", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                                }
+                            }
+                        }
+                        if (state.pendingDeletePaths.isNotEmpty()) TextButton(onClick = viewModel::retryRemovedImageCleanup) { Text("重试清理已移除图片（${state.pendingDeletePaths.size}）", color = MaterialTheme.colorScheme.error, fontSize = 10.sp) }
                     }
                 }
                 item {
@@ -170,45 +246,6 @@ fun PublishScreen(
                 item {
                     OutlinedTextField(value = state.topicText, onValueChange = { viewModel.edit(topicText = it) }, modifier = Modifier.fillMaxWidth(), label = { Text("话题") }, placeholder = { Text("以空格分隔，最多 5 个") }, supportingText = { Text("使用网站已收录的话题名称") })
                 }
-                item {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("图片 ${state.images.size}/9", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(enabled = state.images.size < 9, onClick = { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                            Icon(Icons.Outlined.PhotoLibrary, null); Text("选择图片")
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        state.images.forEach { image ->
-                            androidx.compose.foundation.layout.Box(Modifier.size(94.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface)) {
-                                AsyncImage(model = image.preview, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                IconButton(onClick = { viewModel.removeImage(image.key) }, modifier = Modifier.align(Alignment.TopEnd).size(29.dp)) { Icon(Icons.Outlined.Close, "移除图片", tint = MaterialTheme.colorScheme.onBackground) }
-                                if (image.progress) CircularProgressIndicator(Modifier.align(Alignment.Center).size(20.dp), strokeWidth = 2.dp)
-                                Text(
-                                    if (state.images.firstOrNull()?.key == image.key) "封面" else "设为封面",
-                                    Modifier.align(Alignment.TopStart).padding(4.dp).clip(RoundedCornerShape(5.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .88f)).clickable { viewModel.setCover(image.key) }.padding(horizontal = 5.dp, vertical = 3.dp),
-                                    color = MaterialTheme.colorScheme.onSurface, fontSize = 8.sp,
-                                )
-                                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (image.error != null) {
-                                        if (image.localFilePath != null) {
-                                            TextButton(onClick = { viewModel.retryUpload(image.key) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) { Text("重试上传", color = MaterialTheme.colorScheme.error, fontSize = 9.sp) }
-                                        } else {
-                                            Text(image.error, color = MaterialTheme.colorScheme.error, fontSize = 8.sp, maxLines = 2)
-                                        }
-                                    }
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        IconButton(onClick = { viewModel.moveImage(image.key, -1) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.ChevronLeft, "图片前移", tint = MaterialTheme.colorScheme.onBackground) }
-                                        IconButton(onClick = { viewModel.moveImage(image.key, 1) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.ChevronRight, "图片后移", tint = MaterialTheme.colorScheme.onBackground) }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (state.pendingDeletePaths.isNotEmpty()) {
-                        TextButton(onClick = viewModel::retryRemovedImageCleanup) { Text("重试清理已移除图片（${state.pendingDeletePaths.size}）", color = MaterialTheme.colorScheme.error, fontSize = 10.sp) }
-                    }
-                }
                 state.error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) } }
                 state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } }
             }
@@ -217,7 +254,7 @@ fun PublishScreen(
                 Spacer(Modifier.weight(1f))
                 Button(onClick = viewModel::publish, enabled = !state.publishing && !state.saving && state.categories.isNotEmpty()) {
                     if (state.publishing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    else { Icon(Icons.Outlined.Send, null); Text(if (state.revisionMode) "提交修改" else "提交") }
+                    else { Icon(HeikaIcons.Publish, null); Text(if (state.revisionMode) "提交修改" else "提交") }
                 }
             }
         }
@@ -230,6 +267,49 @@ fun PublishScreen(
             confirmButton = { TextButton(onClick = { viewModel.leaveWithLocalCopy(onBack) }) { Text("保留本机副本并离开") } },
             dismissButton = { TextButton(onClick = viewModel::continueEditing) { Text("继续编辑") } },
         )
+    }
+}
+
+@Composable
+private fun VideoBetaScreen(selectedVideo: Uri?, onBack: () -> Unit, onChooseVideo: () -> Unit) {
+    val context = LocalContext.current
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        BackHeader("视频发布 Beta", onBack)
+        Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("视频发布", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text("当前版本可选择和预览本机视频；上传与发布接口尚未开放。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 20.sp)
+            if (selectedVideo == null) {
+                Column(Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = onChooseVideo), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Icon(HeikaIcons.Video, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
+                    Text("选择视频", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 10.dp))
+                    Text("使用系统媒体选择器", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            } else {
+                AndroidView(
+                    factory = { viewContext -> VideoView(viewContext).apply {
+                        setMediaController(MediaController(viewContext).also { controller -> controller.setAnchorView(this) })
+                        tag = selectedVideo
+                        setVideoURI(selectedVideo)
+                    } },
+                    update = { view -> if (view.tag != selectedVideo) { view.tag = selectedVideo; view.setVideoURI(selectedVideo) } },
+                    modifier = Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(12.dp)),
+                )
+                val name = remember(selectedVideo) {
+                    context.contentResolver.query(selectedVideo, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    } ?: "已选择视频"
+                }
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(HeikaIcons.Video, null, tint = MaterialTheme.colorScheme.primary)
+                    Text(name, Modifier.weight(1f).padding(start = 10.dp), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, maxLines = 2)
+                    TextButton(onClick = onChooseVideo) { Text("更换") }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Beta 预览 · 暂不能发布", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            Button(onClick = {}, enabled = false) { Text("上传功能筹备中") }
+        }
     }
 }
 

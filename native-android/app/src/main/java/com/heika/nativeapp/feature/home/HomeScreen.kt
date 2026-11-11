@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.home
 
+import com.heika.nativeapp.ui.HeikaIcons
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
@@ -29,10 +30,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -120,7 +118,9 @@ fun HomeScreen(
             .onGloballyPositioned { containerOrigin = it.positionInRoot() },
     ) {
         Column(Modifier.fillMaxSize().hazeSource(previewHaze)) {
-            BrandHeader(onSearch = onSearch, onNotifications = onNotifications)
+            // During the flip preview the full-screen backdrop layer owns the only blur pass.
+            // Keep the liquid tint, but avoid blurring the header a second time.
+            BrandHeader(onSearch = onSearch, onNotifications = onNotifications, hazeState = if (preview == null) previewHaze else null)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 state = gridState,
@@ -329,14 +329,13 @@ private fun FlipPreviewOverlay(
                 .hazeEffect(
                     state = hazeState,
                     style = HazeStyle(
-                        backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = 0.18f * expand),
-                        tint = HazeTint(Color.Black.copy(alpha = 0.60f * expand)),
-                        blurRadius = 34.dp * expand,
-                        noiseFactor = 0.018f,
-                        fallbackTint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = 0.78f * expand)),
+                        backgroundColor = Color.Transparent,
+                        tint = HazeTint(Color.Transparent),
+                        blurRadius = 30.dp * expand,
+                        noiseFactor = 0f,
+                        fallbackTint = HazeTint(Color.Transparent),
                     ),
                 )
-                .background(Color.Black.copy(alpha = 0.42f * expand))
                 .clickable(
                     enabled = !opening && !revealing && !dismissing,
                     indication = null,
@@ -402,7 +401,7 @@ private fun FlipPreviewOverlay(
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 13.dp),
         ) {
             Icon(
-                Icons.Outlined.Close,
+                HeikaIcons.Close,
                 contentDescription = "关闭预览",
                 tint = Color.White.copy(alpha = 0.92f),
                 modifier = Modifier.size(26.dp),
@@ -656,7 +655,7 @@ private fun NoticeLine(text: String, isError: Boolean, onRetry: (() -> Unit)? = 
     ) {
         Text(text, Modifier.weight(1f), color = if (isError) Color(0xFFE0A49B) else MaterialTheme.colorScheme.primary, fontSize = 11.sp)
         if (onRetry != null) androidx.compose.material3.IconButton(onClick = onRetry, modifier = Modifier.size(30.dp)) {
-            Icon(Icons.Outlined.Refresh, contentDescription = "重试", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+            Icon(HeikaIcons.Retry, contentDescription = "重试", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
         }
     }
 }

@@ -24,11 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.Image
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.NotificationsNone
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,10 +37,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,28 +46,28 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
-import com.heika.nativeapp.R
 
 @Composable
 fun BrandHeader(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
     trailing: @Composable (() -> Unit)? = null,
+    hazeState: HazeState? = null,
 ) {
+    HeikaLiquidGlassSurface(hazeState, modifier = Modifier.fillMaxWidth().height(68.dp)) {
     Row(
-        modifier = Modifier
-            .height(68.dp)
-            .padding(horizontal = 22.dp),
+        modifier = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 25.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.3.sp)
         Spacer(Modifier.width(10.dp))
         Text("HEIKA", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, letterSpacing = 2.2.sp)
         Spacer(Modifier.weight(1f))
-        IconButton(onClick = onSearch) { Icon(Icons.Outlined.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        IconButton(onClick = onSearch) { Icon(HeikaIcons.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (trailing != null) trailing() else IconButton(onClick = onNotifications) {
-            Icon(Icons.Outlined.NotificationsNone, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(HeikaIcons.Notifications, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
     }
 }
 
@@ -86,7 +79,7 @@ fun BackHeader(title: String, onBack: () -> Unit, trailing: @Composable (() -> U
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+            Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
         }
         Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.pageTitle, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         trailing?.invoke()
@@ -141,6 +134,7 @@ fun GlassNavigationBar(
     onSelect: (String) -> Unit,
     onPublish: () -> Unit,
     modifier: Modifier = Modifier,
+    blurEnabled: Boolean = true,
 ) {
     val shape = RoundedCornerShape(37.dp)
     val isDark = LocalHeikaDark.current
@@ -149,7 +143,7 @@ fun GlassNavigationBar(
         modifier = modifier.fillMaxWidth()
             .padding(horizontal = 14.dp)
             .clip(shape)
-            .hazeEffect(
+            .then(if (blurEnabled) Modifier.hazeEffect(
                 state = hazeState,
                 style = HazeStyle(
                     backgroundColor = surface,
@@ -158,7 +152,7 @@ fun GlassNavigationBar(
                     noiseFactor = 0.025f,
                     fallbackTint = HazeTint(surface.copy(alpha = if (isDark) 0.48f else 0.62f)),
                 ),
-            )
+            ) else Modifier)
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -203,7 +197,7 @@ fun GlassNavigationBar(
             shadowElevation = 6.dp,
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Image(painterResource(R.drawable.ic_nav_add), contentDescription = "发布内容", colorFilter = ColorFilter.tint(Color(0xFF202125)), modifier = Modifier.size(31.dp))
+                Icon(HeikaIcons.Add, contentDescription = "发布内容", tint = Color(0xFF202125), modifier = Modifier.size(31.dp))
             }
         }
     }
@@ -243,16 +237,10 @@ private fun RowScope.NavigationItem(key: String, label: String, selected: String
 @Composable
 private fun NavigationGlyph(key: String, color: Color) {
     val icon = when (key) {
-        "home" -> R.drawable.ic_nav_home
-        "discovery" -> R.drawable.ic_nav_discovery
-        "messages" -> R.drawable.ic_nav_messages
-        else -> R.drawable.ic_nav_profile
+        "home" -> HeikaIcons.Home
+        "discovery" -> HeikaIcons.Discovery
+        "messages" -> HeikaIcons.Messages
+        else -> HeikaIcons.Profile
     }
-    Image(
-        painter = painterResource(icon),
-        contentDescription = null,
-        colorFilter = ColorFilter.tint(color),
-        modifier = Modifier.size(27.dp),
-    )
+    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(27.dp))
 }
-

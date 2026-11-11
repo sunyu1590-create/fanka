@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.exploration
 
+import com.heika.nativeapp.ui.HeikaIcons
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -26,16 +27,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -96,7 +87,7 @@ fun ExplorationCenterScreen(
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("探索中心", onBack) {
             androidx.compose.material3.IconButton(onClick = { viewModel.load(force = true) }, enabled = !state.refreshing) {
-                androidx.compose.material3.Icon(Icons.Outlined.Refresh, contentDescription = "刷新探索数据", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.material3.Icon(HeikaIcons.Retry, contentDescription = "刷新探索数据", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         LazyColumn(
@@ -185,11 +176,11 @@ fun ExplorationCenterScreen(
             item {
                 Text("探索", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 Column(Modifier.padding(top = 4.dp)) {
-                    ExplorationActionRow("探索日历", "翻卡记录", Icons.Outlined.CalendarMonth, onCalendar)
+                    ExplorationActionRow("探索日历", "翻卡记录", HeikaIcons.Calendar, onCalendar)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("双人探索", "和伙伴共同揭晓", Icons.Outlined.Groups, onCoExplore)
+                    ExplorationActionRow("双人探索", "和伙伴共同揭晓", HeikaIcons.CoExplore, onCoExplore)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("故事接龙", "续写社区故事", Icons.Outlined.AutoAwesome, onStoryChains)
+                    ExplorationActionRow("故事接龙", "续写社区故事", HeikaIcons.Magic, onStoryChains)
                 }
             }
             if (state.events.isNotEmpty()) item {
@@ -220,19 +211,19 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("探索日历", onBack) {
             androidx.compose.material3.IconButton(onClick = { viewModel.load(refresh = true) }, enabled = !state.refreshing) {
-                androidx.compose.material3.Icon(Icons.Outlined.Refresh, "刷新", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.material3.Icon(HeikaIcons.Retry, "刷新", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 8.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.IconButton(onClick = { viewModel.shiftMonth(-1) }) { androidx.compose.material3.Icon(Icons.Outlined.ChevronLeft, "上个月") }
+                    androidx.compose.material3.IconButton(onClick = { viewModel.shiftMonth(-1) }) { androidx.compose.material3.Icon(HeikaIcons.Back, "上个月") }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("${yearMonth.year}年${yearMonth.monthValue}月", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text("${if (metricsUnavailable) "—" else state.streak.toString()} 天连续探索 · ${state.timeZone}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     }
                     androidx.compose.material3.IconButton(onClick = { viewModel.shiftMonth(1) }, enabled = state.month?.let { it < (state.today?.take(7) ?: it) } ?: false) {
-                        androidx.compose.material3.Icon(Icons.Outlined.ChevronRight, "下个月")
+                        androidx.compose.material3.Icon(HeikaIcons.Forward, "下个月")
                     }
                 }
             }
@@ -266,7 +257,7 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
                             shareText(context, "我的黑卡月度探索", summary)
                         },
                         modifier = Modifier.align(Alignment.End),
-                    ) { androidx.compose.material3.Icon(Icons.Outlined.Share, null); Text("分享月报") }
+                    ) { androidx.compose.material3.Icon(HeikaIcons.Share, null); Text("分享月报") }
                 }
             }
             state.error?.let { message -> item { InlineError(message) { viewModel.load(refresh = true) } } }
@@ -326,7 +317,7 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
                         Text(record.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                         Text("${rarityLabel(record.rarityTier)} · ${record.openedAt.replace('T', ' ').take(16)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
                     }
-                    androidx.compose.material3.Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (state.loading && state.records.isEmpty()) item { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
@@ -341,7 +332,7 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
     LaunchedEffect(viewModel, inviteCode) { viewModel.initialize(inviteCode) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("双人探索", onBack) {
-            if (state.inviteCode.isNotBlank()) androidx.compose.material3.IconButton(onClick = viewModel::refresh) { androidx.compose.material3.Icon(Icons.Outlined.Refresh, "刷新房间") }
+            if (state.inviteCode.isNotBlank()) androidx.compose.material3.IconButton(onClick = viewModel::refresh) { androidx.compose.material3.Icon(HeikaIcons.Retry, "刷新房间") }
         }
         if (state.accountId == null) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -378,17 +369,17 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
                                 }, label = "co-explore-status") { status ->
                                     Text(status, color = if (state.expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                                 }
-                                TextButton(onClick = { shareText(context, "和我一起探索黑卡", "https://moonclean.shop/?room=${state.inviteCode}") }) { androidx.compose.material3.Icon(Icons.Outlined.Share, null); Text("邀请") }
+                                TextButton(onClick = { shareText(context, "和我一起探索黑卡", "https://moonclean.shop/?room=${state.inviteCode}") }) { androidx.compose.material3.Icon(HeikaIcons.Share, null); Text("邀请") }
                             }
                             Text("邀请码  ${state.inviteCode}", color = MaterialTheme.colorScheme.primary, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(if (state.expiresAt.isBlank()) "房间有效期由服务端管理" else "有效至 ${state.expiresAt.replace('T', ' ').take(16)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.weight(1f))
-                                TextButton(onClick = { copyText(context, "HEIKA 邀请码", state.inviteCode) }) { androidx.compose.material3.Icon(Icons.Outlined.ContentCopy, null); Text("复制") }
+                                TextButton(onClick = { copyText(context, "HEIKA 邀请码", state.inviteCode) }) { androidx.compose.material3.Icon(HeikaIcons.Copy, null); Text("复制") }
                             }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
                             Text("发起者  ·  ${if (state.hostId == state.accountId) "你" else "已加入"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
                             Text("伙伴  ·  ${if (state.guestId == null) "等待加入" else if (state.guestId == state.accountId) "你已加入" else "已加入"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
-                            if (!state.expired && !state.revealed) TextButton(onClick = viewModel::refresh, modifier = Modifier.align(Alignment.End)) { androidx.compose.material3.Icon(Icons.Outlined.Refresh, null); Text("刷新") }
+                            if (!state.expired && !state.revealed) TextButton(onClick = viewModel::refresh, modifier = Modifier.align(Alignment.End)) { androidx.compose.material3.Icon(HeikaIcons.Retry, null); Text("刷新") }
                         }
                     }
                     if (state.revealed) {
@@ -404,7 +395,7 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
                     } else if (state.ownPick) {
                         item {
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                androidx.compose.material3.Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
+                                androidx.compose.material3.Icon(HeikaIcons.Magic, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
                                 Text("你的选择已锁定", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                 Text("朋友完成选择后，双方内容会一起揭晓。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                             }
@@ -442,7 +433,7 @@ fun StoryChainListScreen(onBack: () -> Unit, onOpen: (String) -> Unit, viewModel
     LaunchedEffect(state.createdChainId) { state.createdChainId?.let { viewModel.clearCreatedId(); onOpen(it) } }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("故事接龙", onBack) {
-            androidx.compose.material3.IconButton(onClick = { viewModel.load(force = true) }, enabled = !state.refreshing) { androidx.compose.material3.Icon(Icons.Outlined.Refresh, "刷新") }
+            androidx.compose.material3.IconButton(onClick = { viewModel.load(force = true) }, enabled = !state.refreshing) { androidx.compose.material3.Icon(HeikaIcons.Retry, "刷新") }
         }
         LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 8.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
             state.error?.let { message -> item { InlineError(message) { viewModel.load(force = true) } } }
@@ -487,7 +478,7 @@ fun StoryChainListScreen(onBack: () -> Unit, onOpen: (String) -> Unit, viewModel
                     Text(chain.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 7.dp))
                     Text(chain.prompt, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                     Text("${chain.entries.size} 段续写 · 打开故事", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
-                    TextButton(onClick = { shareText(context, chain.title, "https://moonclean.shop/?chain=${chain.id}") }) { androidx.compose.material3.Icon(Icons.Outlined.Share, null); Text("分享接龙") }
+                    TextButton(onClick = { shareText(context, chain.title, "https://moonclean.shop/?chain=${chain.id}") }) { androidx.compose.material3.Icon(HeikaIcons.Share, null); Text("分享接龙") }
                 }
             }
         }
@@ -503,7 +494,7 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
     val chain = state.items.firstOrNull { it.id == chainId }
     LaunchedEffect(viewModel, chainId, state.items.isEmpty()) { if (state.items.none { it.id == chainId }) viewModel.load() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader("故事内容", onBack) { androidx.compose.material3.IconButton(onClick = { shareText(context, chain?.title ?: "黑卡故事接龙", "https://moonclean.shop/?chain=$chainId") }) { androidx.compose.material3.Icon(Icons.Outlined.Share, "分享接龙") } }
+        BackHeader("故事内容", onBack) { androidx.compose.material3.IconButton(onClick = { shareText(context, chain?.title ?: "黑卡故事接龙", "https://moonclean.shop/?chain=$chainId") }) { androidx.compose.material3.Icon(HeikaIcons.Share, "分享接龙") } }
         if (chain == null && state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else if (chain == null) Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center) {
             InlineError(state.error ?: "接龙暂时不可用") { viewModel.load(force = true) }
@@ -520,7 +511,7 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
                         Text(chain.prompt, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 7.dp))
                         Row(Modifier.padding(top = 9.dp).clickable { onSeedPost(chain.seedPostId) }, verticalAlignment = Alignment.CenterVertically) {
                             Text("查看起始作品", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                            androidx.compose.material3.Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                            androidx.compose.material3.Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
                         }
                     }
                 }
@@ -612,7 +603,7 @@ private fun ExplorationActionRow(title: String, subtitle: String, icon: androidx
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
         }
-        androidx.compose.material3.Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

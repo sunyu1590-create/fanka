@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.notifications
 
+import com.heika.nativeapp.ui.HeikaIcons
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,9 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -90,7 +88,7 @@ fun ForegroundNoticeHost(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(11.dp),
             ) {
-                Icon(Icons.Outlined.NotificationsNone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                Icon(HeikaIcons.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         item.title.ifBlank { noticeTitle(item.type) },
@@ -106,7 +104,7 @@ fun ForegroundNoticeHost(
                 }
                 Spacer(Modifier.size(1.dp))
                 IconButton(onClick = { viewModel.dismiss(item.id) }, modifier = Modifier.size(38.dp)) {
-                    Icon(Icons.Outlined.Close, contentDescription = "关闭通知", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Icon(HeikaIcons.Close, contentDescription = "关闭通知", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
             }
         }

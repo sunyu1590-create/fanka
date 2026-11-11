@@ -39,12 +39,6 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.NotificationsNone
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -86,7 +80,7 @@ import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaMotion
-import com.heika.nativeapp.ui.HeikaGlassSurface
+import com.heika.nativeapp.ui.HeikaSolidGlassSurface
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
 import dev.chrisbanes.haze.HazeState
@@ -146,12 +140,12 @@ fun DiscoveryScreen(
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).nestedScroll(collapseConnection)) {
-        BrandHeader(onSearch = onSearch, onNotifications = onNotifications) {
+        BrandHeader(onSearch = onSearch, onNotifications = onNotifications, hazeState = hazeState) {
             androidx.compose.material3.IconButton(onClick = onNotifications) {
-                Icon(Icons.Outlined.NotificationsNone, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(HeikaIcons.Notifications, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             androidx.compose.material3.IconButton(onClick = { posts.refresh() }) {
-                Icon(Icons.Outlined.Refresh, contentDescription = "刷新内容", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(HeikaIcons.Retry, contentDescription = "刷新内容", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Row(
@@ -438,17 +432,14 @@ internal fun FeedCard(
                     )
                 }
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .27f), Color.Transparent, Color.Black.copy(alpha = .7f)))))
-                HeikaGlassSurface(
-                    hazeState = hazeState,
+                HeikaSolidGlassSurface(
                     modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
                     shape = RoundedCornerShape(HeikaRadii.categoryTag),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    emphasis = .9f,
-                    glassColor = Color(0xFF17181B),
                 ) {
-                    Text(post.tag, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(post.tag, color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), hazeState)
+                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), contentColor = MaterialTheme.colorScheme.onSurface)
                 Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), color = Color.White, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         } else {
@@ -470,7 +461,7 @@ internal fun FeedCard(
         }
         Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(post.author, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Icon(Icons.Outlined.FavoriteBorder, contentDescription = "赞", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            Icon(HeikaIcons.LikeOutline, contentDescription = "赞", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
             Text(" ${post.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
         }
     }
@@ -478,13 +469,10 @@ internal fun FeedCard(
 
 @Composable
 private fun RatingTag(post: HeikaPost, modifier: Modifier = Modifier, hazeState: HazeState? = null, contentColor: Color = Color.White) {
-    HeikaGlassSurface(
-        hazeState = hazeState,
+    HeikaSolidGlassSurface(
         modifier = modifier,
         shape = RoundedCornerShape(HeikaRadii.ratingTag),
         contentPadding = PaddingValues(horizontal = 7.dp, vertical = 4.dp),
-        emphasis = .94f,
-        glassColor = if (contentColor == Color.White) Color(0xFF17181B) else null,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(HeikaIcons.StarOutline, contentDescription = null, tint = HeikaGold, modifier = Modifier.size(14.dp))

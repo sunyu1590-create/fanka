@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.notifications
 
+import com.heika.nativeapp.ui.HeikaIcons
 import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
@@ -20,9 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.NotificationsNone
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -72,7 +70,7 @@ fun NotificationsScreen(
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("通知中心", onBack) {
             androidx.compose.material3.IconButton(onClick = { viewModel.load(force = true) }, enabled = !state.refreshing) {
-                Icon(Icons.Outlined.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(HeikaIcons.Retry, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 21.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -100,7 +98,7 @@ fun NotificationsScreen(
                 Text("登录 / 注册", Modifier.clickable(onClick = onLogin).padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
             state.items.isEmpty() -> Column(Modifier.fillMaxWidth().padding(35.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Icon(Icons.Outlined.NotificationsNone, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
+                Icon(HeikaIcons.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
                 Text("暂时没有新通知", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -132,7 +130,7 @@ fun SystemPermissionNotice(context: Context, refreshKey: Int = 0, onRequest: () 
     } else true }
     if (!enabled || !channelEnabled) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 21.dp, vertical = 8.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).clickable(onClick = onRequest).padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.NotificationsNone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Icon(HeikaIcons.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             Column(Modifier.weight(1f).padding(horizontal = 11.dp)) {
                 Text("系统通知未开启", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 Text("点击查看 Android 通知权限", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
