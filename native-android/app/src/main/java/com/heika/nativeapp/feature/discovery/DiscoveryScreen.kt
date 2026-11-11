@@ -140,14 +140,19 @@ fun DiscoveryScreen(
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).nestedScroll(collapseConnection)) {
-        BrandHeader(onSearch = onSearch, onNotifications = onNotifications, hazeState = hazeState) {
+        BrandHeader(
+            onSearch = onSearch,
+            onNotifications = onNotifications,
+            trailing = {
             androidx.compose.material3.IconButton(onClick = onNotifications) {
                 Icon(HeikaIcons.Notifications, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             androidx.compose.material3.IconButton(onClick = { posts.refresh() }) {
                 Icon(HeikaIcons.Retry, contentDescription = "刷新内容", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        }
+            },
+            hazeState = hazeState,
+        )
         Row(
             Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
