@@ -37,9 +37,22 @@ data class HeikaPost(
             val thumbnails = json.stringList("thumbnailImages").ifEmpty {
                 listOfNotNull(json.optString("image").takeIf(String::isNotBlank))
             }
+            val clientId = sequenceOf(json.opt("clientId"), json.opt("client_id"), json.opt("id"))
+                .mapNotNull { value -> when (value) {
+                    is Number -> value.toDouble().takeIf { it.isFinite() && it % 1.0 == 0.0 && it in 1.0..Int.MAX_VALUE.toDouble() }?.toInt()
+                    is String -> value.toIntOrNull()?.takeIf { it > 0 }
+                    else -> null
+                } }
+                .firstOrNull() ?: throw IllegalArgumentException("Post payload is missing a positive client_id")
             return HeikaPost(
-                id = json.optInt("id"),
-                cloudId = json.optString("cloudId").ifBlank { json.optString("id") },
+                // Detail API responses include both the UUID `id` and numeric `client_id`.
+                // The presentation mapper uses numeric `id`, but the raw detail row is spread
+                // after it and therefore restores the UUID. Never coerce that UUID to zero.
+                id = clientId,
+                cloudId = json.optString("cloudId").ifBlank {
+                    val rawId = json.optString("id")
+                    if (rawId.toIntOrNull() != null) json.optString("cloud_id") else rawId
+                }.ifBlank { json.optString("cloud_id") },
                 channel = json.optString("channel", "community"),
                 tag = json.optString("tag", "生活"),
                 title = json.optString("title", "无标题内容"),

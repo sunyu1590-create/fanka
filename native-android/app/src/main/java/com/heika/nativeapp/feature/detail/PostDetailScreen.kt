@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -117,25 +118,29 @@ fun PostDetailScreen(
     var reportOpen by remember(post?.cloudId, postKey) { mutableStateOf(false) }
     var reportReason by remember { mutableStateOf("垃圾营销或重复内容") }
     var reportNote by remember { mutableStateOf("") }
-    var ratingPanelOpen by remember(post?.cloudId, postKey) { mutableStateOf(false) }
-    var draftRating by remember(post?.cloudId, postKey) { mutableIntStateOf(0) }
-    var ratingKeyAtOpen by remember(post?.cloudId, postKey) { mutableIntStateOf(0) }
-    val ratingBlur by animateDpAsState(if (ratingPanelOpen) 15.dp else 0.dp, tween(HeikaMotion.control), label = "rating-focus-blur")
+    var expandedReplyThreads by remember { mutableStateOf(setOf<String>()) }
     LaunchedEffect(state.commentSubmitted) {
         if (state.commentSubmitted > 0) {
+            replyTo?.let { targetId ->
+                var target = state.comments.firstOrNull { it.id == targetId }
+                val seen = mutableSetOf<String>()
+                while (true) {
+                    val current = target ?: break
+                    val parentId = current.parentId ?: break
+                    if (!seen.add(current.id)) break
+                    target = state.comments.firstOrNull { it.id == parentId }
+                }
+                expandedReplyThreads = expandedReplyThreads + (target?.id ?: targetId)
+            }
             draft = ""
             replyTo = null
         }
     }
-    LaunchedEffect(state.ratingAnimationKey) {
-        if (ratingPanelOpen && state.ratingAnimationKey > ratingKeyAtOpen) ratingPanelOpen = false
-    }
-    BackHandler(enabled = ratingPanelOpen && !state.ratingSending) { ratingPanelOpen = false }
     LaunchedEffect(post?.cloudId, postKey) {
         if (post != null) viewModel.load(post) else if (!postKey.isNullOrBlank()) viewModel.loadByKey(postKey)
     }
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).blur(ratingBlur)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("内容详情", onBack)
         if (state.loading && state.post == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -238,21 +243,13 @@ fun PostDetailScreen(
                             Text(tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            IconButton(onClick = viewModel::toggleLike) { Icon(if (state.liked) HeikaIcons.LikeFilled else HeikaIcons.LikeOutline, "点赞", tint = if (state.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Text("${item.likeCount + if (state.liked) 1 else 0}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            IconButton(onClick = viewModel::toggleSaved) { Icon(if (state.saved) HeikaIcons.SaveFilled else HeikaIcons.SaveOutline, "收藏", tint = if (state.saved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                            InteractionIconButton(selected = state.liked, sending = state.interactionSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
+                            Text("${item.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            InteractionIconButton(selected = state.saved, sending = state.interactionSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
                             Text("${if (state.saved) "已收藏" else "收藏"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                         }
-                        Column(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface)
-                                .clickable {
-                                    ratingKeyAtOpen = state.ratingAnimationKey
-                                    draftRating = state.rating ?: 0
-                                    ratingPanelOpen = true
-                                }
-                                .padding(horizontal = 13.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
+                        HeikaGlassSurface(hazeState, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp), emphasis = if (state.ratingSending) 1.05f else .78f) {
+                          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text("内容评分", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -281,17 +278,15 @@ fun PostDetailScreen(
                                         animationKey = state.ratingAnimationKey,
                                         animationScore = state.ratingAnimationScore,
                                         enabled = !state.ratingSending,
-                                        onClick = {
-                                            ratingKeyAtOpen = state.ratingAnimationKey
-                                            draftRating = score
-                                            ratingPanelOpen = true
-                                        },
+                                        onClick = { viewModel.rate(score) },
                                     )
                                 }
                                 Spacer(Modifier.weight(1f))
                                 if (state.ratingSending) CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
                                 else Text(state.rating?.let { "已评 $it 星" } ?: "未评分", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                             }
+                            state.ratingError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                          }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                             androidx.compose.material3.TextButton(onClick = { onShare(item) }) { Icon(HeikaIcons.Share, null); Spacer(Modifier.size(5.dp)); Text("分享") }
@@ -310,14 +305,46 @@ fun PostDetailScreen(
                         }
                     }
                 }
-                items(state.comments, key = { it.id }) { comment ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(comment.author, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.weight(1f))
-                            Text("回复", Modifier.clickable { replyTo = comment.id }.padding(4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                if (state.commentsLoading && state.comments.isEmpty()) item(key = "comments-loading") {
+                    Text("正在加载评论…", Modifier.fillMaxWidth().padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                }
+                state.commentsError?.let { error -> item(key = "comments-error") {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(error, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        TextButton(onClick = viewModel::retryComments) { Text("重试") }
+                    }
+                } }
+                val roots = state.comments.filter { it.parentId == null || state.comments.none { parent -> parent.id == it.parentId } }
+                val commentsById = state.comments.associateBy { it.id }
+                val repliesByParent = state.comments.mapNotNull { comment -> comment.parentId?.let { it to comment } }.groupBy({ it.first }, { it.second })
+                items(roots, key = { it.id }) { comment ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
+                        CommentRow(comment, onReply = { replyTo = comment.id }, onLike = { viewModel.toggleCommentLike(comment.id) }, likeBusy = comment.id in state.commentLikesSending)
+                        val replies = buildList {
+                            val visited = mutableSetOf<String>()
+                            fun appendChildren(parentId: String, depth: Int) {
+                                if (depth > 8) return
+                                repliesByParent[parentId].orEmpty().forEach { child ->
+                                    if (visited.add(child.id)) {
+                                        add(child to depth)
+                                        appendChildren(child.id, depth + 1)
+                                    }
+                                }
+                            }
+                            appendChildren(comment.id, 1)
                         }
-                        Text(comment.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
+                        if (replies.isNotEmpty()) {
+                            TextButton(onClick = { expandedReplyThreads = if (comment.id in expandedReplyThreads) expandedReplyThreads - comment.id else expandedReplyThreads + comment.id }, modifier = Modifier.padding(start = 42.dp)) {
+                                Text(if (comment.id in expandedReplyThreads) "收起回复" else "展开 ${replies.size} 条回复", fontSize = 11.sp)
+                            }
+                            if (comment.id in expandedReplyThreads) Column(Modifier.padding(start = 40.dp)) {
+                                replies.forEach { (reply, depth) ->
+                                    val targetName = reply.parentId?.let { commentsById[it]?.author }
+                                    CommentRow(reply, onReply = { replyTo = reply.id }, onLike = { viewModel.toggleCommentLike(reply.id) }, likeBusy = reply.id in state.commentLikesSending, reply = true, replyTargetName = targetName, modifier = Modifier.padding(start = (depth.coerceAtMost(2) * 10).dp))
+                                }
+                            }
+                        }
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(top = 7.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .36f), thickness = .5.dp)
                     }
                 }
                 if (state.commentsHasMore) item {
@@ -328,37 +355,21 @@ fun PostDetailScreen(
                         fontSize = 12.sp,
                     )
                 }
-                if (state.comments.isEmpty() && !state.loading) item { Text("还没有评论，来写下第一条。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
+                if (state.comments.isEmpty() && !state.loading && !state.commentsLoading && state.commentsError == null) item { Text("暂无评论", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp)) }
             }
-            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it.take(1000) },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text(if (replyTo == null) "写下你的评论" else "回复评论…") },
-                    maxLines = 3,
-                )
-                IconButton(enabled = draft.isNotBlank() && !state.sending, onClick = { viewModel.comment(draft, replyTo) }) {
-                    if (state.sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(HeikaIcons.Publish, "发送评论", tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                if (replyTo != null) Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("回复 ${state.comments.firstOrNull { it.id == replyTo }?.author ?: "评论"}", Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                    Text("取消", Modifier.clickable { replyTo = null }.padding(5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surface).padding(start = 15.dp, end = 5.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    BasicTextField(value = draft, onValueChange = { draft = it.take(1000) }, modifier = Modifier.weight(1f).heightIn(min = 40.dp, max = 112.dp).padding(vertical = 10.dp), maxLines = 4, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), decorationBox = { inner -> Box { if (draft.isEmpty()) Text("说点什么…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp); inner() } })
+                    IconButton(enabled = draft.isNotBlank() && !state.sending, onClick = { viewModel.comment(draft, replyTo) }) {
+                        if (state.sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(HeikaIcons.Publish, "发送评论", tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
-    }
-    AnimatedVisibility(
-        visible = ratingPanelOpen && state.post != null,
-        modifier = Modifier.fillMaxSize(),
-        enter = fadeIn(tween(HeikaMotion.control)) + scaleIn(initialScale = .97f, animationSpec = tween(HeikaMotion.control)),
-        exit = fadeOut(tween(HeikaMotion.quick)) + scaleOut(targetScale = .985f, animationSpec = tween(HeikaMotion.quick)),
-    ) {
-        RatingFocusPanel(
-            hazeState = hazeState,
-            score = draftRating,
-            sending = state.ratingSending,
-            error = state.ratingError,
-            onSelect = { draftRating = it },
-            onDismiss = { if (!state.ratingSending) ratingPanelOpen = false },
-            onConfirm = { if (draftRating in 1..5 && !state.ratingSending) viewModel.rate(draftRating) },
-        )
     }
     }
     if (reportOpen) {
@@ -376,6 +387,47 @@ fun PostDetailScreen(
             confirmButton = { TextButton(onClick = { viewModel.report(reportReason, reportNote); reportOpen = false }) { Text("提交") } },
             dismissButton = { TextButton(onClick = { reportOpen = false }) { Text("取消") } },
         )
+    }
+}
+
+@Composable
+private fun InteractionIconButton(selected: Boolean, sending: Boolean, outline: androidx.compose.ui.graphics.vector.ImageVector, filled: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) .88f else 1f, tween(140), label = "${description}-press")
+    IconButton(onClick = onClick, enabled = !sending, interactionSource = source) {
+        if (sending) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 1.8.dp)
+        else Icon(if (selected) filled else outline, description, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
+    }
+}
+
+@Composable
+private fun CommentRow(
+    comment: NativeComment,
+    onReply: () -> Unit,
+    onLike: () -> Unit,
+    likeBusy: Boolean,
+    reply: Boolean = false,
+    replyTargetName: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val imageLoader = LocalHeikaImageLoader.current
+    Row(modifier.fillMaxWidth().padding(start = if (reply) 4.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.Top) {
+        if (!comment.authorAvatar.isNullOrBlank()) AsyncImage(comment.authorAvatar, "${comment.author}头像", imageLoader = imageLoader, contentScale = ContentScale.Crop, modifier = Modifier.size(if (reply) 28.dp else 36.dp).clip(androidx.compose.foundation.shape.CircleShape))
+        else Icon(HeikaIcons.Profile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(if (reply) 28.dp else 36.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).padding(6.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(comment.author, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (replyTargetName == null) comment.body else "回复 $replyTargetName：${comment.body}", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, lineHeight = 19.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(comment.createdAt.take(10), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text("回复", Modifier.clickable(onClick = onReply).padding(horizontal = 9.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onLike, enabled = !likeBusy, modifier = Modifier.size(32.dp)) {
+                    Icon(if (comment.liked) HeikaIcons.LikeFilled else HeikaIcons.LikeOutline, "评论点赞", tint = if (comment.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                }
+                if (comment.likeCount > 0) Text(comment.likeCount.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+            }
+        }
     }
 }
 
@@ -457,49 +509,19 @@ private fun RatingStar(
         scale.animateTo(1.16f, tween(110))
         scale.animateTo(1f, tween(180))
     }
-    Icon(
-        imageVector = if (selected) HeikaIcons.StarFilled else HeikaIcons.StarOutline,
-        contentDescription = "$score 星",
-        modifier = Modifier
-            .graphicsLayer { scaleX = scale.value * pressScale; scaleY = scale.value * pressScale }
-            .selectable(selected = selected, interactionSource = interaction, indication = null, enabled = enabled, role = Role.RadioButton) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
-            .padding(horizontal = 5.dp, vertical = 7.dp).size(28.dp),
-        tint = tint,
-    )
-}
-
-@Composable
-private fun RatingFocusPanel(
-    hazeState: HazeState,
-    score: Int,
-    sending: Boolean,
-    error: String?,
-    onSelect: (Int) -> Unit,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .46f)).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
-        HeikaGlassSurface(
-            hazeState = hazeState,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 25.dp).clickable {},
-            shape = RoundedCornerShape(17.dp),
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 17.dp),
-            emphasis = 1.2f,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("内容评分", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    IconButton(onClick = onDismiss, enabled = !sending) { Icon(HeikaIcons.Close, "关闭评分", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-                Text(if (score == 0) "选择 1–5 星" else "$score 星", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    (1..5).forEach { value -> RatingStar(value, score >= value, ratingColor(value), 0, 0, !sending) { onSelect(value) } }
-                }
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
-                Button(onClick = onConfirm, enabled = score in 1..5 && !sending, modifier = Modifier.fillMaxWidth().height(46.dp)) {
-                    if (sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("确认评分")
-                }
-            }
-        }
+    Box(
+        modifier = Modifier.size(48.dp)
+            .selectable(selected = selected, interactionSource = interaction, indication = null, enabled = enabled, role = Role.RadioButton) {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (selected) HeikaIcons.StarFilled else HeikaIcons.StarOutline,
+            contentDescription = "$score 星",
+            modifier = Modifier.graphicsLayer { scaleX = scale.value * pressScale; scaleY = scale.value * pressScale }.size(28.dp),
+            tint = tint,
+        )
     }
 }

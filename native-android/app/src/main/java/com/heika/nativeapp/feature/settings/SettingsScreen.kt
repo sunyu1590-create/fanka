@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -152,6 +153,10 @@ fun SettingsDetailScreen(
     val title = SettingGroups.flatMap { it.second }.firstOrNull { it.key == section }?.title ?: when (section) {
         "transition" -> "页面切换动画"
         "font" -> "字体"
+        "theme" -> "主题模式"
+        "layout" -> "内容布局"
+        "reading" -> "阅读模式"
+        "cache-capacity" -> "缓存容量"
         else -> "设置"
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -165,16 +170,15 @@ fun SettingsDetailScreen(
                 }
                 "membership" -> item { SettingAction("会员与支持中心", "打开黑卡现有会员与支持页面", onMembership) }
                 "appearance" -> {
-                    item { DetailHeading("主题") }
-                    item { ChoiceRow(listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), theme, viewModel::setTheme) }
-                    item { DetailHeading("内容布局") }
-                    item { ChoiceRow(listOf("waterfall" to "双列瀑布流", "single" to "单列列表"), layout, viewModel::setFeedLayout) }
-                    item { DetailHeading("阅读偏好") }
-                    item { ChoiceRow(listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
-                    item { DetailHeading("交互") }
+                    item { SettingAction("主题模式", themeLabel(theme), { onSection("theme") }) }
+                    item { SettingAction("内容布局", layoutLabel(layout), { onSection("layout") }) }
+                    item { SettingAction("阅读模式", readingLabel(reading), { onSection("reading") }) }
                     item { SettingAction("页面切换动画", transitionLabel(pageTransition), { onSection("transition") }) }
                     item { SettingAction("字体", "系统默认", { onSection("font") }) }
                 }
+                "theme" -> item { ChoiceList(listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), theme, viewModel::setTheme) }
+                "layout" -> item { ChoiceList(listOf("waterfall" to "双列瀑布流", "single" to "单列列表"), layout, viewModel::setFeedLayout) }
+                "reading" -> item { ChoiceList(listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
                 "transition" -> {
                     item { DetailHeading("选择页面切换方式") }
                     item { ChoiceList(listOf("lift" to "上下浮", "crossfade" to "叠化", "shared" to "连续开关"), pageTransition, viewModel::setPageTransition) }
@@ -197,12 +201,11 @@ fun SettingsDetailScreen(
                     item { SettingAction("通知中心", "查看站内通知与未读状态", onNotifications) }
                 }
                 "storage" -> {
-                    item { DetailHeading("图片磁盘缓存") }
-                    item { Text("${formatBytes(cacheBytes)} / $capacity MB", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp)) }
-                    item { ChoiceRow(listOf("256" to "256 MB", "512" to "512 MB"), capacity.toString()) { viewModel.setCacheCapacity(it.toInt()) } }
+                    item { SettingAction("图片磁盘缓存", "${formatBytes(cacheBytes)} / $capacity MB", { onSection("cache-capacity") }) }
                     item { SettingAction(if (cacheClearing) "正在清理…" else "清理图片缓存", "只清理可重新下载的图片，不影响翻卡记录、草稿与账号资料", { if (!cacheClearing) viewModel.clearImageCache() }, enabled = !cacheClearing) }
                     message?.let { item { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, modifier = Modifier.padding(vertical = 8.dp)) } }
                 }
+                "cache-capacity" -> item { ChoiceList(listOf("256" to "256 MB", "512" to "512 MB"), capacity.toString()) { viewModel.setCacheCapacity(it.toInt()) } }
                 "privacy" -> {
                     item { SettingAction("系统应用权限", "在 Android 设置中查看和管理 HEIKA 权限", { openAppSettings(context) }) }
                     item { DetailHeading("账号隐私偏好") }
@@ -227,13 +230,6 @@ private fun DetailHeading(title: String) {
 }
 
 @Composable
-private fun ChoiceRow(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        options.forEach { (value, label) -> FilterChip(label, selected == value, { onSelect(value) }, Modifier.weight(1f)) }
-    }
-}
-
-@Composable
 private fun ChoiceList(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp)) {
         options.forEachIndexed { index, (value, title) ->
@@ -254,10 +250,13 @@ private fun transitionLabel(value: String) = when (value) {
     "shared" -> "连续开关"
     else -> "上下浮"
 }
+private fun themeLabel(value: String) = when (value) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" }
+private fun layoutLabel(value: String) = if (value == "single") "单列列表" else "双列瀑布流"
+private fun readingLabel(value: String) = when (value) { "focus" -> "专注"; "night" -> "夜读"; else -> "标准" }
 
 @Composable
 private fun SettingAction(title: String, subtitle: String, onClick: () -> Unit, enabled: Boolean = true) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled, onClick = onClick).padding(vertical = 13.dp, horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).clickable(enabled, onClick = onClick).padding(vertical = 10.dp, horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 3.dp))
@@ -268,7 +267,7 @@ private fun SettingAction(title: String, subtitle: String, onClick: () -> Unit, 
 
 @Composable
 private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))

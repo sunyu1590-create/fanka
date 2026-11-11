@@ -270,6 +270,13 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/posts/${encode(postId)}/comments", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun setCommentLiked(commentId: String, liked: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(commentId)) { "评论编号无效" }
+        if (liked) request("/api/v1/comments/${encode(commentId)}/reactions", method = "POST", body = JSONObject().put("kind", "like").toString(), authenticated = true)
+        else request("/api/v1/comments/${encode(commentId)}/reactions?kind=like", method = "DELETE", authenticated = true)
+        JSONObject().put("liked", liked)
+    }
+
     suspend fun reportPost(postId: String, reason: String, note: String): JSONObject = withContext(Dispatchers.IO) {
         request(
             "/api/v1/reports",
@@ -280,13 +287,12 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun setPostInteraction(id: Int, action: String, value: Boolean): JSONObject = withContext(Dispatchers.IO) {
-        require(action == "like" || action == "bookmark")
-        request("/api/v1/library-state", method = "POST", body = JSONObject().put("action", action).put("id", id).put("value", value).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+        request("/api/v1/library-state", method = "POST", body = PostInteractionProtocol.libraryStateBody(id, action, value), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun ratePost(id: Int, rating: Int): JSONObject = withContext(Dispatchers.IO) {
         require(rating in 1..5)
-        request("/api/v1/posts/$id/rating", method = "POST", body = JSONObject().put("rating", rating).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+        request(PostInteractionProtocol.ratingPath(id), method = "POST", body = JSONObject().put("rating", rating).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun interactionState(id: Int): JSONObject = withContext(Dispatchers.IO) {
@@ -295,8 +301,7 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun ratingState(id: Int): JSONObject = withContext(Dispatchers.IO) {
-        val value = request("/api/v1/ratings?ids=$id", includeSession = true) as? JSONObject ?: JSONObject()
-        value.optJSONObject(id.toString()) ?: JSONObject()
+        request(PostInteractionProtocol.ratingStatePath(id), includeSession = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun toggleCreatorFollow(creatorId: String): JSONObject = withContext(Dispatchers.IO) {
