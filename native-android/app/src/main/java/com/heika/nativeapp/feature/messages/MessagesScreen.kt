@@ -196,7 +196,7 @@ fun MessagesScreen(
             Row(Modifier.fillMaxWidth().imePadding().background(MaterialTheme.colorScheme.surface).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = state.draft, onValueChange = viewModel::setDraft, modifier = Modifier.weight(1f), placeholder = { Text("发送消息") }, maxLines = 4)
                 IconButton(enabled = state.draft.isNotBlank() && !state.sending, onClick = viewModel::send) {
-                    if (state.sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(HeikaIcons.Publish, "发送", tint = MaterialTheme.colorScheme.primary)
+                    if (state.sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(HeikaIcons.Send, "发送", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }

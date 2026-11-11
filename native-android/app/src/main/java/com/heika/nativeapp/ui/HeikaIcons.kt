@@ -16,7 +16,8 @@ object HeikaIconRes {
     val Discovery = R.drawable.ic_ip_discovery
     val Messages = R.drawable.ic_ip_messages
     val Profile = R.drawable.ic_ip_profile
-    val Publish = R.drawable.ic_ip_add
+    val Publish = R.drawable.ic_ip_upload
+    val Send = R.drawable.ic_ip_send
     val Search = R.drawable.ic_ip_search
     val Notifications = R.drawable.ic_ip_notifications
     val Filter = R.drawable.ic_ip_filter
@@ -80,6 +81,7 @@ object HeikaIcons {
     val Messages: ImageVector @Composable get() = icon(HeikaIconRes.Messages)
     val Profile: ImageVector @Composable get() = icon(HeikaIconRes.Profile)
     val Publish: ImageVector @Composable get() = icon(HeikaIconRes.Publish)
+    val Send: ImageVector @Composable get() = icon(HeikaIconRes.Send)
     val Search: ImageVector @Composable get() = icon(HeikaIconRes.Search)
     val Notifications: ImageVector @Composable get() = icon(HeikaIconRes.Notifications)
     val Filter: ImageVector @Composable get() = icon(HeikaIconRes.Filter)

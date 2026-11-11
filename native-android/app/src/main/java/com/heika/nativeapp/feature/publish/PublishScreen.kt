@@ -254,7 +254,7 @@ fun PublishScreen(
                 Spacer(Modifier.weight(1f))
                 Button(onClick = viewModel::publish, enabled = !state.publishing && !state.saving && state.categories.isNotEmpty()) {
                     if (state.publishing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    else { Icon(HeikaIcons.Publish, null); Text(if (state.revisionMode) "提交修改" else "提交") }
+                    else { Icon(HeikaIcons.Send, null); Text(if (state.revisionMode) "提交修改" else "提交") }
                 }
             }
         }
