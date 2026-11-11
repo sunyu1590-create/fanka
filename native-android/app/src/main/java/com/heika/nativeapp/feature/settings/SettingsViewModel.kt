@@ -48,6 +48,10 @@ class SettingsViewModel @Inject constructor(
     val privacyData = mutablePrivacyData.asStateFlow()
     private val mutableAdminAccess = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
     val adminAccess = mutableAdminAccess.asStateFlow()
+    private val mutableRecoveryCodes = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+    val recoveryCodes = mutableRecoveryCodes.asStateFlow()
+    private val mutableRecoveryCodesLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val recoveryCodesLoading = mutableRecoveryCodesLoading.asStateFlow()
     private var activeUserId: String? = null
     private var notificationSettingsLoadedFor: String? = null
     private var privacySettingsLoadedFor: String? = null
@@ -187,6 +191,20 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setTheme(value: String) = viewModelScope.launch { preferences.setTheme(value) }
+    fun generateRecoveryCodes() = viewModelScope.launch {
+        if (mutableRecoveryCodesLoading.value) return@launch
+        if (auth.restore() == null) { mutablePrivacyError.value = "登录后生成账号恢复码"; return@launch }
+        mutableRecoveryCodesLoading.value = true
+        mutableRecoveryCodes.value = emptyList()
+        try {
+            mutableRecoveryCodes.value = repository.generateRecoveryCodes()
+        } catch (_: Exception) {
+            mutablePrivacyError.value = "恢复码生成失败，请重试"
+        } finally {
+            mutableRecoveryCodesLoading.value = false
+        }
+    }
+    fun clearRecoveryCodes() { mutableRecoveryCodes.value = emptyList() }
     fun setPageTransition(value: String) = viewModelScope.launch { preferences.setPageTransition(value) }
     fun setFontChoice(value: String) = viewModelScope.launch { preferences.setFontChoice(value) }
     fun setFeedLayout(value: String) = viewModelScope.launch { preferences.setFeedLayout(value) }

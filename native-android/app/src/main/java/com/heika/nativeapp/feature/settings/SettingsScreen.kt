@@ -56,6 +56,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -168,8 +169,12 @@ fun SettingsDetailScreen(
     val privacyLoading by viewModel.privacyLoading.collectAsStateWithLifecycle()
     val privacyError by viewModel.privacyError.collectAsStateWithLifecycle()
     val privacyData by viewModel.privacyData.collectAsStateWithLifecycle()
+    val recoveryCodes by viewModel.recoveryCodes.collectAsStateWithLifecycle()
+    val recoveryCodesLoading by viewModel.recoveryCodesLoading.collectAsStateWithLifecycle()
     var permissionRefresh by remember { mutableIntStateOf(0) }
     var pendingNotesPrivate by remember { mutableStateOf<Boolean?>(null) }
+    var recoveryConfirm by remember { mutableStateOf(false) }
+    var recoveryCodesOpen by remember { mutableStateOf(false) }
     val notificationsAllowed = remember(context, permissionRefresh) { NotificationManagerCompat.from(context).areNotificationsEnabled() }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionRefresh++ }
     DisposableEffect(lifecycle) {
@@ -182,6 +187,7 @@ fun SettingsDetailScreen(
         if (section == "storage") viewModel.refreshCacheUsage()
         if (section.startsWith("privacy")) viewModel.loadPrivacySettings()
     }
+    LaunchedEffect(recoveryCodes) { if (recoveryCodes.isNotEmpty()) recoveryCodesOpen = true }
     val title = SettingGroups.flatMap { it.second }.firstOrNull { it.key == section }?.title ?: when (section) {
         "transition" -> "页面切换动画"
         "font" -> "字体"
@@ -200,7 +206,9 @@ fun SettingsDetailScreen(
                 "account" -> {
                     item { SettingAction("编辑个人资料", "更新头像、昵称和简介", onEditProfile) }
                     item { SettingAction("账号与安全", "查看当前登录状态、切换账号或退出", onAccount) }
+                    item { SettingAction(if (recoveryCodesLoading) "正在生成…" else "生成账号恢复码", "生成后旧恢复码将失效，请妥善保存", { if (!recoveryCodesLoading) recoveryConfirm = true }, enabled = !recoveryCodesLoading) }
                     item { SettingAction("会员与支持", "查看账号当前权益", onMembership) }
+                    privacyError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(vertical = 8.dp)) } }
                 }
                 "membership" -> item { SettingAction("会员与支持中心", "打开黑卡现有会员与支持页面", onMembership) }
                 "appearance" -> {
@@ -280,6 +288,30 @@ fun SettingsDetailScreen(
             dismissButton = { TextButton(onClick = { pendingNotesPrivate = null }) { Text("取消") } },
         )
     }
+    if (recoveryConfirm) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { recoveryConfirm = false },
+        title = { Text("生成新的恢复码？") },
+        text = { Text("这会立即使之前生成的恢复码失效。新恢复码只显示一次，请安全保存。") },
+        confirmButton = { TextButton(enabled = !recoveryCodesLoading, onClick = { recoveryConfirm = false; viewModel.generateRecoveryCodes() }) { Text("生成") } },
+        dismissButton = { TextButton(onClick = { recoveryConfirm = false }) { Text("取消") } },
+    )
+    if (recoveryCodesOpen) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { recoveryCodesOpen = false; viewModel.clearRecoveryCodes() },
+        title = { Text("账号恢复码") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("请保存到安全位置。关闭后将无法再次查看。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                recoveryCodes.forEach { code -> Text(code, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+            }
+        },
+        confirmButton = { TextButton(onClick = {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("HEIKA 账号恢复码", recoveryCodes.joinToString("\n")))
+            recoveryCodesOpen = false
+            viewModel.clearRecoveryCodes()
+        }) { Text("复制并关闭") } },
+        dismissButton = { TextButton(onClick = { recoveryCodesOpen = false; viewModel.clearRecoveryCodes() }) { Text("关闭") } },
+    )
 }
 
 @Composable

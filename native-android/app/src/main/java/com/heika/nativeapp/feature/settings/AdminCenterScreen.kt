@@ -50,7 +50,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("管理员中心", onBack, trailing = { androidx.compose.material3.IconButton(onClick = viewModel::refresh) { androidx.compose.material3.Icon(HeikaIcons.Retry, "刷新") } })
         Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            listOf("reports" to "举报处理", "posts" to "内容审核", "ai" to "AI 审核", "ai-feedback" to "AI 反馈", "comments" to "评论", "appeals" to "申诉", "users" to "用户治理").forEach { (key, title) ->
+            listOf("reports" to "举报处理", "dm-reports" to "私信举报", "posts" to "内容审核", "ai" to "AI 审核", "ai-feedback" to "AI 反馈", "comments" to "评论", "appeals" to "申诉", "users" to "用户治理").forEach { (key, title) ->
                 Text(title, Modifier.clickable { viewModel.select(key) }.padding(vertical = 12.dp), color = if (state.section == key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, fontWeight = if (state.section == key) FontWeight.SemiBold else FontWeight.Normal)
             }
         }
@@ -73,14 +73,14 @@ private fun AdminQueueItem(item: JSONObject, section: String, saving: Boolean, o
     var note by remember(item.optString("id")) { mutableStateOf("") }
     val target = item.optJSONObject("target")
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(when (section) { "reports" -> item.optString("reason", "举报"); "users" -> item.optString("nickname", "探索者"); "ai-feedback" -> item.optString("kind", "资源反馈"); else -> item.optString("title", item.optString("post_title", "待审核内容")) }, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(when (section) { "reports", "dm-reports" -> item.optString("reason", "举报"); "users" -> item.optString("nickname", "探索者"); "ai-feedback" -> item.optString("kind", "资源反馈"); else -> item.optString("title", item.optString("post_title", "待审核内容")) }, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Text(when (section) { "users" -> "${item.optString("role")} · ${item.optString("membership_tier")}"; "comments" -> item.optString("body"); "ai-feedback" -> item.optString("details"); else -> target?.optString("title").orEmpty().ifBlank { item.optString("body") }.ifBlank { item.optString("status") } }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
         if (section == "reports") Text("对象：${target?.optString("type").orEmpty()} · ${target?.optString("status").orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         if (section == "users") Text(if (item.optJSONObject("community_restriction")?.optBoolean("active") == true) "已限制发言" else "正常", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         OutlinedTextField(value = note, onValueChange = { note = it.take(500) }, modifier = Modifier.fillMaxWidth(), label = { Text("处理说明（至少 3 字）") }, maxLines = 3)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(enabled = !saving && (note.trim().length >= 3 || section == "comments"), onClick = { onAction(true, note) }) { Text(if (saving) "处理中…" else when (section) { "reports" -> "标记已处理"; "appeals" -> "接受申诉"; "users" -> "限制发言"; "comments" -> "恢复显示"; else -> "通过" }) }
-            TextButton(enabled = !saving, onClick = { onAction(false, note) }) { Text(when (section) { "reports" -> "驳回"; "appeals" -> "驳回申诉"; "users" -> "解除限制"; "comments" -> "隐藏"; else -> "驳回" }) }
+            TextButton(enabled = !saving, onClick = { onAction(false, note) }) { Text(when (section) { "reports", "dm-reports" -> "驳回"; "appeals" -> "驳回申诉"; "users" -> "解除限制"; "comments" -> "隐藏"; else -> "驳回" }) }
         }
     }
 }
@@ -101,13 +101,13 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var generation = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList()); refresh() } }
+    fun select(section: String) { if (section in setOf("reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList()); refresh() } }
     fun refresh() = viewModelScope.launch {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, error = null, notice = null)
         try {
             repository.adminOverview() // server authorization is checked on every admin request
-            val result = when (mutableState.value.section) { "posts" -> repository.adminPosts(); "ai" -> repository.adminAiQueue(); "ai-feedback" -> repository.adminAiFeedback(); "comments" -> repository.adminComments(); "appeals" -> repository.adminAppeals(); "users" -> repository.adminUsers(); else -> repository.adminReports() }
+            val result = when (mutableState.value.section) { "posts" -> repository.adminPosts(); "ai" -> repository.adminAiQueue(); "ai-feedback" -> repository.adminAiFeedback(); "comments" -> repository.adminComments(); "dm-reports" -> repository.adminMessageReports(); "appeals" -> repository.adminAppeals(); "users" -> repository.adminUsers(); else -> repository.adminReports() }
             if (requestId == generation) mutableState.value = mutableState.value.copy(items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), loading = false)
         } catch (error: Exception) {
             if (requestId == generation) mutableState.value = mutableState.value.copy(loading = false, error = "管理员权限不足或队列加载失败，请重试")
@@ -122,6 +122,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
                 "ai" -> repository.reviewAdminAi(id, accepted, note)
                 "ai-feedback" -> repository.handleAdminAiFeedback(id, accepted, note)
                 "comments" -> repository.setAdminCommentVisible(id, accepted, note)
+                "dm-reports" -> repository.handleAdminMessageReport(id, accepted, note)
                 "appeals" -> repository.reviewAdminAppeal(id, accepted, note)
                 "users" -> repository.setAdminUserRestriction(id, accepted, note.ifBlank { "解除社区发言限制" })
                 else -> repository.reviewAdminReport(id, accepted, note)

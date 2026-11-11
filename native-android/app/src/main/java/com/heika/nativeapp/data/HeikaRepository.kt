@@ -367,6 +367,16 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/ai-space/feedback/${encode(id)}", method = "PATCH", body = JSONObject().put("status", if (resolved) "resolved" else "dismissed").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun adminMessageReports(): JSONObject = withContext(Dispatchers.IO) {
+        val rows = request("/api/v1/admin/message-reports", authenticated = true) as? JSONArray ?: JSONArray()
+        JSONObject().put("items", rows)
+    }
+
+    suspend fun handleAdminMessageReport(id: String, resolved: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && note.trim().length in 3..500)
+        request("/api/v1/admin/message-reports", method = "PATCH", body = JSONObject().put("id", id).put("status", if (resolved) "resolved" else "dismissed").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun reviewAdminPost(id: String, publish: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(id) && note.trim().length in 3..500)
         request("/api/v1/admin/posts/${encode(id)}", method = "PATCH", body = JSONObject().put("status", if (publish) "published" else "hidden").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
@@ -396,6 +406,12 @@ class HeikaRepository @Inject constructor(
 
     suspend fun myProfile(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/me", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun generateRecoveryCodes(): List<String> = withContext(Dispatchers.IO) {
+        val result = request("/api/v1/auth/recovery-codes", method = "POST", authenticated = true) as? JSONObject ?: JSONObject()
+        result.optJSONArray("codes")?.let { array -> (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) } }
+            ?.takeIf { it.isNotEmpty() } ?: throw IOException("恢复码生成失败，请重试")
     }
 
     suspend fun cachedMyProfile(userId: String): JSONObject? = withContext(Dispatchers.IO) {

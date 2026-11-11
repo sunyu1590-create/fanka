@@ -115,6 +115,7 @@ fun PostDetailScreen(
     sharedElementsEnabled: Boolean,
     viewModel: PostDetailViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val readingMode by viewModel.readingMode.collectAsStateWithLifecycle()
     val imageLoader = LocalHeikaImageLoader.current
