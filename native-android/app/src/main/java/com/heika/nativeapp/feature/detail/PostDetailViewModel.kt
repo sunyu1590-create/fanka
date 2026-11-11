@@ -55,6 +55,7 @@ data class PostDetailState(
     val refreshing: Boolean = false,
     val sending: Boolean = false,
     val liked: Boolean = false,
+    val likeCount: Int? = null,
     val saved: Boolean = false,
     val interactionSending: Boolean = false,
     val followSending: Boolean = false,
@@ -100,13 +101,13 @@ class PostDetailViewModel @Inject constructor(
         requestedKey = key
         val version = ++requestVersion
         aiVersionRequest++
-        mutableState.value = PostDetailState(post = post, loading = false, refreshing = true)
+        mutableState.value = PostDetailState(post = post, likeCount = post.likeCount, loading = false, refreshing = true)
         if (post.channel == "ai") loadAiVersions(post)
         viewModelScope.launch {
             runCatching { repository.postDetail(post) }
                 .onSuccess { detail ->
                     if (version != requestVersion) return@onSuccess
-                    mutableState.update { it.copy(post = detail, loading = false, refreshing = false, error = null) }
+                    mutableState.update { it.copy(post = detail, likeCount = detail.likeCount, loading = false, refreshing = false, error = null) }
                     loadComments(detail, version)
                     loadInteractions(detail, version)
                 }
@@ -124,14 +125,14 @@ class PostDetailViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { repository.cachedPostDetail(key) }.getOrNull()?.let { cached ->
                 if (version == requestVersion) {
-                    mutableState.update { it.copy(post = cached, loading = false, refreshing = true, error = null) }
+                    mutableState.update { it.copy(post = cached, likeCount = cached.likeCount, loading = false, refreshing = true, error = null) }
                     if (cached.channel == "ai") loadAiVersions(cached)
                 }
             }
             runCatching { repository.postDetailByKey(key) }
                 .onSuccess { detail ->
                     if (version != requestVersion) return@onSuccess
-                    mutableState.update { it.copy(post = detail, loading = false, refreshing = false, error = null) }
+                    mutableState.update { it.copy(post = detail, likeCount = detail.likeCount, loading = false, refreshing = false, error = null) }
                     loadComments(detail, version)
                     loadInteractions(detail, version)
                     if (detail.channel == "ai") loadAiVersions(detail)
@@ -265,10 +266,11 @@ class PostDetailViewModel @Inject constructor(
         }
         val liked = if (action == "like") !old.liked else old.liked
         val saved = if (action == "bookmark") !old.saved else old.saved
-        mutableState.update { it.copy(liked = liked, saved = saved, error = null, notice = null) }
+        val likeCount = if (action == "like") ((old.likeCount ?: post.likeCount) + if (liked) 1 else -1).coerceAtLeast(0) else old.likeCount
+        mutableState.update { it.copy(liked = liked, likeCount = likeCount, saved = saved, error = null, notice = null) }
         runCatching { repository.setPostInteraction(post.id, action, if (action == "like") liked else saved) }
             .onSuccess { if (version == requestVersion) mutableState.update { it.copy(interactionSending = false) } }
-            .onFailure { if (version == requestVersion) mutableState.update { it.copy(liked = old.liked, saved = old.saved, interactionSending = false, notice = if (action == "like") "点赞失败，请重试" else "收藏失败，请重试") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(liked = old.liked, likeCount = old.likeCount, saved = old.saved, interactionSending = false, notice = if (action == "like") "点赞失败，请重试" else "收藏失败，请重试") } }
     }
 
     fun rate(value: Int) = viewModelScope.launch {

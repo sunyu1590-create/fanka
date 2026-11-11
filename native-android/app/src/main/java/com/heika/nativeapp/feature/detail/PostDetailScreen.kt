@@ -247,7 +247,7 @@ fun PostDetailScreen(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             InteractionIconButton(selected = state.liked, sending = state.interactionSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
-                            Text("${item.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            Text("${state.likeCount ?: item.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             InteractionIconButton(selected = state.saved, sending = state.interactionSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
                             Text("${if (state.saved) "已收藏" else "收藏"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                         }
@@ -322,7 +322,7 @@ fun PostDetailScreen(
                 val repliesByParent = state.comments.mapNotNull { comment -> comment.parentId?.let { it to comment } }.groupBy({ it.first }, { it.second })
                 items(roots, key = { it.id }) { comment ->
                     Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
-                        CommentRow(comment, onReply = { replyTo = comment.id }, onLike = { viewModel.toggleCommentLike(comment.id) }, likeBusy = comment.id in state.commentLikesSending)
+                        CommentRow(comment, onReply = { replyTo = comment.id }, onLike = { viewModel.toggleCommentLike(comment.id) }, likeBusy = comment.id in state.commentLikesSending, replyEnabled = !state.sending)
                         val replies = buildList {
                             val visited = mutableSetOf<String>()
                             fun appendChildren(parentId: String, depth: Int) {
@@ -343,7 +343,7 @@ fun PostDetailScreen(
                             if (comment.id in expandedReplyThreads) Column(Modifier.padding(start = 40.dp)) {
                                 replies.forEach { (reply, depth) ->
                                     val targetName = reply.parentId?.let { commentsById[it]?.author }
-                                    CommentRow(reply, onReply = { replyTo = reply.id }, onLike = { viewModel.toggleCommentLike(reply.id) }, likeBusy = reply.id in state.commentLikesSending, reply = true, replyTargetName = targetName, modifier = Modifier.padding(start = (depth.coerceAtMost(2) * 10).dp))
+                                    CommentRow(reply, onReply = { replyTo = reply.id }, onLike = { viewModel.toggleCommentLike(reply.id) }, likeBusy = reply.id in state.commentLikesSending, reply = true, replyTargetName = targetName, replyEnabled = !state.sending, modifier = Modifier.padding(start = (depth.coerceAtMost(2) * 10).dp))
                                 }
                             }
                         }
@@ -363,10 +363,10 @@ fun PostDetailScreen(
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 14.dp, vertical = 8.dp)) {
                 if (replyTo != null) Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("回复 ${state.comments.firstOrNull { it.id == replyTo }?.author ?: "评论"}", Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                    Text("取消", Modifier.clickable { replyTo = null }.padding(5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text("取消", Modifier.clickable(enabled = !state.sending) { replyTo = null }.padding(5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surface).padding(start = 15.dp, end = 5.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    BasicTextField(value = draft, onValueChange = { draft = it.take(1000) }, modifier = Modifier.weight(1f).heightIn(min = 40.dp, max = 112.dp).padding(vertical = 10.dp), maxLines = 4, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), decorationBox = { inner -> Box { if (draft.isEmpty()) Text("说点什么…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp); inner() } })
+                    BasicTextField(value = draft, onValueChange = { draft = it.take(1000) }, modifier = Modifier.weight(1f).heightIn(min = 40.dp, max = 112.dp).padding(vertical = 10.dp), enabled = !state.sending, maxLines = 4, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), decorationBox = { inner -> Box { if (draft.isEmpty()) Text("说点什么…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp); inner() } })
                     IconButton(enabled = draft.isNotBlank() && !state.sending, onClick = { viewModel.comment(draft, replyTo) }) {
                         if (state.sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(HeikaIcons.Publish, "发送评论", tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -412,6 +412,7 @@ private fun CommentRow(
     likeBusy: Boolean,
     reply: Boolean = false,
     replyTargetName: String? = null,
+    replyEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val imageLoader = LocalHeikaImageLoader.current
@@ -423,7 +424,7 @@ private fun CommentRow(
             Text(if (replyTargetName == null) comment.body else "回复 $replyTargetName：${comment.body}", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, lineHeight = 19.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(comment.createdAt.take(10), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                Text("回复", Modifier.clickable(onClick = onReply).padding(horizontal = 9.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text("回复", Modifier.clickable(enabled = replyEnabled, onClick = onReply).padding(horizontal = 9.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onLike, enabled = !likeBusy, modifier = Modifier.size(32.dp)) {
                     Icon(if (comment.liked) HeikaIcons.LikeFilled else HeikaIcons.LikeOutline, "评论点赞", tint = if (comment.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
