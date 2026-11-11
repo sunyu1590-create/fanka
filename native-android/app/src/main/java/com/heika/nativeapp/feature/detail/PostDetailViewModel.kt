@@ -57,6 +57,7 @@ data class PostDetailState(
     val liked: Boolean = false,
     val saved: Boolean = false,
     val interactionSending: Boolean = false,
+    val followSending: Boolean = false,
     val commentLikesSending: Set<String> = emptySet(),
     val rating: Int? = null,
     val ratingSending: Boolean = false,
@@ -202,12 +203,13 @@ class PostDetailViewModel @Inject constructor(
         val version = requestVersion
         val postId = before.post?.cloudId ?: return@launch
         if (commentId in before.commentLikesSending) return@launch
+        mutableState.update { it.copy(commentLikesSending = it.commentLikesSending + commentId) }
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
-            mutableState.update { it.copy(notice = "登录后可以点赞评论") }
+            mutableState.update { it.copy(commentLikesSending = it.commentLikesSending - commentId, notice = "登录后可以点赞评论") }
             return@launch
         }
         val liked = !comment.liked
-        mutableState.update { state -> state.copy(commentLikesSending = state.commentLikesSending + commentId, comments = state.comments.map { if (it.id == commentId) it.copy(liked = liked, likeCount = (it.likeCount + if (liked) 1 else -1).coerceAtLeast(0)) else it }) }
+        mutableState.update { state -> state.copy(comments = state.comments.map { if (it.id == commentId) it.copy(liked = liked, likeCount = (it.likeCount + if (liked) 1 else -1).coerceAtLeast(0)) else it }) }
         runCatching { repository.setCommentLiked(commentId, liked) }
             .onFailure { if (version == requestVersion && mutableState.value.post?.cloudId == postId) mutableState.update { state -> state.copy(commentLikesSending = state.commentLikesSending - commentId, comments = state.comments.map { if (it.id == commentId) comment else it }, notice = "评论点赞失败，请重试") } }
             .onSuccess { if (version == requestVersion && mutableState.value.post?.cloudId == postId) mutableState.update { it.copy(commentLikesSending = it.commentLikesSending - commentId) } }
@@ -251,14 +253,15 @@ class PostDetailViewModel @Inject constructor(
             mutableState.update { it.copy(notice = "内容暂不可用") }
             return@launch
         }
+        val old = mutableState.value
+        mutableState.update { it.copy(interactionSending = true) }
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
-            mutableState.update { it.copy(notice = "请先登录后继续") }
+            mutableState.update { it.copy(interactionSending = false, notice = "请先登录后继续") }
             return@launch
         }
-        val old = mutableState.value
         val liked = if (action == "like") !old.liked else old.liked
         val saved = if (action == "bookmark") !old.saved else old.saved
-        mutableState.update { it.copy(liked = liked, saved = saved, interactionSending = true, error = null, notice = null) }
+        mutableState.update { it.copy(liked = liked, saved = saved, error = null, notice = null) }
         runCatching { repository.setPostInteraction(post.id, action, if (action == "like") liked else saved) }
             .onSuccess { if (version == requestVersion) mutableState.update { it.copy(interactionSending = false) } }
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(liked = old.liked, saved = old.saved, interactionSending = false, notice = if (action == "like") "点赞失败，请重试" else "收藏失败，请重试") } }
@@ -269,13 +272,14 @@ class PostDetailViewModel @Inject constructor(
         val old = mutableState.value
         val version = requestVersion
         if (old.ratingSending || value !in 1..5) return@launch
-        if (runCatching { auth.current() == null }.getOrDefault(true)) {
-            mutableState.update { it.copy(notice = "登录后可以为内容评分") }
-            return@launch
-        }
         if (post.id <= 0 || post.channel !in setOf("community", "ai")) {
             android.util.Log.w("PostDetail", "Blocked rating: invalid post id/type id=${post.id} type=${post.channel}")
             mutableState.update { it.copy(ratingError = "内容暂不可用，请重试") }
+            return@launch
+        }
+        mutableState.update { it.copy(ratingSending = true, ratingError = null) }
+        if (runCatching { auth.current() == null }.getOrDefault(true)) {
+            mutableState.update { it.copy(ratingSending = false, notice = "登录后可以为内容评分") }
             return@launch
         }
         mutableState.update { it.copy(rating = value, ratingSending = true, ratingError = null, error = null, notice = null) }
@@ -301,28 +305,34 @@ class PostDetailViewModel @Inject constructor(
         val post = mutableState.value.post ?: return@launch
         val id = post.authorId ?: return@launch
         val version = requestVersion
+        if (mutableState.value.followSending) return@launch
+        mutableState.update { it.copy(followSending = true) }
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
-            mutableState.update { it.copy(notice = "登录后可以关注创作者") }
+            mutableState.update { it.copy(followSending = false, notice = "登录后可以关注创作者") }
             return@launch
         }
-        runCatching { repository.toggleCreatorFollow(id) }.onSuccess { result -> if (version == requestVersion) mutableState.update { it.copy(following = result.optBoolean("following"), notice = if (result.optBoolean("following")) "已关注" else "已取消关注") } }
-            .onFailure { if (version == requestVersion) mutableState.update { it.copy(notice = "关注失败，请重试") } }
+        runCatching { repository.toggleCreatorFollow(id) }.onSuccess { result -> if (version == requestVersion) mutableState.update { it.copy(following = result.optBoolean("following"), followSending = false, notice = if (result.optBoolean("following")) "已关注" else "已取消关注") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(followSending = false, notice = "关注失败，请重试") } }
     }
 
     fun comment(body: String, parentId: String? = null) = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
+        if (mutableState.value.sending) return@launch
         if (!isUuid(post.cloudId)) {
             mutableState.update { it.copy(error = "这篇内容暂不支持评论") }
             return@launch
         }
+        mutableState.update { it.copy(sending = true, error = null) }
         if (runCatching { auth.current() == null }.getOrDefault(true)) {
-            mutableState.update { it.copy(notice = "请先登录后发表评论") }
+            mutableState.update { it.copy(sending = false, notice = "请先登录后发表评论") }
             return@launch
         }
         val text = body.trim()
-        if (text.isBlank()) return@launch
-        mutableState.update { it.copy(sending = true, error = null) }
+        if (text.isBlank()) {
+            mutableState.update { it.copy(sending = false) }
+            return@launch
+        }
         runCatching { repository.addComment(post.cloudId, text, parentId) }
             .onSuccess { item ->
                 if (version != requestVersion) return@onSuccess
