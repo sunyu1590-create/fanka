@@ -22,6 +22,8 @@ test("native detail actions keep post and comment UUIDs separate from numeric in
   assert.match(detail, /repository\.muteRecommendationAuthor\(authorId\)/);
   assert.match(detail, /repository\.reportPost\("", reason, note, commentId\)/);
   assert.match(detail, /post\.id <= 0/);
+  assert.match(repository, /suspend fun deletePost\(postId: String\)[\s\S]*?require\(isUuid\(postId\)\)[\s\S]*?\/api\/v1\/posts\/\$\{encode\(postId\)\}.*method = "DELETE"/);
+  assert.match(detail, /post\.authorId != mutableState\.value\.currentUserId/);
 });
 
 test("detail shared image remains a shared element and content text has no staggered entry", async () => {

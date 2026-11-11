@@ -40,6 +40,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Send
@@ -131,6 +132,7 @@ fun PostDetailScreen(
     var commentMenu by remember { mutableStateOf<NativeComment?>(null) }
     var commentReport by remember { mutableStateOf<NativeComment?>(null) }
     var commentDeleteConfirm by remember { mutableStateOf<NativeComment?>(null) }
+    var postDeleteConfirm by remember { mutableStateOf(false) }
     var expandedReplyThreads by remember { mutableStateOf(setOf<String>()) }
     LaunchedEffect(state.commentSubmitted) {
         if (state.commentSubmitted > 0) {
@@ -172,6 +174,9 @@ fun PostDetailScreen(
                         if (current.authorId != null) {
                             DropdownMenuItem(text = { Text("不感兴趣：减少此作者推荐") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.muteAuthor() })
                             DropdownMenuItem(text = { Text("屏蔽作者") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.blockAuthor() })
+                        }
+                        if (state.currentUserId != null && state.currentUserId == current.authorId) {
+                            DropdownMenuItem(text = { Text("删除内容") }, leadingIcon = { Icon(Icons.Outlined.Delete, null) }, onClick = { moreOpen = false; postDeleteConfirm = true })
                         }
                     }
                 }
@@ -411,6 +416,13 @@ fun PostDetailScreen(
             dismissButton = { TextButton(onClick = { commentDeleteConfirm = null }) { Text("取消") } },
         )
     }
+    if (postDeleteConfirm) AlertDialog(
+        onDismissRequest = { if (!state.operationSending) postDeleteConfirm = false },
+        title = { Text("删除内容？") },
+        text = { Text("删除后内容将从社区移除，此操作不可撤销。") },
+        confirmButton = { TextButton(enabled = !state.operationSending, onClick = { viewModel.deletePost(onBack); postDeleteConfirm = false }) { Text(if (state.operationSending) "删除中…" else "删除") } },
+        dismissButton = { TextButton(enabled = !state.operationSending, onClick = { postDeleteConfirm = false }) { Text("取消") } },
+    )
     if (feedbackOpen) {
         AlertDialog(
             onDismissRequest = { feedbackOpen = false },

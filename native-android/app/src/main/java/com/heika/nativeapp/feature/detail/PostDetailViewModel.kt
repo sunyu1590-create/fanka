@@ -352,6 +352,16 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, comments = old, notice = "删除失败，请重试") } }
     }
 
+    fun deletePost(onDeleted: () -> Unit) = viewModelScope.launch {
+        val post = mutableState.value.post ?: return@launch
+        if (mutableState.value.operationSending || post.authorId != mutableState.value.currentUserId) return@launch
+        val version = requestVersion
+        mutableState.update { it.copy(operationSending = true, notice = null) }
+        runCatching { repository.deletePost(post.cloudId) }
+            .onSuccess { if (version == requestVersion) { mutableState.update { it.copy(operationSending = false, notice = "内容已删除") }; onDeleted() } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "删除失败，请重试") } }
+    }
+
     fun muteAuthor() = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
         val authorId = post.authorId ?: run { mutableState.update { it.copy(notice = "作者信息暂不可用") }; return@launch }

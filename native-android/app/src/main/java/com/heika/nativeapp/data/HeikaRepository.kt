@@ -301,6 +301,11 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/comments/${encode(commentId)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun deletePost(postId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(postId)) { "内容编号无效" }
+        request("/api/v1/posts/${encode(postId)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun adminOverview(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/admin/overview", authenticated = true) as? JSONObject ?: JSONObject()
     }
