@@ -1,63 +1,45 @@
 package com.heika.nativeapp.ui
 
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.runtime.Composable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.ArrowForward
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Explore
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Flag
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.NotificationsNone
-import androidx.compose.material.icons.outlined.PeopleOutline
-import androidx.compose.material.icons.outlined.PersonOutline
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.ui.graphics.vector.ImageVector
+import com.heika.nativeapp.R
 
-/** Material Icons Extended ships these vector paths inside the APK (Apache-2.0). */
+/** Bundled SVG assets from the icon archive supplied for this app. */
 object HeikaIcons {
-    val Back: ImageVector = Icons.AutoMirrored.Outlined.ArrowBack
-    val Forward: ImageVector = Icons.AutoMirrored.Outlined.ArrowForward
-    val Close: ImageVector = Icons.Outlined.Close
-    val Check: ImageVector = Icons.Outlined.Check
-    val Home: ImageVector = Icons.Outlined.Home
-    val Discovery: ImageVector = Icons.Outlined.Explore
-    val Messages: ImageVector = Icons.Outlined.ChatBubbleOutline
-    val Profile: ImageVector = Icons.Outlined.PersonOutline
-    val Publish: ImageVector = Icons.AutoMirrored.Outlined.Send
-    val Search: ImageVector = Icons.Outlined.Search
-    val Notifications: ImageVector = Icons.Outlined.NotificationsNone
-    val Filter: ImageVector = Icons.Outlined.Tune
+    @Composable private fun vector(id: Int): ImageVector = ImageVector.vectorResource(id)
+    val Back: ImageVector @Composable get() = vector(R.drawable.ic_pack_arrow_left)
+    val Forward: ImageVector @Composable get() = vector(R.drawable.ic_pack_arrow_right)
+    val Close: ImageVector @Composable get() = vector(R.drawable.ic_pack_clear)
+    val Check: ImageVector @Composable get() = vector(R.drawable.ic_pack_check_one)
+    val Home: ImageVector @Composable get() = vector(R.drawable.ic_pack_home)
+    val Discovery: ImageVector @Composable get() = vector(R.drawable.ic_pack_magic)
+    val Messages: ImageVector @Composable get() = vector(R.drawable.ic_pack_message_one)
+    val Profile: ImageVector @Composable get() = vector(R.drawable.ic_pack_avatar)
+    val Publish: ImageVector @Composable get() = vector(R.drawable.ic_pack_message_sent)
+    val Search: ImageVector @Composable get() = vector(R.drawable.ic_pack_search)
+    val Notifications: ImageVector @Composable get() = vector(R.drawable.ic_pack_message_unread)
+    val Filter: ImageVector @Composable get() = vector(R.drawable.ic_pack_list_view)
     val StarOutline: ImageVector = Icons.Outlined.StarOutline
     val StarFilled: ImageVector = Icons.Filled.Star
-    val LikeOutline: ImageVector = Icons.Outlined.FavoriteBorder
+    val LikeOutline: ImageVector @Composable get() = vector(R.drawable.ic_pack_like)
     val LikeFilled: ImageVector = Icons.Filled.Favorite
     val SaveOutline: ImageVector = Icons.Outlined.BookmarkBorder
     val SaveFilled: ImageVector = Icons.Filled.Bookmark
-    val Comment: ImageVector = Icons.Outlined.ChatBubbleOutline
-    val Share: ImageVector = Icons.Outlined.Share
-    val Report: ImageVector = Icons.Outlined.Flag
-    val Settings: ImageVector = Icons.Outlined.Settings
-    val More: ImageVector = Icons.Outlined.MoreVert
-    val Copy: ImageVector = Icons.Outlined.ContentCopy
-    val Block: ImageVector = Icons.Outlined.Block
-    val Calendar: ImageVector = Icons.Outlined.CalendarMonth
-    val CoExplore: ImageVector = Icons.Outlined.PeopleOutline
-    val Retry: ImageVector = Icons.Outlined.Refresh
+    val Comment: ImageVector @Composable get() = vector(R.drawable.ic_pack_comment)
+    val Share: ImageVector @Composable get() = vector(R.drawable.ic_pack_share)
+    val Report: ImageVector @Composable get() = vector(R.drawable.ic_pack_report)
+    val Settings: ImageVector @Composable get() = vector(R.drawable.ic_pack_setting_two)
+    val More: ImageVector @Composable get() = vector(R.drawable.ic_pack_more)
+    val Copy: ImageVector @Composable get() = vector(R.drawable.ic_pack_copy_one)
+    val Block: ImageVector @Composable get() = vector(R.drawable.ic_pack_forbid)
+    val Calendar: ImageVector @Composable get() = vector(R.drawable.ic_pack_announcement)
+    val CoExplore: ImageVector @Composable get() = vector(R.drawable.ic_pack_communication)
+    val Retry: ImageVector @Composable get() = vector(R.drawable.ic_pack_refresh)
 }

@@ -196,6 +196,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         onBack = { nav.popBackStack() },
                         onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
                         onLogin = { nav.navigate("account") },
+                        onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onConversationChange = { chatConversationOpen = it },
                     )
                 }

@@ -207,6 +207,8 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }
     }
 
+    fun setQuery(query: String) = mutableState.update { it.copy(query = query.take(60), people = emptyList(), error = null) }
+
     fun openPeer(peer: NativePeer) = viewModelScope.launch {
         if (openingPeerId == peer.id || mutableState.value.activePeer?.id == peer.id) return@launch
         openingPeerId = peer.id

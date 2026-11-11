@@ -27,7 +27,7 @@ data class NativeProfile(
     val showBookmarks: Boolean,
 )
 
-data class ProfileStats(val totalOpened: Int = 0, val streak: Int = 0, val bookmarks: Int = 0, val experience: Int = 0, val level: Int = 1, val progress: Int = 0)
+data class ProfileStats(val totalOpened: Int = 0, val streak: Int = 0, val bookmarks: Int = 0, val experience: Int = 0, val level: Int = 1, val progress: Int = 0, val dailyTasks: Int? = null, val claimedDailyTasks: Int = 0)
 
 data class ProfileState(
     val profile: NativeProfile? = null,
@@ -110,6 +110,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                 val likedReq = async { repository.myLibrary("liked") }
                 val libraryStateReq = async { repository.myLibraryState() }
                 val progressionReq = async { repository.progression() }
+                val missionsReq = async { repository.dailyMissions() }
                 val data = profileReq.await()
                 val profileJson = data.optJSONObject("profile") ?: data
                 val profile = profileJson.toProfile(id)
@@ -126,6 +127,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                     if (row.optString("opened_at").isBlank()) null else row.optString("opened_at").take(10)
                 }.toSet()
                 val progression = progressionReq.await()
+                val missions = runCatching { missionsReq.await().optJSONArray("missions")?.jsonObjects() }.getOrNull()
                 val experience = progression.optInt("total")
                 val levels = listOf(0, 100, 240, 430, 680, 1000, 1390, 1850, 2380, 2980)
                 val levelIndex = levels.indexOfLast { experience >= it }.coerceAtLeast(0)
@@ -138,6 +140,8 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                     experience = experience,
                     level = levelIndex + 1,
                     progress = if (levelEnd == null) 100 else (((experience - levelStart).toFloat() / (levelEnd - levelStart)) * 100).toInt().coerceIn(0, 100),
+                    dailyTasks = missions?.size,
+                    claimedDailyTasks = missions?.count { it.optBoolean("claimed") } ?: 0,
                 )
                 ProfileLoadResult(
                     profile,

@@ -168,3 +168,10 @@
 - 内容详情顶部标题按内容类型和分类显示；主图扩至屏幕宽度并保持直角，作者行去除多余底色容器，点赞/收藏/分享与评论输入合并到固定底栏，评分、评论、举报和反馈业务保留。
 - 本次提交前 `git diff --check` 通过。环境内存可用约 9.1 GiB、磁盘可用约 5.6 GiB，Gradle 最大堆为 3 GiB，未发现内存不足迹象。
 - 本地 `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease` 未能启动：Wrapper 下载 Gradle 8.11.1 时 `services.gradle.org` DNS 返回 `UnknownHostException`；机器没有已安装的 Gradle 发行版。GitHub Actions API 请求返回 `Forbidden`，无法从当前环境触发/检查 Runner 构建。故本次没有声称测试或 APK 构建通过，亦未生成新 APK。真机/模拟器未连接。
+
+## Native 3.3 消息/个人主页与 SVG 图标适配
+
+- 在 versionCode 25 的源码上增加私信列表页签、会话本地搜索、未读筛选、未读总数和通知入口；聊天详情展示联系人头像/主页入口、按日分隔的消息、时间和底部 IME 联动。保留既有消息 API、轮询、分页、发送幂等与失败重试。仓库没有置顶状态/API 和私信媒体上传接口，因此不显示虚假的置顶或附件操作。
+- 个人主页等级徽标使用实际等级；今日任务领取摘要从既有 `/api/v1/daily-missions` 读取，探索中心仍展示真实等级、EXP 和连续天数；任务接口失败时显示查看入口，不伪造数字。
+- 用户提供的 SVG 压缩包内 116 个图标已转换为 Android Vector Drawable，公共 `HeikaIcons` 入口映射至包内图标；资源没有星形或书签图案，这两类保留现有 Material 矢量图标。Android versionCode 从 25 升至 26。
+- 本节构建与测试状态待本轮 GitHub Actions 验证；未进行真机/模拟器交互验证。

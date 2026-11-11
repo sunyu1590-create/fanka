@@ -62,6 +62,7 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaRadii
+import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 
 private val ProfileTabs = listOf("我的作品" to "works", "我的收藏" to "bookmarks", "我的点赞" to "liked")
@@ -162,7 +163,7 @@ fun ProfileScreen(
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Text(profile.nickname, color = MaterialTheme.colorScheme.onBackground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (userId == null) Text(profile.tier.uppercase(), Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 7.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
+                                    if (userId == null) Text("LV.${state.stats.level}", Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 8.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                                 }
                                 Text(profile.bio.ifBlank { "记录生活，继续探索。" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
                                 Text("HEIKA ID · ${profile.id.take(8).uppercase()}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .78f), fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
@@ -175,13 +176,22 @@ fun ProfileScreen(
                                 ProfileStat(state.stats.streak.toString(), "连续探索")
                                 ProfileStat(state.stats.bookmarks.toString(), "我的收藏")
                             }
-                            Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 13.dp).clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).clickable(onClick = onExplore).padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.EmojiEvents, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                                    Text("探索成长 · LV.${state.stats.level}", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("${state.stats.experience} EXP · ${state.stats.progress}% 至下一级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                            Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 13.dp).clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).clickable(onClick = onExplore).padding(horizontal = 14.dp, vertical = 12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.EmojiEvents, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Text("今日探索任务", Modifier.weight(1f).padding(start = 10.dp), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(state.stats.dailyTasks?.let { if (it == 0) "暂无任务" else "${state.stats.claimedDailyTasks}/$it 项已领取" } ?: "查看任务", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                    Icon(Icons.Outlined.ChevronRight, "探索中心", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Icon(Icons.Outlined.ChevronRight, "探索中心", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .3f))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(HeikaIcons.Discovery, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                        Text("探索中心", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                        Text("${state.stats.streak} 天连续探索 · LV.${state.stats.level} · ${state.stats.experience} EXP", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                                    }
+                                    Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         } else {
                             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
