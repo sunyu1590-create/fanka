@@ -373,6 +373,15 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "操作失败，请重试") } }
     }
 
+    fun muteTopic(topic: String) = viewModelScope.launch {
+        if (mutableState.value.operationSending) return@launch
+        val version = requestVersion
+        mutableState.update { it.copy(operationSending = true, notice = null) }
+        runCatching { repository.muteRecommendationTopic(topic) }
+            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "已减少该话题的推荐") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "操作失败，请重试") } }
+    }
+
     fun blockAuthor() = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
         val authorId = post.authorId ?: run { mutableState.update { it.copy(notice = "作者信息暂不可用") }; return@launch }

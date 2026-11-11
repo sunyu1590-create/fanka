@@ -296,6 +296,11 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/recommendation-feedback", method = "POST", body = JSONObject().put("action", "mute_author").put("authorId", authorId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun muteRecommendationTopic(topic: String): JSONObject = withContext(Dispatchers.IO) {
+        require(topic.trim().length in 1..32)
+        request("/api/v1/recommendation-feedback", method = "POST", body = JSONObject().put("action", "mute_topic").put("topic", topic.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun deleteComment(commentId: String): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(commentId)) { "评论编号无效" }
         request("/api/v1/comments/${encode(commentId)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
@@ -375,6 +380,38 @@ class HeikaRepository @Inject constructor(
     suspend fun adminMessageReports(): JSONObject = withContext(Dispatchers.IO) {
         val rows = request("/api/v1/admin/message-reports", authenticated = true) as? JSONArray ?: JSONArray()
         JSONObject().put("items", rows)
+    }
+
+    suspend fun adminUserFeedback(page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/user-feedback?status=open&page=${page.coerceAtLeast(1)}&limit=20", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun handleAdminUserFeedback(id: String, resolved: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && note.length <= 1000)
+        request("/api/v1/admin/user-feedback/${encode(id)}", method = "PATCH", body = JSONObject().put("status", if (resolved) "resolved" else "dismissed").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAudit(page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/audit?page=${page.coerceAtLeast(1)}&limit=50", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminKeywordRules(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/moderation-rules", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun createAdminKeywordRule(keyword: String): JSONObject = withContext(Dispatchers.IO) {
+        require(keyword.trim().length in 1..80)
+        request("/api/v1/admin/moderation-rules", method = "POST", body = JSONObject().put("keyword", keyword.trim()).put("scopes", org.json.JSONArray(listOf("post", "comment", "message", "profile"))).put("enabled", true).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun setAdminKeywordEnabled(id: String, enabled: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id))
+        request("/api/v1/admin/moderation-rules/${encode(id)}", method = "PATCH", body = JSONObject().put("enabled", enabled).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun deleteAdminKeywordRule(id: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id))
+        request("/api/v1/admin/moderation-rules/${encode(id)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun handleAdminMessageReport(id: String, resolved: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {

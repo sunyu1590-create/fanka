@@ -20,6 +20,7 @@ test("native detail actions keep post and comment UUIDs separate from numeric in
   assert.match(repository, /put\("post_id", postId\)/);
   assert.match(repository, /fun deleteComment\(commentId: String\)/);
   assert.match(detail, /repository\.muteRecommendationAuthor\(authorId\)/);
+  assert.match(repository, /suspend fun muteRecommendationTopic\(topic: String\)/);
   assert.match(detail, /repository\.reportPost\("", reason, note, commentId\)/);
   assert.match(detail, /post\.id <= 0/);
   assert.match(repository, /suspend fun deletePost\(postId: String\)[\s\S]*?require\(isUuid\(postId\)\)[\s\S]*?\/api\/v1\/posts\/\$\{encode\(postId\)\}.*method = "DELETE"/);
@@ -32,4 +33,15 @@ test("detail shared image remains a shared element and content text has no stagg
   assert.match(shared, /sharedElement\(/);
   assert.match(shared, /post-image-\$postKey/);
   assert.doesNotMatch(detail, /titleShown|authorShown|bodyShown/);
+});
+
+test("native admin center uses server protected feedback, audit, and moderation rule APIs", async () => {
+  const repository = await read("native-android/app/src/main/java/com/heika/nativeapp/data/HeikaRepository.kt");
+  const screen = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/settings/AdminCenterScreen.kt");
+  assert.match(repository, /\/api\/v1\/admin\/user-feedback\?status=open/);
+  assert.match(repository, /\/api\/v1\/admin\/audit\?/);
+  assert.match(repository, /\/api\/v1\/admin\/moderation-rules/);
+  assert.match(screen, /"user-feedback" to "用户反馈"/);
+  assert.match(screen, /"keywords" to "关键词规则"/);
+  assert.match(screen, /"audit" to "操作记录"/);
 });
