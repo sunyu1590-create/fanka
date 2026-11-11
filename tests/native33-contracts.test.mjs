@@ -44,4 +44,10 @@ test("native admin center uses server protected feedback, audit, and moderation 
   assert.match(screen, /"user-feedback" to "用户反馈"/);
   assert.match(screen, /"keywords" to "关键词规则"/);
   assert.match(screen, /"audit" to "操作记录"/);
+  assert.match(repository, /suspend fun adminCategories\(\)/);
+  assert.match(repository, /suspend fun adminTopicEvents\(\)/);
+  assert.match(repository, /suspend fun adminRecommendationSettings\(\)/);
+  assert.match(repository, /suspend fun adminAiSettings\(\)/);
+  assert.match(repository, /suspend fun setAdminUserRole\(id: String, role: String\)/);
+  assert.match(repository, /suspend fun setAdminUserMembership\(id: String, tier: String\)/);
 });

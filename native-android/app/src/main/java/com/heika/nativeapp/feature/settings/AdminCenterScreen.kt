@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,20 +52,22 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
     val state by viewModel.state.collectAsStateWithLifecycle()
     var keywordDraft by remember { mutableStateOf("") }
     var pendingKeywordDelete by remember { mutableStateOf<JSONObject?>(null) }
+    var pendingAiKeyDelete by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("管理员中心", onBack, trailing = { androidx.compose.material3.IconButton(onClick = viewModel::refresh) { androidx.compose.material3.Icon(HeikaIcons.Retry, "刷新") } })
         Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            listOf("reports" to "举报处理", "dm-reports" to "私信举报", "posts" to "内容审核", "ai" to "AI 审核", "ai-feedback" to "AI 反馈", "comments" to "评论", "appeals" to "申诉", "users" to "用户治理", "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录").forEach { (key, title) ->
+            listOf("reports" to "举报处理", "dm-reports" to "私信举报", "posts" to "内容审核", "ai" to "AI 审核", "ai-feedback" to "AI 反馈", "comments" to "评论", "appeals" to "申诉", "users" to "用户治理", "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理", "topic-events" to "话题活动", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 设置").forEach { (key, title) ->
                 Text(title, Modifier.clickable { viewModel.select(key) }.padding(vertical = 12.dp), color = if (state.section == key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, fontWeight = if (state.section == key) FontWeight.SemiBold else FontWeight.Normal)
             }
         }
         state.error?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         state.notice?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
-        if (state.loading && state.items.isEmpty()) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
-        else if (state.items.isEmpty()) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+        else if (state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text(if (state.error == null) "暂无待处理事项" else "无法读取管理队列", color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (state.error != null) TextButton(onClick = viewModel::refresh) { Text("重试") }
-        } else if (state.section == "audit") LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+        } else if (state.section in adminConfigSections) AdminConfigPanel(state, viewModel, onPendingAiKeyDelete = { pendingAiKeyDelete = true })
+        else if (state.section == "audit") LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
             items(state.items, key = { it.optString("id") }) { item ->
                 Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(item.optString("action"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -91,12 +96,17 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
             }
         } else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
             items(state.items, key = { it.optString("id") }) { item ->
-                AdminQueueItem(item, state.section, state.saving == item.optString("id"), onAction = { publish, note -> viewModel.process(item.optString("id"), publish, note) })
+                AdminQueueItem(
+                    item, state.section, state.saving == item.optString("id"),
+                    onAction = { publish, note -> viewModel.process(item.optString("id"), publish, note) },
+                    onUserRole = viewModel::setUserRole,
+                    onUserMembership = viewModel::setUserMembership,
+                )
             }
         }
     }
     pendingKeywordDelete?.let { rule ->
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { pendingKeywordDelete = null },
             title = { Text("删除关键词规则？") },
             text = { Text("“${rule.optString("keyword")}”将不再被服务端拦截。") },
@@ -104,28 +114,153 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
             dismissButton = { TextButton(onClick = { pendingKeywordDelete = null }) { Text("取消") } },
         )
     }
+    if (pendingAiKeyDelete) AlertDialog(
+        onDismissRequest = { pendingAiKeyDelete = false },
+        title = { Text("删除 AI 密钥？") },
+        text = { Text("删除后，依赖该密钥的 AI 工作台将暂停服务。") },
+        confirmButton = { TextButton(onClick = { pendingAiKeyDelete = false; viewModel.deleteAiKey() }) { Text("删除") } },
+        dismissButton = { TextButton(onClick = { pendingAiKeyDelete = false }) { Text("取消") } },
+    )
+}
+
+private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings")
+
+@Composable
+private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterViewModel, onPendingAiKeyDelete: () -> Unit) {
+    var categoryName by remember { mutableStateOf("") }
+    var topicName by remember { mutableStateOf("") }
+    var eventTitle by remember { mutableStateOf("") }
+    var eventDescription by remember { mutableStateOf("") }
+    var eventStarts by remember { mutableStateOf(java.time.Instant.now().toString()) }
+    var eventEnds by remember { mutableStateOf(java.time.Instant.now().plusSeconds(30L * 24 * 60 * 60).toString()) }
+    var aiKey by remember { mutableStateOf("") }
+    val meta = state.metadata ?: JSONObject()
+    val topics = meta.optJSONArray("topics")
+    var settingsDraft by remember(meta) {
+        mutableStateOf(listOf("interest_slots", "adjacent_slots", "curated_slots", "surprise_slots").associateWith { meta.optInt(it).toString() })
+    }
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
+        if (state.loading && state.metadata == null) item { CircularProgressIndicator(Modifier.padding(16.dp)) }
+        when (state.section) {
+            "categories" -> item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(categoryName, { categoryName = it.take(32) }, Modifier.weight(1f), label = { Text("新增社区分类") }, singleLine = true)
+                    Button(enabled = categoryName.trim().length >= 2 && state.saving == null, onClick = { viewModel.createCategory(categoryName) { categoryName = "" } }) { Text("添加") }
+                }
+                Text("分类 ID 与内容关联由服务端维护。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            }
+            "topic-events" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("选择话题", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    if (topics != null) (0 until topics.length()).forEach { index ->
+                        val topic = topics.optJSONObject(index) ?: return@forEach
+                        TextButton(onClick = { topicName = topic.optString("name") }) { Text(if (topicName == topic.optString("name")) "✓ ${topic.optString("name")}" else topic.optString("name")) }
+                    }
+                    OutlinedTextField(eventTitle, { eventTitle = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("活动标题") }, singleLine = true)
+                    OutlinedTextField(eventDescription, { eventDescription = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("活动说明") }, minLines = 2, maxLines = 4)
+                    OutlinedTextField(eventStarts, { eventStarts = it.take(40) }, Modifier.fillMaxWidth(), label = { Text("开始时间（ISO 8601）") }, singleLine = true)
+                    OutlinedTextField(eventEnds, { eventEnds = it.take(40) }, Modifier.fillMaxWidth(), label = { Text("结束时间（ISO 8601）") }, singleLine = true)
+                    Button(enabled = topicName.isNotBlank() && eventTitle.length >= 4 && eventDescription.length >= 8 && state.saving == null, onClick = { viewModel.createTopicEvent(topicName, eventTitle, eventDescription, eventStarts, eventEnds) { eventTitle = ""; eventDescription = "" } }) { Text("创建活动") }
+                }
+            }
+            "recommendation-settings" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("每日五张卡的来源配比", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    listOf("interest_slots" to "兴趣", "adjacent_slots" to "相邻", "curated_slots" to "精选", "surprise_slots" to "惊喜").forEach { (key, title) ->
+                        OutlinedTextField(settingsDraft[key].orEmpty(), { value -> settingsDraft = settingsDraft + (key to value.filter(Char::isDigit).take(1)) }, Modifier.fillMaxWidth(), label = { Text(title) }, singleLine = true)
+                    }
+                    Button(enabled = state.saving == null && settingsDraft.values.all(String::isNotBlank), onClick = { viewModel.saveRecommendationSettings(settingsDraft.mapValues { it.value.toIntOrNull() ?: -1 }) }) { Text("保存配置") }
+                }
+            }
+            "ai-settings" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(if (meta.optBoolean("configured")) "已配置：${meta.optString("masked")}" else "尚未配置 AI 密钥", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    OutlinedTextField(aiKey, { aiKey = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("DeepSeek API 密钥") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(enabled = aiKey.trim().length >= 16 && state.saving == null, onClick = { viewModel.saveAiKey(aiKey) { aiKey = "" } }) { Text("加密保存") }
+                        if (meta.optBoolean("configured")) TextButton(enabled = state.saving == null, onClick = onPendingAiKeyDelete) { Text("删除密钥", color = MaterialTheme.colorScheme.error) }
+                    }
+                    Text("密钥只发送到服务端加密存储，不保存在本机。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
+            }
+        }
+        items(state.items, key = { "${state.section}-${it.optString("id")}" }) { item ->
+            when (state.section) {
+                "categories" -> Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(item.optString("name"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp); Text("${item.optString("channel")} · ${item.optString("kind")}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+                    androidx.compose.material3.Switch(item.optBoolean("active"), enabled = state.saving == null, onCheckedChange = { viewModel.setCategoryActive(item.optInt("id"), it) })
+                }
+                "topic-events" -> Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text(item.optString("title"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp); Text("${item.optString("description")}\n${item.optString("starts_at")} — ${item.optString("ends_at")}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+                    androidx.compose.material3.Switch(item.optBoolean("is_active"), enabled = state.saving == null, onCheckedChange = { viewModel.setTopicEventActive(item, it) })
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun AdminQueueItem(item: JSONObject, section: String, saving: Boolean, onAction: (Boolean, String) -> Unit) {
+private fun AdminQueueItem(
+    item: JSONObject,
+    section: String,
+    saving: Boolean,
+    onAction: (Boolean, String) -> Unit,
+    onUserRole: (String, String) -> Unit,
+    onUserMembership: (String, String) -> Unit,
+) {
     var note by remember(item.optString("id")) { mutableStateOf("") }
+    var roleMenuOpen by remember { mutableStateOf(false) }
+    var membershipMenuOpen by remember { mutableStateOf(false) }
+    var pendingUserUpdate by remember { mutableStateOf<Pair<String, String>?>(null) }
     val target = item.optJSONObject("target")
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(when (section) { "reports", "dm-reports" -> item.optString("reason", "举报"); "users" -> item.optString("nickname", "探索者"); "ai-feedback" -> item.optString("kind", "资源反馈"); "user-feedback" -> item.optString("category", "用户反馈"); else -> item.optString("title", item.optString("post_title", "待审核内容")) }, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Text(when (section) { "users" -> "${item.optString("role")} · ${item.optString("membership_tier")}"; "comments" -> item.optString("body"); "ai-feedback" -> item.optString("details"); "user-feedback" -> item.optString("message"); else -> target?.optString("title").orEmpty().ifBlank { item.optString("body") }.ifBlank { item.optString("status") } }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
         if (section == "reports") Text("对象：${target?.optString("type").orEmpty()} · ${target?.optString("status").orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         if (section == "users") Text(if (item.optJSONObject("community_restriction")?.optBoolean("active") == true) "已限制发言" else "正常", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+        if (section == "users") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box {
+                TextButton(enabled = !saving, onClick = { roleMenuOpen = true }) { Text("调整角色") }
+                androidx.compose.material3.DropdownMenu(roleMenuOpen, { roleMenuOpen = false }) {
+                    listOf("member" to "普通用户", "reviewer" to "审核员", "content_manager" to "内容管理员", "admin" to "管理员").forEach { (role, label) ->
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { roleMenuOpen = false; pendingUserUpdate = Pair("role", role) })
+                    }
+                }
+            }
+            Box {
+                TextButton(enabled = !saving, onClick = { membershipMenuOpen = true }) { Text("调整会员") }
+                androidx.compose.material3.DropdownMenu(membershipMenuOpen, { membershipMenuOpen = false }) {
+                    listOf("free" to "Free", "plus" to "Plus", "pro" to "Pro").forEach { (tier, label) ->
+                        androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = { membershipMenuOpen = false; pendingUserUpdate = Pair("membership", tier) })
+                    }
+                }
+            }
+        }
         OutlinedTextField(value = note, onValueChange = { note = it.take(500) }, modifier = Modifier.fillMaxWidth(), label = { Text("处理说明（至少 3 字）") }, maxLines = 3)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(enabled = !saving && (note.trim().length >= 3 || section == "comments" || section == "user-feedback"), onClick = { onAction(true, note) }) { Text(if (saving) "处理中…" else when (section) { "reports", "dm-reports" -> "标记已处理"; "user-feedback" -> "标记已解决"; "appeals" -> "接受申诉"; "users" -> "限制发言"; "comments" -> "恢复显示"; else -> "通过" }) }
             TextButton(enabled = !saving && (note.trim().length >= 3 || section == "user-feedback"), onClick = { onAction(false, note) }) { Text(when (section) { "reports", "dm-reports" -> "驳回"; "user-feedback" -> "忽略反馈"; "appeals" -> "驳回申诉"; "users" -> "解除限制"; "comments" -> "隐藏"; else -> "驳回" }) }
         }
     }
+    pendingUserUpdate?.let { (kind, value) ->
+        val label = when (kind to value) {
+            "role" to "member" -> "普通用户"; "role" to "reviewer" -> "审核员"; "role" to "content_manager" -> "内容管理员"; "role" to "admin" -> "管理员"
+            "membership" to "plus" -> "Plus"; "membership" to "pro" -> "Pro"; else -> "Free"
+        }
+        AlertDialog(
+            onDismissRequest = { if (!saving) pendingUserUpdate = null },
+            title = { Text(if (kind == "role") "更新账号角色？" else "更新会员等级？") },
+            text = { Text("${item.optString("nickname", "该账号")}将设置为 $label。服务端会执行权限检查并记录操作。") },
+            confirmButton = { TextButton(enabled = !saving, onClick = { if (kind == "role") onUserRole(item.optString("id"), value) else onUserMembership(item.optString("id"), value); pendingUserUpdate = null }) { Text("确认") } },
+            dismissButton = { TextButton(onClick = { pendingUserUpdate = null }) { Text("取消") } },
+        )
+    }
 }
 
 data class AdminCenterState(
     val section: String = "reports",
     val items: List<JSONObject> = emptyList(),
+    val metadata: JSONObject? = null,
     val loading: Boolean = true,
     val saving: String? = null,
     val error: String? = null,
@@ -139,14 +274,21 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var generation = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList()); refresh() } }
+    fun select(section: String) { if (section in setOf("reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
     fun refresh() = viewModelScope.launch {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, error = null, notice = null)
         try {
             repository.adminOverview() // server authorization is checked on every admin request
-            val result = when (mutableState.value.section) { "posts" -> repository.adminPosts(); "ai" -> repository.adminAiQueue(); "ai-feedback" -> repository.adminAiFeedback(); "comments" -> repository.adminComments(); "dm-reports" -> repository.adminMessageReports(); "appeals" -> repository.adminAppeals(); "users" -> repository.adminUsers(); "user-feedback" -> repository.adminUserFeedback(); "keywords" -> repository.adminKeywordRules(); "audit" -> repository.adminAudit(); else -> repository.adminReports() }
-            if (requestId == generation) mutableState.value = mutableState.value.copy(items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), loading = false)
+            val result = when (mutableState.value.section) {
+                "posts" -> repository.adminPosts(); "ai" -> repository.adminAiQueue(); "ai-feedback" -> repository.adminAiFeedback(); "comments" -> repository.adminComments()
+                "dm-reports" -> repository.adminMessageReports(); "appeals" -> repository.adminAppeals(); "users" -> repository.adminUsers()
+                "user-feedback" -> repository.adminUserFeedback(); "keywords" -> repository.adminKeywordRules(); "audit" -> repository.adminAudit()
+                "categories" -> repository.adminCategories(); "topic-events" -> repository.adminTopicEvents()
+                "recommendation-settings" -> repository.adminRecommendationSettings(); "ai-settings" -> repository.adminAiSettings()
+                else -> repository.adminReports()
+            }
+            if (requestId == generation) mutableState.value = mutableState.value.copy(items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), metadata = result, loading = false)
         } catch (error: Exception) {
             if (requestId == generation) mutableState.value = mutableState.value.copy(loading = false, error = "管理员权限不足或队列加载失败，请重试")
         }
@@ -192,6 +334,82 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         mutableState.value = mutableState.value.copy(saving = id, error = null)
         try { repository.deleteAdminKeywordRule(id); mutableState.value = mutableState.value.copy(saving = null, notice = "规则已删除"); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "删除规则失败，请重试") }
+    }
+
+    fun createCategory(name: String, onCreated: () -> Unit) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "category", error = null)
+        try { repository.createAdminCategory(name); mutableState.value = mutableState.value.copy(saving = null, notice = "分类已创建"); onCreated(); refresh() }
+        catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "分类创建失败，请检查名称或权限") }
+    }
+
+    fun setCategoryActive(id: Int, active: Boolean) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = id.toString(), error = null)
+        try { repository.setAdminCategoryActive(id, active); mutableState.value = mutableState.value.copy(saving = null, notice = "分类设置已保存"); refresh() }
+        catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "分类设置保存失败，请重试") }
+    }
+
+    fun createTopicEvent(topic: String, title: String, description: String, starts: String, ends: String, onCreated: () -> Unit) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "topic-event", error = null)
+        try {
+            val payload = JSONObject().put("topic", topic).put("title", title.trim()).put("description", description.trim()).put("starts_at", starts).put("ends_at", ends).put("is_active", true)
+            repository.saveAdminTopicEvent(payload)
+            mutableState.value = mutableState.value.copy(saving = null, notice = "话题活动已创建")
+            onCreated(); refresh()
+        } catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "创建失败，请检查话题与时间格式") }
+    }
+
+    fun setTopicEventActive(event: JSONObject, active: Boolean) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        val topics = mutableState.value.metadata?.optJSONArray("topics") ?: JSONArray()
+        val topicId = event.optInt("topic_id")
+        val topic = (0 until topics.length()).mapNotNull { topics.optJSONObject(it) }.firstOrNull { it.optInt("id") == topicId }?.optString("name").orEmpty()
+        if (topic.isBlank()) { mutableState.value = mutableState.value.copy(error = "活动话题不可用，请刷新"); return@launch }
+        mutableState.value = mutableState.value.copy(saving = event.optString("id"), error = null)
+        try {
+            val payload = JSONObject().put("id", event.optString("id")).put("topic", topic).put("title", event.optString("title")).put("description", event.optString("description")).put("starts_at", event.optString("starts_at")).put("ends_at", event.optString("ends_at")).put("is_active", active)
+            repository.saveAdminTopicEvent(payload)
+            mutableState.value = mutableState.value.copy(saving = null, notice = if (active) "活动已上线" else "活动已下线")
+            refresh()
+        } catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "活动设置失败，请重试") }
+    }
+
+    fun saveRecommendationSettings(values: Map<String, Int>) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        if (values.values.any { it < 0 } || values.values.sum() != 5) { mutableState.value = mutableState.value.copy(error = "四类数量必须合计为 5"); return@launch }
+        mutableState.value = mutableState.value.copy(saving = "recommendations", error = null)
+        try { repository.saveAdminRecommendationSettings(JSONObject(values)); mutableState.value = mutableState.value.copy(saving = null, notice = "推荐配置已保存"); refresh() }
+        catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "保存失败，请检查管理员权限") }
+    }
+
+    fun saveAiKey(key: String, onSaved: () -> Unit) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "ai-key", error = null)
+        try { repository.saveAdminAiKey(key); mutableState.value = mutableState.value.copy(saving = null, notice = "AI 密钥已加密保存"); onSaved(); refresh() }
+        catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "保存失败，请检查密钥格式或管理员权限") }
+    }
+
+    fun deleteAiKey() = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "ai-key", error = null)
+        try { repository.deleteAdminAiKey(); mutableState.value = mutableState.value.copy(saving = null, notice = "AI 密钥已删除"); refresh() }
+        catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "删除 AI 密钥失败，请重试") }
+    }
+
+    fun setUserRole(id: String, role: String) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = id, error = null)
+        try { repository.setAdminUserRole(id, role); mutableState.value = mutableState.value.copy(saving = null, notice = "账号角色已更新"); refresh() }
+        catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "角色更新失败，请确认管理员权限") }
+    }
+
+    fun setUserMembership(id: String, tier: String) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = id, error = null)
+        try { repository.setAdminUserMembership(id, tier); mutableState.value = mutableState.value.copy(saving = null, notice = "会员等级已更新"); refresh() }
+        catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "会员等级更新失败，请重试") }
     }
 }
 

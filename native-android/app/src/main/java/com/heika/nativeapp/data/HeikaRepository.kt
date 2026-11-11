@@ -351,6 +351,16 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/users?limit=30", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun setAdminUserRole(id: String, role: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && role in setOf("member", "admin", "content_manager", "reviewer"))
+        request("/api/v1/admin/users/${encode(id)}", method = "PATCH", body = JSONObject().put("role", role).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun setAdminUserMembership(id: String, tier: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && tier in setOf("free", "plus", "pro"))
+        request("/api/v1/admin/users/${encode(id)}", method = "PATCH", body = JSONObject().put("membership_tier", tier).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun setAdminUserRestriction(id: String, active: Boolean, reason: String): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(id) && reason.trim().length in 3..500)
         val restriction = if (active) JSONObject().put("active", true).put("reason", reason.trim()).put("permanent", true) else JSONObject().put("active", false)
@@ -412,6 +422,50 @@ class HeikaRepository @Inject constructor(
     suspend fun deleteAdminKeywordRule(id: String): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(id))
         request("/api/v1/admin/moderation-rules/${encode(id)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminCategories(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/categories", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun createAdminCategory(name: String): JSONObject = withContext(Dispatchers.IO) {
+        require(name.trim().length in 2..32)
+        request("/api/v1/admin/categories", method = "POST", body = JSONObject().put("name", name.trim()).put("channel", "community").put("kind", "category").toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun setAdminCategoryActive(id: Int, active: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        require(id > 0)
+        request("/api/v1/admin/categories/$id", method = "PATCH", body = JSONObject().put("active", active).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminTopicEvents(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/topic-events", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun saveAdminTopicEvent(payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        require(payload.optString("topic").isNotBlank() && payload.optString("title").length in 4..80 && payload.optString("description").length in 8..500)
+        request("/api/v1/admin/topic-events", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminRecommendationSettings(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/settings", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun saveAdminRecommendationSettings(values: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/settings", method = "PATCH", body = values.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAiSettings(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/ai-settings", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun saveAdminAiKey(key: String): JSONObject = withContext(Dispatchers.IO) {
+        require(key.trim().length in 16..500)
+        request("/api/v1/admin/ai-settings", method = "POST", body = JSONObject().put("key", key.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun deleteAdminAiKey(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/ai-settings", method = "POST", body = JSONObject().put("action", "delete").toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun handleAdminMessageReport(id: String, resolved: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
