@@ -161,3 +161,10 @@
 - Run #83 曾因 Compose imports 失败；Run #86 又发现详情菜单误引用 `item.tags`，均已修复。Run #84、#87 因后续推送取消。最终 Native workflow Run #88（ID `42968509742`，源码 SHA `8bb3b1f999b4b7331357e4a27ad44a893471ea11`）Kotlin 单测、Android Lint、Debug APK、unsigned Release APK、版本化产物与上传全部成功。Run：https://github.com/sunyu1590-create/fanka/actions/runs/42968509742 。Artifact `HEIKA-Native-3-v8bb3b1f999b4b7331357e4a27ad44a893471ea11`，ID `13833215460`，23,581,994 bytes，ZIP SHA-256 `a5a35eca95a77878a62b6ac40282351a55b8a63ee62d56fbe130001dcf033724`，下载：https://github.com/sunyu1590-create/fanka/actions/runs/42968509742/artifacts/13833215460 。Artifact ZIP 已下载；`BUILD-INFO.txt` 的 version、versionCode、源码 SHA 与 APK 对应，ZIP 和 APK 哈希已独立复算。APK：`HEIKA-2.3.6-24-debug.apk`（21,912,059 bytes，SHA-256 `6208ca0dc995b9b649fa2ac738b9167b5a618222aec828ba77b5a6cba2017f46`）；`HEIKA-2.3.6-24-release-unsigned.apk`（2,713,875 bytes，SHA-256 `4d5fb24e3c39a1bb7926dbebe75533de164520d9982a057c76792a15fe55288a`）。Release APK 未签名，仅供检查。Run #117/#119 是不同的旧 `android/` 工程（版本 2.2.4），没有用作 Native 3.3 产物。
 - Web validation 已通过 `npm run typecheck`、56 项 `npm test` 和 `npm run build`；此前 lint 为 0 error、51 个既有 warning。之后新增的内容删除、管理员和原生路由合同断言下，`npm test` 57 项全通过；`git diff --check` 通过。
 - 本机 Android Gradle 仍因 `services.gradle.org` DNS `UnknownHostException` 无法下载 Gradle 8.11.1；使用 GitHub Actions Runner 构建。当前没有真机、模拟器或测试账号，未完成评论/反馈/屏蔽/删除与管理员角色的线上端到端验收，也未验证共享元素动画的实机帧时间、键盘联动和跨账号隔离。未合并 PR、未部署生产、未发布 APK；Release APK 为 unsigned 检查包。
+
+## Native 3.3 管理工作台与详情页视觉收口
+
+- 在 Native 3.3 最新源码上增量调整管理员中心为“概览数据 → 分组模块 → 管理队列”结构。概览复用 `/api/v1/admin/overview`；没有服务端统计来源的项目不显示虚构数量，模块处理继续使用既有 API 与服务端权限检查。
+- 内容详情顶部标题按内容类型和分类显示；主图扩至屏幕宽度并保持直角，作者行去除多余底色容器，点赞/收藏/分享与评论输入合并到固定底栏，评分、评论、举报和反馈业务保留。
+- 本次提交前 `git diff --check` 通过。环境内存可用约 9.1 GiB、磁盘可用约 5.6 GiB，Gradle 最大堆为 3 GiB，未发现内存不足迹象。
+- 本地 `:app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleRelease` 未能启动：Wrapper 下载 Gradle 8.11.1 时 `services.gradle.org` DNS 返回 `UnknownHostException`；机器没有已安装的 Gradle 发行版。GitHub Actions API 请求返回 `Forbidden`，无法从当前环境触发/检查 Runner 构建。故本次没有声称测试或 APK 构建通过，亦未生成新 APK。真机/模拟器未连接。

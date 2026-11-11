@@ -2,7 +2,6 @@ package com.heika.nativeapp.feature.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,13 +21,25 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Assignment
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.ManageAccounts
+import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.ReportProblem
+import androidx.compose.material.icons.outlined.SettingsSuggest
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,20 +65,24 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
     var pendingKeywordDelete by remember { mutableStateOf<JSONObject?>(null) }
     var pendingAiKeyDelete by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader("管理员中心", onBack, trailing = { androidx.compose.material3.IconButton(onClick = viewModel::refresh) { androidx.compose.material3.Icon(HeikaIcons.Retry, "刷新") } })
-        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            listOf("reports" to "举报处理", "dm-reports" to "私信举报", "posts" to "内容审核", "ai" to "AI 审核", "ai-feedback" to "AI 反馈", "comments" to "评论", "appeals" to "申诉", "users" to "用户治理", "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理", "topic-events" to "话题活动", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 设置").forEach { (key, title) ->
-                Text(title, Modifier.clickable { viewModel.select(key) }.padding(vertical = 12.dp), color = if (state.section == key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, fontWeight = if (state.section == key) FontWeight.SemiBold else FontWeight.Normal)
+        BackHeader(if (state.section == "overview") "管理员中心" else adminSectionTitle(state.section), { if (state.section == "overview") onBack() else viewModel.select("overview") }, trailing = { IconButton(onClick = viewModel::refresh) { Icon(HeikaIcons.Retry, "刷新") } })
+        if (state.section == "overview") {
+            AdminOverview(state = state, onSelect = viewModel::select, onRefresh = viewModel::refresh)
+        } else {
+            Row(Modifier.fillMaxWidth().clickable { viewModel.select("overview") }.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(HeikaIcons.Back, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Text("管理台", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text("·", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(adminSectionTitle(state.section), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
-        }
-        state.error?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
-        state.notice?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
-        if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
-        else if (state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(if (state.error == null) "暂无待处理事项" else "无法读取管理队列", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (state.error != null) TextButton(onClick = viewModel::refresh) { Text("重试") }
-        } else if (state.section in adminConfigSections) AdminConfigPanel(state, viewModel, onPendingAiKeyDelete = { pendingAiKeyDelete = true })
-        else if (state.section == "audit") LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+            state.error?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+            state.notice?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
+            if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+            else if (state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text(if (state.error == null) "暂无待处理事项" else "无法读取管理队列", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (state.error != null) TextButton(onClick = viewModel::refresh) { Text("重试") }
+            } else if (state.section in adminConfigSections) AdminConfigPanel(state, viewModel, onPendingAiKeyDelete = { pendingAiKeyDelete = true })
+            else if (state.section == "audit") LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
             items(state.items, key = { it.optString("id") }) { item ->
                 Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(item.optString("action"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -76,7 +91,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
                     Text(item.optString("created_at"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 }
             }
-        } else if (state.section == "keywords") LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+            } else if (state.section == "keywords") LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = keywordDraft, onValueChange = { keywordDraft = it.take(80) }, modifier = Modifier.weight(1f), label = { Text("新增拦截词") }, singleLine = true)
@@ -94,7 +109,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
                     TextButton(enabled = state.saving == null, onClick = { pendingKeywordDelete = item }) { Text("删除", color = MaterialTheme.colorScheme.error) }
                 }
             }
-        } else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
+            } else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 8.dp)) {
             items(state.items, key = { it.optString("id") }) { item ->
                 AdminQueueItem(
                     item, state.section, state.saving == item.optString("id"),
@@ -103,6 +118,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
                     onUserMembership = viewModel::setUserMembership,
                 )
             }
+        }
         }
     }
     pendingKeywordDelete?.let { rule ->
@@ -121,6 +137,133 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
         confirmButton = { TextButton(onClick = { pendingAiKeyDelete = false; viewModel.deleteAiKey() }) { Text("删除") } },
         dismissButton = { TextButton(onClick = { pendingAiKeyDelete = false }) { Text("取消") } },
     )
+}
+
+private data class AdminModuleSpec(val key: String, val title: String, val detail: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val countKey: String? = null)
+private data class AdminModuleGroup(val title: String, val modules: List<AdminModuleSpec>)
+
+private val adminModuleGroups = listOf(
+    AdminModuleGroup("审核与举报", listOf(
+        AdminModuleSpec("posts", "作品审核", "新投稿与已发布作品的修改", Icons.Outlined.Assignment, "pending"),
+        AdminModuleSpec("reports", "内容举报", "查看并处理作品与评论举报", Icons.Outlined.Flag),
+        AdminModuleSpec("dm-reports", "私信举报", "处理用户提交的私信举报", Icons.Outlined.ChatBubbleOutline),
+        AdminModuleSpec("appeals", "申诉处理", "复核内容、账号与举报申诉", Icons.Outlined.Policy),
+    )),
+    AdminModuleGroup("社区治理", listOf(
+        AdminModuleSpec("comments", "评论管理", "搜索、隐藏或恢复评论", Icons.Outlined.ChatBubbleOutline),
+        AdminModuleSpec("keywords", "关键词规则", "管理发布与互动拦截规则", Icons.Outlined.Tag),
+        AdminModuleSpec("topic-events", "话题共创", "创建和管理社区共创活动", Icons.Outlined.Groups),
+        AdminModuleSpec("audit", "操作记录", "查看管理员处理历史", Icons.Outlined.Gavel),
+    )),
+    AdminModuleGroup("账号与工具", listOf(
+        AdminModuleSpec("users", "账号管理", "角色、会员与社区发言限制", Icons.Outlined.ManageAccounts),
+        AdminModuleSpec("user-feedback", "用户反馈", "查看并处理用户意见", Icons.Outlined.ReportProblem),
+    )),
+    AdminModuleGroup("AI 内容运营", listOf(
+        AdminModuleSpec("ai", "AI 资源审核", "审核 AI 专区内容", Icons.Outlined.SmartToy),
+        AdminModuleSpec("ai-feedback", "AI 资源反馈", "处理资源失效与内容反馈", Icons.Outlined.ReportProblem),
+        AdminModuleSpec("categories", "分类管理", "维护社区与 AI 分类", Icons.Outlined.Tag),
+        AdminModuleSpec("ai-settings", "AI 工作台", "配置服务端 AI 能力", Icons.Outlined.SettingsSuggest),
+    )),
+    AdminModuleGroup("运营配置", listOf(
+        AdminModuleSpec("recommendation-settings", "推荐配置", "设置每日内容来源配比", Icons.Outlined.SettingsSuggest),
+    )),
+)
+
+private val adminSectionNames = mapOf(
+    "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
+    "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
+    "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台",
+)
+private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
+
+@Composable
+private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, onRefresh: () -> Unit) {
+    val overview = state.overview
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 14.dp),
+    ) {
+        item {
+            Text("管理后台", color = MaterialTheme.colorScheme.onBackground, fontSize = 25.sp, fontWeight = FontWeight.SemiBold)
+            Text("按工作模块进入审核与管理，待处理事项优先显示。", Modifier.padding(top = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        }
+        if (state.loading && overview == null) item {
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+        }
+        if (state.error != null) item {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
+                Text("概览加载失败", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                Text("请检查管理员权限或网络连接。", Modifier.padding(top = 3.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                TextButton(onClick = onRefresh) { Text("重试") }
+            }
+        }
+        if (overview != null) {
+            val metrics = listOf(
+                "usersToday" to "今日新增用户", "postsToday" to "今日发布作品", "pending" to "待审核内容",
+                "pendingReports" to "待处理举报", "aiResources" to "已发布 AI 资源", "views" to "累计阅读量", "likes" to "累计点赞",
+                "saves" to "累计收藏", "comments" to "可见评论",
+            )
+            items(metrics.chunked(2)) { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { (key, label) ->
+                        val value = overview.opt(key)
+                        AdminMetric(label, if (value == null || value == JSONObject.NULL) "—" else value.toString(), Modifier.weight(1f))
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("管理模块", color = MaterialTheme.colorScheme.onBackground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                    Text("按职责分组", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
+                TextButton(onClick = onRefresh) { Icon(HeikaIcons.Retry, null, modifier = Modifier.size(16.dp)); Text("刷新", Modifier.padding(start = 5.dp)) }
+            }
+        }
+        adminModuleGroups.forEach { group ->
+            item(key = "group-${group.title}") {
+                Text(group.title, Modifier.padding(top = 4.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+            items(group.modules, key = { "module-${it.key}" }) { module ->
+                AdminModuleRow(module, overview, onClick = { onSelect(module.key) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminMetric(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun AdminModuleRow(module: AdminModuleSpec, overview: JSONObject?, onClick: () -> Unit) {
+    val count = module.countKey?.let { key -> overview?.optInt(key)?.takeIf { overview.has(key) } }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(module.icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(9.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(module.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(module.detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            if (count != null) Text(if (count == 0) "暂无待处理" else "$count 项待处理", color = if (count == 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+        }
+        Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+    }
 }
 
 private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings")
@@ -258,9 +401,10 @@ private fun AdminQueueItem(
 }
 
 data class AdminCenterState(
-    val section: String = "reports",
+    val section: String = "overview",
     val items: List<JSONObject> = emptyList(),
     val metadata: JSONObject? = null,
+    val overview: JSONObject? = null,
     val loading: Boolean = true,
     val saving: String? = null,
     val error: String? = null,
@@ -274,12 +418,16 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var generation = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
     fun refresh() = viewModelScope.launch {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, error = null, notice = null)
         try {
-            repository.adminOverview() // server authorization is checked on every admin request
+            val overview = repository.adminOverview() // server authorization is checked on every admin request
+            if (mutableState.value.section == "overview") {
+                if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, loading = false)
+                return@launch
+            }
             val result = when (mutableState.value.section) {
                 "posts" -> repository.adminPosts(); "ai" -> repository.adminAiQueue(); "ai-feedback" -> repository.adminAiFeedback(); "comments" -> repository.adminComments()
                 "dm-reports" -> repository.adminMessageReports(); "appeals" -> repository.adminAppeals(); "users" -> repository.adminUsers()
@@ -288,7 +436,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
                 "recommendation-settings" -> repository.adminRecommendationSettings(); "ai-settings" -> repository.adminAiSettings()
                 else -> repository.adminReports()
             }
-            if (requestId == generation) mutableState.value = mutableState.value.copy(items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), metadata = result, loading = false)
+            if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), metadata = result, loading = false)
         } catch (error: Exception) {
             if (requestId == generation) mutableState.value = mutableState.value.copy(loading = false, error = "管理员权限不足或队列加载失败，请重试")
         }
