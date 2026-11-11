@@ -1,8 +1,8 @@
 @file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 
-import com.heika.nativeapp.ui.HeikaIcons
 package com.heika.nativeapp.feature.search
 
+import com.heika.nativeapp.ui.HeikaIcons
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
