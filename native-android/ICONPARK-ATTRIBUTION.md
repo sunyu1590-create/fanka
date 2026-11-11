@@ -6,3 +6,5 @@
 - Android assets: `app/src/main/res/drawable/ic_ip_*.xml`
 
 Selected IconPark SVG assets were converted to Android Vector Drawable XML for bundled, tintable use. Converted assets are identified by the `ic_ip_` prefix.
+
+The app's shared `HeikaIconRes` and `HeikaIcons` catalog maps screen and action icons to these resources. The current bundle contains 119 converted vector assets; tinting is supplied by the active UI theme.
