@@ -174,4 +174,5 @@
 - 在 versionCode 25 的源码上增加私信列表页签、会话本地搜索、未读筛选、未读总数和通知入口；聊天详情展示联系人头像/主页入口、按日分隔的消息、时间和底部 IME 联动。保留既有消息 API、轮询、分页、发送幂等与失败重试。仓库没有置顶状态/API 和私信媒体上传接口，因此不显示虚假的置顶或附件操作。
 - 个人主页等级徽标使用实际等级；今日任务领取摘要从既有 `/api/v1/daily-missions` 读取，探索中心仍展示真实等级、EXP 和连续天数；任务接口失败时显示查看入口，不伪造数字。
 - 用户提供的 SVG 压缩包内 116 个图标已转换为 Android Vector Drawable，公共 `HeikaIcons` 入口映射至包内图标；资源没有星形或书签图案，这两类保留现有 Material 矢量图标。Android versionCode 从 25 升至 26。
-- 本节构建与测试状态待本轮 GitHub Actions 验证；未进行真机/模拟器交互验证。
+- GitHub Actions Run #90 成功（2026-11-11）：Kotlin 单元测试、Android Lint、Debug APK 与 unsigned Release APK 均通过；源码 SHA 为 `1eb9e4f9ad27a3951dfd8ba3a322619145206e86`，versionCode 26。Artifact `HEIKA-Native-3-v1eb9e4f9ad27a3951dfd8ba3a322619145206e86`（23,777,697 bytes，SHA-256 `6504bd9d5c0929034f177df2cc5be764a2e7ebaade23fcec1a8d58a277c1429f`）：[Run #90](https://github.com/sunyu1590-create/fanka/actions/runs/43039709150)。
+- 本地 Gradle Wrapper 仍因 `services.gradle.org` DNS 失败无法启动；CI Runner 已完成全部构建。未进行真机/模拟器交互验证。SVG 压缩包未附许可文件，本次按用户提供资产接入，未据此作出图标库再分发许可声明。
