@@ -46,6 +46,7 @@ private fun JSONObject.toNativeComment(): NativeComment {
 
 data class PostDetailState(
     val post: HeikaPost? = null,
+    val currentUserId: String? = null,
     val comments: List<NativeComment> = emptyList(),
     val commentsLoading: Boolean = false,
     val commentsError: String? = null,
@@ -76,6 +77,7 @@ data class PostDetailState(
     val aiVersionsError: String? = null,
     val aiFeedbackSending: Boolean = false,
     val aiFeedbackSubmitted: Boolean = false,
+    val operationSending: Boolean = false,
 )
 
 @HiltViewModel
@@ -237,11 +239,12 @@ class PostDetailViewModel @Inject constructor(
     }
 
     private fun loadInteractions(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch {
-        val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
+        val currentUserId = runCatching { auth.current()?.userId }.getOrNull()
+        val signedIn = currentUserId != null
         val state = runCatching { repository.interactionState(post.id) }.getOrDefault(JSONObject())
         val rating = runCatching { repository.ratingState(post.id) }.getOrDefault(JSONObject())
         if (version != requestVersion) return@launch
-        mutableState.update { it.copy(liked = signedIn && state.optBoolean("liked"), saved = signedIn && state.optBoolean("saved"), rating = rating.optInt("myRating").takeIf { value -> value in 1..5 }, average = rating.optDouble("average").takeIf { value -> value > 0 }, ratingCount = rating.optInt("count")) }
+        mutableState.update { it.copy(currentUserId = currentUserId, liked = signedIn && state.optBoolean("liked"), saved = signedIn && state.optBoolean("saved"), rating = rating.optInt("myRating").takeIf { value -> value in 1..5 }, average = rating.optDouble("average").takeIf { value -> value > 0 }, ratingCount = rating.optInt("count")) }
         val authorId = post.authorId
         if (signedIn && authorId != null) {
             runCatching { repository.creatorFollowState(authorId) }.onSuccess { follow -> if (version == requestVersion) mutableState.update { it.copy(following = follow.optBoolean("following")) } }
@@ -327,6 +330,59 @@ class PostDetailViewModel @Inject constructor(
         }
         runCatching { repository.toggleCreatorFollow(id) }.onSuccess { result -> if (version == requestVersion) mutableState.update { it.copy(following = result.optBoolean("following"), followSending = false, notice = if (result.optBoolean("following")) "已关注" else "已取消关注") } }
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(followSending = false, notice = "关注失败，请重试") } }
+    }
+
+    fun reportComment(commentId: String, reason: String, note: String = "") = viewModelScope.launch {
+        if (mutableState.value.operationSending) return@launch
+        val version = requestVersion
+        mutableState.update { it.copy(operationSending = true, notice = null) }
+        runCatching { repository.reportPost("", reason, note, commentId) }
+            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "举报已提交") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "举报失败，请重试") } }
+    }
+
+    fun deleteComment(commentId: String) = viewModelScope.launch {
+        if (mutableState.value.operationSending) return@launch
+        val version = requestVersion
+        val old = mutableState.value.comments
+        if (old.none { it.id == commentId }) return@launch
+        mutableState.update { it.copy(operationSending = true, comments = old.filterNot { comment -> comment.id == commentId }) }
+        runCatching { repository.deleteComment(commentId) }
+            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "评论已删除") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, comments = old, notice = "删除失败，请重试") } }
+    }
+
+    fun muteAuthor() = viewModelScope.launch {
+        val post = mutableState.value.post ?: return@launch
+        val authorId = post.authorId ?: run { mutableState.update { it.copy(notice = "作者信息暂不可用") }; return@launch }
+        if (mutableState.value.operationSending) return@launch
+        val version = requestVersion
+        mutableState.update { it.copy(operationSending = true, notice = null) }
+        runCatching { repository.muteRecommendationAuthor(authorId) }
+            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "已减少此作者的推荐") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "操作失败，请重试") } }
+    }
+
+    fun blockAuthor() = viewModelScope.launch {
+        val post = mutableState.value.post ?: return@launch
+        val authorId = post.authorId ?: run { mutableState.update { it.copy(notice = "作者信息暂不可用") }; return@launch }
+        if (mutableState.value.operationSending) return@launch
+        val version = requestVersion
+        mutableState.update { it.copy(operationSending = true, notice = null) }
+        runCatching { repository.blockAccount(authorId) }
+            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "已屏蔽作者") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "屏蔽失败，请重试") } }
+    }
+
+    fun showNotice(message: String) { mutableState.update { it.copy(notice = message) } }
+
+    fun submitContentFeedback(category: String, message: String) = viewModelScope.launch {
+        if (mutableState.value.operationSending) return@launch
+        val version = requestVersion
+        mutableState.update { it.copy(operationSending = true, notice = null) }
+        runCatching { repository.submitFeedback(category, message) }
+            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "反馈已提交") } }
+            .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "反馈提交失败，请重试") } }
     }
 
     fun comment(body: String, parentId: String? = null) = viewModelScope.launch {

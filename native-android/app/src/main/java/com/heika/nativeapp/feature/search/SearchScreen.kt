@@ -74,6 +74,9 @@ fun SearchScreen(
     onBack: () -> Unit,
     onPost: (HeikaPost) -> Unit,
     onProfile: (String) -> Unit,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
+    sharedElementsEnabled: Boolean = false,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -150,7 +153,7 @@ fun SearchScreen(
                 CircularProgressIndicator(Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
             }
         } else {
-            SearchResults(state, onPost, onProfile, viewModel::setKind, viewModel::submitTopicSearch, viewModel::loadMore)
+            SearchResults(state, onPost, onProfile, viewModel::setKind, viewModel::submitTopicSearch, viewModel::loadMore, sharedTransitionScope, animatedVisibilityScope, sharedElementsEnabled)
         }
     }
 }
@@ -259,6 +262,9 @@ private fun SearchResults(
     onKind: (String) -> Unit,
     onTopicSearch: (String) -> Unit,
     onLoadMore: () -> Unit,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope?,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope?,
+    sharedElementsEnabled: Boolean,
 ) {
     when (state.kind) {
         "content", "ai" -> {
@@ -276,7 +282,7 @@ private fun SearchResults(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalItemSpacing = 15.dp,
             ) {
-                items(posts, key = { "search-${state.kind}-${it.cloudId}" }) { post -> FeedCard(post, onClick = { onPost(post) }) }
+                items(posts, key = { "search-${state.kind}-${it.cloudId}" }) { post -> FeedCard(post, onClick = { onPost(post) }, sharedTransitionScope = sharedTransitionScope, animatedVisibilityScope = animatedVisibilityScope, sharedElementsEnabled = sharedElementsEnabled) }
                 item(span = StaggeredGridItemSpan.FullLine) {
                     SearchGridFooter(state, posts.isEmpty(), onLoadMore)
                 }
@@ -314,12 +320,12 @@ private fun SearchResults(
                 if (communityRows.isNotEmpty()) {
                     item(key = "content-heading") { ResultSectionHeader("内容", state.posts.size) { onKind("content") } }
                     itemsIndexed(communityRows, key = { _, row -> "all-post-${row.first().cloudId}" }) { _, row ->
-                        FeedCardPair(row, onPost)
+                        FeedCardPair(row, onPost, sharedTransitionScope, animatedVisibilityScope, sharedElementsEnabled)
                     }
                 }
                 if (aiRows.isNotEmpty()) {
                     item(key = "ai-heading") { ResultSectionHeader("AI 资源", state.aiPosts.size) { onKind("ai") } }
-                    itemsIndexed(aiRows, key = { _, row -> "all-ai-${row.first().cloudId}" }) { _, row -> FeedCardPair(row, onPost) }
+                    itemsIndexed(aiRows, key = { _, row -> "all-ai-${row.first().cloudId}" }) { _, row -> FeedCardPair(row, onPost, sharedTransitionScope, animatedVisibilityScope, sharedElementsEnabled) }
                 }
                 if (state.people.isNotEmpty()) {
                     item(key = "people-heading") { ResultSectionHeader("用户", state.people.size) { onKind("people") } }
@@ -334,10 +340,10 @@ private fun SearchResults(
 }
 
 @Composable
-private fun FeedCardPair(posts: List<HeikaPost>, onPost: (HeikaPost) -> Unit) {
+private fun FeedCardPair(posts: List<HeikaPost>, onPost: (HeikaPost) -> Unit, sharedTransitionScope: androidx.compose.animation.SharedTransitionScope?, animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope?, sharedElementsEnabled: Boolean) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-        FeedCard(posts[0], onClick = { onPost(posts[0]) }, modifier = Modifier.weight(1f))
-        if (posts.size > 1) FeedCard(posts[1], onClick = { onPost(posts[1]) }, modifier = Modifier.weight(1f))
+        FeedCard(posts[0], onClick = { onPost(posts[0]) }, modifier = Modifier.weight(1f), sharedTransitionScope = sharedTransitionScope, animatedVisibilityScope = animatedVisibilityScope, sharedElementsEnabled = sharedElementsEnabled)
+        if (posts.size > 1) FeedCard(posts[1], onClick = { onPost(posts[1]) }, modifier = Modifier.weight(1f), sharedTransitionScope = sharedTransitionScope, animatedVisibilityScope = animatedVisibilityScope, sharedElementsEnabled = sharedElementsEnabled)
         else Spacer(Modifier.weight(1f))
     }
 }

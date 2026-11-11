@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -71,6 +72,7 @@ import com.heika.nativeapp.feature.MembershipScreen
 import com.heika.nativeapp.feature.settings.AboutScreen
 import com.heika.nativeapp.feature.settings.SettingsScreen
 import com.heika.nativeapp.feature.settings.SettingsDetailScreen
+import com.heika.nativeapp.feature.settings.AdminCenterScreen
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -83,6 +85,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
         val hazeState = rememberHazeState()
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
+        val sharedPosts = remember { mutableStateMapOf<String, HeikaPost>() }
         var homePreviewActive by remember { mutableStateOf(false) }
         val navigationBlur by animateDpAsState(if (homePreviewActive) 22.dp else 0.dp, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing), label = "navigation-focus-blur")
         var chatConversationOpen by remember { mutableStateOf(false) }
@@ -100,6 +103,14 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     is DestinationTarget.Native -> nav.navigate(target.route) { launchSingleTop = true }
                     is DestinationTarget.Invalid -> nav.navigate("destination-error?message=${Uri.encode(target.message)}")
                 }
+            }
+        }
+        val openPost: (HeikaPost) -> Unit = remember(nav, sharedPosts) {
+            { post ->
+                val key = post.cloudId.ifBlank { "client-${post.id}" }.lowercase()
+                sharedPosts[key] = post
+                if (sharedPosts.size > 80) sharedPosts.keys.firstOrNull { it != key }?.let(sharedPosts::remove)
+                openDestination(post.destination())
             }
         }
         Box(
@@ -162,15 +173,18 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     HomeScreen(
                         onSearch = { openDestination(HeikaDestination.Search) },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
-                        onPost = { post -> openDestination(post.destination()) },
+                        onPost = openPost,
                         onPreviewActive = { homePreviewActive = it },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                     )
                 }
                 composable("discovery") {
                     DiscoveryScreen(
                         onSearch = { openDestination(HeikaDestination.Search) },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
-                        onPost = { post -> openDestination(post.destination()) },
+                        onPost = openPost,
                         hazeState = hazeState,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
@@ -190,7 +204,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     ProfileScreen(
                         userId = null,
                         onBack = { nav.popBackStack() },
-                        onPost = { post -> openDestination(post.destination()) },
+                        onPost = openPost,
                         onDraft = { post -> nav.navigate("publish?channel=${post.channel}&draftId=${post.id}") },
                         onSettings = { openDestination(HeikaDestination.Settings) },
                         onMembership = { openDestination(HeikaDestination.Membership) },
@@ -199,14 +213,20 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         onEditProfile = { nav.navigate("edit-profile") },
                         onExplore = { nav.navigate("exploration") },
                         onManageWorks = { nav.navigate("manage-works") },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                         viewModel = profileViewModel,
                     )
                 }
                 composable("search") {
                     SearchScreen(
                         onBack = { nav.popBackStack() },
-                        onPost = { post -> openDestination(post.destination()) },
+                        onPost = openPost,
                         onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                     )
                 }
                 composable(
@@ -214,6 +234,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     arguments = listOf(navArgument("postKey") { type = NavType.StringType }),
                 ) { entry ->
                     PostDetailScreen(
+                        post = entry.arguments?.getString("postKey")?.let(sharedPosts::get),
                         postKey = entry.arguments?.getString("postKey"),
                         onBack = { nav.popBackStack() },
                         onAuthor = { id -> openDestination(HeikaDestination.UserProfile(id)) },
@@ -232,12 +253,15 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     ProfileScreen(
                         userId = entry.arguments?.getString("userId"),
                         onBack = { nav.popBackStack() },
-                        onPost = { post -> openDestination(post.destination()) },
+                        onPost = openPost,
                         onDraft = { post -> nav.navigate("publish?channel=${post.channel}&draftId=${post.id}") },
                         onSettings = { openDestination(HeikaDestination.Settings) },
                         onMembership = { openDestination(HeikaDestination.Membership) },
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
                         onLogin = { nav.navigate("account") },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                     )
                 }
                 composable(
@@ -276,7 +300,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         channel = entry.arguments?.getString("channel") ?: "community",
                         onPublished = { post ->
                             nav.popBackStack()
-                            openDestination(post.destination())
+                            openPost(post)
                         },
                     )
                 }
@@ -299,7 +323,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                 composable("settings") {
                     SettingsScreen(
                         onBack = { nav.popBackStack() },
-                        onSection = { section -> if (section == "about") nav.navigate("about") else nav.navigate("settings/$section") },
+                        onSection = { section -> when (section) { "about" -> nav.navigate("about"); "admin" -> nav.navigate("admin"); else -> nav.navigate("settings/$section") } },
                     )
                 }
                 composable(
@@ -322,6 +346,9 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     val profileEntry = remember(currentEntry) { nav.getBackStackEntry("profile") }
                     val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(profileEntry)
                     EditProfileScreen(onBack = { nav.popBackStack() }, viewModel = profileViewModel)
+                }
+                composable("admin") {
+                    AdminCenterScreen(onBack = { nav.popBackStack() })
                 }
                 composable("exploration") {
                     ExplorationCenterScreen(

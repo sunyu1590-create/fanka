@@ -81,6 +81,10 @@ import com.heika.nativeapp.ui.HeikaPalette
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import com.heika.nativeapp.ui.heikaSharedPostImage
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.AnimatedVisibilityScope
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
@@ -88,11 +92,15 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
 @Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
 fun HomeScreen(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
     onPost: (HeikaPost) -> Unit,
     onPreviewActive: (Boolean) -> Unit = {},
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    sharedElementsEnabled: Boolean = false,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -200,6 +208,9 @@ fun HomeScreen(
                 onOpenDetails = { state.posts[selected.id]?.let(onPost) },
                 onDismiss = { preview = null },
                 hazeState = previewHaze,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+                sharedElementsEnabled = sharedElementsEnabled,
             )
         }
     }
@@ -243,6 +254,7 @@ private fun FlipCard(cardId: Int, number: Int, post: HeikaPost?, opened: Boolean
 }
 
 @Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
 private fun FlipPreviewOverlay(
     preview: DailyCardPreview,
     containerWidth: androidx.compose.ui.unit.Dp,
@@ -258,6 +270,9 @@ private fun FlipPreviewOverlay(
     onOpenDetails: () -> Unit,
     onDismiss: () -> Unit,
     hazeState: dev.chrisbanes.haze.HazeState,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    sharedElementsEnabled: Boolean,
 ) {
     val progress = remember(preview.id) { Animatable(0f) }
     val rotation = remember(preview.id) { Animatable(0f) }
@@ -374,6 +389,9 @@ private fun FlipPreviewOverlay(
                     rarityPhase = rarityPhase,
                     onOpenDetails = onOpenDetails,
                     modifier = Modifier.graphicsLayer { rotationY = 180f },
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    sharedElementsEnabled = sharedElementsEnabled,
                 )
             }
         }
@@ -434,12 +452,16 @@ private fun PreviewCardBack(
 }
 
 @Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
 private fun PreviewCardFront(
     post: HeikaPost?,
     alpha: Float,
     enabled: Boolean,
     rarityPhase: Boolean,
     onOpenDetails: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    sharedElementsEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val revealBlur by androidx.compose.animation.core.animateFloatAsState(
@@ -452,11 +474,14 @@ private fun PreviewCardFront(
         val image = post?.thumbnail
         Box(Modifier.fillMaxWidth().weight(0.60f).background(MaterialTheme.colorScheme.surfaceVariant)) {
             if (image != null && post != null) {
+                val shared = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) with(sharedTransitionScope) {
+                    Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, post.cloudId.ifBlank { post.id.toString() }, isDetail = false, enabled = true)
+                } else Modifier
                 AsyncImage(
                     model = imageRequest(image, post.cloudId, 0),
                     contentDescription = post.title,
                     imageLoader = LocalHeikaImageLoader.current,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(shared),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 )
             } else {

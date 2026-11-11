@@ -23,6 +23,9 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -51,6 +54,9 @@ object HeikaIcons {
     val Share: ImageVector = Icons.Outlined.Share
     val Report: ImageVector = Icons.Outlined.Flag
     val Settings: ImageVector = Icons.Outlined.Settings
+    val More: ImageVector = Icons.Outlined.MoreVert
+    val Copy: ImageVector = Icons.Outlined.ContentCopy
+    val Block: ImageVector = Icons.Outlined.Block
     val Calendar: ImageVector = Icons.Outlined.CalendarMonth
     val CoExplore: ImageVector = Icons.Outlined.PeopleOutline
     val Retry: ImageVector = Icons.Outlined.Refresh

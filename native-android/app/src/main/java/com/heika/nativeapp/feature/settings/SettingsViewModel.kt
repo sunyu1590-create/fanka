@@ -44,6 +44,10 @@ class SettingsViewModel @Inject constructor(
     val privacyLoading = mutablePrivacyLoading.asStateFlow()
     private val mutablePrivacyError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     val privacyError = mutablePrivacyError.asStateFlow()
+    private val mutablePrivacyData = kotlinx.coroutines.flow.MutableStateFlow<org.json.JSONObject?>(null)
+    val privacyData = mutablePrivacyData.asStateFlow()
+    private val mutableAdminAccess = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
+    val adminAccess = mutableAdminAccess.asStateFlow()
     private var activeUserId: String? = null
     private var notificationSettingsLoadedFor: String? = null
     private var privacySettingsLoadedFor: String? = null
@@ -67,8 +71,17 @@ class SettingsViewModel @Inject constructor(
                     mutablePrivacyLoading.value = false
                     mutableCommentsEnabled.value = null
                     mutableBookmarksVisible.value = null
+                    mutablePrivacyData.value = null
                     mutableNotificationError.value = null
                     mutablePrivacyError.value = null
+                    mutableAdminAccess.value = null
+                    if (session != null) {
+                        val userId = session.userId
+                        viewModelScope.launch {
+                            val allowed = runCatching { repository.adminOverview(); true }.getOrDefault(false)
+                            if (auth.current()?.userId == userId) mutableAdminAccess.value = allowed
+                        }
+                    }
                 }
             }
         }
@@ -109,15 +122,11 @@ class SettingsViewModel @Inject constructor(
         val requestId = ++privacyRequestGeneration
         privacyRequestUserId = userId
         mutablePrivacyLoading.value = true
-        val cached = runCatching { repository.cachedMyProfile(userId) }.getOrNull()
-        if (requestId == privacyRequestGeneration && auth.current()?.userId == userId) cached?.let { data ->
-            val profile = data.optJSONObject("profile") ?: data
-            mutableBookmarksVisible.value = profile.optBoolean("show_bookmarks")
-        }
         try {
-            val data = repository.myProfile()
+            val data = repository.accountPrivacy()
             if (requestId == privacyRequestGeneration && auth.current()?.userId == userId) {
-                mutableBookmarksVisible.value = (data.optJSONObject("profile") ?: data).optBoolean("show_bookmarks")
+                mutablePrivacyData.value = data
+                mutableBookmarksVisible.value = data.optBoolean("show_bookmarks")
                 privacySettingsLoadedFor = userId
                 mutablePrivacyError.value = null
             }
@@ -137,19 +146,36 @@ class SettingsViewModel @Inject constructor(
         if (auth.restore() == null) { mutablePrivacyError.value = "登录后管理账号隐私偏好"; return@launch }
         val previous = mutableBookmarksVisible.value ?: return@launch
         mutableBookmarksVisible.value = value
-        runCatching { repository.updateBookmarksVisibility(value) }
+        mutablePrivacyData.value = org.json.JSONObject((mutablePrivacyData.value ?: org.json.JSONObject()).toString()).put("show_bookmarks", value)
+        runCatching { repository.updateAccountPrivacy(org.json.JSONObject().put("show_bookmarks", value)) }
             .onSuccess { result ->
-                mutableBookmarksVisible.value = (result.optJSONObject("profile") ?: result).optBoolean("show_bookmarks", value)
+                mutableBookmarksVisible.value = result.optBoolean("show_bookmarks", value)
                 mutablePrivacyError.value = null
-                auth.current()?.userId?.let { id ->
-                    runCatching { repository.cachedMyProfile(id) }.getOrNull()?.let { cached ->
-                        val profile = cached.optJSONObject("profile") ?: return@let
-                        profile.put("show_bookmarks", value)
-                        repository.saveMyProfileCache(id, cached)
-                    }
-                }
+                mutablePrivacyData.value = org.json.JSONObject((mutablePrivacyData.value ?: org.json.JSONObject()).toString()).put("show_bookmarks", result.optBoolean("show_bookmarks", value))
             }
-            .onFailure { mutableBookmarksVisible.value = previous; mutablePrivacyError.value = it.message ?: "隐私偏好保存失败" }
+            .onFailure { mutableBookmarksVisible.value = previous; mutablePrivacyData.value = mutablePrivacyData.value?.let { org.json.JSONObject(it.toString()).put("show_bookmarks", previous) }; mutablePrivacyError.value = "隐私偏好保存失败，请重试" }
+    }
+
+    fun setNotesPrivate(value: Boolean) = updatePrivacyValue("notes_private", value)
+    fun setDmPermission(value: String) = updatePrivacyValue("dm_permission", value)
+
+    private fun updatePrivacyValue(key: String, value: Any) = viewModelScope.launch {
+        if (auth.restore() == null) { mutablePrivacyError.value = "登录后管理账号隐私偏好"; return@launch }
+        val before = mutablePrivacyData.value?.opt(key)
+        mutablePrivacyData.value = org.json.JSONObject((mutablePrivacyData.value ?: org.json.JSONObject()).toString()).put(key, value)
+        runCatching { repository.updateAccountPrivacy(org.json.JSONObject().put(key, value)) }
+            .onSuccess { mutablePrivacyData.value = org.json.JSONObject((mutablePrivacyData.value ?: org.json.JSONObject()).toString()).put(key, value); mutablePrivacyError.value = null }
+            .onFailure { if (before != null && before !== org.json.JSONObject.NULL) mutablePrivacyData.value = mutablePrivacyData.value?.let { org.json.JSONObject(it.toString()).put(key, before) }; mutablePrivacyError.value = "隐私偏好保存失败，请重试" }
+    }
+
+    fun unblockAccount(userId: String) = viewModelScope.launch {
+        val current = mutablePrivacyData.value ?: return@launch
+        val rows = current.optJSONArray("blocked") ?: org.json.JSONArray()
+        val previous = current.toString()
+        mutablePrivacyData.value = org.json.JSONObject(previous).put("blocked", org.json.JSONArray((0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.filterNot { it.optString("id") == userId }))
+        runCatching { repository.unblockAccount(userId) }
+            .onFailure { mutablePrivacyData.value = org.json.JSONObject(previous); mutablePrivacyError.value = "解除屏蔽失败，请重试" }
+            .onSuccess { mutablePrivacyError.value = null }
     }
 
     fun setCommentsEnabled(value: Boolean) = viewModelScope.launch {

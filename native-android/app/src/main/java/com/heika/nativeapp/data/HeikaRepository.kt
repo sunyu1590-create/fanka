@@ -277,13 +277,99 @@ class HeikaRepository @Inject constructor(
         JSONObject().put("liked", liked)
     }
 
-    suspend fun reportPost(postId: String, reason: String, note: String): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun reportPost(postId: String, reason: String, note: String, commentId: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(postId) || (commentId != null && isUuid(commentId))) { "举报对象无效" }
+        require(commentId == null || isUuid(commentId)) { "评论编号无效" }
+        require(commentId != null || isUuid(postId)) { "内容编号无效" }
+        val payload = JSONObject().put("reason", reason).put("note", note.take(300))
+        if (commentId == null) payload.put("post_id", postId) else payload.put("comment_id", commentId)
         request(
             "/api/v1/reports",
             method = "POST",
-            body = JSONObject().put("post_id", postId).put("reason", reason).put("note", note.take(300)).toString(),
+            body = payload.toString(),
             authenticated = true,
         ) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun muteRecommendationAuthor(authorId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(authorId)) { "作者编号无效" }
+        request("/api/v1/recommendation-feedback", method = "POST", body = JSONObject().put("action", "mute_author").put("authorId", authorId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun deleteComment(commentId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(commentId)) { "评论编号无效" }
+        request("/api/v1/comments/${encode(commentId)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminOverview(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/overview", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminReports(status: String = "open", page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        require(status in setOf("open", "resolved", "dismissed", "all"))
+        request("/api/v1/admin/reports?status=$status&page=${page.coerceAtLeast(1)}&limit=20", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun reviewAdminReport(id: String, resolved: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && note.trim().length in 3..500)
+        request("/api/v1/admin/reports/${encode(id)}", method = "PATCH", body = JSONObject().put("status", if (resolved) "resolved" else "dismissed").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminPosts(page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/posts?page=${page.coerceAtLeast(1)}&limit=20", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAiQueue(page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/ai-space?status=queue&page=${page.coerceAtLeast(1)}&limit=20", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun reviewAdminAi(id: String, publish: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && note.trim().length in 3..500)
+        request("/api/v1/admin/ai-space/${encode(id)}", method = "PATCH", body = JSONObject().put("status", if (publish) "published" else "hidden").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAppeals(page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/appeals?status=open&page=${page.coerceAtLeast(1)}&limit=20", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun reviewAdminAppeal(id: String, accepted: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && note.trim().length in 3..500)
+        request("/api/v1/admin/appeals", method = "PATCH", body = JSONObject().put("id", id).put("status", if (accepted) "accepted" else "rejected").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminUsers(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/users?limit=30", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun setAdminUserRestriction(id: String, active: Boolean, reason: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && reason.trim().length in 3..500)
+        val restriction = if (active) JSONObject().put("active", true).put("reason", reason.trim()).put("permanent", true) else JSONObject().put("active", false)
+        request("/api/v1/admin/users/${encode(id)}", method = "PATCH", body = JSONObject().put("community_restriction", restriction).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminComments(page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/comments?status=all&page=${page.coerceAtLeast(1)}&limit=30", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun setAdminCommentVisible(id: String, visible: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id))
+        val payload = JSONObject().put("status", if (visible) "visible" else "hidden")
+        if (note.trim().length >= 3) payload.put("review_note", note.trim().take(500))
+        request("/api/v1/admin/comments/${encode(id)}", method = "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAiFeedback(page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/ai-space?status=feedback&feedbackStatus=open&page=${page.coerceAtLeast(1)}&limit=20", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun handleAdminAiFeedback(id: String, resolved: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && note.trim().length in 3..500)
+        request("/api/v1/admin/ai-space/feedback/${encode(id)}", method = "PATCH", body = JSONObject().put("status", if (resolved) "resolved" else "dismissed").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun reviewAdminPost(id: String, publish: Boolean, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && note.trim().length in 3..500)
+        request("/api/v1/admin/posts/${encode(id)}", method = "PATCH", body = JSONObject().put("status", if (publish) "published" else "hidden").put("review_note", note.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun setPostInteraction(id: Int, action: String, value: Boolean): JSONObject = withContext(Dispatchers.IO) {
@@ -326,6 +412,24 @@ class HeikaRepository @Inject constructor(
 
     suspend fun updateBookmarksVisibility(visible: Boolean): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/me", method = "PATCH", body = JSONObject().put("show_bookmarks", visible).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun accountPrivacy(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me/privacy", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun updateAccountPrivacy(values: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me/privacy", method = "PATCH", body = values.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun blockAccount(userId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(userId))
+        request("/api/v1/me/privacy", method = "POST", body = JSONObject().put("blocked_id", userId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun unblockAccount(userId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(userId))
+        request("/api/v1/me/privacy?blocked_id=${encode(userId)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun deleteMyPost(clientId: Int): JSONObject = withContext(Dispatchers.IO) {
