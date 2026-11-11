@@ -204,7 +204,9 @@ class PostDetailViewModel @Inject constructor(
         val postId = before.post?.cloudId ?: return@launch
         if (commentId in before.commentLikesSending) return@launch
         mutableState.update { it.copy(commentLikesSending = it.commentLikesSending + commentId) }
-        if (runCatching { auth.current() == null }.getOrDefault(true)) {
+        val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
+        if (version != requestVersion || mutableState.value.post?.cloudId != postId) return@launch
+        if (!signedIn) {
             mutableState.update { it.copy(commentLikesSending = it.commentLikesSending - commentId, notice = "登录后可以点赞评论") }
             return@launch
         }
@@ -255,7 +257,9 @@ class PostDetailViewModel @Inject constructor(
         }
         val old = mutableState.value
         mutableState.update { it.copy(interactionSending = true) }
-        if (runCatching { auth.current() == null }.getOrDefault(true)) {
+        val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
+        if (version != requestVersion) return@launch
+        if (!signedIn) {
             mutableState.update { it.copy(interactionSending = false, notice = "请先登录后继续") }
             return@launch
         }
@@ -278,7 +282,9 @@ class PostDetailViewModel @Inject constructor(
             return@launch
         }
         mutableState.update { it.copy(ratingSending = true, ratingError = null) }
-        if (runCatching { auth.current() == null }.getOrDefault(true)) {
+        val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
+        if (version != requestVersion) return@launch
+        if (!signedIn) {
             mutableState.update { it.copy(ratingSending = false, notice = "登录后可以为内容评分") }
             return@launch
         }
@@ -307,7 +313,9 @@ class PostDetailViewModel @Inject constructor(
         val version = requestVersion
         if (mutableState.value.followSending) return@launch
         mutableState.update { it.copy(followSending = true) }
-        if (runCatching { auth.current() == null }.getOrDefault(true)) {
+        val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
+        if (version != requestVersion) return@launch
+        if (!signedIn) {
             mutableState.update { it.copy(followSending = false, notice = "登录后可以关注创作者") }
             return@launch
         }
@@ -324,7 +332,9 @@ class PostDetailViewModel @Inject constructor(
             return@launch
         }
         mutableState.update { it.copy(sending = true, error = null) }
-        if (runCatching { auth.current() == null }.getOrDefault(true)) {
+        val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
+        if (version != requestVersion) return@launch
+        if (!signedIn) {
             mutableState.update { it.copy(sending = false, notice = "请先登录后发表评论") }
             return@launch
         }
