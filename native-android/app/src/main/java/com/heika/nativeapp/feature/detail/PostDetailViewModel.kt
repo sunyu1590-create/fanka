@@ -196,7 +196,11 @@ class PostDetailViewModel @Inject constructor(
         }.onFailure { if (version == requestVersion) mutableState.update { it.copy(commentsLoading = false, commentsError = "评论加载失败，请重试") } }
     }
 
-    fun retryComments() { mutableState.value.post?.let { loadComments(it) } }
+    fun retryComments() {
+        val current = mutableState.value
+        if (current.comments.isNotEmpty() && current.commentsHasMore && current.commentsError != null) loadMoreComments()
+        else current.post?.let { loadComments(it) }
+    }
 
     fun toggleCommentLike(commentId: String) = viewModelScope.launch {
         val before = mutableState.value
@@ -223,12 +227,12 @@ class PostDetailViewModel @Inject constructor(
         val version = requestVersion
         if (!isUuid(post.cloudId) || !mutableState.value.commentsHasMore || mutableState.value.loadingMoreComments) return@launch
         val next = commentPage + 1
-        mutableState.update { it.copy(loadingMoreComments = true) }
+        mutableState.update { it.copy(loadingMoreComments = true, commentsError = null) }
         runCatching { repository.comments(post.cloudId, next) }.onSuccess { data ->
             if (version != requestVersion || mutableState.value.post?.cloudId != post.cloudId) return@onSuccess
             val rows = data.optJSONArray("items").jsonObjects().map { it.toNativeComment() }
             commentPage = next
-            mutableState.update { state -> state.copy(comments = (state.comments + rows).distinctBy { it.id }, commentsHasMore = data.optBoolean("has_more"), loadingMoreComments = false) }
+            mutableState.update { state -> state.copy(comments = (state.comments + rows).distinctBy { it.id }, commentsHasMore = data.optBoolean("has_more"), loadingMoreComments = false, commentsError = null) }
         }.onFailure { if (version == requestVersion) mutableState.update { it.copy(loadingMoreComments = false, commentsError = "更多评论加载失败，请重试") } }
     }
 
