@@ -183,35 +183,35 @@ fun SettingsDetailScreen(
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 7.dp, end = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             when (section) {
                 "account" -> {
-                    item { SettingAction("编辑个人资料", "更新头像、昵称和简介", onEditProfile) }
-                    item { SettingAction("账号与安全", "查看当前登录状态、切换账号或退出", onAccount) }
-                    item { SettingAction(if (recoveryCodesLoading) "正在生成…" else "生成账号恢复码", "生成后旧恢复码将失效，请妥善保存", { if (!recoveryCodesLoading) recoveryConfirm = true }, enabled = !recoveryCodesLoading) }
-                    item { SettingAction("会员与支持", "查看账号当前权益", onMembership) }
+                    item { SettingAction("编辑个人资料", SettingIconKey.PROFILE, "更新头像、昵称和简介", onEditProfile) }
+                    item { SettingAction("账号与安全", SettingIconKey.SECURITY, "查看当前登录状态、切换账号或退出", onAccount) }
+                    item { SettingAction(if (recoveryCodesLoading) "正在生成…" else "生成账号恢复码", SettingIconKey.RECOVERY, "生成后旧恢复码将失效，请妥善保存", { if (!recoveryCodesLoading) recoveryConfirm = true }, enabled = !recoveryCodesLoading) }
+                    item { SettingAction("会员与支持", SettingIconKey.MEMBERSHIP, "查看账号当前权益", onMembership) }
                     privacyError?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(vertical = 8.dp)) } }
                 }
-                "membership" -> item { SettingAction("会员与支持中心", "打开黑卡现有会员与支持页面", onMembership) }
+                "membership" -> item { SettingAction("会员与支持中心", SettingIconKey.MEMBERSHIP, "打开黑卡现有会员与支持页面", onMembership) }
                 "appearance" -> {
-                    item { SettingAction("主题模式", themeLabel(theme), { onSection("theme") }) }
-                    item { SettingAction("内容布局", layoutLabel(layout), { onSection("layout") }) }
-                    item { SettingAction("阅读模式", readingLabel(reading), { onSection("reading") }) }
-                    item { SettingAction("页面切换动画", transitionLabel(pageTransition), { onSection("transition") }) }
-                    item { SettingAction("字体", "系统默认", { onSection("font") }) }
+                    item { SettingAction("主题模式", SettingIconKey.THEME, themeLabel(theme), { onSection("theme") }) }
+                    item { SettingAction("内容布局", SettingIconKey.LAYOUT, layoutLabel(layout), { onSection("layout") }) }
+                    item { SettingAction("阅读模式", SettingIconKey.READING, readingLabel(reading), { onSection("reading") }) }
+                    item { SettingAction("页面切换动画", SettingIconKey.TRANSITION, transitionLabel(pageTransition), { onSection("transition") }) }
+                    item { SettingAction("字体", SettingIconKey.FONT, "系统默认", { onSection("font") }) }
                 }
-                "theme" -> item { ChoiceList(listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), theme, viewModel::setTheme) }
-                "layout" -> item { ChoiceList(listOf("waterfall" to "双列瀑布流", "single" to "单列列表"), layout, viewModel::setFeedLayout) }
-                "reading" -> item { ChoiceList(listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
+                "theme" -> item { ChoiceList(SettingIconKey.THEME, listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), theme, viewModel::setTheme) }
+                "layout" -> item { ChoiceList(SettingIconKey.LAYOUT, listOf("waterfall" to "双列瀑布流", "single" to "单列列表"), layout, viewModel::setFeedLayout) }
+                "reading" -> item { ChoiceList(SettingIconKey.READING, listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
                 "transition" -> {
                     item { DetailHeading("选择页面切换方式") }
-                    item { ChoiceList(listOf("lift" to "上下浮", "crossfade" to "叠化", "shared" to "连续开关"), pageTransition, viewModel::setPageTransition) }
+                    item { ChoiceList(SettingIconKey.TRANSITION, listOf("lift" to "上下浮", "crossfade" to "叠化", "shared" to "连续开关"), pageTransition, viewModel::setPageTransition) }
                 }
                 "font" -> {
                     item { DetailHeading("字体") }
-                    item { ChoiceList(listOf("system" to "系统默认"), fontChoice, viewModel::setFontChoice) }
+                    item { ChoiceList(SettingIconKey.FONT, listOf("system" to "系统默认"), fontChoice, viewModel::setFontChoice) }
                 }
                 "notifications" -> {
-                    item { SettingAction("Android 系统通知", if (notificationsAllowed) "系统通知权限已开启" else "系统通知权限未开启", { requestOrOpenNotificationPermission(context, permissionLauncher::launch) }) }
+                    item { SettingAction("Android 系统通知", SettingIconKey.NOTIFICATIONS, if (notificationsAllowed) "系统通知权限已开启" else "系统通知权限未开启", { requestOrOpenNotificationPermission(context, permissionLauncher::launch) }) }
                     item { DetailHeading("站内通知偏好") }
-                    item { SwitchSetting("评论与回复", if (notificationsLoading) "正在读取网站账号偏好…" else "此开关与网站账号偏好同步", comments == true, enabled = comments != null) { viewModel.setCommentsEnabled(it) } }
+                    item { SwitchSetting("评论与回复", SettingIconKey.NOTIFICATIONS, if (notificationsLoading) "正在读取网站账号偏好…" else "此开关与网站账号偏好同步", comments == true, enabled = comments != null) { viewModel.setCommentsEnabled(it) } }
                     notificationError?.let { error -> item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(error, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
@@ -219,21 +219,21 @@ fun SettingsDetailScreen(
                         }
                     } }
                     item { Text("当前后端偏好接口仅提供评论与回复提醒；点赞、收藏和私信的独立偏好尚未接入。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(vertical = 10.dp)) }
-                    item { SettingAction("通知中心", "查看站内通知与未读状态", onNotifications) }
+                    item { SettingAction("通知中心", SettingIconKey.NOTIFICATIONS, "查看站内通知与未读状态", onNotifications) }
                 }
                 "storage" -> {
-                    item { SettingAction("图片磁盘缓存", "${formatBytes(cacheBytes)} / $capacity MB", { onSection("cache-capacity") }) }
-                    item { SettingAction(if (cacheClearing) "正在清理…" else "清理图片缓存", "只清理可重新下载的图片，不影响翻卡记录、草稿与账号资料", { if (!cacheClearing) viewModel.clearImageCache() }, enabled = !cacheClearing) }
+                    item { SettingAction("图片磁盘缓存", SettingIconKey.STORAGE, "${formatBytes(cacheBytes)} / $capacity MB", { onSection("cache-capacity") }) }
+                    item { SettingAction(if (cacheClearing) "正在清理…" else "清理图片缓存", SettingIconKey.STORAGE, "只清理可重新下载的图片，不影响翻卡记录、草稿与账号资料", { if (!cacheClearing) viewModel.clearImageCache() }, enabled = !cacheClearing) }
                     message?.let { item { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, modifier = Modifier.padding(vertical = 8.dp)) } }
                 }
-                "cache-capacity" -> item { ChoiceList(listOf("256" to "256 MB", "512" to "512 MB"), capacity.toString()) { viewModel.setCacheCapacity(it.toInt()) } }
+                "cache-capacity" -> item { ChoiceList(SettingIconKey.STORAGE, listOf("256" to "256 MB", "512" to "512 MB"), capacity.toString(), onSelect = { viewModel.setCacheCapacity(it.toInt()) }) }
                 "privacy" -> {
-                    item { SettingAction("系统应用权限", "在 Android 设置中查看和管理 HEIKA 权限", { openAppSettings(context) }) }
+                    item { SettingAction("系统应用权限", SettingIconKey.SECURITY, "在 Android 设置中查看和管理 HEIKA 权限", { openAppSettings(context) }) }
                     item { DetailHeading("账号隐私偏好") }
-                    item { SwitchSetting("公开我的收藏", if (privacyLoading) "正在读取账号设置…" else "与当前 HEIKA 账号的公开设置同步", bookmarksVisible == true, enabled = bookmarksVisible != null && !privacyLoading) { viewModel.setBookmarksVisible(it) } }
-                    item { SwitchSetting("作品仅自己可见", "控制个人作品的公开范围", privacyData?.optBoolean("notes_private") == true, enabled = privacyData != null && !privacyLoading) { pendingNotesPrivate = it } }
-                    item { SettingAction("私信接收范围", if (privacyLoading) "正在读取账号设置…" else if (privacyData?.optString("dm_permission") == "nobody") "不接收私信" else "所有人可私信", { onSection("privacy-dm") }, enabled = privacyData != null) }
-                    item { SettingAction("黑名单", "管理已屏蔽的账号", { onSection("privacy-blocked") }) }
+                    item { SwitchSetting("公开我的收藏", SettingIconKey.PRIVACY, if (privacyLoading) "正在读取账号设置…" else "与当前 HEIKA 账号的公开设置同步", bookmarksVisible == true, enabled = bookmarksVisible != null && !privacyLoading) { viewModel.setBookmarksVisible(it) } }
+                    item { SwitchSetting("作品仅自己可见", SettingIconKey.PRIVACY, "控制个人作品的公开范围", privacyData?.optBoolean("notes_private") == true, enabled = privacyData != null && !privacyLoading) { pendingNotesPrivate = it } }
+                    item { SettingAction("私信接收范围", SettingIconKey.MESSAGES, if (privacyLoading) "正在读取账号设置…" else if (privacyData?.optString("dm_permission") == "nobody") "不接收私信" else "所有人可私信", { onSection("privacy-dm") }, enabled = privacyData != null) }
+                    item { SettingAction("黑名单", SettingIconKey.BLOCK, "管理已屏蔽的账号", { onSection("privacy-blocked") }) }
                     privacyError?.let { error -> item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(error, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
@@ -241,7 +241,7 @@ fun SettingsDetailScreen(
                         }
                     } }
                 }
-                "privacy-dm" -> item { ChoiceList(listOf("everyone" to "所有人", "nobody" to "不接收私信"), privacyData?.optString("dm_permission").orEmpty(), viewModel::setDmPermission) }
+                "privacy-dm" -> item { ChoiceList(SettingIconKey.MESSAGES, listOf("everyone" to "所有人", "nobody" to "不接收私信"), privacyData?.optString("dm_permission").orEmpty(), viewModel::setDmPermission) }
                 "privacy-blocked" -> {
                     val blocked = privacyData?.optJSONArray("blocked")
                     if (blocked == null) item { Text("登录后读取黑名单", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp)) }
@@ -254,7 +254,7 @@ fun SettingsDetailScreen(
                         }
                     }
                 }
-                "about" -> item { SettingAction("关于黑卡", "版本、项目链接与意见反馈", onAbout) }
+                "about" -> item { SettingAction("关于黑卡", SettingIconKey.INFO, "版本、项目链接与意见反馈", onAbout) }
             }
         }
     }
@@ -299,7 +299,7 @@ private fun DetailHeading(title: String) {
 }
 
 @Composable
-private fun ChoiceList(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+private fun ChoiceList(iconKey: SettingIconKey, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp)) {
         options.forEachIndexed { index, (value, title) ->
             Row(
@@ -307,7 +307,7 @@ private fun ChoiceList(options: List<Pair<String, String>>, selected: String, on
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(title)), null, tint = if (selected == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(21.dp))
+                androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(iconKey)), null, tint = if (selected == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(21.dp))
                 Text(title, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                 RadioButton(selected = selected == value, onClick = { onSelect(value) })
             }
@@ -326,9 +326,9 @@ private fun layoutLabel(value: String) = if (value == "single") "单列列表" e
 private fun readingLabel(value: String) = when (value) { "focus" -> "专注"; "night" -> "夜读"; else -> "标准" }
 
 @Composable
-private fun SettingAction(title: String, subtitle: String, onClick: () -> Unit, enabled: Boolean = true) {
+private fun SettingAction(title: String, iconKey: SettingIconKey, subtitle: String, onClick: () -> Unit, enabled: Boolean = true) {
     Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).clip(RoundedCornerShape(10.dp)).clickable(enabled, onClick = onClick).padding(vertical = 9.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(title)), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
+        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(iconKey)), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 3.dp))
@@ -338,9 +338,9 @@ private fun SettingAction(title: String, subtitle: String, onClick: () -> Unit, 
 }
 
 @Composable
-private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+private fun SwitchSetting(title: String, iconKey: SettingIconKey, subtitle: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(vertical = 7.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(title)), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
+        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(iconKey)), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .86f), modifier = Modifier.size(21.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
@@ -349,23 +349,23 @@ private fun SwitchSetting(title: String, subtitle: String, checked: Boolean, ena
     }
 }
 
-private fun settingIcon(title: String): Int = when {
-    title.contains("主题") -> com.heika.nativeapp.ui.HeikaIconRes.Magic
-    title.contains("布局") -> com.heika.nativeapp.ui.HeikaIconRes.List
-    title.contains("阅读") -> com.heika.nativeapp.ui.HeikaIconRes.Text
-    title.contains("动画") -> com.heika.nativeapp.ui.HeikaIconRes.Album
-    title.contains("字体") -> com.heika.nativeapp.ui.HeikaIconRes.Font
-    title.contains("通知") || title.contains("评论与回复") -> com.heika.nativeapp.ui.HeikaIconRes.Notifications
-    title.contains("缓存") || title.contains("清理") || title.contains("容量") -> com.heika.nativeapp.ui.HeikaIconRes.Storage
-    title.contains("资料") -> com.heika.nativeapp.ui.HeikaIconRes.Edit
-    title.contains("退出") -> com.heika.nativeapp.ui.HeikaIconRes.Logout
-    title.contains("隐私") || title.contains("公开") -> com.heika.nativeapp.ui.HeikaIconRes.Privacy
-    title.contains("安全") || title.contains("权限") -> com.heika.nativeapp.ui.HeikaIconRes.Shield
-    title.contains("网页") || title.contains("链接") -> com.heika.nativeapp.ui.HeikaIconRes.Globe
-    title.contains("反馈") -> com.heika.nativeapp.ui.HeikaIconRes.Comment
-    title.contains("图片") -> com.heika.nativeapp.ui.HeikaIconRes.Image
-    title.contains("会员") -> com.heika.nativeapp.ui.HeikaIconRes.StarOutline
-    else -> com.heika.nativeapp.ui.HeikaIconRes.Forward
+private enum class SettingIconKey { PROFILE, SECURITY, RECOVERY, MEMBERSHIP, THEME, LAYOUT, READING, TRANSITION, FONT, NOTIFICATIONS, STORAGE, PRIVACY, MESSAGES, BLOCK, INFO }
+
+private fun settingIcon(key: SettingIconKey): Int = when (key) {
+    SettingIconKey.PROFILE -> com.heika.nativeapp.ui.HeikaIconRes.Profile
+    SettingIconKey.SECURITY, SettingIconKey.RECOVERY -> com.heika.nativeapp.ui.HeikaIconRes.Shield
+    SettingIconKey.MEMBERSHIP -> com.heika.nativeapp.ui.HeikaIconRes.Vip
+    SettingIconKey.THEME -> com.heika.nativeapp.ui.HeikaIconRes.Magic
+    SettingIconKey.LAYOUT -> com.heika.nativeapp.ui.HeikaIconRes.List
+    SettingIconKey.READING -> com.heika.nativeapp.ui.HeikaIconRes.Text
+    SettingIconKey.TRANSITION -> com.heika.nativeapp.ui.HeikaIconRes.Album
+    SettingIconKey.FONT -> com.heika.nativeapp.ui.HeikaIconRes.Font
+    SettingIconKey.NOTIFICATIONS -> com.heika.nativeapp.ui.HeikaIconRes.Notifications
+    SettingIconKey.STORAGE -> com.heika.nativeapp.ui.HeikaIconRes.Storage
+    SettingIconKey.PRIVACY -> com.heika.nativeapp.ui.HeikaIconRes.Privacy
+    SettingIconKey.MESSAGES -> com.heika.nativeapp.ui.HeikaIconRes.Messages
+    SettingIconKey.BLOCK -> com.heika.nativeapp.ui.HeikaIconRes.Block
+    SettingIconKey.INFO -> com.heika.nativeapp.ui.HeikaIconRes.Info
 }
 private fun requestOrOpenNotificationPermission(context: Context, launch: (String) -> Unit) {
     if (Build.VERSION.SDK_INT >= 33 && !NotificationManagerCompat.from(context).areNotificationsEnabled()) {
