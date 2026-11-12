@@ -184,7 +184,7 @@ fun ExplorationCenterScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
                     ExplorationActionRow("双人探索", "和伙伴共同揭晓", HeikaIcons.CoExplore, onCoExplore)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("故事接龙", "续写社区故事", HeikaIcons.Magic, onStoryChains)
+                    ExplorationActionRow("故事接龙", "续写社区故事", HeikaIcons.StoryChain, onStoryChains)
                 }
             }
             if (state.events.isNotEmpty()) item {
@@ -418,7 +418,7 @@ fun CoExploreScreen(onBack: () -> Unit, onLogin: () -> Unit, onPost: (String) ->
                     } else if (state.ownPick) {
                         item {
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                androidx.compose.material3.Icon(HeikaIcons.Magic, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
+                                androidx.compose.material3.Icon(HeikaIcons.Locked, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
                                 Text("你的选择已锁定", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                 Text("朋友完成选择后，双方内容会一起揭晓。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
                             }
