@@ -1,6 +1,9 @@
 package com.heika.nativeapp.feature.exploration
 
 import com.heika.nativeapp.ui.HeikaIcons
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -68,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.heikaSharedPostImage
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
@@ -200,8 +204,16 @@ fun ExplorationCenterScreen(
     }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Unit, viewModel: ExplorationCalendarViewModel = hiltViewModel()) {
+fun ExplorationCalendarScreen(
+    onBack: () -> Unit,
+    onPost: (CalendarRecord) -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    sharedElementsEnabled: Boolean = false,
+    viewModel: ExplorationCalendarViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     LaunchedEffect(viewModel) { viewModel.load(month = null) }
@@ -310,8 +322,19 @@ fun ExplorationCalendarScreen(onBack: () -> Unit, onPost: (CalendarRecord) -> Un
                 )
             }
             items(state.records.filter { it.date == selectedDay }, key = { it.postId }) { record ->
+                val sharedImageModifier = if (!record.image.isNullOrBlank() && sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+                    with(sharedTransitionScope) {
+                        Modifier.heikaSharedPostImage(
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            postKey = record.postId.lowercase(),
+                            isDetail = false,
+                            enabled = true,
+                        )
+                    }
+                } else Modifier
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface).clickable { onPost(record) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!record.image.isNullOrBlank()) AsyncImage(record.image, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(60.dp, 68.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                    if (!record.image.isNullOrBlank()) AsyncImage(record.image, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(60.dp, 68.dp).clip(RoundedCornerShape(8.dp)).then(sharedImageModifier), contentScale = ContentScale.Crop)
                     Column(Modifier.weight(1f).padding(start = 11.dp)) {
                         Text(record.tag, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                         Text(record.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))

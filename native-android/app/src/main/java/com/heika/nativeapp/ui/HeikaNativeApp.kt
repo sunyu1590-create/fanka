@@ -361,6 +361,9 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                 composable("exploration/calendar") {
                     ExplorationCalendarScreen(
                         onBack = { nav.popBackStack() },
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                         onPost = { record ->
                             if (record.channel == "ai") openDestination(HeikaDestination.AiResource(record.clientId, record.postId))
                             else openDestination(HeikaDestination.CommunityPost(record.clientId, record.postId))
