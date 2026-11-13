@@ -213,4 +213,6 @@
 - 个人页品牌栏改为与页面背景同色，不再叠加独立液态玻璃色层；等级徽标显示为 `LV3` 格式；今日探索任务行移除重复奖章图标。底部四个主导航入口保留同一玻璃胶囊和点击语义，只隐藏文字并保留无障碍名称，发布圆钮仍在胶囊外。
 - 探索中心增加可选图文推广位，默认关闭。Native 管理后台与网页管理后台都有入口；管理员写入时服务端验证 `profiles.role=admin`、目标作品编号及已发布状态。匿名/普通用户读取只返回启用且目标仍公开的内容，点击通过现有 Native 内容详情路由打开真实帖子。
 - 新增 `exploration_ad_settings` RLS 表及 `GET /api/v1/exploration-ad`、`GET/PATCH /api/v1/admin/exploration-ad` 路由。迁移尚未应用到生产数据库，API 路由尚未部署；生产启用此广告位前需先应用新 migration 并部署网站。没有修改生产数据。
-- GitHub Actions、APK SHA、Artifact 和构建验证结果将在构建完成后补录；当前没有真机/模拟器，未做 profile 视觉截图验收。
+- GitHub Actions Native Android Run #105（ID `43411410970`）以源码 SHA `02b98204c847a5ecd1c30127c131b608e2a65840` 完成，Android 单测、Lint、Debug APK 与 unsigned Release APK 构建及 Artifact 上传均成功。Artifact `HEIKA-Native-3-v02b98204c847a5ecd1c30127c131b608e2a65840`，ID `14029867338`，大小 50,467,591 bytes，ZIP SHA-256 `6a81b741bf6abc18057c8fe5d08dc0c5e9217681f7f705ac5c7034c8d9b6b4b3`，有效至 `2026-11-27 10:50 UTC`。下载页：https://github.com/sunyu1590-create/fanka/actions/runs/43411410970/artifacts/14029867338
+- APK 文件名为 `HEIKA-2.3.6-34-debug.apk` 与 `HEIKA-2.3.6-34-release-unsigned.apk`；Release 包未签名，仅供检查，Debug 包可用于安装验收。另一个兼容旧 Android 工程的 workflow 也成功，但其 versionName 为 2.2.4，不作为 Native 交付。
+- Android 构建通过 CI，网站 TypeScript、63 项 Node 测试和 Next.js Build 通过；本机 ESLint 为 0 错误、51 条既有警告。未连接真机/模拟器，未做 profile 视觉截图验收。探索广告 migration/API 尚未部署生产，未修改生产数据。
