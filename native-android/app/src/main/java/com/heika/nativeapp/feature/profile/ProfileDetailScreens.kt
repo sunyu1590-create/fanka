@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,12 +26,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +70,12 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
     val profile = state.profile
     var nickname by remember(profile?.id) { mutableStateOf(profile?.nickname.orEmpty()) }
     var bio by remember(profile?.id) { mutableStateOf(profile?.bio.orEmpty()) }
+    val attributes = state.profileAttributes
+    var gender by remember(profile?.id, attributes) { mutableStateOf(attributes.gender) }
+    var mbti by remember(profile?.id, attributes) { mutableStateOf(attributes.mbti) }
+    var birthday by remember(profile?.id, attributes) { mutableStateOf(attributes.birthday) }
+    var hobbies by remember(profile?.id, attributes) { mutableStateOf(attributes.hobbies.joinToString("，")) }
+    var visibility by remember(profile?.id, attributes) { mutableStateOf(attributes.visibility) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -113,14 +122,80 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
                 }
                 item { OutlinedTextField(nickname, { nickname = it.take(24) }, label = { Text("昵称") }, supportingText = { Text("1–24 个字符") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item { OutlinedTextField(bio, { bio = it.take(80) }, label = { Text("简介") }, supportingText = { Text("最多 80 个字符") }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 4) }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Text("更多资料", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text("选择公开的资料会显示在你的个人主页。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        Text("性别", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("female" to "女", "male" to "男", "nonbinary" to "非二元", "undisclosed" to "不愿透露").forEach { (value, label) ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = gender == value,
+                                    onClick = { gender = if (gender == value) "" else value },
+                                    label = { Text(label, fontSize = 11.sp) },
+                                )
+                            }
+                        }
+                        ProfileAttributeVisibility("公开性别", visibility["gender"] == true) { visibility = visibility + ("gender" to it) }
+                        OutlinedTextField(
+                            value = mbti,
+                            onValueChange = { mbti = it.filter(Char::isLetter).uppercase().take(4) },
+                            label = { Text("MBTI") },
+                            supportingText = { Text("例如 INFP、ENTJ；留空表示不填写") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                        ProfileAttributeVisibility("公开 MBTI", visibility["mbti"] == true) { visibility = visibility + ("mbti" to it) }
+                        OutlinedTextField(
+                            value = birthday,
+                            onValueChange = { birthday = it.filter { char -> char.isDigit() || char == '-' }.take(10) },
+                            label = { Text("生日") },
+                            supportingText = { Text("格式：YYYY-MM-DD") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                        ProfileAttributeVisibility("公开生日", visibility["birthday"] == true) { visibility = visibility + ("birthday" to it) }
+                        OutlinedTextField(
+                            value = hobbies,
+                            onValueChange = { hobbies = it.take(180) },
+                            label = { Text("兴趣爱好") },
+                            supportingText = { Text("用逗号分隔，最多 8 项，每项不超过 20 字") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            maxLines = 3,
+                        )
+                        ProfileAttributeVisibility("公开兴趣爱好", visibility["hobbies"] == true) { visibility = visibility + ("hobbies" to it) }
+                    }
+                }
                 item { Text("HEIKA ID · ${profile.id}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
                 item { state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) } }
                 item { state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) } }
-                item { Button(onClick = { viewModel.updateProfile(nickname, bio) }, enabled = !state.saving && nickname.trim().length in 1..24 && bio.length <= 80, modifier = Modifier.fillMaxWidth()) { if (state.saving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("保存资料") } }
+                item {
+                    val hobbyItems = hobbies.split(',', '，', ';', '；').map(String::trim).filter(String::isNotBlank).distinct().take(8)
+                    val validMbti = mbti.isBlank() || mbti in setOf(
+                        "INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP",
+                        "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP",
+                    )
+                    val details = JSONArray().apply {
+                        put(JSONObject().put("attribute", "gender").put("value", gender).put("is_public", visibility["gender"] == true))
+                        put(JSONObject().put("attribute", "mbti").put("value", mbti).put("is_public", visibility["mbti"] == true))
+                        put(JSONObject().put("attribute", "birthday").put("value", birthday).put("is_public", visibility["birthday"] == true))
+                        put(JSONObject().put("attribute", "hobbies").put("value", JSONArray(hobbyItems)).put("is_public", visibility["hobbies"] == true))
+                    }
+                    Button(onClick = { viewModel.updateProfile(nickname, bio, details) }, enabled = !state.saving && nickname.trim().length in 1..24 && bio.length <= 80 && validMbti, modifier = Modifier.fillMaxWidth()) { if (state.saving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("保存资料") }
+                }
             }
         } else {
             Text(state.error ?: "资料暂不可用", Modifier.padding(22.dp), color = MaterialTheme.colorScheme.error)
         }
+    }
+}
+
+@Composable
+private fun ProfileAttributeVisibility(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

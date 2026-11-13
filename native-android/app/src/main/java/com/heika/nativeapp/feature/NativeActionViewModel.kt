@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-data class NativeActionState(val loading: Boolean = false, val sending: Boolean = false, val tier: String = "free", val experience: Int = 0, val error: String? = null, val notice: String? = null)
+data class NativeActionState(val loading: Boolean = false, val sending: Boolean = false, val membershipLoaded: Boolean = false, val tier: String = "free", val experience: Int = 0, val error: String? = null, val notice: String? = null)
 
 @HiltViewModel
 class NativeActionViewModel @Inject constructor(private val repository: HeikaRepository, private val auth: AuthRepository) : ViewModel() {
@@ -26,8 +26,8 @@ class NativeActionViewModel @Inject constructor(private val repository: HeikaRep
         }
         mutableState.update { it.copy(loading = true, error = null) }
         runCatching { repository.progression() }.onSuccess { data ->
-            mutableState.update { it.copy(loading = false, tier = data.optString("membershipTier", "free"), experience = data.optInt("total"), error = null) }
-        }.onFailure { error -> mutableState.update { it.copy(loading = false, error = error.message ?: "会员信息加载失败") } }
+            mutableState.update { it.copy(loading = false, membershipLoaded = true, tier = data.optString("membershipTier", "free"), experience = data.optInt("total"), error = null) }
+        }.onFailure { error -> mutableState.update { it.copy(loading = false, membershipLoaded = false, error = error.message ?: "会员信息加载失败") } }
     }
 
     fun submitFeedback(category: String, message: String) = viewModelScope.launch {

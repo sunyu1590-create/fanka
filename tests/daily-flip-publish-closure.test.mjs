@@ -56,7 +56,7 @@ test("publish drafts keep ordered media paths and distinguish revision submissio
   assert.match(viewModel, /serverStatus = post\.optString\("status"\)/);
   assert.match(viewModel, /private suspend fun submitContent\(current: PublishState\)/);
   assert.doesNotMatch(viewModel, /ensureDraft\(|saveRemoteDraft\(|repository\.createOrUpdateDraft\(/);
-  assert.match(viewModel, /current\.images\.filter \{ it\.path == null \}\.forEach \{ uploadPendingImage\(it\.key\) \}/);
+  assert.match(viewModel, /current\.images\.filter \{ it\.path == null \}\.forEach \{ image ->[\s\S]*?if \(mutableState\.value\.images\.firstOrNull \{ it\.key == image\.key \}\?\.path == null\) uploadPendingImage\(image\.key\)/);
   assert.match(viewModel, /修改已提交审核，原作品保持发布/);
   assert.match(screen, /viewModel\.setCover\(image\.key\)/);
   assert.match(screen, /viewModel\.retryUpload\(image\.key\)/);

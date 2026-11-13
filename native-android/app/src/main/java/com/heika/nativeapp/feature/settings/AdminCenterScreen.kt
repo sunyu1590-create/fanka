@@ -150,12 +150,14 @@ private val adminModuleGroups = listOf(
     )),
     AdminModuleGroup("AI 内容运营", listOf(
         AdminModuleSpec("ai", "AI 资源审核", "审核 AI 专区内容", com.heika.nativeapp.ui.HeikaIconRes.Robot),
+        AdminModuleSpec("ai-resource-types", "AI 资源类型", "管理类型目录与展示状态", com.heika.nativeapp.ui.HeikaIconRes.Blocks),
         AdminModuleSpec("ai-feedback", "AI 资源反馈", "处理资源失效与内容反馈", com.heika.nativeapp.ui.HeikaIconRes.Warning),
         AdminModuleSpec("categories", "分类管理", "维护社区与 AI 分类", com.heika.nativeapp.ui.HeikaIconRes.Tag),
         AdminModuleSpec("ai-settings", "AI 工作台", "配置服务端 AI 能力", com.heika.nativeapp.ui.HeikaIconRes.Settings),
     )),
     AdminModuleGroup("运营配置", listOf(
         AdminModuleSpec("recommendation-settings", "推荐配置", "设置每日内容来源配比", com.heika.nativeapp.ui.HeikaIconRes.Settings),
+        AdminModuleSpec("exploration-ad", "探索中心广告位", "管理探索中心底部展示的图文入口", com.heika.nativeapp.ui.HeikaIconRes.Image),
     )),
 )
 
@@ -163,9 +165,31 @@ private val adminSectionNames = mapOf(
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
-    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "探索中心广告位",
 )
 private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
+
+@Composable
+private fun AiResourceTypeAdminRow(item: JSONObject, state: AdminCenterState, viewModel: AdminCenterViewModel) {
+    var label by remember(item) { mutableStateOf(item.optString("label")) }
+    var description by remember(item) { mutableStateOf(item.optString("description")) }
+    var enabled by remember(item) { mutableStateOf(item.optBoolean("enabled")) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(item.optString("resource_type"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text("${item.optInt("content_count")} 篇关联资源", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+            }
+            androidx.compose.material3.Switch(checked = enabled, enabled = state.saving == null, onCheckedChange = { enabled = it })
+        }
+        OutlinedTextField(label, { label = it.take(24) }, Modifier.fillMaxWidth(), label = { Text("展示名称") }, singleLine = true)
+        OutlinedTextField(description, { description = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("说明") }, minLines = 2, maxLines = 3)
+        Button(
+            enabled = state.saving == null && label.trim().isNotEmpty(),
+            onClick = { viewModel.updateAiResourceType(item.optString("resource_type"), label, description, enabled, item.optInt("sort_order")) },
+        ) { Text(if (state.saving == "ai-type-${item.optString("resource_type")}") "保存中…" else "保存类型设置") }
+    }
+}
 
 @Composable
 private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, onRefresh: () -> Unit) {
@@ -255,7 +279,7 @@ private fun AdminModuleRow(module: AdminModuleSpec, overview: JSONObject?, onCli
     }
 }
 
-private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings")
+private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad")
 
 @Composable
 private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterViewModel, onPendingAiKeyDelete: () -> Unit) {
@@ -268,6 +292,14 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
     var aiKey by remember { mutableStateOf("") }
     val meta = state.metadata ?: JSONObject()
     val topics = meta.optJSONArray("topics")
+    var adEnabled by remember(meta) { mutableStateOf(meta.optBoolean("enabled", false)) }
+    var adKind by remember(meta) { mutableStateOf(meta.optString("kind", "text")) }
+    var adTitle by remember(meta) { mutableStateOf(meta.optString("title")) }
+    var adBody by remember(meta) { mutableStateOf(meta.optString("body")) }
+    var adImageUrl by remember(meta) { mutableStateOf(meta.optString("image_url").takeUnless { it == "null" }.orEmpty()) }
+    var adPostRef by remember(meta) {
+        mutableStateOf(meta.optString("post_client_id").takeUnless { it == "null" || it.isBlank() } ?: meta.optString("post_id").takeUnless { it == "null" }.orEmpty())
+    }
     var settingsDraft by remember(meta) {
         mutableStateOf(listOf("interest_slots", "adjacent_slots", "curated_slots", "surprise_slots").associateWith { meta.optInt(it).toString() })
     }
@@ -307,6 +339,60 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
                     Button(enabled = state.saving == null && settingsDraft.values.all(String::isNotBlank), onClick = { viewModel.saveRecommendationSettings(settingsDraft.mapValues { it.value.toIntOrNull() ?: -1 }) }) { Text("保存配置") }
                 }
             }
+            "ai-resource-types" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("资源类型编号固定，用于历史内容与外部链接。停用只隐藏新入口，不删除既有资源。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+            }
+            "exploration-ad" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("探索中心底部广告位", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(11.dp)).padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("展示广告位", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("关闭时不会向用户显示此入口", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        }
+                        androidx.compose.material3.Switch(checked = adEnabled, enabled = state.saving == null, onCheckedChange = { adEnabled = it })
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("内容形式", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        TextButton(onClick = { adKind = "text" }) { Text("文字", color = if (adKind == "text") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                        TextButton(onClick = { adKind = "image" }) { Text("图片 + 文字", color = if (adKind == "image") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                    OutlinedTextField(adTitle, { adTitle = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("标题（最多 80 字）") }, singleLine = true)
+                    OutlinedTextField(adBody, { adBody = it.take(300) }, Modifier.fillMaxWidth(), label = { Text("说明（可选，最多 300 字）") }, minLines = 2, maxLines = 4)
+                    if (adKind == "image") OutlinedTextField(adImageUrl, { adImageUrl = it.take(2048) }, Modifier.fillMaxWidth(), label = { Text("图片 HTTPS 地址") }, singleLine = true)
+                    OutlinedTextField(adPostRef, { adPostRef = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("目标作品 client_id 或 UUID") }, singleLine = true)
+                    var adPostSearch by remember { mutableStateOf("") }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(adPostSearch, { adPostSearch = it.take(60) }, Modifier.weight(1f), label = { Text("按作品标题查找") }, singleLine = true)
+                        Button(enabled = state.saving == null && !state.adPostsLoading && adPostSearch.trim().length >= 2, onClick = { viewModel.searchExplorationAdPosts(adPostSearch) }) { Text(if (state.adPostsLoading) "搜索中" else "搜索") }
+                    }
+                    state.adPosts.take(8).forEach { candidate ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.surface).clickable { adPostRef = candidate.optLong("client_id").takeIf { it > 0 }?.toString() ?: candidate.optString("id") }.padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(candidate.optString("title"), color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, maxLines = 1)
+                                Text("${candidate.optString("author")} · ${candidate.optString("client_id")}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                            }
+                            Text("选择", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                        }
+                    }
+                    Text("只允许跳转到已发布作品；服务端会校验作品状态和管理员权限。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    Button(
+                        enabled = state.saving == null && (!adEnabled || (adTitle.isNotBlank() && adPostRef.isNotBlank() && (adKind != "image" || adImageUrl.startsWith("https://")))),
+                        onClick = {
+                            val payload = JSONObject()
+                                .put("enabled", adEnabled)
+                                .put("kind", adKind)
+                                .put("title", adTitle.trim())
+                                .put("body", adBody.trim())
+                                .put("image_url", if (adKind == "image") adImageUrl.trim() else JSONObject.NULL)
+                                .put("post_ref", adPostRef.trim())
+                            viewModel.saveExplorationAd(payload)
+                        },
+                    ) { Text(if (state.saving == "exploration-ad") "保存中…" else "保存广告位") }
+                }
+            }
             "ai-settings" -> item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(if (meta.optBoolean("configured")) "已配置：${meta.optString("masked")}" else "尚未配置 AI 密钥", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
@@ -325,6 +411,7 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
                     Column(Modifier.weight(1f)) { Text(item.optString("name"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp); Text("${item.optString("channel")} · ${item.optString("kind")}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
                     androidx.compose.material3.Switch(item.optBoolean("active"), enabled = state.saving == null, onCheckedChange = { viewModel.setCategoryActive(item.optInt("id"), it) })
                 }
+                "ai-resource-types" -> AiResourceTypeAdminRow(item, state, viewModel)
                 "topic-events" -> Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) { Text(item.optString("title"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp); Text("${item.optString("description")}\n${item.optString("starts_at")} — ${item.optString("ends_at")}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
                     androidx.compose.material3.Switch(item.optBoolean("is_active"), enabled = state.saving == null, onCheckedChange = { viewModel.setTopicEventActive(item, it) })
@@ -401,6 +488,8 @@ data class AdminCenterState(
     val saving: String? = null,
     val error: String? = null,
     val notice: String? = null,
+    val adPosts: List<JSONObject> = emptyList(),
+    val adPostsLoading: Boolean = false,
 )
 
 @dagger.hilt.android.lifecycle.HiltViewModel
@@ -408,9 +497,10 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private val mutableState = kotlinx.coroutines.flow.MutableStateFlow(AdminCenterState())
     val state = mutableState.asStateFlow()
     private var generation = 0
+    private var adPostsGeneration = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
     fun refresh() = viewModelScope.launch {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, error = null, notice = null)
@@ -424,8 +514,8 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
                 "posts" -> repository.adminPosts(); "ai" -> repository.adminAiQueue(); "ai-feedback" -> repository.adminAiFeedback(); "comments" -> repository.adminComments()
                 "dm-reports" -> repository.adminMessageReports(); "appeals" -> repository.adminAppeals(); "users" -> repository.adminUsers()
                 "user-feedback" -> repository.adminUserFeedback(); "keywords" -> repository.adminKeywordRules(); "audit" -> repository.adminAudit()
-                "categories" -> repository.adminCategories(); "topic-events" -> repository.adminTopicEvents()
-                "recommendation-settings" -> repository.adminRecommendationSettings(); "ai-settings" -> repository.adminAiSettings()
+                "categories" -> repository.adminCategories(); "topic-events" -> repository.adminTopicEvents(); "ai-resource-types" -> repository.adminAiResourceTypes()
+                "recommendation-settings" -> repository.adminRecommendationSettings(); "ai-settings" -> repository.adminAiSettings(); "exploration-ad" -> repository.adminExplorationAd()
                 else -> repository.adminReports()
             }
             if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), metadata = result, loading = false)
@@ -490,6 +580,17 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "分类设置保存失败，请重试") }
     }
 
+    fun updateAiResourceType(resourceType: String, label: String, description: String, enabled: Boolean, sortOrder: Int) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        val key = "ai-type-$resourceType"
+        mutableState.value = mutableState.value.copy(saving = key, error = null, notice = null)
+        try {
+            repository.updateAdminAiResourceType(resourceType, label, description, enabled, sortOrder)
+            mutableState.value = mutableState.value.copy(saving = null, notice = "AI 资源类型设置已保存")
+            refresh()
+        } catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "AI 资源类型保存失败，请确认权限与名称") }
+    }
+
     fun createTopicEvent(topic: String, title: String, description: String, starts: String, ends: String, onCreated: () -> Unit) = viewModelScope.launch {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "topic-event", error = null)
@@ -522,6 +623,32 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         mutableState.value = mutableState.value.copy(saving = "recommendations", error = null)
         try { repository.saveAdminRecommendationSettings(JSONObject(values)); mutableState.value = mutableState.value.copy(saving = null, notice = "推荐配置已保存"); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "保存失败，请检查管理员权限") }
+    }
+
+    fun saveExplorationAd(payload: JSONObject) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "exploration-ad", error = null, notice = null)
+        try {
+            repository.saveAdminExplorationAd(payload)
+            mutableState.value = mutableState.value.copy(saving = null, notice = if (payload.optBoolean("enabled")) "广告位已保存并启用" else "广告位已保存并关闭")
+            refresh()
+        } catch (_: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = "广告位保存失败，请检查作品编号和管理员权限")
+        }
+    }
+
+    fun searchExplorationAdPosts(query: String) = viewModelScope.launch {
+        if (mutableState.value.saving != null || mutableState.value.adPostsLoading) return@launch
+        val requestId = ++adPostsGeneration
+        mutableState.value = mutableState.value.copy(adPostsLoading = true, error = null)
+        try {
+            val result = repository.adminExplorationAdPosts(query)
+            if (requestId == adPostsGeneration && mutableState.value.section == "exploration-ad") {
+                mutableState.value = mutableState.value.copy(adPosts = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), adPostsLoading = false)
+            }
+        } catch (_: Exception) {
+            if (requestId == adPostsGeneration) mutableState.value = mutableState.value.copy(adPosts = emptyList(), adPostsLoading = false, error = "作品搜索失败，请重试")
+        }
     }
 
     fun saveAiKey(key: String, onSaved: () -> Unit) = viewModelScope.launch {

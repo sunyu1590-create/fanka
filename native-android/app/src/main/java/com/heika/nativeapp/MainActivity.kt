@@ -29,9 +29,9 @@ class MainActivity : ComponentActivity() {
         // the Compose root. This keeps page content below status icons/cutouts.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
-            val theme by preferences.theme.collectAsState(initial = "dark")
-            val pageTransition by preferences.pageTransition.collectAsState(initial = "lift")
-            val fontChoice by preferences.fontChoice.collectAsState(initial = "system")
+            val theme by preferences.theme.collectAsState(initial = "system")
+            val pageTransition by preferences.pageTransition.collectAsState(initial = "crossfade")
+            val fontChoice by preferences.fontChoice.collectAsState(initial = "oppo_sans")
             val bodyTextSize by preferences.bodyTextSize.collectAsState(initial = "standard")
             val titleTextSize by preferences.titleTextSize.collectAsState(initial = "standard")
             val loader by imageCache.loader.collectAsState()

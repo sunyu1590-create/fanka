@@ -205,3 +205,40 @@
 - 桌面启动图标与“关于黑卡”统一使用用户提供的金色卡片图，提供 Android 自适应图标与密度资源。
 - 底部导航改为仅四个主标签共用独立圆角模糊胶囊，“发布”圆按钮置于胶囊外并为窄屏保留横向空间。发现页滚动标题折叠不再用 `animateContentSize` 追赶手势；卡片玻璃标签共享页面级 Haze 状态，并降低模糊半径以减少滚动期间的绘制成本。
 - Android version 保持 `2.3.6`，versionCode 从 32 递增至 33。GitHub Actions 构建与源码 SHA、Artifact、设备验收状态待本轮完成后补录。
+
+## HEIKA Native 3.3 关于页、个人页和探索广告位（versionCode 34）
+
+- 基于 `codex/native32-phase1` / `be34234020c1c938c03b86af1b222d17e784cae5` 增量修改，并保留工作区已有的全部页面、图标和动画成果。Android `applicationId` 不变；versionName 保持 `2.3.6`，versionCode 提升至 `34`。
+- 关于页保留完整原始图标文件，以 `ContentScale.Fit` 显示，不裁切；重排信息区并加入 Native 2.3.6 版本记录。记录只列 Android 版本和真实的构建改动，不混用网页端 2.40.x 版本号。
+- 个人页品牌栏改为与页面背景同色，不再叠加独立液态玻璃色层；等级徽标显示为 `LV3` 格式；今日探索任务行移除重复奖章图标。底部四个主导航入口保留同一玻璃胶囊和点击语义，只隐藏文字并保留无障碍名称，发布圆钮仍在胶囊外。
+- 探索中心增加可选图文推广位，默认关闭。Native 管理后台与网页管理后台都有入口；管理员写入时服务端验证 `profiles.role=admin`、目标作品编号及已发布状态。匿名/普通用户读取只返回启用且目标仍公开的内容，点击通过现有 Native 内容详情路由打开真实帖子。
+- 新增 `exploration_ad_settings` RLS 表及 `GET /api/v1/exploration-ad`、`GET/PATCH /api/v1/admin/exploration-ad` 路由。迁移尚未应用到生产数据库，API 路由尚未部署；生产启用此广告位前需先应用新 migration 并部署网站。没有修改生产数据。
+- GitHub Actions Native Android Run #105（ID `43411410970`）以源码 SHA `02b98204c847a5ecd1c30127c131b608e2a65840` 完成，Android 单测、Lint、Debug APK 与 unsigned Release APK 构建及 Artifact 上传均成功。Artifact `HEIKA-Native-3-v02b98204c847a5ecd1c30127c131b608e2a65840`，ID `14029867338`，大小 50,467,591 bytes，ZIP SHA-256 `6a81b741bf6abc18057c8fe5d08dc0c5e9217681f7f705ac5c7034c8d9b6b4b3`，有效至 `2026-11-27 10:50 UTC`。下载页：https://github.com/sunyu1590-create/fanka/actions/runs/43411410970/artifacts/14029867338
+- APK 文件名为 `HEIKA-2.3.6-34-debug.apk` 与 `HEIKA-2.3.6-34-release-unsigned.apk`；Release 包未签名，仅供检查，Debug 包可用于安装验收。另一个兼容旧 Android 工程的 workflow 也成功，但其 versionName 为 2.2.4，不作为 Native 交付。
+- Android 构建通过 CI，网站 TypeScript、63 项 Node 测试和 Next.js Build 通过；本机 ESLint 为 0 错误、51 条既有警告。未连接真机/模拟器，未做 profile 视觉截图验收。探索广告 migration/API 尚未部署生产，未修改生产数据。
+
+## 生产 API 补齐与个人资料/系统默认值修复（2026-11-13）
+
+- 本轮 Android 工作基于本机分支 `codex/native32-phase1` / HEAD `be34234020c1c938c03b86af1b222d17e784cae5` 增量修改；保留所有原有改动，不构建 APK、不提交或推送该分支。
+- 生产 Supabase `sauknappipwkxloaovms` 已登记 migration `20261113122521_likes_and_bookmarks_notifications` 与 `20261113122526_exploration_ad_settings`；探索广告配置单例已存在且默认关闭。通知触发器已部署。旧本地迁移文件使用新记录时间戳命名，避免重复执行。
+- 为生产网站单独从 `publish-vercel` 基线制作了 API 部署提交 `10afafbd99b0beba99c1a7220cd39de717759934`，范围仅含资料隐私 API、暂存图片上传与发布路径校验、探索广告公开/管理员 API 和管理入口。该部署不触发 Android Actions。Vercel 首次将其识别为 Preview；随后以 Production 目标重新创建部署 `dpl_2HniTiMAxrs9jj8pGqNSuttTHGYr` 并成功绑定 `moonclean.shop`。公开广告接口线上返回 `200 {"data":null}`（默认关闭），媒体路由命中并按缺少路径返回预期 `400`。隐私与管理路由受 Vercel SSO 阻挡，无法从本环境完成未登录响应验证。
+- 原生编辑资料补充网站已有的性别、MBTI、生日、兴趣爱好字段与逐项公开开关；个人资料公开字段按 `is_public` 渲染。自己的 `/api/v1/library-state` 返回键为 `profileDetails`，已按真实响应键读取，公开资料 `/api/v1/profiles/:id` 仍读取 `details`。
+- 草稿图片通过 `/api/v1/media` 的 `staging=1` 立即上传，服务端只允许登录用户后续提交其账号目录中的媒体；提交/保存前验证存储文件和用户路径。生产 API 部署包含该兼容修复。
+- 新安装默认主题跟随系统、页面转场为叠化、字体为包内 OPPO Sans；翻卡预览背层增加高斯模糊和压暗、移除关闭叉号，继续支持点外关闭和系统返回。
+- 本轮 Node 测试 `67/67` 通过，网站 TypeScript 检查通过；Android Gradle 编译检查因当前环境没有 Android SDK 未能执行。未连接真机，字体、翻卡模糊、资料编辑视觉和已登录图片上传需设备/API 账号验收。按用户要求未生成 APK。
+
+## AI 专区资源分类（2026-11-13，本轮未构建 APK）
+
+- 基线仍为 `codex/native32-phase1` / `be34234020c1c938c03b86af1b222d17e784cae5`。保留工作区既有个人资料、探索广告、字体、翻卡和 UI 修改。
+- 原生发现页 AI 栏新增会参与顶部滚动折叠的「探索 AI 资源」入口；新增独立两列 AI 资源中心、类型结果页与搜索结果页。结果页复用既有 AI 分页 API、`FeedGrid` 卡片、用户瀑布/单列偏好、详情路由和返回栈。
+- 发现页入口复用卡片玻璃标签的 Haze 背景采样，包含设备兼容降级色；资源中心分类卡使用最小高度约束，允许系统字号放大时自然增高。
+- 资源主类型使用既有 `content_type` 与六个稳定键；新增 `usage_scenarios` 多值字段，六种场景独立筛选。查询支持类型 + 场景 + 标题/正文搜索组合，并保留分页、下拉刷新、错误/空态与列表缓存。
+- 原生发布编辑、恢复与本地草稿快照保存使用场景；AI 提交和已发布内容修订写入资源数据，管理员审核通过修订时原子应用场景字段。管理员网页工作台与原生管理员中心都新增资源类型目录启停/文案/顺序管理；网页审核工作台还可纠正内容类型和场景，并记录审计。
+- 新增 `supabase/migrations/20261113133929_ai_resource_catalog_and_scenarios.sql` 与公开/管理 API。迁移采用加列、稳定类型目录和兼容审核函数的增量方式；本轮前段尚未向生产执行数据库迁移、未部署 API，也未生成 APK。生产端需先应用迁移，再部署网站 API，之后原生新入口才会在线读取分类目录与筛选数据。
+- 新增三项 AI 分类合同测试。网站 `npm run typecheck` 通过，完整 Node 测试 `70/70` 通过，ESLint `0` errors / `51` warnings，`git diff --check` 通过。Android Kotlin 编译检查因环境没有 Android SDK，`:app:compileDebugKotlin` 无法确定 SDK 路径；未连接真机、未运行原生导航验收，也未构建 APK。
+
+## HEIKA 原始 Logo 和 Native 3.3 生产交付（versionCode 35）
+
+- 启动图标和关于页直接引用用户提供的 `drawable-nodpi/ic_heika_original.jpg` 原始 1280×1280 JPEG；不重新采样、不裁切。自适应图标只沿用 Android 系统图标遮罩，原图黑色背景和主体留白均保留。
+- Android versionName 保持 `2.3.6`，versionCode 提升至 `35`，用于区分这次生产源码与 versionCode 34 的既有构建。
+- 本轮完成后补录 Supabase 迁移状态、网站生产部署 SHA/URL、GitHub Actions Run 和 APK artifact 校验信息。

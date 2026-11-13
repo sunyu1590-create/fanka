@@ -4,6 +4,10 @@ import java.net.URI
 
 object AiResourceRules {
     val contentTypes = setOf("knowledge_article", "agent", "skill", "prompt", "ai_tool", "tutorial")
+    val usageScenarios = listOf(
+        "learning" to "学习", "programming" to "编程", "writing" to "写作",
+        "office" to "办公", "creation" to "创作", "life" to "生活",
+    )
     val requiredFields = mapOf(
         "agent" to listOf("functionality", "platforms", "run_mode", "source_url", "version"),
         "skill" to listOf("functionality", "environments", "installation", "version", "source_url"),

@@ -245,8 +245,27 @@ fun PublishScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("资源类型", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                listOf("knowledge_article" to "AI 知识", "agent" to "Agent", "skill" to "Skill", "prompt" to "Prompt", "ai_tool" to "AI 工具", "tutorial" to "教程").forEach { (type, label) ->
-                                    FilterChip(label, state.contentType == type, { viewModel.setAiContentType(type) })
+                                state.aiResourceTypes.ifEmpty { listOf(
+                                    com.heika.nativeapp.data.AiResourceType("knowledge_article", "AI 知识", "模型知识与使用技巧。"),
+                                    com.heika.nativeapp.data.AiResourceType("agent", "Agent", "智能体与自动化任务。"),
+                                    com.heika.nativeapp.data.AiResourceType("skill", "Skills", "技能插件与能力扩展。"),
+                                    com.heika.nativeapp.data.AiResourceType("prompt", "Prompt", "提示词与实用模板。"),
+                                    com.heika.nativeapp.data.AiResourceType("ai_tool", "AI 工具", "应用与效率工具。"),
+                                    com.heika.nativeapp.data.AiResourceType("tutorial", "案例实践", "真实场景与操作教程。"),
+                                ) }.forEach { type ->
+                                    val key = type.id
+                                    val label = type.label
+                                    FilterChip(label, state.contentType == key, { viewModel.setAiContentType(key) })
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("使用场景 · 可多选", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                AiResourceRules.usageScenarios.forEach { (key, label) ->
+                                    FilterChip(label, key in state.usageScenarios, { viewModel.toggleAiUsageScenario(key) })
                                 }
                             }
                         }

@@ -337,16 +337,19 @@ private fun FlipPreviewOverlay(
 
     Box(Modifier.fillMaxSize()) {
         val expand = progress.value.coerceIn(0f, 1f)
+        // The backdrop blur is a single full-screen Gaussian pass; a separate
+        // low-opacity scrim provides the requested dimming without tinting the card.
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f * expand)))
         Box(
             Modifier.fillMaxSize()
                 .hazeEffect(
                     state = hazeState,
                     style = HazeStyle(
                         backgroundColor = Color.Transparent,
-                        tint = HazeTint(Color.Transparent),
-                        blurRadius = 30.dp * expand,
+                        tint = HazeTint(Color.Black.copy(alpha = 0.14f * expand)),
+                        blurRadius = 32.dp * expand,
                         noiseFactor = 0f,
-                        fallbackTint = HazeTint(Color.Transparent),
+                        fallbackTint = HazeTint(Color.Black.copy(alpha = 0.14f * expand)),
                     ),
                 )
                 .clickable(
@@ -408,18 +411,6 @@ private fun FlipPreviewOverlay(
             }
         }
         FlipConfetti(enabled = opened)
-        androidx.compose.material3.IconButton(
-            onClick = { requestDismiss() },
-            enabled = !opening && !revealing && !dismissing,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 13.dp),
-        ) {
-            Icon(
-                HeikaIcons.Close,
-                contentDescription = "关闭预览",
-                tint = Color.White.copy(alpha = 0.92f),
-                modifier = Modifier.size(26.dp),
-            )
-        }
     }
 }
 

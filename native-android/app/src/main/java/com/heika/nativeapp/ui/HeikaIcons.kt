@@ -70,6 +70,11 @@ object HeikaIconRes {
     val OpenExternal = R.drawable.ic_lucide_external_link
     val StoryChain = R.drawable.ic_lucide_git_branch
     val Locked = R.drawable.ic_lucide_lock_keyhole
+    val Blocks = R.drawable.ic_lucide_blocks
+    val Terminal = R.drawable.ic_lucide_terminal
+    val Wrench = R.drawable.ic_lucide_wrench
+    val BrainCircuit = R.drawable.ic_lucide_brain_circuit
+    val ArrowUpRight = R.drawable.ic_lucide_arrow_up_right
 }
 
 object HeikaIcons {
@@ -136,6 +141,11 @@ object HeikaIcons {
     val OpenExternal: ImageVector @Composable get() = icon(HeikaIconRes.OpenExternal)
     val StoryChain: ImageVector @Composable get() = icon(HeikaIconRes.StoryChain)
     val Locked: ImageVector @Composable get() = icon(HeikaIconRes.Locked)
+    val Blocks: ImageVector @Composable get() = icon(HeikaIconRes.Blocks)
+    val Terminal: ImageVector @Composable get() = icon(HeikaIconRes.Terminal)
+    val Wrench: ImageVector @Composable get() = icon(HeikaIconRes.Wrench)
+    val BrainCircuit: ImageVector @Composable get() = icon(HeikaIconRes.BrainCircuit)
+    val ArrowUpRight: ImageVector @Composable get() = icon(HeikaIconRes.ArrowUpRight)
 
     // Compatibility aliases preserve established call sites; ambiguous legacy meanings retain their existing assets.
     val AccountCircle: ImageVector @Composable get() = icon(HeikaIconRes.Profile)

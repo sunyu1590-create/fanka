@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.data.HeikaCategory
+import com.heika.nativeapp.data.AiResourceType
 import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.data.jsonObjects
 import com.heika.nativeapp.data.stringList
@@ -47,6 +48,8 @@ data class PendingImage(
 data class PublishState(
     val title: String = "", val body: String = "", val topicText: String = "", val categories: List<HeikaCategory> = emptyList(),
     val channel: String = "community", val contentType: String = "knowledge_article", val resourceData: Map<String, String> = emptyMap(),
+    val usageScenarios: List<String> = emptyList(),
+    val aiResourceTypes: List<AiResourceType> = emptyList(),
     val category: String = "", val images: List<PendingImage> = emptyList(), val mediaPaths: List<String> = emptyList(),
     val pendingDeletePaths: List<String> = emptyList(),
     val draftId: Int? = null, val draftCloudId: String? = null, val accountId: String? = null, val revisionMode: Boolean = false,
@@ -115,9 +118,11 @@ class PublishViewModel @Inject constructor(
         if (mutableState.value.channel == target && mutableState.value.categories.isNotEmpty()) return
         mutableState.update { it.copy(channel = target, loading = true, category = "", error = null) }
         val categories = runCatching { repository.loadCategories(target, "category") }.getOrDefault(emptyList())
+        val aiTypes = if (target == "ai") runCatching { repository.loadAiResourceTypes() }.getOrDefault(emptyList()) else emptyList()
         mutableState.update { current -> current.copy(
             channel = target,
             categories = categories,
+            aiResourceTypes = aiTypes,
             category = current.category.takeIf { value -> categories.any { it.name == value } } ?: categories.firstOrNull()?.name.orEmpty(),
             loading = false,
             error = if (categories.isEmpty()) "$target 分类暂不可用，请重试" else current.error,
@@ -190,6 +195,7 @@ class PublishViewModel @Inject constructor(
                 title = source.optString("title"), body = source.optString("body"),
                 contentType = source.optString("contentType").ifBlank { current.contentType },
                 resourceData = source.optJSONObject("resourceData")?.let(::stringFields).orEmpty().ifEmpty { current.resourceData },
+                usageScenarios = source.stringList("usageScenarios").ifEmpty { source.stringList("usage_scenarios") },
                 category = source.optString("tag").ifBlank { current.category },
                 topicText = source.optJSONArray("topics")?.let { arr -> buildList { for (i in 0 until arr.length()) add(arr.optString(i)) }.joinToString(" ") } ?: "",
                 mediaPaths = paths,
@@ -241,6 +247,7 @@ class PublishViewModel @Inject constructor(
             title = snapshot.optString("title"), body = snapshot.optString("body"), topicText = snapshot.optString("topicText"),
             contentType = snapshot.optString("contentType").ifBlank { current.contentType },
             resourceData = snapshot.optJSONObject("resourceData")?.let(::stringFields).orEmpty(),
+            usageScenarios = snapshot.stringList("usageScenarios").filter { it in AiResourceRules.usageScenarios.map { option -> option.first } },
             category = snapshot.optString("category").ifBlank { current.category },
             images = images, mediaPaths = images.mapNotNull(PendingImage::path),
             pendingDeletePaths = snapshot.optJSONArray("pendingDeletePaths")?.let { array -> buildList { for (i in 0 until array.length()) add(array.optString(i)) } }.orEmpty(),
@@ -261,6 +268,16 @@ class PublishViewModel @Inject constructor(
         mutableState.update { it.copy(contentType = contentType, error = null) }
         needsServerSync = true
         scheduleSave(); scheduleSnapshot()
+    }
+
+    fun toggleAiUsageScenario(scenario: String) {
+        if (scenario !in AiResourceRules.usageScenarios.map { it.first }) return
+        needsServerSync = true
+        mutableState.update { current ->
+            val next = if (scenario in current.usageScenarios) current.usageScenarios - scenario else current.usageScenarios + scenario
+            current.copy(usageScenarios = next, error = null)
+        }
+        scheduleSave()
     }
 
     fun editAiField(key: String, value: String) {
@@ -306,7 +323,8 @@ class PublishViewModel @Inject constructor(
             .put("draftId", current.draftId).put("draftCloudId", current.draftCloudId)
             .put("revisionMode", current.revisionMode).put("serverStatus", current.serverStatus).put("title", current.title).put("body", current.body)
             .put("topicText", current.topicText).put("category", current.category).put("channel", current.channel)
-            .put("contentType", current.contentType).put("resourceData", JSONObject(current.resourceData)).put("images", images)
+            .put("contentType", current.contentType).put("resourceData", JSONObject(current.resourceData))
+            .put("usageScenarios", JSONArray(current.usageScenarios)).put("images", images)
             .put("pendingDeletePaths", JSONArray(current.pendingDeletePaths))
             .put("needsServerSync", needsServerSync).put("savedAt", System.currentTimeMillis())
         return runCatching { repository.saveLocalPublishSnapshot(accountId, snapshot, current.channel) }
@@ -365,6 +383,10 @@ class PublishViewModel @Inject constructor(
             return
         }
         mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false) else it }) }
+        // Upload the selected image immediately as an unlinked staging object.
+        // This surfaces API/storage failures in the editor instead of waiting
+        // until the user presses Publish, while the local draft remains intact.
+        uploadJobs[key] = viewModelScope.launch { uploadPendingImage(key) }
     }
 
     fun retryUpload(key: String) {
@@ -534,6 +556,7 @@ class PublishViewModel @Inject constructor(
                 category = current.category,
                 contentType = current.contentType,
                 resourceData = resource,
+                usageScenarios = current.usageScenarios,
                 topics = topics,
                 mediaPaths = current.mediaPaths,
             )
@@ -609,7 +632,11 @@ class PublishViewModel @Inject constructor(
             mutableState.update { it.copy(publishing = true, error = null, notice = null) }
             runCatching {
                 ensureSameAccount(current.accountId)
-                current.images.filter { it.path == null }.forEach { uploadPendingImage(it.key) }
+                current.images.filter { it.path == null }.forEach { image ->
+                    val activeUpload = uploadJobs[image.key]
+                    if (activeUpload?.isActive == true) activeUpload.join()
+                    if (mutableState.value.images.firstOrNull { it.key == image.key }?.path == null) uploadPendingImage(image.key)
+                }
                 val latest = mutableState.value
                 if (latest.images.any { it.path == null }) throw IOException("图片上传未完成，请检查网络后重试")
                 if (latest.channel == "ai") validateAiResource(latest)

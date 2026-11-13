@@ -9,7 +9,7 @@ class NativeUiOptionsTest {
     fun allPageTransitionOptionsArePersistableAndInvalidValuesFallBack() {
         assertEquals(setOf("lift", "crossfade", "shared"), HeikaPageTransitions.choices)
         HeikaPageTransitions.choices.forEach { assertEquals(it, HeikaPageTransitions.normalize(it)) }
-        assertEquals("lift", HeikaPageTransitions.normalize("unknown"))
+        assertEquals("crossfade", HeikaPageTransitions.normalize("unknown"))
     }
 
     @Test
@@ -18,7 +18,7 @@ class NativeUiOptionsTest {
         assertTrue(HeikaFontCatalog.availableChoices.contains(HeikaFontCatalog.normalize("system")))
         assertTrue(HeikaFontCatalog.availableChoices.contains("oppo_sans"))
         assertEquals("oppo_sans", HeikaFontCatalog.normalize("oppo_sans"))
-        assertEquals("system", HeikaFontCatalog.normalize("unknown-font"))
+        assertEquals("oppo_sans", HeikaFontCatalog.normalize("unknown-font"))
     }
 
     @Test

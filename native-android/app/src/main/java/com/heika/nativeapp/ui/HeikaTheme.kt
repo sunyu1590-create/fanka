@@ -96,13 +96,13 @@ object HeikaFontCatalog {
         "system" to FontFamily.Default,
         "oppo_sans" to FontFamily(Font(R.font.oppo_sans_4_0, FontWeight.Normal)),
     )
-    fun normalize(choice: String): String = choice.takeIf { it in availableChoices } ?: "system"
+    fun normalize(choice: String): String = choice.takeIf { it in availableChoices } ?: "oppo_sans"
     fun resolve(choice: String): FontFamily = families[normalize(choice)] ?: FontFamily.Default
 }
 
 object HeikaPageTransitions {
     val choices = setOf("lift", "crossfade", "shared")
-    fun normalize(value: String): String = value.takeIf { it in choices } ?: "lift"
+    fun normalize(value: String): String = value.takeIf { it in choices } ?: "crossfade"
 }
 
 object HeikaReadingSizes {
@@ -126,7 +126,7 @@ val LocalHeikaTitleTextScale = staticCompositionLocalOf { 1f }
 @Composable
 fun HeikaTheme(
     theme: String,
-    fontChoice: String = "system",
+    fontChoice: String = "oppo_sans",
     bodyTextSize: String = "standard",
     titleTextSize: String = "standard",
     content: @Composable () -> Unit,

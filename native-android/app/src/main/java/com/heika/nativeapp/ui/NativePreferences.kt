@@ -27,7 +27,7 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val titleTextSizeKey = stringPreferencesKey("title_text_size")
     private val searchHistoryKey = stringPreferencesKey("search_history")
 
-    val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "dark" }
+    val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
     val feedLayout: Flow<String> = dataStore.data.map { it[feedLayoutKey] ?: "waterfall" }
     val readingMode: Flow<String> = dataStore.data.map { it[readingModeKey] ?: "standard" }

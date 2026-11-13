@@ -27,6 +27,7 @@ data class HeikaPost(
     val rawJson: String,
     val rarityTier: String = "pending",
     val resourceData: JSONObject = JSONObject(),
+    val usageScenarios: List<String> = emptyList(),
 ) {
     val thumbnail: String? get() = thumbnails.firstOrNull() ?: images.firstOrNull()
     val hasRating: Boolean get() = ratingCount > 0 && ratingAverage != null
@@ -64,6 +65,7 @@ data class HeikaPost(
                 rawJson = json.toString(),
                 rarityTier = json.optString("rarityTier", "pending").takeIf { it in setOf("ordinary", "S", "SS", "SSS", "pending") } ?: "pending",
                 resourceData = json.optJSONObject("resourceData") ?: json.optJSONObject("resource_data") ?: JSONObject(),
+                usageScenarios = json.stringList("usageScenarios").ifEmpty { json.stringList("usage_scenarios") },
             )
         }
     }
@@ -71,12 +73,21 @@ data class HeikaPost(
 
 data class HeikaCategory(val id: Int, val name: String, val parentId: Int? = null)
 
+data class AiResourceType(
+    val id: String,
+    val label: String,
+    val description: String,
+    val publishedCount: Int = 0,
+)
+
 data class FeedFilter(
     val channel: String = "community",
     val category: HeikaCategory? = null,
     val topic: String? = null,
     val sort: String = "推荐",
     val contentType: String? = null,
+    val usageScenario: String? = null,
+    val query: String? = null,
 )
 
 data class FeedPage(

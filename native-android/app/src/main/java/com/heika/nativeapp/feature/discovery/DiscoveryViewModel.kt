@@ -10,6 +10,7 @@ import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import com.heika.nativeapp.data.FeedFilter
 import com.heika.nativeapp.data.FeedPageKey
+import com.heika.nativeapp.data.AiResourceType
 import com.heika.nativeapp.data.HeikaCategory
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.HeikaRepository
@@ -118,7 +119,7 @@ class DiscoveryViewModel @Inject constructor(private val repository: HeikaReposi
 
 }
 
-private class NativeDiscoveryPagingSource(
+internal class NativeDiscoveryPagingSource(
     private val repository: HeikaRepository,
     private val filter: FeedFilter,
     private val recommendation: com.heika.nativeapp.data.RecommendationContext,
@@ -149,5 +150,66 @@ private class NativeDiscoveryPagingSource(
         val parts = URLDecoder.decode(value, Charsets.UTF_8.name()).split('\n', limit = 2)
         FeedPageKey(cursorCreatedAt = parts[0], cursorPostId = parts[1])
     }.getOrNull()
+}
+
+data class AiResourceCatalogState(
+    val items: List<AiResourceType> = emptyList(),
+    val loading: Boolean = true,
+    val error: String? = null,
+)
+
+@HiltViewModel
+class AiResourceCatalogViewModel @Inject constructor(private val repository: HeikaRepository) : ViewModel() {
+    private val mutableState = MutableStateFlow(AiResourceCatalogState())
+    val state = mutableState.asStateFlow()
+
+    init { load() }
+
+    fun load() = viewModelScope.launch {
+        mutableState.update { it.copy(loading = true, error = null) }
+        runCatching { repository.loadAiResourceTypes() }
+            .onSuccess { items -> mutableState.value = AiResourceCatalogState(items = items, loading = false) }
+            .onFailure { error -> mutableState.update { it.copy(loading = false, error = error.message ?: "AI 资源暂不可用") } }
+    }
+}
+
+@HiltViewModel
+class AiResourceFeedViewModel @Inject constructor(
+    private val repository: HeikaRepository,
+    preferences: NativePreferences,
+) : ViewModel() {
+    private val mutableFilter = MutableStateFlow<FeedFilter?>(null)
+    val filter = mutableFilter.asStateFlow()
+    val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val posts = mutableFilter.flatMapLatest { current ->
+        if (current == null) flow { emit(PagingData.empty<HeikaPost>()) }
+        else flow {
+            repository.cachedFeed(current).takeIf { it.isNotEmpty() }?.let { emit(PagingData.from(it)) }
+            emitAll(Pager(
+                config = PagingConfig(pageSize = 24, initialLoadSize = 24, prefetchDistance = 6, enablePlaceholders = false),
+                pagingSourceFactory = { NativeDiscoveryPagingSource(repository, current, com.heika.nativeapp.data.RecommendationContext()) },
+            ).flow)
+        }
+    }.cachedIn(viewModelScope)
+
+    fun configure(type: String?) {
+        if (type != null && type !in setOf("knowledge_article", "agent", "skill", "prompt", "ai_tool", "tutorial")) return
+        val old = mutableFilter.value
+        if (old == null) mutableFilter.value = FeedFilter(channel = "ai", sort = "最新", contentType = type)
+        else if (old.contentType != type) mutableFilter.value = old.copy(contentType = type)
+    }
+
+    fun setType(type: String?) { mutableFilter.update { it?.copy(contentType = type) } }
+    fun setScenario(scenario: String?) {
+        if (scenario != null && scenario !in setOf("learning", "programming", "writing", "office", "creation", "life")) return
+        mutableFilter.update { it?.copy(usageScenario = scenario) }
+    }
+    fun setSort(sort: String) {
+        if (sort !in setOf("最新", "热门", "推荐")) return
+        mutableFilter.update { it?.copy(sort = sort) }
+    }
+    fun search(query: String) { mutableFilter.update { it?.copy(query = query.trim().take(60).takeIf(String::isNotBlank)) } }
+    fun resetSearch() { mutableFilter.update { it?.copy(query = null) } }
 }
 

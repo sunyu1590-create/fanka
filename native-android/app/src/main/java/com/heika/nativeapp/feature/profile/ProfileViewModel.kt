@@ -27,6 +27,14 @@ data class NativeProfile(
     val showBookmarks: Boolean,
 )
 
+data class ProfileAttributeValue(
+    val gender: String = "",
+    val mbti: String = "",
+    val birthday: String = "",
+    val hobbies: List<String> = emptyList(),
+    val visibility: Map<String, Boolean> = mapOf("gender" to false, "mbti" to false, "birthday" to false, "hobbies" to false),
+)
+
 data class ProfileStats(
     val totalOpened: Int = 0,
     val streak: Int = 0,
@@ -42,6 +50,7 @@ data class ProfileStats(
 
 data class ProfileState(
     val profile: NativeProfile? = null,
+    val profileAttributes: ProfileAttributeValue = ProfileAttributeValue(),
     val posts: List<HeikaPost> = emptyList(),
     val bookmarks: List<HeikaPost> = emptyList(),
     val liked: List<HeikaPost> = emptyList(),
@@ -161,6 +170,9 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                 )
                 ProfileLoadResult(
                     profile,
+                    // /api/v1/library-state names this collection profileDetails;
+                    // /api/v1/profiles/:id uses details for public profiles.
+                    profileAttributes(data.optJSONArray("profileDetails")),
                     owned.filter { JSONObject(it.rawJson).optString("status") != "draft" },
                     bookmarks,
                     liked,
@@ -177,14 +189,14 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                 val posts = data.optJSONArray("posts").jsonObjects().map(HeikaPost::from)
                 val bookmarks = data.optJSONArray("bookmarks").jsonObjects().map(HeikaPost::from)
                 val follow = if (session != null) runCatching { repository.creatorFollowState(id) }.getOrDefault(JSONObject()) else JSONObject()
-                ProfileLoadResult(profileJson.toProfile(id), posts, bookmarks, emptyList(), emptyList(), ProfileStats(bookmarks = bookmarks.size), follow)
+                ProfileLoadResult(profileJson.toProfile(id), profileAttributes(data.optJSONArray("details")), posts, bookmarks, emptyList(), emptyList(), ProfileStats(bookmarks = bookmarks.size), follow)
             }
         }.onSuccess { result ->
             if (generation != loadGeneration || loadedFor != id) return@onSuccess
             val latestUser = runCatching { auth.current()?.userId }.getOrNull()
             if (own && latestUser != id) return@onSuccess
             val updated = ProfileState(
-                profile = result.profile, posts = result.posts, bookmarks = result.bookmarks, liked = result.liked,
+                profile = result.profile, profileAttributes = result.profileAttributes, posts = result.posts, bookmarks = result.bookmarks, liked = result.liked,
                 drafts = result.drafts, hasMoreWorks = result.hasMoreWorks,
                 hasMoreBookmarks = result.hasMoreBookmarks, hasMoreLiked = result.hasMoreLiked,
                 stats = result.stats, following = result.follow.optBoolean("following"),
@@ -262,7 +274,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
             .onFailure { error -> mutableState.update { it.copy(saving = false, error = error.message ?: "删除作品失败") } }
     }
 
-    fun updateProfile(nickname: String, bio: String) = viewModelScope.launch {
+    fun updateProfile(nickname: String, bio: String, details: JSONArray) = viewModelScope.launch {
         val previous = mutableState.value.profile ?: return@launch
         val name = nickname.trim()
         val description = bio.trim()
@@ -271,10 +283,10 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
             return@launch
         }
         mutableState.update { it.copy(saving = true, error = null, notice = null) }
-        runCatching { repository.updateMyProfile(name, description) }.onSuccess { result ->
+        runCatching { repository.updateMyProfile(name, description, details) }.onSuccess { result ->
             val json = result.optJSONObject("profile") ?: result
             val updated = json.toProfile(previous.id).let { if (it.nickname == "探索者") previous.copy(nickname = name, bio = description) else it }
-            mutableState.update { it.copy(profile = updated, saving = false, notice = "资料已保存") }
+            mutableState.update { it.copy(profile = updated, profileAttributes = profileAttributes(details), saving = false, notice = "资料已保存") }
             runCatching { repository.saveMyProfileCache(previous.id, encodeSnapshot(mutableState.value)) }
         }.onFailure { error -> mutableState.update { it.copy(saving = false, error = error.message ?: "资料保存失败") } }
     }
@@ -343,6 +355,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         val profileJson = root.optJSONObject("profile") ?: JSONObject()
         return ProfileState(
             profile = profileJson.toProfile(profileJson.optString("id")), posts = posts("posts"), bookmarks = posts("bookmarks"),
+            profileAttributes = profileAttributes(root.optJSONArray("profileAttributes")),
             liked = posts("liked"), drafts = posts("drafts"),
             hasMoreWorks = root.optBoolean("hasMoreWorks"), hasMoreBookmarks = root.optBoolean("hasMoreBookmarks"),
             hasMoreLiked = root.optBoolean("hasMoreLiked"),
@@ -365,6 +378,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         .put("bookmarks", JSONArray(state.bookmarks.map { JSONObject(it.rawJson) }))
         .put("liked", JSONArray(state.liked.map { JSONObject(it.rawJson) }))
         .put("drafts", JSONArray(state.drafts.map { JSONObject(it.rawJson) }))
+        .put("profileAttributes", profileAttributesJson(state.profileAttributes))
         .put("hasMoreWorks", state.hasMoreWorks).put("hasMoreBookmarks", state.hasMoreBookmarks).put("hasMoreLiked", state.hasMoreLiked)
         .put("stats", JSONObject().put("totalOpened", state.stats.totalOpened).put("streak", state.stats.streak).put("bookmarks", state.stats.bookmarks).put("experience", state.stats.experience).put("level", state.stats.level).put("progress", state.stats.progress)
             .put("dailyTasks", state.stats.dailyTasks ?: JSONObject.NULL).put("claimedDailyTasks", state.stats.claimedDailyTasks)
@@ -376,6 +390,36 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         tier = optString("membership_tier", "free"), showBookmarks = optBoolean("show_bookmarks"),
     )
 
+    private fun profileAttributes(rows: JSONArray?): ProfileAttributeValue {
+        val values = mutableMapOf<String, Pair<String, Boolean>>()
+        rows?.jsonObjects()?.forEach { row ->
+            val key = row.optString("attribute")
+            if (key in setOf("gender", "mbti", "birthday", "hobbies")) {
+                val rawValue = row.opt("value")
+                val value = if (key == "hobbies") {
+                    when (rawValue) {
+                        is JSONArray -> (0 until rawValue.length()).mapNotNull { rawValue.optString(it).takeIf(String::isNotBlank) }.joinToString("\u0000")
+                        is String -> runCatching { JSONArray(rawValue).let { array -> (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }.joinToString("\u0000") } }.getOrDefault("")
+                        else -> ""
+                    }
+                } else rawValue?.toString()?.takeUnless { it == "null" }.orEmpty()
+                values[key] = value to row.optBoolean("is_public")
+            }
+        }
+        return ProfileAttributeValue(
+            gender = values["gender"]?.first.orEmpty(), mbti = values["mbti"]?.first.orEmpty(),
+            birthday = values["birthday"]?.first.orEmpty(), hobbies = values["hobbies"]?.first.orEmpty().split('\u0000').filter(String::isNotBlank),
+            visibility = setOf("gender", "mbti", "birthday", "hobbies").associateWith { values[it]?.second ?: false },
+        )
+    }
+
+    private fun profileAttributesJson(value: ProfileAttributeValue): JSONArray = JSONArray().apply {
+        fun add(attribute: String, rawValue: Any) {
+            put(JSONObject().put("attribute", attribute).put("value", rawValue).put("is_public", value.visibility[attribute] == true))
+        }
+        add("gender", value.gender); add("mbti", value.mbti); add("birthday", value.birthday); add("hobbies", JSONArray(value.hobbies))
+    }
+
     private fun calculateStreak(dates: Set<String>): Int {
         var day = LocalDate.now()
         if (day.toString() !in dates) day = day.minusDays(1)
@@ -385,7 +429,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
     }
 
     private data class ProfileLoadResult(
-        val profile: NativeProfile, val posts: List<HeikaPost>, val bookmarks: List<HeikaPost>,
+        val profile: NativeProfile, val profileAttributes: ProfileAttributeValue, val posts: List<HeikaPost>, val bookmarks: List<HeikaPost>,
         val liked: List<HeikaPost>, val drafts: List<HeikaPost>, val stats: ProfileStats, val follow: JSONObject,
         val hasMoreWorks: Boolean = false, val hasMoreBookmarks: Boolean = false, val hasMoreLiked: Boolean = false,
     )

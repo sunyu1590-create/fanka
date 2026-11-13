@@ -20,12 +20,12 @@ class SettingsViewModel @Inject constructor(
     private val auth: AuthRepository,
     private val repository: HeikaRepository,
 ) : ViewModel() {
-    val theme = preferences.theme.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "dark")
+    val theme = preferences.theme.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "system")
     val imageCacheMb = preferences.imageCacheMb.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 256)
     val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
-    val pageTransition = preferences.pageTransition.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "lift")
-    val fontChoice = preferences.fontChoice.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "system")
+    val pageTransition = preferences.pageTransition.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "crossfade")
+    val fontChoice = preferences.fontChoice.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "oppo_sans")
     val bodyTextSize = preferences.bodyTextSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
     val titleTextSize = preferences.titleTextSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
     private val mutableCommentsEnabled = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)

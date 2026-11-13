@@ -26,8 +26,17 @@ All routes return `{ "data": ... }` or `{ "error": "..." }`. Authenticated route
 | PATCH | `/api/v1/admin/posts/:id` | Approve or reject pending content with a required review note and timestamp |
 | PATCH | `/api/v1/admin/comments/:id` | Hide or restore comments |
 | GET/PATCH | `/api/v1/admin/settings` | Read and adjust 5 card slot allocation |
+| GET | `/api/v1/exploration-ad` | Read the enabled exploration-center placement; only a published target post is exposed |
+| GET/PATCH | `/api/v1/admin/exploration-ad` | Admin-only read/update of the optional text or image placement and its published post target |
+| GET | `/api/v1/admin/exploration-ad/posts?q=...` | Admin-only search for published community posts to choose as the placement target |
+| GET | `/api/v1/ai-resource-types` | Read enabled stable AI resource types and published counts |
+| GET/PATCH | `/api/v1/admin/ai-resource-types` | Reviewers with `ai.review` manage type labels, descriptions, ordering, and enablement without deleting stable IDs |
+| GET/POST | `/api/v1/ai-space` | AI feed filters support `type`, `scenario`, `q`, existing `category`/`topic`, sorting, and pagination; AI posts persist `usage_scenarios` separately from the primary `content_type` |
+| PATCH | `/api/v1/admin/ai-space/:id` | AI review supports classification correction; pending revisions update their staged payload rather than the currently published version |
 
-Database migrations are in `supabase/migrations/`. The topic directory reuses the eight curated `interest_tags` values; `post_topics` stores multi-topic associations and never accepts user-created topic names. Seed posts inherit their existing category as a topic. Topic counts come from published records and distinct authors. Daily RPCs persist one deck per user and local date, keep opened cards, and allow one swap. The publishing UI uses the authenticated library-state and media endpoints; the browser autosaves text locally and in the user's draft row, and keeps image file backups in IndexedDB until Storage confirms the association.
+Database migrations are in `supabase/migrations/`. The topic directory reuses the eight curated `interest_tags` values; `post_topics` stores multi-topic associations and never accepts user-created topic names. Seed posts inherit their existing category as a topic. Topic counts come from published records and distinct authors. Daily RPCs persist one deck per user and local date, keep opened cards, and allow one swap. The publishing UI uses the authenticated library-state and media endpoints; the browser autosaves text locally and in the user's draft row, and keeps image file backups in IndexedDB until Storage confirms the association. The optional exploration ad placement is disabled by default and uses a singleton RLS-protected row. Its migration is deployed before its API routes.
+
+AI resource classification uses the existing `posts` table and review workflow. `content_type` remains the stable primary resource type (`agent`, `skill`, `prompt`, `ai_tool`, `knowledge_article`, `tutorial`); `usage_scenarios` is an independent multi-value text array (`learning`, `programming`, `writing`, `office`, `creation`, `life`). Migration `20261113133929_ai_resource_catalog_and_scenarios` is additive: historical records receive an empty scenario list, and stable type IDs are seeded once. It has been applied to the production Supabase project before deploying the associated AI resource API routes.
 
 ## Deployment
 

@@ -45,6 +45,17 @@ class HeikaRepository @Inject constructor(
         }
     }
 
+    suspend fun loadAiResourceTypes(): List<AiResourceType> = withContext(Dispatchers.IO) {
+        val data = request("/api/v1/ai-resource-types") as? JSONObject ?: JSONObject()
+        data.optJSONArray("items").jsonObjects().mapNotNull { item ->
+            val id = item.optString("resource_type")
+            val label = item.optString("label")
+            if (id.isBlank() || label.isBlank()) null else AiResourceType(
+                id = id, label = label, description = item.optString("description"), publishedCount = item.optInt("published_count"),
+            )
+        }
+    }
+
     suspend fun cachedFeed(filter: FeedFilter): List<HeikaPost> = withContext(Dispatchers.IO) {
         cache.get(feedCacheKey(filter))?.let(::parsePosts).orEmpty()
     }
@@ -127,6 +138,8 @@ class HeikaRepository @Inject constructor(
             filter.category?.let { append("&category=${it.id}") }
             filter.topic?.let { append("&topic=${encode(it)}") }
             filter.contentType?.let { append("&type=${encode(it)}") }
+            filter.usageScenario?.let { append("&scenario=${encode(it)}") }
+            filter.query?.trim()?.takeIf(String::isNotBlank)?.let { append("&q=${encode(it.take(60))}") }
         }
         try {
             val payload = try {
@@ -429,6 +442,21 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/categories", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun adminAiResourceTypes(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/ai-resource-types", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun updateAdminAiResourceType(resourceType: String, label: String, description: String, enabled: Boolean, sortOrder: Int): JSONObject = withContext(Dispatchers.IO) {
+        require(resourceType in aiResourceTypes) { "AI 资源类型编号无效" }
+        require(label.trim().length in 1..24 && description.length <= 120 && sortOrder in 0..100)
+        request(
+            "/api/v1/admin/ai-resource-types",
+            method = "PATCH",
+            body = JSONObject().put("resource_type", resourceType).put("label", label.trim()).put("description", description.trim()).put("enabled", enabled).put("sort_order", sortOrder).toString(),
+            authenticated = true,
+        ) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun createAdminCategory(name: String): JSONObject = withContext(Dispatchers.IO) {
         require(name.trim().length in 2..32)
         request("/api/v1/admin/categories", method = "POST", body = JSONObject().put("name", name.trim()).put("channel", "community").put("kind", "category").toString(), authenticated = true) as? JSONObject ?: JSONObject()
@@ -454,6 +482,19 @@ class HeikaRepository @Inject constructor(
 
     suspend fun saveAdminRecommendationSettings(values: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/admin/settings", method = "PATCH", body = values.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminExplorationAd(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/exploration-ad", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminExplorationAdPosts(query: String): JSONObject = withContext(Dispatchers.IO) {
+        require(query.trim().length in 2..60)
+        request("/api/v1/admin/exploration-ad/posts?q=${encode(query.trim())}", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun saveAdminExplorationAd(values: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/exploration-ad", method = "PATCH", body = values.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun adminAiSettings(): JSONObject = withContext(Dispatchers.IO) {
@@ -519,8 +560,8 @@ class HeikaRepository @Inject constructor(
         cache.put(NativeCacheKeys.profile(userId), payload.toString())
     }
 
-    suspend fun updateMyProfile(nickname: String, bio: String): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/me", method = "PATCH", body = JSONObject().put("nickname", nickname).put("bio", bio).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    suspend fun updateMyProfile(nickname: String, bio: String, details: JSONArray): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me", method = "PATCH", body = JSONObject().put("nickname", nickname).put("bio", bio).put("details", details).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun updateBookmarksVisibility(visible: Boolean): JSONObject = withContext(Dispatchers.IO) {
@@ -631,13 +672,14 @@ class HeikaRepository @Inject constructor(
         resourceData: JSONObject,
         topics: List<String>,
         mediaPaths: List<String>,
+        usageScenarios: List<String>,
     ): JSONObject = withContext(Dispatchers.IO) {
         require(action == "draft" || action == "submit") { "AI 内容操作无效" }
         require(contentType in aiResourceTypes) { "AI 内容类型无效" }
         val payload = JSONObject()
             .put("action", action).put("title", title).put("body", body).put("category", category)
             .put("contentType", contentType).put("resourceData", resourceData)
-            .put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
+            .put("usageScenarios", JSONArray(usageScenarios)).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
         id?.takeIf(String::isNotBlank)?.let {
             require(isUuid(it)) { "AI 内容编号无效" }
             payload.put("id", it)
@@ -756,6 +798,10 @@ class HeikaRepository @Inject constructor(
 
     suspend fun saveExplorationSnapshot(userId: String, value: JSONObject) = withContext(Dispatchers.IO) {
         cache.put(explorationCacheKey("center", userId), value.toString())
+    }
+
+    suspend fun explorationAd(): JSONObject? = withContext(Dispatchers.IO) {
+        request("/api/v1/exploration-ad", includeSession = true) as? JSONObject
     }
 
     suspend fun explorationCalendar(userId: String, month: String? = null): JSONObject = withContext(Dispatchers.IO) {
@@ -970,6 +1016,8 @@ class HeikaRepository @Inject constructor(
         filter.topic.orEmpty(),
         filter.sort,
         filter.contentType.orEmpty(),
+        filter.usageScenario.orEmpty(),
+        filter.query.orEmpty(),
         // Signed-in recommendations, following feeds, and saved-state fields differ per user.
         auth.current()?.userId ?: "public",
     ).joinToString(":")

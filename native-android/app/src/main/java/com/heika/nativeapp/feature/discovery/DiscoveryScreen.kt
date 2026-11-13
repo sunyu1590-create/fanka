@@ -87,6 +87,7 @@ import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
 import com.heika.nativeapp.ui.sharedImageKey
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
@@ -96,6 +97,7 @@ import java.util.Locale
 fun DiscoveryScreen(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
+    onAiResources: () -> Unit,
     onPost: (HeikaPost) -> Unit,
     hazeState: HazeState,
     sharedTransitionScope: SharedTransitionScope,
@@ -119,7 +121,7 @@ fun DiscoveryScreen(
     var communityCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var aiCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var extraFiltersExpanded by rememberSaveable { mutableStateOf(false) }
-    val rangeDp = 42.dp + if (extraFiltersExpanded) {
+    val rangeDp = 42.dp + (if (filter.channel == "ai") 96.dp else 0.dp) + if (extraFiltersExpanded) {
         (if (tags.isNotEmpty()) 36.dp else 0.dp) + (if (filter.channel == "ai") 36.dp else 0.dp) + 40.dp
     } else 0.dp
     val density = LocalDensity.current
@@ -195,6 +197,7 @@ fun DiscoveryScreen(
             Column(
                 Modifier.fillMaxWidth().height(rangeDp).offset { IntOffset(0, -collapsedPx.toInt()) },
             ) {
+                if (filter.channel == "ai") AiResourceSpaceEntry(hazeState = badgeHazeState, onClick = onAiResources)
                 LazyRow(
                     Modifier.height(42.dp),
                     contentPadding = PaddingValues(horizontal = 19.dp),
@@ -277,6 +280,49 @@ fun DiscoveryScreen(
 }
 
 @Composable
+private fun AiResourceSpaceEntry(hazeState: HazeState, onClick: () -> Unit) {
+    val entries = listOf(
+        HeikaIcons.Robot to "Agent", HeikaIcons.Blocks to "Skills", HeikaIcons.Terminal to "Prompt",
+        HeikaIcons.Wrench to "工具", HeikaIcons.BrainCircuit to "知识", HeikaIcons.Text to "案例",
+    )
+    Column(
+        Modifier.fillMaxWidth().height(96.dp).padding(horizontal = 16.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(15.dp))
+            .hazeEffect(
+                state = hazeState,
+                style = dev.chrisbanes.haze.HazeStyle(
+                    backgroundColor = MaterialTheme.colorScheme.surface,
+                    tint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .22f)),
+                    blurRadius = 18.dp,
+                    noiseFactor = 0f,
+                    fallbackTint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .92f)),
+                ),
+            )
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = .72f))
+            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), RoundedCornerShape(15.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("探索 AI 资源", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("Agent · Skills · Prompt · 更多", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1)
+            }
+            Icon(HeikaIcons.ArrowUpRight, contentDescription = "进入 AI 资源中心", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            entries.forEach { (icon, label) ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChannelOption(label: String, selected: Boolean, onClick: () -> Unit) {
     val color by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -337,7 +383,7 @@ private fun SortTab(label: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
-private fun FeedGrid(
+internal fun FeedGrid(
     posts: androidx.paging.compose.LazyPagingItems<HeikaPost>,
     state: LazyStaggeredGridState,
     onPost: (HeikaPost) -> Unit,
