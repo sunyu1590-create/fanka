@@ -456,6 +456,19 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/settings", method = "PATCH", body = values.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun adminExplorationAd(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/exploration-ad", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminExplorationAdPosts(query: String): JSONObject = withContext(Dispatchers.IO) {
+        require(query.trim().length in 2..60)
+        request("/api/v1/admin/exploration-ad/posts?q=${encode(query.trim())}", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun saveAdminExplorationAd(values: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/exploration-ad", method = "PATCH", body = values.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun adminAiSettings(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/admin/ai-settings", authenticated = true) as? JSONObject ?: JSONObject()
     }
@@ -756,6 +769,10 @@ class HeikaRepository @Inject constructor(
 
     suspend fun saveExplorationSnapshot(userId: String, value: JSONObject) = withContext(Dispatchers.IO) {
         cache.put(explorationCacheKey("center", userId), value.toString())
+    }
+
+    suspend fun explorationAd(): JSONObject? = withContext(Dispatchers.IO) {
+        request("/api/v1/exploration-ad", includeSession = true) as? JSONObject
     }
 
     suspend fun explorationCalendar(userId: String, month: String? = null): JSONObject = withContext(Dispatchers.IO) {

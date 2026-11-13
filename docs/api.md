@@ -26,8 +26,11 @@ All routes return `{ "data": ... }` or `{ "error": "..." }`. Authenticated route
 | PATCH | `/api/v1/admin/posts/:id` | Approve or reject pending content with a required review note and timestamp |
 | PATCH | `/api/v1/admin/comments/:id` | Hide or restore comments |
 | GET/PATCH | `/api/v1/admin/settings` | Read and adjust 5 card slot allocation |
+| GET | `/api/v1/exploration-ad` | Read the enabled exploration-center placement; only a published target post is exposed |
+| GET/PATCH | `/api/v1/admin/exploration-ad` | Admin-only read/update of the optional text or image placement and its published post target |
+| GET | `/api/v1/admin/exploration-ad/posts?q=...` | Admin-only search for published community posts to choose as the placement target |
 
-Database migrations are in `supabase/migrations/`. The topic directory reuses the eight curated `interest_tags` values; `post_topics` stores multi-topic associations and never accepts user-created topic names. Seed posts inherit their existing category as a topic. Topic counts come from published records and distinct authors. Daily RPCs persist one deck per user and local date, keep opened cards, and allow one swap. The publishing UI uses the authenticated library-state and media endpoints; the browser autosaves text locally and in the user's draft row, and keeps image file backups in IndexedDB until Storage confirms the association.
+Database migrations are in `supabase/migrations/`. The topic directory reuses the eight curated `interest_tags` values; `post_topics` stores multi-topic associations and never accepts user-created topic names. Seed posts inherit their existing category as a topic. Topic counts come from published records and distinct authors. Daily RPCs persist one deck per user and local date, keep opened cards, and allow one swap. The publishing UI uses the authenticated library-state and media endpoints; the browser autosaves text locally and in the user's draft row, and keeps image file backups in IndexedDB until Storage confirms the association. The optional exploration ad placement is disabled by default and uses a singleton RLS-protected row; applying `20261113090000_exploration_ad_settings.sql` is required before deploying its API routes.
 
 ## Deployment
 

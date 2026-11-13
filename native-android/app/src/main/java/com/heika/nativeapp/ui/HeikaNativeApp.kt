@@ -280,7 +280,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
-                        hazeState = hazeState,
                         viewModel = profileViewModel,
                     )
                 }
@@ -327,7 +326,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
-                        hazeState = hazeState,
                     )
                 }
                 composable(
@@ -425,6 +423,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         onCalendar = { nav.navigate("exploration/calendar") },
                         onCoExplore = { nav.navigate("exploration/co-explore?inviteCode=") },
                         onStoryChains = { nav.navigate("exploration/chains-graph") },
+                        onPost = openPost,
                     )
                 }
                 composable("exploration/tasks") {

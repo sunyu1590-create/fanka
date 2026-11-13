@@ -63,7 +63,6 @@ import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.feature.exploration.ExplorationLogic
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaRadii
-import dev.chrisbanes.haze.HazeState
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 
@@ -87,7 +86,6 @@ fun ProfileScreen(
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     sharedElementsEnabled: Boolean = false,
-    hazeState: HazeState? = null,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -112,7 +110,7 @@ fun ProfileScreen(
 
     if (state.loading && state.profile == null) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (userId == null) ProfileBrandHeader(onSettings, onMembership, hazeState) else BackHeader("用户主页", onBack)
+            if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(13.dp), verticalAlignment = Alignment.CenterVertically) {
                     SkeletonBlock(62.dp, CircleShape)
@@ -138,7 +136,7 @@ fun ProfileScreen(
     }
     if (state.profile == null) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (userId == null) ProfileBrandHeader(onSettings, onMembership, hazeState) else BackHeader("用户主页", onBack)
+            if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
             Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.error ?: "个人主页暂不可用", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(if (state.error?.contains("登录") == true) "登录" else "重试", Modifier.clickable { if (state.error?.contains("登录") == true) onLogin() else viewModel.load(userId, force = true) }.padding(12.dp), color = MaterialTheme.colorScheme.primary)
@@ -150,7 +148,7 @@ fun ProfileScreen(
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; else -> state.posts }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (userId == null) ProfileBrandHeader(onSettings, onMembership, hazeState) else BackHeader("用户主页", onBack)
+        if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
         Box(Modifier.fillMaxSize()) {
             val swipeThreshold = with(LocalDensity.current) { 54.dp.toPx() }
             LazyVerticalStaggeredGrid(
@@ -179,7 +177,7 @@ fun ProfileScreen(
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Text(profile.nickname, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (userId == null) Text("LV.${state.stats.level}", Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 7.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                                    if (userId == null) Text("LV${state.stats.level}", Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 7.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                                 }
                                 if (profile.bio.isNotBlank()) Text(profile.bio, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                                 Text("HEIKA ID · ${profile.id.take(8).uppercase()}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
@@ -199,7 +197,7 @@ fun ProfileScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                                 ) {
-                                    Text("LV.${levelProgress.current.level}", Modifier.clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .13f)).padding(horizontal = 7.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("LV${levelProgress.current.level}", Modifier.clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .13f)).padding(horizontal = 7.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                                     Column(Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(levelProgress.current.reward, Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -220,7 +218,6 @@ fun ProfileScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                                 ) {
-                                    Icon(HeikaIcons.Medal, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                     Text("今日探索任务", color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                                     Text(state.stats.dailyTasks?.let { "${state.stats.completedDailyTasks}/$it 已完成" } ?: "进度同步中", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1)
                                     Text(state.stats.dailyExperience?.let { "可得 $it EXP" } ?: "", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, maxLines = 1)
@@ -311,15 +308,13 @@ private fun ProfileTabBar(selected: String, modifier: Modifier = Modifier, compa
 }
 
 @Composable
-private fun ProfileBrandHeader(onSettings: () -> Unit, onMembership: () -> Unit, hazeState: HazeState?) {
-    com.heika.nativeapp.ui.HeikaLiquidGlassSurface(hazeState, modifier = Modifier.fillMaxWidth().height(58.dp), drawTopHighlight = false) {
+private fun ProfileBrandHeader(onSettings: () -> Unit, onMembership: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         Text("HEIKA", Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, letterSpacing = 2.sp)
         Spacer(Modifier.weight(1f))
         Text("会员中心", Modifier.clickable(onClick = onMembership).padding(horizontal = 8.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
         Icon(HeikaIcons.Settings, "设置", Modifier.size(38.dp).clip(CircleShape).clickable(onClick = onSettings).padding(9.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
     }
 }
 

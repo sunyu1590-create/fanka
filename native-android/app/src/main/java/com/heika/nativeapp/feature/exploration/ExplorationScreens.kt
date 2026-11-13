@@ -98,6 +98,7 @@ fun ExplorationCenterScreen(
     onCalendar: () -> Unit,
     onCoExplore: () -> Unit,
     onStoryChains: () -> Unit,
+    onPost: (HeikaPost) -> Unit,
     viewModel: ExplorationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -192,6 +193,39 @@ fun ExplorationCenterScreen(
                     }
                 }
             }
+            state.ad?.let { ad -> item(key = "exploration-ad") { ExplorationAdRow(ad) { onPost(ad.post) } } }
+        }
+    }
+}
+
+@Composable
+private fun ExplorationAdRow(ad: ExplorationAd, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(HeikaRadii.surface))
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("推广", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+            Text(ad.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (ad.body.isNotBlank()) Text(ad.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("查看作品", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
+            }
+        }
+        ad.imageUrl?.let { image ->
+            AsyncImage(
+                model = image,
+                contentDescription = ad.title,
+                imageLoader = LocalHeikaImageLoader.current,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(82.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+            )
         }
     }
 }

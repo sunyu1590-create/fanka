@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -43,11 +44,12 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
         BackHeader("关于黑卡", onBack)
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 22.dp, vertical = 14.dp)) {
             item {
-                Column(Modifier.fillMaxWidth().padding(top = 17.dp, bottom = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.size(76.dp).clip(RoundedCornerShape(23.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                        Image(painterResource(R.drawable.ic_heika), contentDescription = "黑卡应用图标", modifier = Modifier.fillMaxSize())
+                Column(Modifier.fillMaxWidth().padding(top = 15.dp, bottom = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.size(104.dp).clip(RoundedCornerShape(25.dp)).background(androidx.compose.ui.graphics.Color.Black), contentAlignment = Alignment.Center) {
+                        // Keep the complete supplied 512×512 artwork visible; never crop or zoom it.
+                        Image(painterResource(R.drawable.ic_heika), contentDescription = "黑卡应用图标", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
                     }
-                    Text("黑卡 HEIKA", color = MaterialTheme.colorScheme.onBackground, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp))
+                    Text("黑卡 HEIKA", color = MaterialTheme.colorScheme.onBackground, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 10.dp))
                     Text("版本 ${version.first} · 构建 ${version.second}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .75f), fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp))
                 }
             }
@@ -64,18 +66,57 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                     )
                 }
             }
-            item { AboutAction("检查更新", "当前发布渠道尚未提供可靠的更新检查服务", enabled = false) { } }
-            item { AboutAction("意见反馈", "通过黑卡现有反馈入口联系开发者", enabled = true, onClick = onFeedback) }
-            item { AboutAction("官方网站", "moonclean.shop", enabled = true) { openExternal(context, "https://moonclean.shop/") } }
-            item { AboutAction("GitHub 项目", "查看黑卡公开项目", enabled = true) { openExternal(context, BuildConfig.GITHUB_URL) } }
-            item { AboutAction("用户协议与隐私政策", "网站当前标注协议文本尚未开放", enabled = false) { } }
+            item { NativeReleaseNotes(version.second) }
+            item { AboutActions(onFeedback = onFeedback, onWebsite = { openExternal(context, "https://moonclean.shop/") }, onGithub = { openExternal(context, BuildConfig.GITHUB_URL) }) }
+        }
+    }
+}
+
+private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
+
+private val nativeReleases = listOf(
+    NativeRelease(34, "2026.11.13", listOf("个人页探索成长入口更紧凑；底部主导航改为仅图标。", "探索中心支持管理员配置可关闭的图文广告位。", "关于页加入原生版本更新记录，并完整展示黑卡图标留白。")),
+    NativeRelease(33, "2026.11.13", listOf("内置 OPPO Sans 4.0 并保留字体许可文件。", "更新黑卡金色应用图标，优化底栏空间和发现页滚动绘制。")),
+)
+
+@Composable
+private fun NativeReleaseNotes(currentBuild: Long) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 15.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("版本更新", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("${nativeReleases.size} 条", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+        }
+        nativeReleases.forEachIndexed { index, release ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = if (index == 0) 0.dp else 2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("2.3.6 · ${release.build}", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    if (release.build == currentBuild) Text("当前版本", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(release.date, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                }
+                release.notes.forEach { note -> Text("· $note", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp) }
+            }
         }
     }
 }
 
 @Composable
+private fun AboutActions(onFeedback: () -> Unit, onWebsite: () -> Unit, onGithub: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface)) {
+        AboutAction("意见反馈", "通过黑卡现有反馈入口联系开发者", true, onFeedback)
+        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+        AboutAction("官方网站", "moonclean.shop", true, onWebsite)
+        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+        AboutAction("GitHub 项目", "查看黑卡公开项目", true, onGithub)
+        HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+        AboutAction("用户协议与隐私政策", "网站当前标注协议文本尚未开放", false) { }
+    }
+}
+
+@Composable
 private fun AboutAction(title: String, subtitle: String, enabled: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))

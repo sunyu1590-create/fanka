@@ -215,11 +215,6 @@ fun GlassNavigationBar(
 private fun RowScope.NavigationItem(key: String, label: String, selected: String, onSelect: (String) -> Unit) {
     val active = selected == key
     val scale by animateFloatAsState(if (active) 1f else 0.96f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 560f), label = "nav-scale")
-    val labelColor by animateColorAsState(
-        if (active) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
-        tween(HeikaMotion.control),
-        label = "nav-label-color-$key",
-    )
     val iconColor by animateColorAsState(
         if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         tween(HeikaMotion.control),
@@ -230,25 +225,24 @@ private fun RowScope.NavigationItem(key: String, label: String, selected: String
             .weight(1f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(24.dp))
-            .clickable { onSelect(key) }
-            .padding(vertical = 6.dp),
+            .clickable(onClickLabel = label) { onSelect(key) }
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         AnimatedContent(targetState = active, label = "nav-icon") { isSelected ->
-            NavigationGlyph(key, if (isSelected) iconColor else MaterialTheme.colorScheme.onSurfaceVariant)
+            NavigationGlyph(key, if (isSelected) iconColor else MaterialTheme.colorScheme.onSurfaceVariant, label)
         }
-        Text(label, color = labelColor, fontSize = 12.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
 
 @Composable
-private fun NavigationGlyph(key: String, color: Color) {
+private fun NavigationGlyph(key: String, color: Color, label: String) {
     val icon = when (key) {
         "home" -> HeikaIcons.Home
         "discovery" -> HeikaIcons.Discovery
         "messages" -> HeikaIcons.Messages
         else -> HeikaIcons.Profile
     }
-    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(27.dp))
+    Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(27.dp))
 }

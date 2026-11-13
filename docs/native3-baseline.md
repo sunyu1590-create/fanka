@@ -205,3 +205,12 @@
 - 桌面启动图标与“关于黑卡”统一使用用户提供的金色卡片图，提供 Android 自适应图标与密度资源。
 - 底部导航改为仅四个主标签共用独立圆角模糊胶囊，“发布”圆按钮置于胶囊外并为窄屏保留横向空间。发现页滚动标题折叠不再用 `animateContentSize` 追赶手势；卡片玻璃标签共享页面级 Haze 状态，并降低模糊半径以减少滚动期间的绘制成本。
 - Android version 保持 `2.3.6`，versionCode 从 32 递增至 33。GitHub Actions 构建与源码 SHA、Artifact、设备验收状态待本轮完成后补录。
+
+## HEIKA Native 3.3 关于页、个人页和探索广告位（versionCode 34）
+
+- 基于 `codex/native32-phase1` / `be34234020c1c938c03b86af1b222d17e784cae5` 的干净工作区增量修改。Android `applicationId` 不变；versionName 保持 `2.3.6`，versionCode 提升至 `34`。
+- 关于页保留完整原始图标文件，以 `ContentScale.Fit` 显示，不裁切；重排信息区并加入 Native 2.3.6 版本记录。记录只列 Android 版本和真实的构建改动，不混用网页端 2.40.x 版本号。
+- 个人页品牌栏改为与页面背景同色，不再叠加独立液态玻璃色层；等级徽标显示为 `LV3` 格式；今日探索任务行移除重复奖章图标。底部四个主导航入口保留同一玻璃胶囊和点击语义，只隐藏文字并保留无障碍名称，发布圆钮仍在胶囊外。
+- 探索中心增加可选图文推广位，默认关闭。Native 管理后台与网页管理后台都有入口；管理员写入时服务端验证 `profiles.role=admin`、目标作品编号及已发布状态。匿名/普通用户读取只返回启用且目标仍公开的内容，点击通过现有 Native 内容详情路由打开真实帖子。
+- 新增 `exploration_ad_settings` RLS 表及 `GET /api/v1/exploration-ad`、`GET/PATCH /api/v1/admin/exploration-ad` 路由。迁移尚未应用到生产数据库，API 路由尚未部署；生产启用此广告位前需先应用新 migration 并部署网站。没有修改生产数据。
+- GitHub Actions、APK SHA、Artifact 和构建验证结果将在构建完成后补录；当前没有真机/模拟器，未做 profile 视觉截图验收。
