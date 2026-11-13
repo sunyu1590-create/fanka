@@ -41,8 +41,9 @@ test("glass blur is sourced from discovery covers and app content while dialogs 
   const dialog = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaAlertDialog.kt");
   const app = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaNativeApp.kt");
   assert.match(discovery, /val badgeHazeState = rememberHazeState\(\)/);
-  assert.match(discovery, /\.hazeSource\(badgeHazeState\)/);
-  assert.match(glass, /blurRadius = 26\.dp/);
+  assert.match(discovery, /\.hazeSource\(it\)/);
+  assert.match(discovery, /FeedCard\(post,[\s\S]*?hazeState = hazeState/);
+  assert.match(glass, /blurRadius = 16\.dp/);
   assert.match(glass, /fallbackTint = HazeTint\(surface\.copy\(alpha = if \(dark\) \.24f else \.30f\)\)/);
   assert.match(dialog, /LocalHeikaModalBackdropCount/);
   assert.match(dialog, /LocalContentColor provides MaterialTheme\.colorScheme\.onSurface/);
