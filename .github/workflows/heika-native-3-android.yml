@@ -10,6 +10,7 @@ on:
       - "app/api/v1/topics/route.ts"
       - "lib/topics.ts"
       - "app/design-system.css"
+      - "tests/native33-contracts.test.mjs"
       - ".github/workflows/heika-native-3-android.yml"
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - "app/api/v1/topics/route.ts"
       - "lib/topics.ts"
       - "app/design-system.css"
+      - "tests/native33-contracts.test.mjs"
       - ".github/workflows/heika-native-3-android.yml"
   workflow_dispatch:
 
