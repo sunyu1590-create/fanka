@@ -1,3 +1,8 @@
+@file:OptIn(
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
+
 package com.heika.nativeapp.feature.discovery
 
 import androidx.compose.foundation.background
