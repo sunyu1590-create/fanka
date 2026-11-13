@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -26,10 +27,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.heika.nativeapp.BuildConfig
+import com.heika.nativeapp.R
 import com.heika.nativeapp.ui.BackHeader
 
 @Composable
@@ -42,7 +45,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
             item {
                 Column(Modifier.fillMaxWidth().padding(top = 17.dp, bottom = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.size(76.dp).clip(RoundedCornerShape(23.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                        Text("黑卡", color = MaterialTheme.colorScheme.primary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                        Image(painterResource(R.drawable.ic_heika), contentDescription = "黑卡应用图标", modifier = Modifier.fillMaxSize())
                     }
                     Text("黑卡 HEIKA", color = MaterialTheme.colorScheme.onBackground, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp))
                     Text("版本 ${version.first} · 构建 ${version.second}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .75f), fontSize = 10.sp, modifier = Modifier.padding(top = 9.dp))
@@ -53,6 +56,12 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                     Text("关于黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Text("黑卡是一款独立开发的内容探索应用。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
                     Text("个人开发者", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text(
+                        "字体：OPPO Sans 4.0。Copyright © 2024 Guangdong OPPO Mobile Telecommunications Corp., Ltd. 字体依照随应用附带的许可协议提供。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp,
+                    )
                 }
             }
             item { AboutAction("检查更新", "当前发布渠道尚未提供可靠的更新检查服务", enabled = false) { } }

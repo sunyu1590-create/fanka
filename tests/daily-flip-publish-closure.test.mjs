@@ -32,13 +32,16 @@ test("image upload retries reuse upload_id and published media cannot be deleted
 
   assert.match(mediaRoute, /if \(linked\?\.post_id === postId && linked\.thumbnail_path && linked\.retina_thumbnail_path\)/);
   assert.match(mediaRoute, /linkedPost\?\.status === "published"/);
+  assert.match(mediaRoute, /const stagingMode = !revisionMode && !form\.has\("post_id"\) && form\.get\("staging"\) === "1"/);
+  assert.match(mediaRoute, /if \(stagingMode\) return \{ path: paths\.original[\s\S]*staged: true \}/);
   assert.match(viewModel, /val uploadId = UUID\.randomUUID\(\)\.toString\(\)/);
-  assert.match(viewModel, /image\.uploadId!!, image\.name, image\.mime!!/);
+  assert.match(viewModel, /uploadId = image\.uploadId!!,[\s\S]*fileName = image\.name,[\s\S]*mimeType = image\.mime!!/);
   assert.match(viewModel, /FileOutputStream\(temporaryFile\)[\s\S]*output\.fd\.sync\(\)[\s\S]*temporaryFile\.renameTo\(localFile\)/);
   assert.match(viewModel, /fun retryUpload\(key: String\)/);
   assert.match(viewModel, /native-publish|saveLocalPublishSnapshot/);
   assert.match(repository, /addFormDataPart\("upload_id", uploadId\)/);
-  assert.match(repository, /if \(revisionMode\) "revision_post_id" else "post_id"/);
+  assert.match(repository, /if \(revisionMode\)[\s\S]*addFormDataPart\("revision_post_id"/);
+  assert.match(repository, /if \(postId\.isNullOrBlank\(\)\)[\s\S]*addFormDataPart\("staging", "1"\)/);
   assert.match(viewModel, /uploadJob\?\.join\(\)/);
   assert.match(viewModel, /val orphanRetryPath = if \(removed\?\.uploadId != null/);
 });
@@ -51,16 +54,19 @@ test("publish drafts keep ordered media paths and distinguish revision submissio
 
   assert.match(viewModel, /images = images, mediaPaths = images\.mapNotNull\(PendingImage::path\)/);
   assert.match(viewModel, /serverStatus = post\.optString\("status"\)/);
-  assert.match(viewModel, /val cloudId = if \(current\.revisionMode\) current\.draftCloudId\.orEmpty\(\) else ensureDraft\(\)\.optString\("cloudId"\)/);
+  assert.match(viewModel, /private suspend fun submitContent\(current: PublishState\)/);
+  assert.doesNotMatch(viewModel, /ensureDraft\(|saveRemoteDraft\(|repository\.createOrUpdateDraft\(/);
+  assert.match(viewModel, /current\.images\.filter \{ it\.path == null \}\.forEach \{ uploadPendingImage\(it\.key\) \}/);
   assert.match(viewModel, /修改已提交审核，原作品保持发布/);
   assert.match(screen, /viewModel\.setCover\(image\.key\)/);
   assert.match(screen, /viewModel\.retryUpload\(image\.key\)/);
   assert.match(libraryRoute, /existingPost\?\.data\?\.status === "published"/);
   assert.match(libraryRoute, /post_revisions/);
-  assert.match(viewModel, /localIsNewUnsynced = local != null && local\.optInt\("draftId", -1\) <= 0 && needsServerSync/);
-  assert.match(viewModel, /if \(\(localMatches && needsServerSync\) \|\| localIsNewUnsynced\) \{[\s\S]*scheduleSave\(\)/);
-  assert.match(viewModel, /fun leaveWithLocalCopy[\s\S]*if \(!persistLocalSnapshot\(\)\) return@launch/);
-  assert.match(viewModel, /图片上传未完成，请重试/);
+  assert.match(viewModel, /repository\.localPublishSnapshot\(session\.userId, mutableState\.value\.channel\)/);
+  assert.match(viewModel, /repository\.saveLocalPublishSnapshot\(accountId, snapshot, current\.channel\)/);
+  assert.match(viewModel, /fun deleteLocalDraft\(\)[\s\S]*clearLocalPublishSnapshot/);
+  assert.match(viewModel, /private suspend fun saveDraftInternal[\s\S]*persistLocalSnapshot\(\)/);
+  assert.doesNotMatch(viewModel, /repository\.createOrUpdateDraft\(/);
   assert.match(screen, /if \(image\.error != null\)[\s\S]*重试上传/);
   assert.match(mediaRoute, /if \(revisionMode\) return \{ path: paths\.original/);
   assert.match(libraryRoute, /signPostMedia\(db, mediaPaths, 60\)/);

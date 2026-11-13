@@ -341,6 +341,19 @@ export async function POST(req: NextRequest) {
       return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];
     }
     if (action === "publish") {
+      const publishMediaPaths = Array.isArray(b.mediaPaths) ? [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))] : [];
+      const publishMedia = splitPostMediaPaths(publishMediaPaths);
+      if (publishMedia.videos.length && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
+      if (publishMedia.images.length > 9 || publishMedia.videos.length > 1 || (publishMedia.videos.length && publishMedia.images.length) || publishMediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes(".."))) {
+        throw new ApiError(400, "投稿媒体无效；最多添加 9 张图片，或单独 1 个视频");
+      }
+      if (publishMediaPaths.length) {
+        const uploaded = await signPostMedia(db, publishMediaPaths, 60);
+        if (uploaded.error) dbError(uploaded.error);
+        if ((uploaded.data || []).length !== publishMediaPaths.length || uploaded.data?.some((item) => !item.signedUrl)) {
+          throw new ApiError(409, "图片尚未上传完成，请重试");
+        }
+      }
       const { data: tag, error: tagError } = await db
         .from("interest_tags")
         .select("id")

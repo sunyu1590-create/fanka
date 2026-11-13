@@ -1,5 +1,7 @@
 package com.heika.nativeapp.feature.settings
 
+import com.heika.nativeapp.ui.HeikaAlertDialog
+
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.HeikaIconRes
 import android.Manifest
@@ -137,6 +139,8 @@ fun SettingsDetailScreen(
     val reading by viewModel.readingMode.collectAsStateWithLifecycle()
     val pageTransition by viewModel.pageTransition.collectAsStateWithLifecycle()
     val fontChoice by viewModel.fontChoice.collectAsStateWithLifecycle()
+    val bodyTextSize by viewModel.bodyTextSize.collectAsStateWithLifecycle()
+    val titleTextSize by viewModel.titleTextSize.collectAsStateWithLifecycle()
     val capacity by viewModel.imageCacheMb.collectAsStateWithLifecycle()
     val comments by viewModel.commentsEnabled.collectAsStateWithLifecycle()
     val notificationError by viewModel.notificationError.collectAsStateWithLifecycle()
@@ -170,6 +174,9 @@ fun SettingsDetailScreen(
     val title = SettingGroups.flatMap { it.second }.firstOrNull { it.key == section }?.title ?: when (section) {
         "transition" -> "页面切换动画"
         "font" -> "字体"
+        "text-size" -> "阅读与字号"
+        "body-size" -> "正文大小"
+        "title-size" -> "标题大小"
         "privacy-dm" -> "私信接收范围"
         "privacy-blocked" -> "黑名单"
         "theme" -> "主题模式"
@@ -194,8 +201,9 @@ fun SettingsDetailScreen(
                     item { SettingAction("主题模式", SettingIconKey.THEME, themeLabel(theme), { onSection("theme") }) }
                     item { SettingAction("内容布局", SettingIconKey.LAYOUT, layoutLabel(layout), { onSection("layout") }) }
                     item { SettingAction("阅读模式", SettingIconKey.READING, readingLabel(reading), { onSection("reading") }) }
+                    item { SettingAction("阅读与字号", SettingIconKey.FONT, "设置正文和标题的显示大小", { onSection("text-size") }) }
                     item { SettingAction("页面切换动画", SettingIconKey.TRANSITION, transitionLabel(pageTransition), { onSection("transition") }) }
-                    item { SettingAction("字体", SettingIconKey.FONT, "系统默认", { onSection("font") }) }
+                    item { SettingAction("字体", SettingIconKey.FONT, if (fontChoice == "oppo_sans") "OPPO Sans 4.0" else "系统默认", { onSection("font") }) }
                 }
                 "theme" -> item { ChoiceList(SettingIconKey.THEME, listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), theme, viewModel::setTheme) }
                 "layout" -> item { ChoiceList(SettingIconKey.LAYOUT, listOf("waterfall" to "双列瀑布流", "single" to "单列列表"), layout, viewModel::setFeedLayout) }
@@ -206,7 +214,45 @@ fun SettingsDetailScreen(
                 }
                 "font" -> {
                     item { DetailHeading("字体") }
-                    item { ChoiceList(SettingIconKey.FONT, listOf("system" to "系统默认"), fontChoice, viewModel::setFontChoice) }
+                    item { ChoiceList(SettingIconKey.FONT, listOf("system" to "系统默认", "oppo_sans" to "OPPO Sans 4.0"), fontChoice, viewModel::setFontChoice) }
+                    item {
+                        Text(
+                            "OPPO Sans 4.0 随应用提供，字体版权归 OPPO。",
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+                "text-size" -> {
+                    item { SettingAction("正文大小", SettingIconKey.READING, textSizeLabel(bodyTextSize), { onSection("body-size") }) }
+                    item { SettingAction("标题大小", SettingIconKey.FONT, textSizeLabel(titleTextSize), { onSection("title-size") }) }
+                    item { DetailHeading("预览") }
+                    item {
+                        Text(
+                            "阅读与字号会立即应用于详情正文、评论正文和内容标题。",
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp * com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(bodyTextSize),
+                            lineHeight = 22.sp * com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(bodyTextSize),
+                        )
+                    }
+                }
+                "body-size" -> item {
+                    TextSizeChoiceList(
+                        iconKey = SettingIconKey.READING,
+                        selected = bodyTextSize,
+                        title = false,
+                        onSelect = viewModel::setBodyTextSize,
+                    )
+                }
+                "title-size" -> item {
+                    TextSizeChoiceList(
+                        iconKey = SettingIconKey.FONT,
+                        selected = titleTextSize,
+                        title = true,
+                        onSelect = viewModel::setTitleTextSize,
+                    )
                 }
                 "notifications" -> {
                     item { SettingAction("Android 系统通知", SettingIconKey.NOTIFICATIONS, if (notificationsAllowed) "系统通知权限已开启" else "系统通知权限未开启", { requestOrOpenNotificationPermission(context, permissionLauncher::launch) }) }
@@ -259,7 +305,7 @@ fun SettingsDetailScreen(
         }
     }
     pendingNotesPrivate?.let { value ->
-        androidx.compose.material3.AlertDialog(
+        HeikaAlertDialog(
             onDismissRequest = { pendingNotesPrivate = null },
             title = { Text("更新作品可见范围？") },
             text = { Text(if (value) "已发布作品及关联媒体将设为仅自己可见。" else "已发布作品将按社区规则公开展示。") },
@@ -267,14 +313,14 @@ fun SettingsDetailScreen(
             dismissButton = { TextButton(onClick = { pendingNotesPrivate = null }) { Text("取消") } },
         )
     }
-    if (recoveryConfirm) androidx.compose.material3.AlertDialog(
+    if (recoveryConfirm) HeikaAlertDialog(
         onDismissRequest = { recoveryConfirm = false },
         title = { Text("生成新的恢复码？") },
         text = { Text("这会立即使之前生成的恢复码失效。新恢复码只显示一次，请安全保存。") },
         confirmButton = { TextButton(enabled = !recoveryCodesLoading, onClick = { recoveryConfirm = false; viewModel.generateRecoveryCodes() }) { Text("生成") } },
         dismissButton = { TextButton(onClick = { recoveryConfirm = false }) { Text("取消") } },
     )
-    if (recoveryCodesOpen) androidx.compose.material3.AlertDialog(
+    if (recoveryCodesOpen) HeikaAlertDialog(
         onDismissRequest = { recoveryCodesOpen = false; viewModel.clearRecoveryCodes() },
         title = { Text("账号恢复码") },
         text = {
@@ -324,6 +370,59 @@ private fun transitionLabel(value: String) = when (value) {
 private fun themeLabel(value: String) = when (value) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" }
 private fun layoutLabel(value: String) = if (value == "single") "单列列表" else "双列瀑布流"
 private fun readingLabel(value: String) = when (value) { "focus" -> "专注"; "night" -> "夜读"; else -> "标准" }
+private fun textSizeLabel(value: String) = when (com.heika.nativeapp.ui.HeikaReadingSizes.normalize(value)) {
+    "slightly-large" -> "稍大"
+    "large" -> "大"
+    else -> "标准"
+}
+
+@Composable
+private fun TextSizeChoiceList(
+    iconKey: SettingIconKey,
+    selected: String,
+    title: Boolean,
+    onSelect: (String) -> Unit,
+) {
+    val scale = if (title) com.heika.nativeapp.ui.HeikaReadingSizes.titleScale(selected) else com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(selected)
+    val options = listOf("standard" to "标准", "slightly-large" to "稍大", "large" to "大")
+    Column(Modifier.fillMaxWidth()) {
+        DetailHeading("选择字号")
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp)) {
+            options.forEachIndexed { index, (value, label) ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onSelect(value) }.heightIn(min = 62.dp).padding(vertical = 7.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    androidx.compose.material3.Icon(
+                        androidx.compose.ui.res.painterResource(settingIcon(iconKey)), null,
+                        tint = if (selected == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(21.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+                        Text(
+                            if (title) "黑卡内容标题" else "正文与评论示例",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = (if (title) 15.sp else 14.sp) * (if (title) com.heika.nativeapp.ui.HeikaReadingSizes.titleScale(value) else com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(value)),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                    RadioButton(selected = selected == value, onClick = { onSelect(value) })
+                }
+                if (index < options.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .38f))
+            }
+        }
+        Text(
+            if (title) "标题预览" else "正文预览",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = (if (title) 22.sp else 14.sp) * scale,
+            lineHeight = (if (title) 30.sp else 22.sp) * scale,
+            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+        )
+    }
+}
 
 @Composable
 private fun SettingAction(title: String, iconKey: SettingIconKey, subtitle: String, onClick: () -> Unit, enabled: Boolean = true) {

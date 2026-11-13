@@ -153,7 +153,14 @@ private fun NotificationRow(item: com.heika.nativeapp.data.HeikaNotification, on
             Text(item.actorName.take(1), color = MaterialTheme.colorScheme.primary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
         Column(Modifier.weight(1f)) {
-            val action = when (item.type) { "comment" -> "评论了你的作品"; "reply" -> "回复了你的评论"; "moderation" -> "有一条内容审核通知"; else -> item.title.ifBlank { "有一条新动态" } }
+            val action = when (item.type) {
+                "comment" -> "评论了你的作品"
+                "reply" -> "回复了你的评论"
+                "like" -> "赞了你的作品"
+                "bookmark" -> "收藏了你的作品"
+                "moderation" -> "有一条内容审核通知"
+                else -> item.title.ifBlank { "有一条新动态" }
+            }
             Text("${item.actorName}　$action", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, lineHeight = 18.sp)
             Text(item.postTitle ?: item.title.ifBlank { "打开查看动态" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             Text(item.createdAt.take(16).replace('T', ' '), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))

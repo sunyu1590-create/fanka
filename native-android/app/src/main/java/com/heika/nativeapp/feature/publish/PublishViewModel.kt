@@ -80,7 +80,6 @@ class PublishViewModel @Inject constructor(
     private var snapshotJob: Job? = null
     private var draftLoaded = false
     private val saveMutex = Mutex()
-    private val draftMutex = Mutex()
     private val publishMutex = Mutex()
     private val uploadJobs = ConcurrentHashMap<String, Job>()
     private var needsServerSync = false
@@ -148,39 +147,30 @@ class PublishViewModel @Inject constructor(
         mutableState.update { it.copy(accountId = session.userId) }
 
         val local = runCatching { repository.localPublishSnapshot(session.userId, mutableState.value.channel) }.getOrNull()
-        if (local != null && (requestedId == null || local.optInt("draftId", -1) == requestedId)) {
+        val localMatchesRequested = requestedId != null && local?.optInt("draftId", -1) == requestedId
+        if (local != null && (requestedId == null || localMatchesRequested)) {
             restoreLocalSnapshot(local)
         }
 
-        runCatching { repository.myLibraryState() }.onSuccess { profile ->
-            val own = profile.optJSONArray("own").jsonObjects()
-            val expectedChannel = mutableState.value.channel
-            val remote = if (requestedId != null) {
-                own.firstOrNull { it.optInt("id") == requestedId && it.optString("channel").ifBlank { "community" } == expectedChannel && it.optString("status") in setOf("draft", "pending_review", "published") }
-            } else {
-                val localDraftId = local?.optInt("draftId", -1)?.takeIf { it > 0 }
-                localDraftId?.let { id -> own.firstOrNull { it.optInt("id") == id && it.optString("channel").ifBlank { "community" } == expectedChannel && it.optString("status") in setOf("draft", "pending_review", "published") } }
-                    ?: own.filter { it.optString("channel").ifBlank { "community" } == expectedChannel && it.optString("status") in setOf("draft", "pending_review") }
-                        .maxByOrNull { it.optString("updatedAt") }
+        // New drafts are local-only. Read server data only when opening an
+        // explicitly selected legacy draft or an existing published work for edit.
+        if (requestedId != null && !localMatchesRequested) {
+            runCatching { repository.myLibraryState() }.onSuccess { profile ->
+                val remote = profile.optJSONArray("own").jsonObjects().firstOrNull {
+                    it.optInt("id") == requestedId &&
+                        it.optString("channel").ifBlank { "community" } == mutableState.value.channel &&
+                        it.optString("status") in setOf("draft", "pending_review", "published")
+                }
+                if (remote == null) {
+                    mutableState.update { it.copy(error = "内容暂不可用") }
+                } else {
+                    restoreRemote(remote)
+                    persistLocalSnapshot()
+                }
+            }.onFailure { error ->
+                if (local == null) mutableState.update { it.copy(error = error.message ?: "暂时无法读取内容") }
+                else mutableState.update { it.copy(notice = "已恢复本机内容") }
             }
-            if (remote == null) {
-                val localDraftId = local?.optInt("draftId", -1)?.takeIf { it > 0 }
-                if (local != null && needsServerSync && localDraftId == null && requestedId == null) scheduleSave()
-                else if (local != null && localDraftId != null) mutableState.update { it.copy(error = "云端草稿暂不可用；本机副本仍保留") }
-                return@onSuccess
-            }
-            val localMatches = local != null && (local.optInt("draftId", -1) == remote.optInt("id"))
-            val localIsNewUnsynced = local != null && local.optInt("draftId", -1) <= 0 && needsServerSync
-            if ((localMatches && needsServerSync) || localIsNewUnsynced) {
-                mutableState.update { it.copy(notice = "已恢复本机未同步修改") }
-                scheduleSave()
-            } else {
-                restoreRemote(remote)
-                persistLocalSnapshot()
-            }
-        }.onFailure { error ->
-            if (local == null) mutableState.update { it.copy(error = error.message ?: "暂时无法读取草稿") }
-            else mutableState.update { it.copy(notice = "已恢复本机内容，联网后可继续同步") }
         }
     }
 
@@ -207,7 +197,7 @@ class PublishViewModel @Inject constructor(
                     "remote:$path", previews.getOrNull(index) ?: path, path.substringAfterLast('/'), path = path,
                     uploadedBySession = revisionMode && path !in post.stringList("mediaPaths"),
                 ) },
-                notice = if (revisionMode) "正在编辑已发布作品；提交后将按网站规则送审" else "已恢复服务端草稿",
+                notice = if (revisionMode) "正在编辑已发布作品；提交后将按网站规则送审" else "旧草稿已导入此设备",
                 error = null,
             )
         }
@@ -237,7 +227,7 @@ class PublishViewModel @Inject constructor(
                     error = when {
                         path != null -> null
                         localFile == null && localFilePath != null -> "本机图片副本已丢失，请移除后重新选择"
-                        localFile != null -> "图片上传未完成，请重试"
+                        localFile != null -> null
                         else -> item.optString("error").takeIf(String::isNotBlank)
                     },
                 )
@@ -288,7 +278,7 @@ class PublishViewModel @Inject constructor(
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
             delay(900)
-            saveDraft()
+            saveDraftInternal()
         }
     }
 
@@ -367,17 +357,14 @@ class PublishViewModel @Inject constructor(
             mutableState.update { it.copy(error = error.message ?: "图片准备失败") }
             return
         }
-        val image = PendingImage(key, Uri.fromFile(localFile), name, progress = true, uploadId = uploadId, mime = mime, localFilePath = localFile.absolutePath)
+        val image = PendingImage(key, Uri.fromFile(localFile), name, progress = false, uploadId = uploadId, mime = mime, localFilePath = localFile.absolutePath)
         mutableState.update { it.copy(accountId = accountId, images = it.images + image, error = null) }
         needsServerSync = true
         if (!persistLocalSnapshot()) {
             mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false, error = "本机草稿快照未能保存") else it }) }
             return
         }
-        lateinit var job: Job
-        job = viewModelScope.launch { uploadPendingImage(key) }
-        uploadJobs[key] = job
-        job.invokeOnCompletion { if (uploadJobs[key] === job) uploadJobs.remove(key) }
+        mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false) else it }) }
     }
 
     fun retryUpload(key: String) {
@@ -395,14 +382,20 @@ class PublishViewModel @Inject constructor(
             val localPath = image.localFilePath?.let(::File) ?: throw IllegalStateException("图片本地副本不存在，无法重试")
             if (!localPath.isFile) throw IllegalStateException("图片本地副本已丢失，请重新选择")
             val current = mutableState.value
-            val cloudId = if (current.revisionMode) current.draftCloudId.orEmpty() else ensureDraft().optString("cloudId")
-            if (cloudId.isBlank()) throw IllegalStateException("内容编号无效")
             val bytes = withContext(Dispatchers.IO) { localPath.readBytes() }
             val order = mutableState.value.images.indexOfFirst { it.key == key }.coerceAtLeast(0)
-            val result = repository.uploadImage(cloudId, image.uploadId!!, image.name, image.mime!!, bytes, order, current.revisionMode)
+            val result = repository.uploadImage(
+                postId = current.draftCloudId.takeIf { current.revisionMode },
+                uploadId = image.uploadId!!,
+                fileName = image.name,
+                mimeType = image.mime!!,
+                bytes = bytes,
+                sortOrder = order,
+                revisionMode = current.revisionMode,
+            )
             val path = result.optString("path").takeIf(String::isNotBlank) ?: throw IllegalStateException("服务端未返回图片路径")
             if (mutableState.value.images.none { it.key == key }) {
-                runCatching { repository.deleteUploadedImage(cloudId, path) }
+                runCatching { repository.deleteUploadedImage(null, path) }
                 withContext(Dispatchers.IO) { localPath.delete() }
                 return
             }
@@ -412,7 +405,6 @@ class PublishViewModel @Inject constructor(
             }
             needsServerSync = true
             persistLocalSnapshot()
-            if (!mutableState.value.revisionMode) saveDraftInternal()
         } catch (error: Exception) {
             if (error is CancellationException) throw error
             mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false, error = error.message ?: "上传失败") else it }, error = error.message ?: "图片上传失败") }
@@ -424,6 +416,7 @@ class PublishViewModel @Inject constructor(
         val current = mutableState.value
         val removed = current.images.firstOrNull { it.key == key }
         val uploadJob = uploadJobs[key]
+        uploadJob?.cancel()
         mutableState.update { state ->
             val images = state.images.filterNot { it.key == key }
             state.copy(images = images, mediaPaths = images.mapNotNull(PendingImage::path))
@@ -439,8 +432,12 @@ class PublishViewModel @Inject constructor(
         val ext = when (removed?.mime) { "image/jpeg" -> "jpg"; "image/png" -> "png"; "image/webp" -> "webp"; else -> null }
         val orphanRetryPath = if (removed?.uploadId != null && ext != null && latest.accountId != null) "${latest.accountId}/${removed.uploadId}.$ext" else null
         val remotePath = removed?.path ?: orphanRetryPath
-        val canDeleteRemote = remotePath != null && latest.draftCloudId != null &&
+        // Locally selected images have a unique uploadId before their first
+        // submit. Cleanup by that id also covers an upload interrupted mid-request.
+        val isStagedUpload = removed?.uploadId != null && remotePath != null
+        val canDeleteRemote = !isStagedUpload && remotePath != null && latest.draftCloudId != null &&
             (!latest.revisionMode || removed?.uploadId != null || removed?.uploadedBySession == true)
+        if (isStagedUpload) runCatching { repository.deleteUploadedImage(null, remotePath!!) }
         if (canDeleteRemote) {
             mutableState.update { state -> state.copy(pendingDeletePaths = (state.pendingDeletePaths + remotePath!!).distinct()) }
             retryPendingDeletes()
@@ -478,10 +475,37 @@ class PublishViewModel @Inject constructor(
 
     fun saveDraft(onDone: (() -> Unit)? = null) = viewModelScope.launch {
         saveJob?.cancel()
-        val localSaved = persistLocalSnapshot()
-        val saved = saveDraftInternal()
+        val saved = saveDraftInternal(announce = true)
         if (saved) onDone?.invoke() else mutableState.update {
-            it.copy(showLeaveDialog = onDone != null && localSaved, notice = if (localSaved) "内容已保存在本机，联网后可继续同步" else "同步失败，且本机副本未能确认保存；请留在页面重试")
+            it.copy(showLeaveDialog = false, notice = "本机保存失败，请重试")
+        }
+    }
+
+    fun deleteLocalDraft() = viewModelScope.launch {
+        saveJob?.cancel()
+        snapshotJob?.cancel()
+        uploadJobs.values.forEach(Job::cancel)
+        uploadJobs.clear()
+        val current = mutableState.value
+        // Only delete app-created, unattached staging objects. Never touch gallery
+        // originals, existing published media, or legacy server-owned assets.
+        current.images.filter { it.uploadId != null && it.mime != null }.forEach { image ->
+            val extension = when (image.mime) { "image/jpeg" -> "jpg"; "image/png" -> "png"; "image/webp" -> "webp"; else -> null }
+            val stagedPath = extension?.let { ext -> current.accountId?.let { "$it/${image.uploadId}.$ext" } }
+            if (stagedPath != null) runCatching { repository.deleteUploadedImage(null, stagedPath) }
+        }
+        clearLocalFiles(current.images)
+        current.accountId?.let { repository.clearLocalPublishSnapshot(it, current.channel) }
+        needsServerSync = false
+        mutableState.update {
+            PublishState(
+                categories = it.categories,
+                channel = it.channel,
+                accountId = it.accountId,
+                category = it.categories.firstOrNull()?.name.orEmpty(),
+                loading = false,
+                notice = "草稿已删除",
+            )
         }
     }
 
@@ -493,7 +517,7 @@ class PublishViewModel @Inject constructor(
         onLeave()
     }
 
-    private suspend fun saveRemoteDraft(current: PublishState, action: String): JSONObject {
+    private suspend fun submitContent(current: PublishState): JSONObject {
         val topics = parseTopics(current.topicText)
         return if (current.channel == "ai") {
             val resource = JSONObject()
@@ -503,7 +527,7 @@ class PublishViewModel @Inject constructor(
                 else resource.put(key, value.trim())
             }
             repository.mutateAiResource(
-                action = action,
+                action = "submit",
                 id = current.draftCloudId,
                 title = current.title,
                 body = current.body,
@@ -513,10 +537,8 @@ class PublishViewModel @Inject constructor(
                 topics = topics,
                 mediaPaths = current.mediaPaths,
             )
-        } else if (action == "submit") {
-            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths)
         } else {
-            repository.createOrUpdateDraft(current.draftId, current.title, current.body, current.category.ifBlank { "生活" }, topics, current.mediaPaths)
+            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths)
         }
     }
 
@@ -530,47 +552,15 @@ class PublishViewModel @Inject constructor(
         if (link.isNotEmpty() && !AiResourceRules.isSafeSourceUrl(link)) throw IllegalArgumentException("资源链接仅支持公开 HTTPS 地址")
     }
 
-    private suspend fun ensureDraft(): JSONObject = draftMutex.withLock {
-        val current = mutableState.value
-        ensureSameAccount(current.accountId)
-        if (current.revisionMode) return@withLock JSONObject().put("id", current.draftId).put("cloudId", current.draftCloudId.orEmpty())
-        if (current.draftId != null && !current.draftCloudId.isNullOrBlank()) return@withLock JSONObject().put("id", current.draftId).put("cloudId", current.draftCloudId)
-        val result = saveRemoteDraft(current, "draft")
-        val id = result.optInt("id")
-        if (id <= 0) throw IllegalStateException("草稿编号无效")
-        mutableState.update { it.copy(draftId = id, draftCloudId = result.optString("cloudId").takeIf(String::isNotBlank), serverStatus = result.optString("status").ifBlank { "draft" }) }
-        persistLocalSnapshot()
-        result
-    }
-
-    private suspend fun saveDraftInternal(): Boolean = saveMutex.withLock {
-        val current = mutableState.value
-        if (current.title.isBlank() && current.body.isBlank() && current.images.isEmpty()) return@withLock true
-        if (current.revisionMode) {
-            retryPendingDeletes()
-            persistLocalSnapshot()
-            mutableState.update { it.copy(saving = false, notice = "修改已保存在本机，提交时将送审") }
-            return@withLock true
-        }
+    private suspend fun saveDraftInternal(announce: Boolean = false): Boolean = saveMutex.withLock {
         mutableState.update { it.copy(saving = true, error = null) }
-        runCatching {
-            ensureSameAccount(current.accountId)
-            retryPendingDeletes()
-            saveRemoteDraft(current, "draft")
-        }
-            .fold(
-                onSuccess = { result ->
-                    mutableState.update { it.copy(draftId = result.optInt("id").takeIf { id -> id > 0 } ?: it.draftId, draftCloudId = result.optString("cloudId").takeIf(String::isNotBlank) ?: it.draftCloudId, serverStatus = result.optString("status").ifBlank { it.serverStatus }, saving = false, notice = if (it.serverStatus == "pending_review") "审核中的作品已更新" else "草稿已保存") }
-                    needsServerSync = mutableState.value.pendingDeletePaths.isNotEmpty()
-                    persistLocalSnapshot()
-                    true
-                },
-                onFailure = { error ->
-                    mutableState.update { it.copy(saving = false, error = error.message ?: "草稿保存失败", notice = "内容已保存在本机，联网后可继续同步") }
-                    persistLocalSnapshot()
-                    false
-                },
-            )
+        val saved = persistLocalSnapshot()
+        mutableState.update { it.copy(
+            saving = false,
+            error = if (saved) null else "本机草稿保存失败，请重试",
+            notice = if (announce) if (saved) "草稿已保存在此设备" else "本机草稿保存失败，请重试" else it.notice,
+        ) }
+        saved
     }
 
     private suspend fun retryPendingDeletes() {
@@ -612,27 +602,24 @@ class PublishViewModel @Inject constructor(
                 mutableState.update { it.copy(error = "请填写标题、正文并选择分类") }
                 return@launch
             }
-            if (current.images.any { it.error != null || it.path == null }) {
-                mutableState.update { it.copy(error = "请重试失败图片上传，或移除未完成的图片") }
+            if (current.images.any { it.error != null && it.localFilePath == null }) {
+                mutableState.update { it.copy(error = "请移除无法读取的图片后重试") }
                 return@launch
             }
             mutableState.update { it.copy(publishing = true, error = null, notice = null) }
-            val ready = if (current.revisionMode) true else saveDraftInternal()
-            if (!ready) {
-                mutableState.update { it.copy(publishing = false) }
-                return@launch
-            }
-            val latest = mutableState.value
             runCatching {
-                ensureSameAccount(latest.accountId)
+                ensureSameAccount(current.accountId)
+                current.images.filter { it.path == null }.forEach { uploadPendingImage(it.key) }
+                val latest = mutableState.value
+                if (latest.images.any { it.path == null }) throw IOException("图片上传未完成，请检查网络后重试")
                 if (latest.channel == "ai") validateAiResource(latest)
-                saveRemoteDraft(latest, "submit")
+                submitContent(latest)
             }
                 .onSuccess { result ->
-                    clearLocalFiles(latest.images)
-                    latest.accountId?.let { repository.clearLocalPublishSnapshot(it, latest.channel) }
+                    clearLocalFiles(mutableState.value.images)
+                    current.accountId?.let { repository.clearLocalPublishSnapshot(it, current.channel) }
                     needsServerSync = false
-                    mutableState.update { it.copy(publishing = false, serverStatus = result.optString("status").ifBlank { if (latest.revisionMode) "published" else "pending_review" }, notice = if (latest.revisionMode) "修改已提交审核，原作品保持发布" else "内容已提交审核", publishedPost = result) }
+                    mutableState.update { it.copy(publishing = false, serverStatus = result.optString("status").ifBlank { if (current.revisionMode) "published" else "pending_review" }, notice = if (current.revisionMode) "修改已提交审核，原作品保持发布" else "内容已提交审核", publishedPost = result) }
                 }
                 .onFailure { error ->
                     mutableState.update { it.copy(publishing = false, error = error.message ?: "提交失败，请重试") }

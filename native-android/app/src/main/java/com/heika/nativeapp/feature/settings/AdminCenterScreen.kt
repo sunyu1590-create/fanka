@@ -1,5 +1,7 @@
 package com.heika.nativeapp.feature.settings
 
+import com.heika.nativeapp.ui.HeikaAlertDialog
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -110,7 +111,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
         }
     }
     pendingKeywordDelete?.let { rule ->
-        AlertDialog(
+        HeikaAlertDialog(
             onDismissRequest = { pendingKeywordDelete = null },
             title = { Text("删除关键词规则？") },
             text = { Text("“${rule.optString("keyword")}”将不再被服务端拦截。") },
@@ -118,7 +119,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
             dismissButton = { TextButton(onClick = { pendingKeywordDelete = null }) { Text("取消") } },
         )
     }
-    if (pendingAiKeyDelete) AlertDialog(
+    if (pendingAiKeyDelete) HeikaAlertDialog(
         onDismissRequest = { pendingAiKeyDelete = false },
         title = { Text("删除 AI 密钥？") },
         text = { Text("删除后，依赖该密钥的 AI 工作台将暂停服务。") },
@@ -381,7 +382,7 @@ private fun AdminQueueItem(
             "role" to "member" -> "普通用户"; "role" to "reviewer" -> "审核员"; "role" to "content_manager" -> "内容管理员"; "role" to "admin" -> "管理员"
             "membership" to "plus" -> "Plus"; "membership" to "pro" -> "Pro"; else -> "Free"
         }
-        AlertDialog(
+        HeikaAlertDialog(
             onDismissRequest = { if (!saving) pendingUserUpdate = null },
             title = { Text(if (kind == "role") "更新账号角色？" else "更新会员等级？") },
             text = { Text("${item.optString("nickname", "该账号")}将设置为 $label。服务端会执行权限检查并记录操作。") },

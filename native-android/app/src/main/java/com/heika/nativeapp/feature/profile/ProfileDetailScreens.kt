@@ -1,5 +1,7 @@
 package com.heika.nativeapp.feature.profile
 
+import com.heika.nativeapp.ui.HeikaAlertDialog
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -18,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -160,7 +161,7 @@ fun ManageWorksScreen(
         }
     }
     deleteTarget?.let { post ->
-        AlertDialog(
+        HeikaAlertDialog(
             onDismissRequest = { deleteTarget = null },
             title = { Text("删除这篇作品？") },
             text = { Text("“${post.title.ifBlank { "未命名内容" }}”将从账号中删除。此操作不可撤销。") },

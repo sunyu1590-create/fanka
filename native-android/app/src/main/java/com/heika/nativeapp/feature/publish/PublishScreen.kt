@@ -1,5 +1,7 @@
 package com.heika.nativeapp.feature.publish
 
+import com.heika.nativeapp.ui.HeikaAlertDialog
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -30,7 +32,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +62,8 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.FilterChip
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaNoticeBus
+import com.heika.nativeapp.ui.HeikaNoticeKind
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -82,6 +85,14 @@ fun PublishScreen(
     var selectedVideo by remember { mutableStateOf<Uri?>(null) }
     val publishListState = rememberLazyListState()
     LaunchedEffect(draftId, channel) { viewModel.configureChannel(channel); viewModel.resumeDraft(draftId) }
+    LaunchedEffect(state.notice) {
+        state.notice?.let { message ->
+            HeikaNoticeBus.show(message, if (message.contains("失败")) HeikaNoticeKind.ERROR else HeikaNoticeKind.SUCCESS)
+        }
+    }
+    LaunchedEffect(state.error) {
+        state.error?.let { message -> HeikaNoticeBus.show(message, HeikaNoticeKind.ERROR) }
+    }
     BackHandler(enabled = showVideoBeta || (!state.loading && !state.publishing)) {
         if (showVideoBeta) showVideoBeta = false else viewModel.saveDraft(onBack)
     }
@@ -109,7 +120,18 @@ fun PublishScreen(
         )
     } else Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(if (state.revisionMode) "修改作品" else "发布内容", onBack = { viewModel.saveDraft(onBack) }, trailing = {
-            Text(if (state.saving) "保存中" else if (state.revisionMode) "保存修改" else "草稿", Modifier.clickable { viewModel.saveDraft() }.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            if (state.revisionMode) {
+                Text(if (state.saving) "保存中" else "保存修改", Modifier.clickable { viewModel.saveDraft() }.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            } else {
+                androidx.compose.material3.TextButton(
+                    onClick = viewModel::deleteLocalDraft,
+                    enabled = !state.saving && !state.publishing,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    Icon(HeikaIcons.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
+                    Text("删除草稿", fontSize = 10.sp)
+                }
+            }
         })
         if (!state.loading && state.error != "登录后可以发布内容") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -246,11 +268,9 @@ fun PublishScreen(
                 item {
                     OutlinedTextField(value = state.topicText, onValueChange = { viewModel.edit(topicText = it) }, modifier = Modifier.fillMaxWidth(), label = { Text("话题") }, placeholder = { Text("以空格分隔，最多 5 个") }, supportingText = { Text("使用网站已收录的话题名称") })
                 }
-                state.error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) } }
-                state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } }
             }
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 17.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (state.saving) "正在保存草稿" else "草稿自动保存", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text(if (state.saving) "正在保存到本机" else "草稿自动保存到本机", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 Spacer(Modifier.weight(1f))
                 Button(onClick = viewModel::publish, enabled = !state.publishing && !state.saving && state.categories.isNotEmpty()) {
                     if (state.publishing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
@@ -260,7 +280,7 @@ fun PublishScreen(
         }
     }
     if (state.showLeaveDialog) {
-        AlertDialog(
+        HeikaAlertDialog(
             onDismissRequest = viewModel::continueEditing,
             title = { Text("暂时无法同步到服务器") },
             text = { Text("当前内容和未完成图片已保存在此设备。可以离开后稍后继续，也可以留在页面重试同步。") },

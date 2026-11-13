@@ -1,7 +1,6 @@
 package com.heika.nativeapp.ui
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,9 +14,19 @@ class NativeUiOptionsTest {
 
     @Test
     fun onlyBundledFontsAreSelectable() {
-        assertEquals(setOf("system"), HeikaFontCatalog.availableChoices)
+        assertEquals(setOf("system", "oppo_sans"), HeikaFontCatalog.availableChoices)
         assertTrue(HeikaFontCatalog.availableChoices.contains(HeikaFontCatalog.normalize("system")))
-        assertFalse(HeikaFontCatalog.availableChoices.contains("oppo_sans"))
-        assertEquals("system", HeikaFontCatalog.normalize("oppo_sans"))
+        assertTrue(HeikaFontCatalog.availableChoices.contains("oppo_sans"))
+        assertEquals("oppo_sans", HeikaFontCatalog.normalize("oppo_sans"))
+        assertEquals("system", HeikaFontCatalog.normalize("unknown-font"))
+    }
+
+    @Test
+    fun readingSizeChoicesAreStableAndGrowOnlyContentTypography() {
+        assertEquals("standard", HeikaReadingSizes.normalize("unknown"))
+        assertEquals(1f, HeikaReadingSizes.bodyScale("standard"))
+        assertTrue(HeikaReadingSizes.bodyScale("slightly-large") > HeikaReadingSizes.bodyScale("standard"))
+        assertTrue(HeikaReadingSizes.bodyScale("large") > HeikaReadingSizes.bodyScale("slightly-large"))
+        assertTrue(HeikaReadingSizes.titleScale("large") > HeikaReadingSizes.titleScale("standard"))
     }
 }

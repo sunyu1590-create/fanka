@@ -34,14 +34,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -54,7 +54,6 @@ fun BrandHeader(
     trailing: @Composable (() -> Unit)? = null,
     hazeState: HazeState? = null,
 ) {
-    HeikaLiquidGlassSurface(hazeState, modifier = Modifier.fillMaxWidth().height(68.dp)) {
     Row(
         modifier = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -68,11 +67,37 @@ fun BrandHeader(
             Icon(HeikaIcons.Notifications, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    }
 }
 
 @Composable
-fun BackHeader(title: String, onBack: () -> Unit, trailing: @Composable (() -> Unit)? = null) {
+fun BackHeader(
+    title: String,
+    onBack: () -> Unit,
+    centeredTitle: Boolean = false,
+    centeredTitleSize: TextUnit = HeikaType.pageTitle,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    if (centeredTitle) {
+        Box(Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = 8.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).size(44.dp)) {
+                Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+            }
+            Text(
+                title,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = centeredTitleSize,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 56.dp),
+            )
+            Box(Modifier.align(Alignment.CenterEnd).widthIn(min = 44.dp), contentAlignment = Alignment.CenterEnd) {
+                trailing?.invoke()
+            }
+        }
+        return
+    }
     Row(
         modifier = Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -136,51 +161,35 @@ fun GlassNavigationBar(
     modifier: Modifier = Modifier,
     blurEnabled: Boolean = true,
 ) {
-    val shape = RoundedCornerShape(37.dp)
-    val isDark = LocalHeikaDark.current
+    val tabShape = RoundedCornerShape(36.dp)
+    val dark = LocalHeikaDark.current
     val surface = MaterialTheme.colorScheme.surface
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(horizontal = 14.dp)
-            .clip(shape)
-            .then(if (blurEnabled) Modifier.hazeEffect(
-                state = hazeState,
-                style = HazeStyle(
-                    backgroundColor = surface,
-                    tint = HazeTint(surface.copy(alpha = if (isDark) 0.16f else 0.28f)),
-                    blurRadius = 30.dp,
-                    noiseFactor = 0.025f,
-                    fallbackTint = HazeTint(surface.copy(alpha = if (isDark) 0.48f else 0.62f)),
-                ),
-            ) else Modifier)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        surface.copy(alpha = if (isDark) 0.32f else 0.56f),
-                        surface.copy(alpha = if (isDark) 0.23f else 0.42f),
-                    ),
-                ),
-                shape,
-            )
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.82f), shape)
-            .drawBehind {
-                val highlight = Brush.horizontalGradient(
-                    0f to Color.White.copy(alpha = if (isDark) 0.27f else 0.52f),
-                    0.45f to Color.White.copy(alpha = if (isDark) 0.10f else 0.22f),
-                    1f to Color.White.copy(alpha = if (isDark) 0.18f else 0.36f),
-                )
-                drawLine(highlight, Offset(18.dp.toPx(), 1.dp.toPx()), Offset(size.width - 18.dp.toPx(), 1.dp.toPx()), 1.dp.toPx())
-            }
-            .padding(start = 9.dp, top = 9.dp, end = 9.dp, bottom = 9.dp)
-            .height(73.dp),
+            .height(72.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             modifier = Modifier
                 .weight(1f)
-                .clip(RoundedCornerShape(30.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isDark) 0.52f else 0.66f))
-                .padding(horizontal = 3.dp, vertical = 2.dp),
+                .height(66.dp)
+                .clip(tabShape)
+                .then(
+                    if (blurEnabled) Modifier.hazeEffect(
+                        state = hazeState,
+                        style = HazeStyle(
+                            backgroundColor = surface,
+                            tint = HazeTint(surface.copy(alpha = if (dark) .20f else .30f)),
+                            blurRadius = 24.dp,
+                            fallbackTint = HazeTint(surface.copy(alpha = if (dark) .82f else .90f)),
+                        ),
+                    ) else Modifier,
+                )
+                .background(surface.copy(alpha = if (dark) .34f else .48f), tabShape)
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .56f else .46f), tabShape)
+                .padding(horizontal = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             NavigationItem("home", "首页", selected, onSelect)
@@ -188,16 +197,15 @@ fun GlassNavigationBar(
             NavigationItem("messages", "消息", selected, onSelect)
             NavigationItem("profile", "我的", selected, onSelect)
         }
-        Spacer(Modifier.width(10.dp))
         Surface(
-            modifier = Modifier.size(61.dp).clickable(onClick = onPublish),
+            modifier = Modifier.size(58.dp).clickable(onClick = onPublish),
             shape = CircleShape,
             color = Color(0xFFF5F4F0),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
-            shadowElevation = 6.dp,
+            shadowElevation = 4.dp,
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(HeikaIcons.Add, contentDescription = "发布内容", tint = Color(0xFF202125), modifier = Modifier.size(31.dp))
+                Icon(HeikaIcons.Add, contentDescription = "发布内容", tint = Color(0xFF202125), modifier = Modifier.size(29.dp))
             }
         }
     }

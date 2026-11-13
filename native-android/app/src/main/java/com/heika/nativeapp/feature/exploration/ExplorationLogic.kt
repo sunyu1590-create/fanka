@@ -18,6 +18,8 @@ data class ExperienceProgress(
     val remaining: Int,
 )
 
+data class DailyMissionSummary(val completed: Int, val totalPoints: Int, val progress: Float)
+
 object ExplorationLogic {
     val levels = listOf(
         ExperienceLevel(1, 0, "黑卡探索者", "获得黑卡探索者身份。"),
@@ -43,6 +45,15 @@ object ExplorationLogic {
             next = next,
             percent = if (next == null) 100 else (((safeTotal - current.threshold).toFloat() / span) * 100).roundToInt().coerceIn(0, 100),
             remaining = next?.let { (it.threshold - safeTotal).coerceAtLeast(0) } ?: 0,
+        )
+    }
+
+    fun dailySummary(missions: List<MissionItem>): DailyMissionSummary {
+        val completed = missions.count { it.target > 0 && it.progress >= it.target }
+        return DailyMissionSummary(
+            completed = completed,
+            totalPoints = missions.sumOf { it.points.coerceAtLeast(0) },
+            progress = if (missions.isEmpty()) 0f else completed.toFloat() / missions.size,
         )
     }
 

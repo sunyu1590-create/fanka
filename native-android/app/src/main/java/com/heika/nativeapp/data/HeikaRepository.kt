@@ -260,8 +260,9 @@ class HeikaRepository @Inject constructor(
         request("/api/demo/cards", method = "POST", body = JSONObject().put("id", clientId).toString())
     }
 
-    suspend fun comments(postId: String, page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
-        request("/api/v1/posts/${encode(postId)}/comments?page=${page.coerceAtLeast(1)}&limit=30", includeSession = true) as? JSONObject ?: JSONObject()
+    suspend fun comments(postId: String, page: Int = 1, sort: String = "new"): JSONObject = withContext(Dispatchers.IO) {
+        val safeSort = if (sort == "hot") "hot" else "new"
+        request("/api/v1/posts/${encode(postId)}/comments?page=${page.coerceAtLeast(1)}&limit=30&sort=$safeSort", includeSession = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun addComment(postId: String, body: String, parentId: String? = null): JSONObject = withContext(Dispatchers.IO) {
@@ -901,14 +902,18 @@ class HeikaRepository @Inject constructor(
         payload.optJSONArray("items").jsonObjects().map(HeikaPost::from).filter { it.cloudId.isNotBlank() && it.id > 0 }
     }
 
-    suspend fun uploadImage(postId: String, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int, revisionMode: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun uploadImage(postId: String?, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int, revisionMode: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
         require(bytes.size in 1..(4 * 1024 * 1024)) { "单张图片须小于 4 MB" }
-        val requestBody = MultipartBody.Builder().setType(MultipartBody.FORM)
+        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
             .addFormDataPart("upload_id", uploadId)
             .addFormDataPart("sort_order", sortOrder.toString())
-            .addFormDataPart(if (revisionMode) "revision_post_id" else "post_id", postId)
-            .build()
+        if (revisionMode) {
+            builder.addFormDataPart("revision_post_id", postId?.takeIf(String::isNotBlank) ?: throw IOException("内容编号无效"))
+        } else if (postId.isNullOrBlank()) {
+            builder.addFormDataPart("staging", "1")
+        } else builder.addFormDataPart("post_id", postId)
+        val requestBody = builder.build()
         val token = auth.currentToken() ?: throw IOException("请先登录后继续")
         val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/media", "Bearer $token", requestBody)
         val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
@@ -917,13 +922,15 @@ class HeikaRepository @Inject constructor(
         (root.opt("data") as? JSONObject) ?: root
     }
 
-    suspend fun deleteUploadedImage(postId: String, path: String) = withContext(Dispatchers.IO) {
+    suspend fun deleteUploadedImage(postId: String?, path: String) = withContext(Dispatchers.IO) {
         val token = auth.currentToken() ?: throw IOException("请先登录后继续")
         val fileName = path.substringAfterLast('/')
         val uploadId = fileName.substringBeforeLast('.')
         val extension = fileName.substringAfterLast('.', "")
         val mime = when (extension.lowercase()) { "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "webp" -> "image/webp"; else -> throw IOException("图片路径无效") }
-        val body = JSONObject().put("upload_id", uploadId).put("file_type", mime).put("post_id", postId).toString().toRequestBody(JSON)
+        val payload = JSONObject().put("upload_id", uploadId).put("file_type", mime)
+        postId?.takeIf(String::isNotBlank)?.let { payload.put("post_id", it) }
+        val body = payload.toString().toRequestBody(JSON)
         val response = api.delete("${BuildConfig.API_BASE_URL}/api/v1/media", "Bearer $token", body)
         val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
         val json = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()

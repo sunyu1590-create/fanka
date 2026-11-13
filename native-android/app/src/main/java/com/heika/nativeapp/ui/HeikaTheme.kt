@@ -18,6 +18,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontWeight
+import com.heika.nativeapp.R
 
 object HeikaRadii {
     val feedCard = 12.dp
@@ -86,10 +89,13 @@ object HeikaMotion {
 
 val LocalHeikaDark = staticCompositionLocalOf { true }
 
-/** Bundled font registry. Add a selectable family only after the licensed files ship in res/font. */
+/** Fonts are bundled locally; selectable families are restricted to packaged resources. */
 object HeikaFontCatalog {
-    val availableChoices = setOf("system")
-    private val families = mapOf("system" to FontFamily.Default)
+    val availableChoices = setOf("system", "oppo_sans")
+    private val families = mapOf(
+        "system" to FontFamily.Default,
+        "oppo_sans" to FontFamily(Font(R.font.oppo_sans_4_0, FontWeight.Normal)),
+    )
     fun normalize(choice: String): String = choice.takeIf { it in availableChoices } ?: "system"
     fun resolve(choice: String): FontFamily = families[normalize(choice)] ?: FontFamily.Default
 }
@@ -99,8 +105,32 @@ object HeikaPageTransitions {
     fun normalize(value: String): String = value.takeIf { it in choices } ?: "lift"
 }
 
+object HeikaReadingSizes {
+    private val choices = setOf("standard", "slightly-large", "large")
+    fun normalize(value: String): String = value.takeIf { it in choices } ?: "standard"
+    fun titleScale(value: String): Float = when (normalize(value)) {
+        "slightly-large" -> 1.12f
+        "large" -> 1.24f
+        else -> 1f
+    }
+    fun bodyScale(value: String): Float = when (normalize(value)) {
+        "slightly-large" -> 1.14f
+        "large" -> 1.29f
+        else -> 1f
+    }
+}
+
+val LocalHeikaBodyTextScale = staticCompositionLocalOf { 1f }
+val LocalHeikaTitleTextScale = staticCompositionLocalOf { 1f }
+
 @Composable
-fun HeikaTheme(theme: String, fontChoice: String = "system", content: @Composable () -> Unit) {
+fun HeikaTheme(
+    theme: String,
+    fontChoice: String = "system",
+    bodyTextSize: String = "standard",
+    titleTextSize: String = "standard",
+    content: @Composable () -> Unit,
+) {
     val dark = when (theme) {
         "light" -> false
         "system" -> isSystemInDarkTheme()
@@ -139,7 +169,11 @@ fun HeikaTheme(theme: String, fontChoice: String = "system", content: @Composabl
         onSurfaceVariant = animateColorAsState(targetScheme.onSurfaceVariant, tween(HeikaMotion.transition, easing = HeikaMotion.standard), label = "theme-muted").value,
         outline = animateColorAsState(targetScheme.outline, tween(HeikaMotion.transition, easing = HeikaMotion.standard), label = "theme-outline").value,
     )
-    CompositionLocalProvider(LocalHeikaDark provides dark) {
+    CompositionLocalProvider(
+        LocalHeikaDark provides dark,
+        LocalHeikaBodyTextScale provides HeikaReadingSizes.bodyScale(bodyTextSize),
+        LocalHeikaTitleTextScale provides HeikaReadingSizes.titleScale(titleTextSize),
+    ) {
         val family = HeikaFontCatalog.resolve(fontChoice)
         val base = Typography()
         val typography = base.copy(

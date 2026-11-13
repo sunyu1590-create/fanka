@@ -8,6 +8,11 @@
         <item name="android:windowBackground">#0D0F13</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
     </style>
+
+    <style name="HeikaGlassDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/heika_dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/heika_dialog_exit</item>
+    </style>
     <style name="Theme.Heika.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#0D0F13</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_heika</item>

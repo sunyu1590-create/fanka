@@ -1,5 +1,8 @@
 package com.heika.nativeapp.ui
 
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.fadeIn
@@ -10,6 +13,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,13 +28,17 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -41,6 +49,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.compose.navigation
 import androidx.navigation.navArgument
+import kotlinx.coroutines.delay
 import coil3.ImageLoader
 import com.heika.nativeapp.auth.AccountScreen
 import com.heika.nativeapp.feature.navigation.DestinationResolver
@@ -59,6 +68,9 @@ import com.heika.nativeapp.feature.profile.EditProfileScreen
 import com.heika.nativeapp.feature.exploration.CoExploreScreen
 import com.heika.nativeapp.feature.exploration.ExplorationCalendarScreen
 import com.heika.nativeapp.feature.exploration.ExplorationCenterScreen
+import com.heika.nativeapp.feature.exploration.ExplorationDailyTasksScreen
+import com.heika.nativeapp.feature.exploration.ExplorationRewardsScreen
+import com.heika.nativeapp.feature.exploration.ExplorationEventsScreen
 import com.heika.nativeapp.feature.exploration.ExplorationChainsViewModel
 import com.heika.nativeapp.feature.exploration.StoryChainDetailScreen
 import com.heika.nativeapp.feature.exploration.StoryChainListScreen
@@ -81,6 +93,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
         val context = LocalContext.current
         val nav = rememberNavController()
         val hazeState = rememberHazeState()
+        val modalBackdropCount = remember { mutableIntStateOf(0) }
+        val modalBlurRadius by animateDpAsState(
+            targetValue = if (modalBackdropCount.intValue > 0) 9.dp else 0.dp,
+            animationSpec = tween(210),
+            label = "modal-backdrop-blur",
+        )
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
         val sharedPosts = remember { mutableStateMapOf<String, HeikaPost>() }
@@ -93,6 +111,14 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
             else -> "home"
         }
         val topLevelRoute = route in setOf("home", "discovery", "messages", "profile")
+        val mainTabRoutes = setOf("home", "discovery", "messages", "profile")
+        var mainTabSwitchActive by remember { mutableStateOf(false) }
+        LaunchedEffect(mainTabSwitchActive, route) {
+            if (mainTabSwitchActive && route in mainTabRoutes) {
+                delay((HeikaMotion.transition + 60).toLong())
+                mainTabSwitchActive = false
+            }
+        }
         val showBottomBar = topLevelRoute && !(route == "messages" && chatConversationOpen)
         val openDestination: (HeikaDestination) -> Unit = remember(nav) {
             { destination ->
@@ -104,16 +130,23 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
         }
         val openPost: (HeikaPost) -> Unit = remember(nav, sharedPosts) {
             { post ->
-                val key = post.cloudId.ifBlank { "client-${post.id}" }.lowercase()
+                val key = post.sharedImageKey()
                 sharedPosts[key] = post
                 if (sharedPosts.size > 80) sharedPosts.keys.firstOrNull { it != key }?.let(sharedPosts::remove)
                 openDestination(post.destination())
             }
         }
+        CompositionLocalProvider(LocalHeikaModalBackdropCount provides modalBackdropCount) {
         Box(
             Modifier.fillMaxSize()
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .graphicsLayer {
+                    val radiusPx = modalBlurRadius.toPx()
+                    renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && radiusPx > 0f) {
+                        RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
+                    } else null
+                },
         ) {
             Box(
                 Modifier.fillMaxSize().hazeSource(hazeState),
@@ -130,7 +163,11 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         )
                         .imePadding(),
                     enterTransition = {
-                        when (pageTransition) {
+                        if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
+                            fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
+                        } else if (pageTransition == "shared" && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
+                            fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
+                        } else when (pageTransition) {
                             "crossfade" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
                             "shared" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
                                 slideInVertically(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) { it / 72 }
@@ -139,7 +176,11 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         }
                     },
                     exitTransition = {
-                        when (pageTransition) {
+                        if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
+                            fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                        } else if (pageTransition == "shared" && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
+                            fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                        } else when (pageTransition) {
                             "crossfade" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                             "shared" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
                                 slideOutVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 96 }
@@ -148,7 +189,11 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         }
                     },
                     popEnterTransition = {
-                        when (pageTransition) {
+                        if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
+                            fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                        } else if (pageTransition == "shared" && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
+                            fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                        } else when (pageTransition) {
                             "crossfade" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                             "shared" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
                                 slideInVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 96 }
@@ -157,7 +202,11 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         }
                     },
                     popExitTransition = {
-                        when (pageTransition) {
+                        if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
+                            fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
+                        } else if (pageTransition == "shared" && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
+                            fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
+                        } else when (pageTransition) {
                             "crossfade" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
                             "shared" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) +
                                 slideOutVertically(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) { it / 72 }
@@ -174,7 +223,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         onPreviewActive = { homePreviewActive = it },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
                     )
                 }
                 composable("discovery") {
@@ -185,7 +234,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         hazeState = hazeState,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
                     )
                 }
                 composable("messages") {
@@ -199,6 +248,16 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                 }
                 composable("profile") {
                     val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                    val visibleEntry by nav.currentBackStackEntryAsState()
+                    LaunchedEffect(visibleEntry?.destination?.route) {
+                        if (visibleEntry?.destination?.route == "profile") {
+                            val profileEntry = runCatching { nav.getBackStackEntry("profile") }.getOrNull()
+                            if (profileEntry?.savedStateHandle?.get<Boolean>("refreshProfileExploration") == true) {
+                                profileEntry.savedStateHandle["refreshProfileExploration"] = false
+                                profileViewModel.refreshExplorationSummary()
+                            }
+                        }
+                    }
                     ProfileScreen(
                         userId = null,
                         onBack = { nav.popBackStack() },
@@ -209,11 +268,18 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
                         onLogin = { nav.navigate("account") },
                         onEditProfile = { nav.navigate("edit-profile") },
-                        onExplore = { nav.navigate("exploration") },
+                        onExplore = {
+                            runCatching { nav.getBackStackEntry("profile").savedStateHandle.set("refreshProfileExploration", true) }
+                            nav.navigate("exploration")
+                        },
+                        onDailyTasks = {
+                            runCatching { nav.getBackStackEntry("profile").savedStateHandle.set("refreshProfileExploration", true) }
+                            nav.navigate("exploration/tasks")
+                        },
                         onManageWorks = { nav.navigate("manage-works") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
                         hazeState = hazeState,
                         viewModel = profileViewModel,
                     )
@@ -229,7 +295,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                     )
                 }
                 composable(
-                    route = "post/{postKey}",
+                    route = postDetailRoute,
                     arguments = listOf(navArgument("postKey") { type = NavType.StringType }),
                 ) { entry ->
                     PostDetailScreen(
@@ -353,10 +419,25 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                 composable("exploration") {
                     ExplorationCenterScreen(
                         onBack = { nav.popBackStack() },
+                        onTasks = { nav.navigate("exploration/tasks") },
+                        onRewards = { nav.navigate("exploration/rewards") },
+                        onEvents = { nav.navigate("exploration/events") },
                         onCalendar = { nav.navigate("exploration/calendar") },
                         onCoExplore = { nav.navigate("exploration/co-explore?inviteCode=") },
                         onStoryChains = { nav.navigate("exploration/chains-graph") },
                     )
+                }
+                composable("exploration/tasks") {
+                    ExplorationDailyTasksScreen(onBack = { nav.popBackStack() }, onCompleteMission = { missionKey ->
+                        mainTabSwitchActive = true
+                        navigateTopLevel(nav, if (missionKey == "flip_two") "home" else "discovery")
+                    })
+                }
+                composable("exploration/rewards") {
+                    ExplorationRewardsScreen(onBack = { nav.popBackStack() })
+                }
+                composable("exploration/events") {
+                    ExplorationEventsScreen(onBack = { nav.popBackStack() })
                 }
                 composable("exploration/calendar") {
                     ExplorationCalendarScreen(
@@ -365,7 +446,9 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
                         onPost = { record ->
-                            if (record.channel == "ai") openDestination(HeikaDestination.AiResource(record.clientId, record.postId))
+                            val post = record.post
+                            if (post != null) openPost(post)
+                            else if (record.channel == "ai") openDestination(HeikaDestination.AiResource(record.clientId, record.postId))
                             else openDestination(HeikaDestination.CommunityPost(record.clientId, record.postId))
                         },
                     )
@@ -378,10 +461,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                         onBack = { nav.popBackStack() },
                         onLogin = { nav.navigate("account") },
                         inviteCode = entry.arguments?.getString("inviteCode")?.takeIf(String::isNotBlank),
-                        onPost = { postId ->
-                            postId.toIntOrNull()?.let { openDestination(HeikaDestination.CommunityPost(it)) }
-                                ?: openDestination(HeikaDestination.CommunityPost(0, postId))
-                        },
+                        onPost = openPost,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = this,
+                        sharedElementsEnabled = pageTransition == "shared",
                     )
                 }
                 navigation(startDestination = "exploration/chains", route = "exploration/chains-graph") {
@@ -440,7 +523,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                 GlassNavigationBar(
                     selected = selected,
                     hazeState = hazeState,
-                    onSelect = { target -> navigateTopLevel(nav, target) },
+                    onSelect = { target ->
+                        mainTabSwitchActive = true
+                        navigateTopLevel(nav, target)
+                    },
                     onPublish = { openDestination(HeikaDestination.Publish) },
                     modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
                     blurEnabled = !homePreviewActive,
@@ -448,6 +534,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
             }
             ForegroundNoticeHost(
                 modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 14.dp, vertical = 8.dp),
+                hazeState = hazeState,
                 onOpen = { item ->
                     when {
                         item.postId != null -> item.postId.toIntOrNull()?.let { openDestination(HeikaDestination.CommunityPost(it)) }
@@ -457,8 +544,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "lift") {
                 },
             )
         }
+        }
     }
 }
+
+private const val postDetailRoute = "post/{postKey}"
+private val sharedCardSourceRoutes = setOf("home", "discovery", "profile", "user/{userId}", "search", "exploration/calendar", "exploration/co-explore?inviteCode={inviteCode}")
 
 private fun HeikaPost.destination(): HeikaDestination =
     if (channel == "ai") HeikaDestination.AiResource(id, cloudId)

@@ -79,7 +79,9 @@ import com.heika.nativeapp.ui.HeikaPalette
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.heikaSharedPostImage
+import com.heika.nativeapp.ui.sharedImageKey
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -130,7 +132,11 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.surface).padding(horizontal = 11.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         val openedCount = state.openedIds.size.coerceAtMost(state.allowance)
                         val progress by animateFloatAsState(
                             targetValue = if (state.allowance > 0) openedCount.toFloat() / state.allowance else 0f,
@@ -138,25 +144,13 @@ fun HomeScreen(
                             label = "daily-exploration-progress",
                         )
                         Row(
-                            Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 1.dp),
+                            Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("今日探索", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    if (state.remaining > 0) "还可翻开 ${state.remaining} 张，继续发现新内容" else "今天的探索已经完成，明天再来看看",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Text(
-                                "$openedCount / ${state.allowance}",
-                                color = HeikaPalette.Gold,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                            Text("今日探索", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.weight(1f))
+                            Text(if (state.remaining > 0) "还可翻开 ${state.remaining} 张" else "今日已完成", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("  $openedCount / ${state.allowance}", color = HeikaPalette.Gold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                         Box(Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.outline.copy(alpha = .38f))) {
                             Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(2.dp).background(MaterialTheme.colorScheme.primary))
@@ -169,7 +163,6 @@ fun HomeScreen(
                                 Text("  正在恢复今日卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             }
                         }
-                        Spacer(Modifier.height(5.dp))
                     }
                 }
                 itemsIndexed(state.candidateIds, key = { _, id -> "daily-$id" }) { index, id ->
@@ -181,6 +174,9 @@ fun HomeScreen(
                         post = post,
                         opened = opened,
                         opening = state.openingId == id,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        sharedElementsEnabled = sharedElementsEnabled && preview == null && opened,
                         onClick = { bounds ->
                             if (opened) {
                                 if (post != null) onPost(post) else viewModel.reload()
@@ -219,7 +215,18 @@ fun HomeScreen(
 private data class DailyCardPreview(val id: Int, val number: Int, val sourceBounds: Rect?)
 
 @Composable
-private fun FlipCard(cardId: Int, number: Int, post: HeikaPost?, opened: Boolean, opening: Boolean, onClick: (Rect?) -> Unit) {
+@OptIn(ExperimentalSharedTransitionApi::class)
+private fun FlipCard(
+    cardId: Int,
+    number: Int,
+    post: HeikaPost?,
+    opened: Boolean,
+    opening: Boolean,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    sharedElementsEnabled: Boolean,
+    onClick: (Rect?) -> Unit,
+) {
     var sourceBounds by remember(cardId) { mutableStateOf<Rect?>(null) }
     val rotation by animateFloatAsState(
         targetValue = if (opened) 180f else 0f,
@@ -238,12 +245,18 @@ private fun FlipCard(cardId: Int, number: Int, post: HeikaPost?, opened: Boolean
                 val next = coordinates.boundsInRoot()
                 if (sourceBounds != next) sourceBounds = next
             }
-            .clickable(enabled = !opening, onClick = { onClick(sourceBounds) }),
+            .clickable(enabled = !opening && (rotation <= 0f || rotation >= 180f), onClick = { onClick(sourceBounds) }),
     ) {
         if (rotation < 90f) {
             CardBack(number)
         } else {
-            CardFront(post, modifier = Modifier.graphicsLayer { rotationY = 180f })
+            CardFront(
+                post,
+                modifier = Modifier.graphicsLayer { rotationY = 180f },
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
+                sharedElementsEnabled = sharedElementsEnabled,
+            )
         }
         if (opening) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)), contentAlignment = Alignment.Center) {
@@ -463,6 +476,7 @@ private fun PreviewCardFront(
     sharedElementsEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val titleScale = LocalHeikaTitleTextScale.current
     val revealBlur by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (rarityPhase) 6f else 0f,
         animationSpec = tween(HeikaMotion.transition, easing = HeikaMotion.standard),
@@ -474,7 +488,7 @@ private fun PreviewCardFront(
         Box(Modifier.fillMaxWidth().weight(0.60f).background(MaterialTheme.colorScheme.surfaceVariant)) {
             if (image != null && post != null) {
                 val shared = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) with(sharedTransitionScope) {
-                    Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, post.cloudId.ifBlank { post.id.toString() }, isDetail = false, enabled = true)
+                    Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), isDetail = false, enabled = true)
                 } else Modifier
                 AsyncImage(
                     model = imageRequest(image, post.cloudId, 0),
@@ -502,8 +516,8 @@ private fun PreviewCardFront(
             Text(
                 post?.title ?: "正在恢复卡片内容",
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 17.sp,
-                lineHeight = 22.sp,
+                fontSize = 17.sp * titleScale,
+                lineHeight = 22.sp * titleScale,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -612,19 +626,34 @@ private fun CardBack(number: Int, preview: Boolean = false) {
 }
 
 @Composable
-private fun CardFront(post: HeikaPost?, modifier: Modifier = Modifier) {
+@OptIn(ExperimentalSharedTransitionApi::class)
+private fun CardFront(
+    post: HeikaPost?,
+    modifier: Modifier = Modifier,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    sharedElementsEnabled: Boolean = false,
+) {
+    val titleScale = LocalHeikaTitleTextScale.current
     val image = post?.thumbnail
     var imageFailed by remember(image, post?.cloudId) { mutableStateOf(false) }
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
+    val sharedModifier = if (post != null && sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), isDetail = false, enabled = true)
+        }
+    } else Modifier
+    Box(modifier.fillMaxSize().then(if (image == null) sharedModifier else Modifier).background(MaterialTheme.colorScheme.surfaceVariant)) {
         if (image != null) {
-            AsyncImage(
-                model = imageRequest(image, post.cloudId, 0),
-                contentDescription = post.title,
-                imageLoader = LocalHeikaImageLoader.current,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                onState = { state -> imageFailed = state is AsyncImagePainter.State.Error },
-            )
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).then(sharedModifier)) {
+                AsyncImage(
+                    model = imageRequest(image, post.cloudId, 0),
+                    contentDescription = post.title,
+                    imageLoader = LocalHeikaImageLoader.current,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    onState = { state -> imageFailed = state is AsyncImagePainter.State.Error },
+                )
+            }
         } else {
             Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF55594F), Color(0xFF292B29), Color(0xFF171A1D)))))
         }
@@ -632,7 +661,7 @@ private fun CardFront(post: HeikaPost?, modifier: Modifier = Modifier) {
         if (imageFailed) Text("图片暂不可用", Modifier.align(Alignment.Center).clip(RoundedCornerShape(9.dp)).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 10.dp, vertical = 7.dp), color = Color.White.copy(alpha = .9f), fontSize = 10.sp)
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(post?.tag ?: "黑卡内容", color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
-            Text(post?.title ?: "已翻开的卡片", color = Color.White, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(post?.title ?: "已翻开的卡片", color = Color.White, fontSize = 16.sp * titleScale, lineHeight = 22.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (post?.hasRating == true) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(13.dp))
                 Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 11.sp)

@@ -1,6 +1,7 @@
 package com.heika.nativeapp.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -82,6 +83,40 @@ fun HeikaSolidGlassSurface(
     )
 }
 
+/** Compact translucent glass for discovery image badges; deliberately has no top hairline. */
+@Composable
+fun HeikaLiquidBadgeSurface(
+    hazeState: HazeState?,
+    modifier: Modifier = Modifier,
+    shape: RoundedCornerShape = RoundedCornerShape(HeikaRadii.control),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val dark = LocalHeikaDark.current
+    val surface = MaterialTheme.colorScheme.surface
+    val outline = MaterialTheme.colorScheme.outline
+    // Keep the image visible through the material. The haze effect supplies the
+    // actual blur; this tint only keeps text readable on both theme palettes.
+    val alpha = if (dark) .20f else .24f
+    val clipped = modifier.clip(shape)
+    Box(
+        clipped.then(
+            if (hazeState != null) Modifier.hazeEffect(
+                state = hazeState,
+                style = HazeStyle(
+                    backgroundColor = Color.Transparent,
+                    tint = HazeTint(surface.copy(alpha = if (dark) .045f else .035f)),
+                    blurRadius = 16.dp,
+                    fallbackTint = HazeTint(surface.copy(alpha = if (dark) .24f else .30f)),
+                ),
+            ) else Modifier,
+        ).background(surface.copy(alpha = alpha), shape)
+            .border(.5.dp, outline.copy(alpha = if (dark) .48f else .58f), shape)
+            .padding(contentPadding),
+        content = content,
+    )
+}
+
 /** Shared liquid-glass material used by the top and bottom navigation bars. */
 @Composable
 fun HeikaLiquidGlassSurface(
@@ -89,6 +124,7 @@ fun HeikaLiquidGlassSurface(
     modifier: Modifier = Modifier,
     shape: RoundedCornerShape = RoundedCornerShape(0.dp),
     contentPadding: PaddingValues = PaddingValues(0.dp),
+    drawTopHighlight: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val dark = LocalHeikaDark.current
@@ -108,9 +144,9 @@ fun HeikaLiquidGlassSurface(
                 ),
             ) else Modifier,
         ).background(surface.copy(alpha = alpha), shape)
-            .drawBehind {
+            .then(if (drawTopHighlight) Modifier.drawBehind {
                 drawLine(Color.White.copy(alpha = if (dark) .23f else .55f), Offset(14.dp.toPx(), .6.dp.toPx()), Offset(size.width - 14.dp.toPx(), .6.dp.toPx()), .8.dp.toPx())
-            }
+            } else Modifier)
             .padding(contentPadding),
         content = content,
     )

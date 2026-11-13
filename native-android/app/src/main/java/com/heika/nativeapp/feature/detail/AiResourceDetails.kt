@@ -1,10 +1,13 @@
 package com.heika.nativeapp.feature.detail
 
+import com.heika.nativeapp.ui.HeikaAlertDialog
+import com.heika.nativeapp.ui.HeikaNoticeBus
+import com.heika.nativeapp.ui.HeikaNoticeKind
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -91,7 +93,7 @@ fun AiResourceDetails(
                 if (url != null) {
                     TextButton(onClick = {
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                            .onFailure { Toast.makeText(context, "无法打开此资源链接", Toast.LENGTH_SHORT).show() }
+                            .onFailure { HeikaNoticeBus.show("无法打开此资源链接", HeikaNoticeKind.ERROR) }
                     }) { Text("打开资源链接 ↗", color = MaterialTheme.colorScheme.primary) }
                 } else {
                     Text(value, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, lineHeight = 21.sp)
@@ -99,7 +101,7 @@ fun AiResourceDetails(
                         TextButton(onClick = {
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
                             clipboard?.setPrimaryClip(ClipData.newPlainText(aiFieldLabels[key] ?: key, value))
-                        Toast.makeText(context, if (clipboard != null) "已复制到剪贴板" else "无法访问系统剪贴板", Toast.LENGTH_SHORT).show()
+                        HeikaNoticeBus.show(if (clipboard != null) "已复制到剪贴板" else "无法访问系统剪贴板", if (clipboard != null) HeikaNoticeKind.SUCCESS else HeikaNoticeKind.ERROR)
                         }) { Text("复制") }
                     }
                 }
@@ -146,7 +148,7 @@ fun AiResourceDetails(
         } else Text("反馈已提交", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
     }
 
-    if (feedbackOpen) AlertDialog(
+    if (feedbackOpen) HeikaAlertDialog(
         onDismissRequest = { if (!feedbackSending) feedbackOpen = false },
         title = { Text("AI 资源反馈") },
         text = {

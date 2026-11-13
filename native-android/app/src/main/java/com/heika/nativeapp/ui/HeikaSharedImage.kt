@@ -10,8 +10,13 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.remember
+import com.heika.nativeapp.data.HeikaPost
+
+/** Canonical key shared by every card source and its post detail destination. */
+fun HeikaPost.sharedImageKey(): String = cloudId.ifBlank { "client-$id" }.lowercase()
 
 /** Shared image bounds plus an overlay clip whose corner radius tracks the animated width. */
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -22,12 +27,13 @@ fun Modifier.heikaSharedPostImage(
     postKey: String,
     isDetail: Boolean,
     enabled: Boolean,
+    sourceCornerRadius: Dp = HeikaRadii.feedCard,
 ): Modifier {
     if (!enabled) return this
-    val clip = remember(postKey, isDetail) { MorphingCardClip(isDetail) }
+    val clip = remember(postKey, isDetail, sourceCornerRadius) { MorphingCardClip(isDetail, sourceCornerRadius) }
     return with(sharedTransitionScope) {
         this@heikaSharedPostImage.sharedElement(
-            sharedContentState = rememberSharedContentState("post-image-$postKey"),
+            sharedContentState = rememberSharedContentState("post-image-${postKey.lowercase()}"),
             animatedVisibilityScope = animatedVisibilityScope,
             boundsTransform = { initial, target ->
                 clip.record(initial, target)
@@ -41,6 +47,7 @@ fun Modifier.heikaSharedPostImage(
 @OptIn(ExperimentalSharedTransitionApi::class)
 private class MorphingCardClip(
     private val isDetail: Boolean,
+    private val sourceCornerRadius: Dp,
 ) : SharedTransitionScope.OverlayClip {
     private var initialBounds: Rect? = null
     private var targetBounds: Rect? = null
@@ -70,7 +77,7 @@ private class MorphingCardClip(
             val denominator = dx * dx + dy * dy + dw * dw + dh * dh
             if (denominator <= 1f) 1f else ((currentX * dx + currentY * dy + currentW * dw + currentH * dh) / denominator).coerceIn(0f, 1f)
         }
-        val cardRadius = with(density) { HeikaRadii.feedCard.toPx() }
+        val cardRadius = with(density) { sourceCornerRadius.toPx() }
         // The outgoing element owns the overlay clip: feed -> detail shrinks the radius,
         // while detail -> feed grows it back from the square detail image.
         val radius = if (isDetail) cardRadius * fraction else cardRadius * (1f - fraction)

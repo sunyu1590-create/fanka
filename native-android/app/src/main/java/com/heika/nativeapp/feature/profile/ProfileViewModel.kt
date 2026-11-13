@@ -27,7 +27,18 @@ data class NativeProfile(
     val showBookmarks: Boolean,
 )
 
-data class ProfileStats(val totalOpened: Int = 0, val streak: Int = 0, val bookmarks: Int = 0, val experience: Int = 0, val level: Int = 1, val progress: Int = 0, val dailyTasks: Int? = null, val claimedDailyTasks: Int = 0)
+data class ProfileStats(
+    val totalOpened: Int = 0,
+    val streak: Int = 0,
+    val bookmarks: Int = 0,
+    val experience: Int = 0,
+    val level: Int = 1,
+    val progress: Int = 0,
+    val dailyTasks: Int? = null,
+    val claimedDailyTasks: Int = 0,
+    val completedDailyTasks: Int = 0,
+    val dailyExperience: Int? = null,
+)
 
 data class ProfileState(
     val profile: NativeProfile? = null,
@@ -142,6 +153,11 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                     progress = if (levelEnd == null) 100 else (((experience - levelStart).toFloat() / (levelEnd - levelStart)) * 100).toInt().coerceIn(0, 100),
                     dailyTasks = missions?.size,
                     claimedDailyTasks = missions?.count { it.optBoolean("claimed") } ?: 0,
+                    completedDailyTasks = missions?.count { mission ->
+                        val target = mission.optInt("target")
+                        target > 0 && mission.optInt("progress") >= target
+                    } ?: 0,
+                    dailyExperience = missions?.sumOf { it.optInt("points").coerceAtLeast(0) },
                 )
                 ProfileLoadResult(
                     profile,
@@ -279,6 +295,38 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
 
     fun reportError(message: String) { mutableState.update { it.copy(error = message) } }
 
+    fun refreshExplorationSummary() = viewModelScope.launch {
+        val current = mutableState.value
+        val userId = current.profile?.id ?: return@launch
+        if (!current.own || runCatching { auth.current()?.userId }.getOrNull() != userId) return@launch
+        runCatching {
+            val progressionRequest = async { repository.progression() }
+            val missionsRequest = async { repository.dailyMissions() }
+            val progression = progressionRequest.await()
+            val missions = missionsRequest.await().optJSONArray("missions")?.jsonObjects()
+            val experience = progression.optInt("total")
+            val thresholds = listOf(0, 100, 240, 430, 680, 1000, 1390, 1850, 2380, 2980)
+            val levelIndex = thresholds.indexOfLast { experience >= it }.coerceAtLeast(0)
+            val nextThreshold = thresholds.getOrNull(levelIndex + 1)
+            val stats = current.stats.copy(
+                experience = experience,
+                level = levelIndex + 1,
+                progress = if (nextThreshold == null) 100 else (((experience - thresholds[levelIndex]).toFloat() / (nextThreshold - thresholds[levelIndex])) * 100).toInt().coerceIn(0, 100),
+                dailyTasks = missions?.size,
+                claimedDailyTasks = missions?.count { it.optBoolean("claimed") } ?: 0,
+                completedDailyTasks = missions?.count { mission ->
+                    val target = mission.optInt("target")
+                    target > 0 && mission.optInt("progress") >= target
+                } ?: 0,
+                dailyExperience = missions?.sumOf { it.optInt("points").coerceAtLeast(0) },
+            )
+            if (runCatching { auth.current()?.userId }.getOrNull() == userId && mutableState.value.profile?.id == userId) {
+                mutableState.update { it.copy(stats = stats) }
+                runCatching { repository.saveMyProfileCache(userId, encodeSnapshot(mutableState.value)) }
+            }
+        }
+    }
+
     fun toggleFollow() = viewModelScope.launch {
         val profile = mutableState.value.profile ?: return@launch
         if (runCatching { auth.current() }.getOrNull() == null) {
@@ -298,7 +346,15 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
             liked = posts("liked"), drafts = posts("drafts"),
             hasMoreWorks = root.optBoolean("hasMoreWorks"), hasMoreBookmarks = root.optBoolean("hasMoreBookmarks"),
             hasMoreLiked = root.optBoolean("hasMoreLiked"),
-            stats = root.optJSONObject("stats")?.let { ProfileStats(it.optInt("totalOpened"), it.optInt("streak"), it.optInt("bookmarks"), it.optInt("experience"), it.optInt("level", 1), it.optInt("progress")) } ?: ProfileStats(),
+            stats = root.optJSONObject("stats")?.let {
+                ProfileStats(
+                    totalOpened = it.optInt("totalOpened"), streak = it.optInt("streak"), bookmarks = it.optInt("bookmarks"),
+                    experience = it.optInt("experience"), level = it.optInt("level", 1), progress = it.optInt("progress"),
+                    dailyTasks = if (it.has("dailyTasks") && !it.isNull("dailyTasks")) it.optInt("dailyTasks") else null,
+                    claimedDailyTasks = it.optInt("claimedDailyTasks"), completedDailyTasks = it.optInt("completedDailyTasks"),
+                    dailyExperience = if (it.has("dailyExperience") && !it.isNull("dailyExperience")) it.optInt("dailyExperience") else null,
+                )
+            } ?: ProfileStats(),
             loading = false, own = own,
         )
     }
@@ -310,7 +366,9 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         .put("liked", JSONArray(state.liked.map { JSONObject(it.rawJson) }))
         .put("drafts", JSONArray(state.drafts.map { JSONObject(it.rawJson) }))
         .put("hasMoreWorks", state.hasMoreWorks).put("hasMoreBookmarks", state.hasMoreBookmarks).put("hasMoreLiked", state.hasMoreLiked)
-        .put("stats", JSONObject().put("totalOpened", state.stats.totalOpened).put("streak", state.stats.streak).put("bookmarks", state.stats.bookmarks).put("experience", state.stats.experience).put("level", state.stats.level).put("progress", state.stats.progress))
+        .put("stats", JSONObject().put("totalOpened", state.stats.totalOpened).put("streak", state.stats.streak).put("bookmarks", state.stats.bookmarks).put("experience", state.stats.experience).put("level", state.stats.level).put("progress", state.stats.progress)
+            .put("dailyTasks", state.stats.dailyTasks ?: JSONObject.NULL).put("claimedDailyTasks", state.stats.claimedDailyTasks)
+            .put("completedDailyTasks", state.stats.completedDailyTasks).put("dailyExperience", state.stats.dailyExperience ?: JSONObject.NULL))
 
     private fun JSONObject.toProfile(idFallback: String) = NativeProfile(
         id = optString("id").ifBlank { idFallback }, nickname = optString("nickname").ifBlank { "探索者" },

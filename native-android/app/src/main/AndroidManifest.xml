@@ -5,7 +5,8 @@
     <application
         android:name=".HeikaApplication"
         android:allowBackup="false"
-        android:icon="@drawable/ic_heika"
+        android:icon="@mipmap/ic_heika"
+        android:roundIcon="@mipmap/ic_heika"
         android:label="黑卡 HEIKA"
         android:supportsRtl="true"
         android:theme="@style/Theme.Heika.Splash"

@@ -48,6 +48,7 @@ data class PostDetailState(
     val post: HeikaPost? = null,
     val currentUserId: String? = null,
     val comments: List<NativeComment> = emptyList(),
+    val commentSort: String = "new",
     val commentsLoading: Boolean = false,
     val commentsError: String? = null,
     val commentsHasMore: Boolean = false,
@@ -94,6 +95,7 @@ class PostDetailViewModel @Inject constructor(
     private var aiVersionRequest = 0
     private var requestedVersionsFor: String? = null
     private var commentPage = 0
+    private var commentsRequestVersion = 0
     private var requestedKey: String? = null
 
     fun load(post: HeikaPost, force: Boolean = false) {
@@ -187,15 +189,23 @@ class PostDetailViewModel @Inject constructor(
 
     private fun loadComments(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch {
         if (!isUuid(post.cloudId)) return@launch
+        val sort = mutableState.value.commentSort
+        val commentsVersion = ++commentsRequestVersion
         commentPage = 0
-        mutableState.update { it.copy(commentsLoading = true, commentsError = null) }
-        runCatching { repository.comments(post.cloudId, 1) }.onSuccess { data ->
+        mutableState.update { it.copy(comments = emptyList(), commentsLoading = true, commentsError = null, commentsHasMore = false, loadingMoreComments = false) }
+        runCatching { repository.comments(post.cloudId, 1, sort) }.onSuccess { data ->
             val rows = data.optJSONArray("items").jsonObjects().map { it.toNativeComment() }
-            if (version == requestVersion) {
+            if (version == requestVersion && commentsVersion == commentsRequestVersion && mutableState.value.commentSort == sort) {
                 commentPage = 1
                 mutableState.update { it.copy(comments = rows, commentsHasMore = data.optBoolean("has_more"), loadingMoreComments = false, commentsLoading = false, commentsError = null) }
             }
-        }.onFailure { if (version == requestVersion) mutableState.update { it.copy(commentsLoading = false, commentsError = "评论加载失败，请重试") } }
+        }.onFailure { if (version == requestVersion && commentsVersion == commentsRequestVersion) mutableState.update { it.copy(commentsLoading = false, commentsError = "评论加载失败，请重试") } }
+    }
+
+    fun setCommentSort(sort: String) {
+        if (sort !in setOf("hot", "new") || mutableState.value.commentSort == sort) return
+        mutableState.update { it.copy(commentSort = sort) }
+        mutableState.value.post?.let { loadComments(it) }
     }
 
     fun retryComments() {
@@ -227,15 +237,17 @@ class PostDetailViewModel @Inject constructor(
     fun loadMoreComments() = viewModelScope.launch {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
+        val commentsVersion = commentsRequestVersion
+        val sort = mutableState.value.commentSort
         if (!isUuid(post.cloudId) || !mutableState.value.commentsHasMore || mutableState.value.loadingMoreComments) return@launch
         val next = commentPage + 1
         mutableState.update { it.copy(loadingMoreComments = true, commentsError = null) }
-        runCatching { repository.comments(post.cloudId, next) }.onSuccess { data ->
-            if (version != requestVersion || mutableState.value.post?.cloudId != post.cloudId) return@onSuccess
+        runCatching { repository.comments(post.cloudId, next, sort) }.onSuccess { data ->
+            if (version != requestVersion || commentsVersion != commentsRequestVersion || mutableState.value.commentSort != sort || mutableState.value.post?.cloudId != post.cloudId) return@onSuccess
             val rows = data.optJSONArray("items").jsonObjects().map { it.toNativeComment() }
             commentPage = next
             mutableState.update { state -> state.copy(comments = (state.comments + rows).distinctBy { it.id }, commentsHasMore = data.optBoolean("has_more"), loadingMoreComments = false, commentsError = null) }
-        }.onFailure { if (version == requestVersion) mutableState.update { it.copy(loadingMoreComments = false, commentsError = "更多评论加载失败，请重试") } }
+        }.onFailure { if (version == requestVersion && commentsVersion == commentsRequestVersion) mutableState.update { it.copy(loadingMoreComments = false, commentsError = "更多评论加载失败，请重试") } }
     }
 
     private fun loadInteractions(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch {
@@ -394,6 +406,7 @@ class PostDetailViewModel @Inject constructor(
     }
 
     fun showNotice(message: String) { mutableState.update { it.copy(notice = message) } }
+    fun clearNotice() { mutableState.update { it.copy(notice = null) } }
 
     fun submitContentFeedback(category: String, message: String) = viewModelScope.launch {
         if (mutableState.value.operationSending) return@launch

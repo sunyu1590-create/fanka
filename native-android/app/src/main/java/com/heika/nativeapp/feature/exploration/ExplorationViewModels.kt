@@ -40,6 +40,7 @@ data class ExplorationCenterState(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     val serverDate: String? = null,
+    val updatedAtMillis: Long? = null,
     val streak: Int = 0,
     val missions: List<MissionItem> = emptyList(),
     val experience: Int = 0,
@@ -134,6 +135,7 @@ class ExplorationViewModel @Inject constructor(
                 accountId = userId,
                 loading = false,
                 serverDate = missionsJson.optString("date").takeIf(String::isNotBlank),
+                updatedAtMillis = System.currentTimeMillis(),
                 streak = calendarJson?.optInt("streak") ?: mutableState.value.streak,
                 missions = missions,
                 experience = progressionJson.optInt("total"),
@@ -225,6 +227,7 @@ data class CalendarRecord(
     val channel: String,
     val image: String?,
     val rarityTier: String,
+    val post: HeikaPost? = null,
 )
 
 data class ExplorationCalendarState(
@@ -340,12 +343,12 @@ class ExplorationCalendarViewModel @Inject constructor(
         val days = json.optJSONArray("days").jsonObjects().associate { it.optString("date") to it.optInt("count") }
         val records = json.optJSONArray("records").jsonObjects().mapNotNull { row ->
             val post = row.optJSONObject("post") ?: return@mapNotNull null
+            val mappedPost = runCatching { HeikaPost.from(post) }.getOrNull() ?: return@mapNotNull null
             CalendarRecord(
-                date = row.optString("date"), openedAt = row.optString("openedAt"), postId = post.optString("id"),
-                clientId = post.optInt("clientId"), title = post.optString("title"), tag = post.optString("tag"),
-                channel = post.optString("channel", "community"), image = post.optJSONArray("images")?.optString(0)?.takeIf(String::isNotBlank)
-                    ?: post.optString("coverUrl").takeIf(String::isNotBlank),
-                rarityTier = post.optString("rarityTier", "pending"),
+                date = row.optString("date"), openedAt = row.optString("openedAt"), postId = mappedPost.cloudId,
+                clientId = mappedPost.id, title = mappedPost.title, tag = mappedPost.tag,
+                channel = mappedPost.channel, image = mappedPost.thumbnail,
+                rarityTier = mappedPost.rarityTier, post = mappedPost,
             )
         }
         return ExplorationCalendarState(
@@ -357,7 +360,7 @@ class ExplorationCalendarViewModel @Inject constructor(
     }
 }
 
-data class CoExplorePick(val userId: String, val nickname: String, val postId: String?, val title: String, val tag: String, val image: String?, val note: String)
+data class CoExplorePick(val userId: String, val nickname: String, val postId: String?, val title: String, val tag: String, val image: String?, val note: String, val post: HeikaPost? = null)
 
 data class CoExploreRoomState(
     val accountId: String? = null,
@@ -514,12 +517,13 @@ class CoExploreViewModel @Inject constructor(
         }
         val picks = room.optJSONArray("picks").jsonObjects().map { pick ->
             val post = pick.optJSONObject("post")
+            val mappedPost = post?.let { runCatching { HeikaPost.from(it) }.getOrNull() }
             val profile = pick.optJSONObject("profile")
             CoExplorePick(
                 userId = pick.optString("user_id"), nickname = profile?.optString("nickname").orEmpty().ifBlank { "探索者" },
-                postId = post?.optString("client_id")?.takeIf(String::isNotBlank) ?: post?.optString("id")?.takeIf(String::isNotBlank),
-                title = post?.optString("title").orEmpty().ifBlank { "已删除的内容" }, tag = post?.optString("tag").orEmpty(),
-                image = post?.optJSONArray("images")?.optString(0)?.takeIf(String::isNotBlank), note = pick.optString("note"),
+                postId = mappedPost?.cloudId?.takeIf(String::isNotBlank) ?: post?.optString("id")?.takeIf(String::isNotBlank),
+                title = mappedPost?.title ?: post?.optString("title").orEmpty().ifBlank { "已删除的内容" }, tag = mappedPost?.tag ?: post?.optString("tag").orEmpty(),
+                image = mappedPost?.thumbnail ?: post?.optJSONArray("images")?.optString(0)?.takeIf(String::isNotBlank), note = pick.optString("note"), post = mappedPost,
             )
         }
         mutableState.update { current ->

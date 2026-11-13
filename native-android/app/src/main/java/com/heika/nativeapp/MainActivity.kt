@@ -32,10 +32,12 @@ class MainActivity : ComponentActivity() {
             val theme by preferences.theme.collectAsState(initial = "dark")
             val pageTransition by preferences.pageTransition.collectAsState(initial = "lift")
             val fontChoice by preferences.fontChoice.collectAsState(initial = "system")
+            val bodyTextSize by preferences.bodyTextSize.collectAsState(initial = "standard")
+            val titleTextSize by preferences.titleTextSize.collectAsState(initial = "standard")
             val loader by imageCache.loader.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val lightSystemBars = theme == "light" || (theme == "system" && !systemDark)
-            HeikaTheme(theme, fontChoice) {
+            HeikaTheme(theme, fontChoice, bodyTextSize, titleTextSize) {
                 SideEffect {
                     window.statusBarColor = android.graphics.Color.TRANSPARENT
                     window.navigationBarColor = android.graphics.Color.TRANSPARENT

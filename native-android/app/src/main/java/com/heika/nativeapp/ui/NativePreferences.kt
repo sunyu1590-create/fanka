@@ -23,6 +23,8 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val readingModeKey = stringPreferencesKey("reading_mode")
     private val pageTransitionKey = stringPreferencesKey("page_transition")
     private val fontChoiceKey = stringPreferencesKey("font_choice")
+    private val bodyTextSizeKey = stringPreferencesKey("body_text_size")
+    private val titleTextSizeKey = stringPreferencesKey("title_text_size")
     private val searchHistoryKey = stringPreferencesKey("search_history")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "dark" }
@@ -32,9 +34,15 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     val pageTransition: Flow<String> = dataStore.data.map { value ->
         HeikaPageTransitions.normalize(value[pageTransitionKey].orEmpty())
     }
-    /** Only fonts present in the APK may appear as choices. OPPO Sans is intentionally absent until redistribution is explicit. */
+    /** Only fonts present in the APK may appear as choices. */
     val fontChoice: Flow<String> = dataStore.data.map { value ->
         HeikaFontCatalog.normalize(value[fontChoiceKey].orEmpty())
+    }
+    val bodyTextSize: Flow<String> = dataStore.data.map { value ->
+        HeikaReadingSizes.normalize(value[bodyTextSizeKey].orEmpty())
+    }
+    val titleTextSize: Flow<String> = dataStore.data.map { value ->
+        HeikaReadingSizes.normalize(value[titleTextSizeKey].orEmpty())
     }
     val searchHistory: Flow<List<String>> = dataStore.data.map { values ->
         runCatching {
@@ -50,6 +58,8 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     suspend fun setReadingMode(value: String) { dataStore.edit { it[readingModeKey] = value.takeIf { it in setOf("standard", "focus", "night") } ?: "standard" } }
     suspend fun setPageTransition(value: String) { dataStore.edit { it[pageTransitionKey] = HeikaPageTransitions.normalize(value) } }
     suspend fun setFontChoice(value: String) { dataStore.edit { it[fontChoiceKey] = HeikaFontCatalog.normalize(value) } }
+    suspend fun setBodyTextSize(value: String) { dataStore.edit { it[bodyTextSizeKey] = HeikaReadingSizes.normalize(value) } }
+    suspend fun setTitleTextSize(value: String) { dataStore.edit { it[titleTextSizeKey] = HeikaReadingSizes.normalize(value) } }
     suspend fun addRecentSearch(value: String) {
         val term = value.trim().take(60)
         if (term.isBlank()) return

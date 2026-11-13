@@ -29,4 +29,17 @@ class ExplorationLogicTest {
         assertFalse(ExplorationLogic.canClaim(2, 2, claimed = true, busy = false))
         assertFalse(ExplorationLogic.canClaim(2, 2, claimed = false, busy = true))
     }
+
+    @Test fun dailySummaryUsesConfiguredMissionCountAndRewards() {
+        val summary = ExplorationLogic.dailySummary(
+            listOf(
+                MissionItem("one", "翻卡", "", 10, 1, 1, claimed = false),
+                MissionItem("two", "评分", "", 20, 0, 1, claimed = false),
+                MissionItem("three", "收藏", "", 15, 2, 2, claimed = true),
+            ),
+        )
+        assertEquals(2, summary.completed)
+        assertEquals(45, summary.totalPoints)
+        assertEquals(2f / 3f, summary.progress, 0.0001f)
+    }
 }

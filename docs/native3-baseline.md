@@ -43,6 +43,7 @@
 - Native 3.1 个人中心与设置改造提交：`8c70cea83b3bcf8ac8a08933bd4c1d651acafbb6`。
 - 基线整合前的 `stash@{0}` 恢复快照在确认不再需要前不要删除。
 
+
 ## 阶段 A 部署与阶段 B 开发状态
 
 - 阶段 A 网站 PR #15 已 squash 合入 `publish-vercel`，提交 `0dfe745c6805dfca55e221aa3d8fdc00e863377d`；Vercel 生产部署 `dpl_F2jxYpsPJsz6ThKf9178CkB8xs4T` 已 READY，别名包含 `moonclean.shop`。
@@ -197,3 +198,10 @@
 - Artifact `HEIKA-Native-3-vf3514f72a44146e20157db6549a52fcb99b4cd69`，ID `13932017969`，17,351,203 bytes，ZIP SHA-256 `79e671e814cfd4803f60dc54af4c1a34e66c30fd98c8efc3f2cbf90c7c50c9dc`，有效至 `2026-11-26 09:51 UTC`：[下载 APK Artifact](https://github.com/sunyu1590-create/fanka/actions/runs/43194075877/artifacts/13932017969)。已下载并核对 `BUILD-INFO.txt` 的源码 SHA、versionCode 及 APK 哈希。
 - APK：`HEIKA-2.3.6-30-debug.apk`（15,476,311 bytes，SHA-256 `695585b9fea165c9b662ea8f26cde1fec61a2aa788d898d75837e43133ca6221`）；`HEIKA-2.3.6-30-release-unsigned.apk`（2,942,587 bytes，SHA-256 `a200b7df1b57ed501bee380f148c429c1cdf06b3ee8c40263aa56c2bd8ee39a8`）。Release APK 未签名，仅供检查。
 - 静态检查确认 HeikaIconRes 资源引用存在、Lucide XML 可解析，Debug APK 内含新增 Lucide 状态资源、保留的 IconPark fallback 和 Lucide 许可证。未连接真机/模拟器，因此没有完成三种入口共享转场、快速返回、图片失败、浅深主题下选中填充状态的视觉/帧率验收；CI 构建成功不等于设备交互验收。未改网站 API、未部署生产、未发布 APK。
+
+## Native 3.3 当前工作区补充（versionCode 33）
+
+- 2026-11-13 延续当前 `codex/native32-phase1` / `6a916aed2916d2d645dabad930805468ed3b4899` 工作区。此前字体核验结论仅代表当时 APK 未嵌入字体；本轮从仓库历史中恢复并验证 OPPO Sans 4.0 Regular（字体内部名称 `OPPO Sans 4.0`，29,197 个字符映射），随 Android APK 打包，并同时在 `res/raw` 保留 OPPO Sans Fonts License Agreement。许可允许未修改字体嵌入、打包及随软件再分发，应用“字体”设置和“关于黑卡”均显示字体来源/版权提示。
+- 桌面启动图标与“关于黑卡”统一使用用户提供的金色卡片图，提供 Android 自适应图标与密度资源。
+- 底部导航改为仅四个主标签共用独立圆角模糊胶囊，“发布”圆按钮置于胶囊外并为窄屏保留横向空间。发现页滚动标题折叠不再用 `animateContentSize` 追赶手势；卡片玻璃标签共享页面级 Haze 状态，并降低模糊半径以减少滚动期间的绘制成本。
+- Android version 保持 `2.3.6`，versionCode 从 32 递增至 33。GitHub Actions 构建与源码 SHA、Artifact、设备验收状态待本轮完成后补录。
