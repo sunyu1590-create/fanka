@@ -26,8 +26,13 @@ All routes return `{ "data": ... }` or `{ "error": "..." }`. Authenticated route
 | PATCH | `/api/v1/admin/posts/:id` | Approve or reject pending content with a required review note and timestamp |
 | PATCH | `/api/v1/admin/comments/:id` | Hide or restore comments |
 | GET/PATCH | `/api/v1/admin/settings` | Read and adjust 5 card slot allocation |
+| GET | `/api/v1/ai-resource-types` | Enabled AI resource catalog with published counts |
+| GET/POST | `/api/v1/ai-space` | Paginated AI resources; supports stable type, usage scenario, search, topic, and category filters; submissions preserve scenario metadata |
+| GET/PATCH | `/api/v1/admin/ai-resource-types` | Staff with `ai.review` can edit labels, descriptions, ordering, and enablement without changing stable IDs |
+| GET | `/api/v1/admin/ai-space` | Paginated AI review queue including pending revisions and scenario metadata |
+| PATCH | `/api/v1/admin/ai-space/:id` | Review AI resources, correct classification and usage scenarios, or feature/unfeature content |
 
-Database migrations are in `supabase/migrations/`. The topic directory reuses the eight curated `interest_tags` values; `post_topics` stores multi-topic associations and never accepts user-created topic names. Seed posts inherit their existing category as a topic. Topic counts come from published records and distinct authors. Daily RPCs persist one deck per user and local date, keep opened cards, and allow one swap. The publishing UI uses the authenticated library-state and media endpoints; the browser autosaves text locally and in the user's draft row, and keeps image file backups in IndexedDB until Storage confirms the association.
+Database migrations are in `supabase/migrations/`. The topic directory reuses the eight curated `interest_tags` values; `post_topics` stores multi-topic associations and never accepts user-created topic names. Seed posts inherit their existing category as a topic. Topic counts come from published records and distinct authors. Daily RPCs persist one deck per user and local date, keep opened cards, and allow one swap. The publishing UI uses the authenticated library-state and media endpoints; the browser autosaves text locally and in the user's draft row, and keeps image file backups in IndexedDB until Storage confirms the association. AI resource types use stable catalog IDs and store usage scenarios separately in `posts.usage_scenarios`; migration `20261113133929_ai_resource_catalog_and_scenarios` was applied to the production Supabase project before these routes are deployed.
 
 ## Deployment
 

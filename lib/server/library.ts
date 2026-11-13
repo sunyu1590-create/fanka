@@ -24,6 +24,7 @@ export type LibraryRow = {
   channel?: "community" | "ai";
   content_type?: "community_post" | "knowledge_article" | "agent" | "skill" | "prompt" | "ai_tool" | "tutorial";
   resource_data?: Record<string, unknown>;
+  usage_scenarios?: string[];
   featured_at?: string | null;
   view_count?: number;
   cover_text: string | null;
@@ -42,9 +43,9 @@ export type LibraryRow = {
 };
 
 export const libraryFields =
-  "id,client_id,title,body,channel,content_type,resource_data,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
+  "id,client_id,title,body,channel,content_type,resource_data,usage_scenarios,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
 export const libraryFeedFields =
-  "id,client_id,title,body_excerpt,channel,content_type,resource_data,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
+  "id,client_id,title,body_excerpt,channel,content_type,resource_data,usage_scenarios,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
 
 export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partial = false) {
   const media = (row.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order);
@@ -91,6 +92,7 @@ export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partia
     channel: row.channel || "community",
     contentType: row.content_type || "community_post",
     resourceData: row.resource_data || {},
+    usageScenarios: row.usage_scenarios || [],
     featuredAt: row.featured_at || null,
     viewCount: Number(row.view_count || 0),
     likeCount: Number(Array.isArray(row.post_like_stats) ? row.post_like_stats[0]?.like_count || 0 : row.post_like_stats?.like_count || 0),

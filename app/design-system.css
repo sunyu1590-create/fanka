@@ -5965,3 +5965,24 @@ img, video, canvas, iframe { max-width:100%; }
 @media(prefers-reduced-motion:reduce) {
   .bottom-nav>button,.bottom-nav>button .bottom-nav-icon,.bottom-nav-shell>.compose { transition:none!important; }
 }
+
+/* AI resource catalog and classification controls. */
+.admin-ai-classifier { display:grid; gap:7px; margin:10px 0 4px; padding:10px; border:1px solid var(--line); background:var(--surface); }
+.admin-ai-classifier>strong { color:var(--ink); font-size:11px; }
+.admin-ai-classifier>label { display:grid; gap:4px; color:var(--muted); font-size:10px; }
+.admin-ai-classifier select { min-height:36px; padding:6px 8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font:inherit; font-size:11px; }
+.admin-ai-scenario-options { display:flex; flex-wrap:wrap; gap:5px; }
+.admin-ai-scenario-options button { padding:5px 8px; border:1px solid var(--line); background:var(--bg); color:var(--muted); font:inherit; font-size:10px; }
+.admin-ai-scenario-options button.selected { border-color:var(--action); color:var(--action); background:color-mix(in srgb,var(--action) 9%,var(--surface)); }
+.admin-ai-resource-catalog { display:grid; gap:10px; margin-bottom:16px; }
+.admin-ai-resource-catalog>div:first-child { padding:12px 0 4px; }
+.admin-ai-resource-catalog>div:first-child small { color:var(--muted); font:9px ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:.12em; }
+.admin-ai-resource-catalog h3 { margin:4px 0; color:var(--ink); font-size:15px; }
+.admin-ai-resource-catalog p { margin:0; color:var(--muted); font-size:11px; line-height:1.55; }
+.admin-ai-resource-catalog article { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px 10px; padding:11px; border:1px solid var(--line); background:var(--surface); }
+.admin-ai-resource-catalog article>strong { color:var(--ink); font-size:12px; }
+.admin-ai-resource-catalog article>code { color:var(--muted); font-size:9px; }
+.admin-ai-resource-catalog article>small { grid-column:1/-1; color:var(--muted); font-size:9px; }
+.admin-ai-resource-catalog article>label { display:grid; gap:4px; color:var(--muted); font-size:9px; }
+.admin-ai-resource-catalog input { min-width:0; min-height:34px; padding:6px 8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font:inherit; font-size:10px; }
+.admin-ai-resource-catalog article>.soft-button { grid-column:1/-1; justify-self:start; min-height:30px; padding:0 9px; font-size:10px; }
