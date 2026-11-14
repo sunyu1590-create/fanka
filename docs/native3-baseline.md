@@ -306,3 +306,11 @@
 - 原生选择反馈经 `HeikaNoticeBus.showSelection` 接入发现筛选、搜索范围、评论排序、个人内容页签、资料选择、发布类型/分类/场景、通知筛选、探索选择和设置选项；连续选择会合并较早的选择提示。爱发电外链失败提示改用应用内横幅。
 - 首页已翻卡列表点击改为打开大卡预览；确认翻开后等待服务端状态，再执行透视 `rotationY` 3D 翻转，加入轻微卡片按压和点击锁；预览 CTA 改为「确认查看」，卡片主体不导航详情。主页翻开卡片的评分徽标使用局部玻璃材质，统一徽标模糊半径调为 20dp。
 - `git diff --check` 通过。没有运行 Android 编译、自动化测试、APK 构建或真机交互验收。
+
+## 发现页广告模块细线排版与 GitHub APK 构建（2026-11-14）
+
+- 参考用户提供的广告卡片图，发现页广告块改为 HEIKA 推荐眉题与喇叭图标、醒目标题、两行描述和右侧箭头，并增加低对比品牌金细描边。保留图片广告缩略图及整块点击打开作品。
+- 为纳入本次 UI 改动及工作区中此前已授权的全部未提交实现，提交并推送 `codex/native32-phase1`。代码提交 `39eb2879a24a7ef6ba8081481a79c9daf3b6a3f6`，工作区干净。
+- GitHub Actions Native Android Run #113（ID `43616451658`）成功：Android 单元测试、Lint、Debug 与 unsigned Release APK 构建、版本产物准备和上传均通过。Run：https://github.com/sunyu1590-create/fanka/actions/runs/43616451658
+- Artifact `HEIKA-Native-3-v39eb2879a24a7ef6ba8081481a79c9daf3b6a3f6`，ID `14122179059`，ZIP 50,970,859 bytes，SHA-256 `c12ac506d433d54995c20109736058f591aa28c8d4188591033af3d81524022b`，有效至 `2026-11-28 16:42 UTC`。Artifact 页面：https://github.com/sunyu1590-create/fanka/actions/runs/43616451658/artifacts/14122179059
+- 构建版本 `2.3.6` / versionCode `39`，applicationId `com.heika.community`。Artifact 含 `HEIKA-2.3.6-39-debug.apk` 与 `HEIKA-2.3.6-39-release-unsigned.apk`；Debug 用于安装验收，Release 未签名，仅供检查。没有本地 APK 路径，也未做真机验证。
