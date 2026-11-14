@@ -1,9 +1,14 @@
 package com.heika.nativeapp.feature.home
 
 import com.heika.nativeapp.ui.HeikaIcons
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
@@ -22,7 +27,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,10 +60,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
@@ -73,7 +77,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
+import java.util.concurrent.atomic.AtomicReference
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.heika.nativeapp.data.HeikaPost
@@ -109,6 +114,11 @@ fun HomeScreen(
     var preview by remember { mutableStateOf<DailyCardPreview?>(null) }
     var closeRequest by remember { mutableIntStateOf(0) }
     var containerOrigin by remember { mutableStateOf(Offset.Zero) }
+    val backdropBlurRadius by animateDpAsState(
+        targetValue = if (preview != null) 16.dp else 0.dp,
+        animationSpec = tween(260, easing = FastOutSlowInEasing),
+        label = "flip-preview-backdrop-blur",
+    )
     val gridState = rememberLazyGridState()
     val previewHaze = rememberHazeState()
     LaunchedEffect(preview?.id) { onPreviewActive(preview != null) }
@@ -123,7 +133,7 @@ fun HomeScreen(
     ) {
         Column(
             Modifier.fillMaxSize()
-                .heikaGaussianBlur(16.dp, enabled = preview != null)
+                .heikaGaussianBlur(backdropBlurRadius, enabled = backdropBlurRadius.value > .1f)
                 .hazeSource(previewHaze),
         ) {
             BrandHeader(onSearch = onSearch, onNotifications = onNotifications, hazeState = previewHaze)
@@ -169,7 +179,11 @@ fun HomeScreen(
                         }
                     }
                 }
-                itemsIndexed(state.candidateIds, key = { _, id -> "daily-$id" }) { index, id ->
+                itemsIndexed(
+                    state.candidateIds,
+                    key = { _, id -> "daily-$id" },
+                    contentType = { _, _ -> "daily-card" },
+                ) { index, id ->
                     val opened = id in state.openedIds
                     val post = state.posts[id]
                     FlipCard(
@@ -202,7 +216,6 @@ fun HomeScreen(
                 opening = state.openingId == selected.id,
                 opened = selected.id in state.openedIds,
                 post = state.posts[selected.id],
-                dailyComplete = selected.id in state.openedIds && state.remaining == 0,
                 canConfirm = state.remaining > 0 || state.userId != HomeUiState.GUEST_ID,
                 error = state.error,
                 closeRequest = closeRequest,
@@ -233,37 +246,35 @@ private fun FlipCard(
     sharedElementsEnabled: Boolean,
     onClick: (Rect?) -> Unit,
 ) {
-    var sourceBounds by remember(cardId) { mutableStateOf<Rect?>(null) }
-    val rotation by animateFloatAsState(
-        targetValue = if (opened) 180f else 0f,
-        animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing),
-        label = "heika-flip-card",
-    )
+    // Keep coordinates out of Compose state: updating bounds during every scroll frame
+    // used to invalidate all visible cards and made the home grid feel sticky.
+    val cardCoordinates = remember(cardId) { AtomicReference<LayoutCoordinates?>(null) }
     Box(
         modifier = Modifier
             .alpha(if (visible) 1f else 0f)
             .fillMaxWidth()
             .aspectRatio(0.76f)
             .shadow(1.dp, RoundedCornerShape(HeikaRadii.dailyCard))
-            .graphicsLayer { rotationY = rotation; cameraDistance = 14 * density }
             .clip(RoundedCornerShape(HeikaRadii.dailyCard))
             .border(1.dp, HeikaPalette.DailyCardRim.copy(alpha = 0.78f), RoundedCornerShape(HeikaRadii.dailyCard))
-            .onGloballyPositioned { coordinates ->
-                val next = coordinates.boundsInRoot()
-                if (sourceBounds != next) sourceBounds = next
-            }
-            .clickable(enabled = !opening && (rotation <= 0f || rotation >= 180f), onClick = { onClick(sourceBounds) }),
+            .onGloballyPositioned { coordinates -> cardCoordinates.set(coordinates) }
+            .clickable(enabled = !opening, onClick = { onClick(cardCoordinates.get()?.boundsInRoot()) }),
     ) {
-        if (rotation < 90f) {
-            CardBack(number)
-        } else {
-            CardFront(
-                post,
-                modifier = Modifier.graphicsLayer { rotationY = 180f },
-                sharedTransitionScope = sharedTransitionScope,
-                animatedVisibilityScope = animatedVisibilityScope,
-                sharedElementsEnabled = sharedElementsEnabled,
-            )
+        Crossfade(
+            targetState = opened,
+            animationSpec = tween(220, easing = FastOutSlowInEasing),
+            label = "daily-card-face",
+        ) { faceIsOpen ->
+            if (faceIsOpen) {
+                CardFront(
+                    post,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    sharedElementsEnabled = sharedElementsEnabled,
+                )
+            } else {
+                CardBack(number)
+            }
         }
         if (opening) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)), contentAlignment = Alignment.Center) {
@@ -283,7 +294,6 @@ private fun FlipPreviewOverlay(
     opening: Boolean,
     opened: Boolean,
     post: HeikaPost?,
-    dailyComplete: Boolean,
     canConfirm: Boolean,
     error: String?,
     closeRequest: Int,
@@ -295,13 +305,7 @@ private fun FlipPreviewOverlay(
     sharedElementsEnabled: Boolean,
 ) {
     val progress = remember(preview.id) { Animatable(0f) }
-    val rotation = remember(preview.id) { Animatable(0f) }
     val touchScale = remember(preview.id) { Animatable(1f) }
-    val depth = remember(preview.id) { Animatable(0f) }
-    val edgeStrength = remember(preview.id) { Animatable(0f) }
-    val edgeSweep = remember(preview.id) { Animatable(0f) }
-    val frontSettle = remember(preview.id) { Animatable(0f) }
-    val goldHighlight = remember(preview.id) { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -317,11 +321,11 @@ private fun FlipPreviewOverlay(
     }
     var dismissing by remember(preview.id) { mutableStateOf(false) }
     var revealing by remember(preview.id) { mutableStateOf(false) }
+    var rarityPhase by remember(preview.id) { mutableStateOf(false) }
     var handledCloseRequest by remember(preview.id) { mutableIntStateOf(closeRequest) }
     val targetWidth = (containerWidth - 52.dp).coerceAtMost(390.dp).coerceAtLeast(240.dp)
     val targetWidthPx = with(density) { targetWidth.toPx() }
     val targetHeightPx = targetWidthPx / 0.76f
-    val cardCameraDistancePx = with(density) { 18.dp.toPx() }
     val centerX = with(density) { containerWidth.toPx() / 2f }
     val centerY = with(density) { containerHeight.toPx() / 2f }
 
@@ -329,74 +333,19 @@ private fun FlipPreviewOverlay(
         if (reduceMotion) progress.snapTo(1f)
         else progress.animateTo(1f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))
     }
-    LaunchedEffect(opening, opened) {
-        when {
-            opened -> {
-                revealing = true
-                if (reduceMotion) {
-                    rotation.snapTo(180f)
-                    frontSettle.snapTo(1f)
-                    depth.snapTo(0f)
-                    edgeStrength.snapTo(0f)
-                } else if (rotation.value < 180f) {
-                    edgeSweep.snapTo(0f)
-                    val sweepJob = scope.launch {
-                        edgeSweep.animateTo(1f, tween(680, easing = LinearEasing))
-                    }
-                    depth.animateTo(1f, tween(190, easing = FastOutSlowInEasing))
-                    val flipJob = scope.launch {
-                        rotation.animateTo(180f, tween(680, easing = FastOutSlowInEasing))
-                    }
-                    androidx.compose.runtime.snapshotFlow { rotation.value }.first { it >= 148f }
-                    frontSettle.animateTo(1f, tween(110, easing = FastOutSlowInEasing))
-                    flipJob.join()
-                    sweepJob.cancel()
-                    depth.animateTo(0f, tween(190, easing = FastOutSlowInEasing))
-                    edgeStrength.animateTo(0f, tween(190, easing = FastOutSlowInEasing))
-                }
-                val premiumHighlight = post?.takeIf { it.hasRating }?.ratingAverage?.let { it >= 4.5 } == true
-                if (!reduceMotion && (premiumHighlight || dailyComplete)) {
-                    goldHighlight.animateTo(1f, tween(130, easing = FastOutSlowInEasing))
-                    goldHighlight.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
-                }
-                revealing = false
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            }
-            opening -> {
-                revealing = false
-                if (reduceMotion) {
-                    edgeStrength.snapTo(.72f)
-                    depth.snapTo(.65f)
-                    touchScale.snapTo(1f)
-                    edgeSweep.snapTo(1f)
-                } else {
-                    touchScale.animateTo(1.015f, tween(55, easing = FastOutSlowInEasing))
-                    scope.launch { touchScale.animateTo(1f, tween(70, easing = FastOutSlowInEasing)) }
-                    edgeStrength.animateTo(.86f, tween(130, easing = FastOutSlowInEasing))
-                    depth.animateTo(.72f, tween(160, easing = FastOutSlowInEasing))
-                    edgeSweep.snapTo(0f)
-                    while (opening && !opened) {
-                        edgeSweep.animateTo(1f, tween(900, easing = LinearEasing))
-                        edgeSweep.animateTo(0f, tween(900, easing = LinearEasing))
-                        depth.animateTo(.84f, tween(420, easing = FastOutSlowInEasing))
-                        depth.animateTo(.66f, tween(520, easing = FastOutSlowInEasing))
-                    }
-                }
-            }
-            else -> {
-                revealing = false
-                if (!reduceMotion) {
-                    edgeStrength.animateTo(0f, tween(150, easing = FastOutSlowInEasing))
-                    depth.animateTo(0f, tween(150, easing = FastOutSlowInEasing))
-                } else {
-                    edgeStrength.snapTo(0f)
-                    depth.snapTo(0f)
-                }
-                touchScale.snapTo(1f)
-                frontSettle.snapTo(0f)
-                goldHighlight.snapTo(0f)
-                rotation.snapTo(0f)
-            }
+    LaunchedEffect(opened) {
+        if (opened) {
+            // The ViewModel only marks this true after the server confirms the selected card.
+            revealing = true
+            delay(if (reduceMotion) 1L else 230L)
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            revealing = false
+            rarityPhase = true
+            delay(900L)
+            rarityPhase = false
+        } else {
+            revealing = false
+            rarityPhase = false
         }
     }
     LaunchedEffect(closeRequest, opening, revealing, dismissing) {
@@ -421,6 +370,7 @@ private fun FlipPreviewOverlay(
         }
     }
 
+    val cardShape = RoundedCornerShape(HeikaRadii.dailyCard)
     Box(Modifier.fillMaxSize()) {
         val expand = progress.value.coerceIn(0f, 1f)
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.14f * expand)))
@@ -433,34 +383,6 @@ private fun FlipPreviewOverlay(
                     onClick = { requestDismiss() },
                 ),
         )
-        val cardShape = RoundedCornerShape(HeikaRadii.dailyCard)
-        val turnFraction = (rotation.value / 180f).coerceIn(0f, 1f)
-        if (depth.value > 0.001f) {
-            Box(
-                Modifier.align(Alignment.Center).width(targetWidth).aspectRatio(0.76f)
-                    .offset(x = 8.dp, y = 11.dp)
-                    .graphicsLayer {
-                        alpha = depth.value * .15f * (1f - turnFraction * .72f)
-                        rotationY = rotation.value
-                        cameraDistance = cardCameraDistancePx
-                    }
-                    .clip(cardShape)
-                    .background(Color(0xFF202328))
-                    .border(1.dp, Color.White.copy(alpha = .20f), cardShape),
-            )
-            Box(
-                Modifier.align(Alignment.Center).width(targetWidth).aspectRatio(0.76f)
-                    .offset(x = 4.dp, y = 6.dp)
-                    .graphicsLayer {
-                        alpha = depth.value * .22f * (1f - turnFraction * .78f)
-                        rotationY = rotation.value
-                        cameraDistance = cardCameraDistancePx
-                    }
-                    .clip(cardShape)
-                    .background(Color(0xFF292D32))
-                    .border(1.dp, Color.White.copy(alpha = .30f), cardShape),
-            )
-        }
         Box(
             Modifier.align(Alignment.Center)
                 .width(targetWidth)
@@ -477,56 +399,70 @@ private fun FlipPreviewOverlay(
                     }
                     val sourceScaleX = source?.let { (it.width / targetWidthPx).coerceAtLeast(0.05f) } ?: 0.94f
                     val sourceScaleY = source?.let { (it.height / targetHeightPx).coerceAtLeast(0.05f) } ?: 0.94f
-                    scaleX = (sourceScaleX + (1f - sourceScaleX) * p) * touchScale.value * (1f + .012f * depth.value)
-                    scaleY = (sourceScaleY + (1f - sourceScaleY) * p) * touchScale.value * (1f + .012f * depth.value)
+                    scaleX = (sourceScaleX + (1f - sourceScaleX) * p) * touchScale.value
+                    scaleY = (sourceScaleY + (1f - sourceScaleY) * p) * touchScale.value
                     translationX = source?.let { ((it.left + it.right) / 2f - centerX) * (1f - p) } ?: 0f
                     translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
-                    rotationY = rotation.value
-                    cameraDistance = cardCameraDistancePx
-                    shadowElevation = with(density) { (4.dp + 16.dp * p + 4.dp * depth.value).toPx() }
+                    shadowElevation = with(density) { (4.dp + 16.dp * p).toPx() }
                     shape = RoundedCornerShape(HeikaRadii.dailyCard)
                     clip = true
                 }
                 .clip(cardShape),
         ) {
-            if (rotation.value < 90f) {
-                PreviewCardBack(
-                    number = preview.number,
-                    alpha = progress.value,
-                    opening = opening,
-                    edgeStrength = edgeStrength.value,
-                    edgeSweep = edgeSweep.value,
-                    canConfirm = canConfirm && progress.value >= 0.92f,
-                    error = error,
-                    reduceMotion = reduceMotion,
-                    onConfirm = {
-                        if (!opening && !revealing && canConfirm) {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onConfirm()
-                        }
-                    },
-                )
-            } else {
-                PreviewCardFront(
-                    post = post,
-                    alpha = progress.value,
-                    enabled = !opening && !revealing && post != null,
-                    contentSettle = frontSettle.value,
-                    edgeStrength = edgeStrength.value,
-                    edgeSweep = edgeSweep.value,
-                    goldHighlight = goldHighlight.value,
-                    goldRim = dailyComplete || (post?.takeIf { it.hasRating }?.ratingAverage?.let { it >= 4.5 } == true),
-                    onOpenDetails = onOpenDetails,
-                    modifier = Modifier.graphicsLayer {
-                        rotationY = 180f
-                        cameraDistance = cardCameraDistancePx
-                    },
-                    sharedTransitionScope = sharedTransitionScope,
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    sharedElementsEnabled = sharedElementsEnabled,
-                )
+            Crossfade(
+                targetState = opened,
+                animationSpec = tween(if (reduceMotion) 0 else 230, easing = FastOutSlowInEasing),
+                label = "flip-preview-face",
+            ) { isOpened ->
+                if (!isOpened) {
+                    PreviewCardBack(
+                        number = preview.number,
+                        alpha = progress.value,
+                        opening = opening,
+                        canConfirm = canConfirm && progress.value >= 0.92f,
+                        error = error,
+                        reduceMotion = reduceMotion,
+                        onConfirm = {
+                            if (!opening && !revealing && canConfirm) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onConfirm()
+                            }
+                        },
+                    )
+                } else {
+                    PreviewCardFront(
+                        post = post,
+                        alpha = progress.value,
+                        enabled = !opening && !revealing && post != null,
+                        onOpenDetails = onOpenDetails,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        sharedElementsEnabled = sharedElementsEnabled,
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = rarityPhase,
+                modifier = Modifier.align(Alignment.Center),
+                enter = fadeIn(tween(140)),
+                exit = fadeOut(tween(180)),
+            ) {
+                val tier = post?.rarityTier ?: "pending"
+                Column(
+                    Modifier.clip(RoundedCornerShape(15.dp))
+                        .background(Color(0xD9101417))
+                        .border(1.dp, HeikaPalette.Gold.copy(alpha = .52f), RoundedCornerShape(15.dp))
+                        .padding(horizontal = 26.dp, vertical = 19.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("卡片稀有度", color = Color.White.copy(alpha = .74f), fontSize = 10.sp, letterSpacing = 1.2.sp)
+                    Text(if (tier == "ordinary") "N" else if (tier == "pending") "待评" else tier, color = HeikaPalette.Gold, fontSize = 36.sp, fontWeight = FontWeight.Bold)
+                    Text(rarityLabel(tier), color = Color.White.copy(alpha = .9f), fontSize = 11.sp)
+                }
             }
         }
+        FlipConfetti(enabled = opened)
     }
 }
 
@@ -535,8 +471,6 @@ private fun PreviewCardBack(
     number: Int,
     alpha: Float,
     opening: Boolean,
-    edgeStrength: Float,
-    edgeSweep: Float,
     canConfirm: Boolean,
     error: String?,
     reduceMotion: Boolean,
@@ -583,38 +517,41 @@ private fun PreviewCardBack(
                 else Text(if (error != null) "重试翻开" else "确认翻开", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        if (opening && edgeStrength > .001f) {
-            Canvas(Modifier.fillMaxSize()) {
-                val center = Offset(size.width / 2f, size.height / 2f)
-                val silver = Brush.sweepGradient(
-                    listOf(
-                        Color.Transparent,
-                        Color.White.copy(alpha = .20f * edgeStrength),
-                        Color.White.copy(alpha = .90f * edgeStrength),
-                        Color(0xFFD6E4EA).copy(alpha = .28f * edgeStrength),
-                        Color.Transparent,
-                    ),
-                    center = center,
-                )
-                rotate(degrees = edgeSweep * 360f, pivot = center) {
-                    drawRoundRect(
-                        silver,
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(HeikaRadii.dailyCard.toPx()),
-                        style = Stroke(width = 1.5.dp.toPx()),
-                    )
-                }
-                val bandX = size.width * (edgeSweep * 1.45f - .22f)
-                val halfBand = size.width * .16f
-                drawRect(
-                    brush = Brush.horizontalGradient(
-                        listOf(Color.Transparent, Color.White.copy(alpha = .16f * edgeStrength), Color.Transparent),
-                        startX = bandX - halfBand,
-                        endX = bandX + halfBand,
-                    ),
-                    topLeft = Offset(bandX - halfBand, 0f),
-                    size = androidx.compose.ui.geometry.Size(halfBand * 2f, size.height),
-                )
-            }
+    }
+}
+
+@Composable
+private fun FlipConfetti(enabled: Boolean) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(enabled) {
+        if (enabled) {
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(1_650, easing = LinearEasing))
+        } else {
+            progress.snapTo(1f)
+        }
+    }
+    if (!enabled || progress.value >= 1f) return
+    val colors = remember {
+        listOf(
+            Color(0xFFF2C45E), Color(0xFFF05F77), Color(0xFFFF963E), Color(0xFF55C99A),
+            Color(0xFF43C7DF), Color(0xFF6F91F5), Color(0xFFB581E8), Color(0xFFF276C0),
+        )
+    }
+    Canvas(Modifier.fillMaxSize()) {
+        repeat(28) { index ->
+            val spread = index / 27f
+            val stagger = ((index * 17) % 28) / 27f
+            val jitter = ((index * 13) % 90) / 1_000f
+            val start = .04f + stagger * .16f + jitter
+            val phase = ((progress.value - start) / .86f).coerceIn(0f, 1f)
+            if (phase <= 0f || phase >= 1f) return@repeat
+            val drift = (((index * 37) % 25) - 12) / 100f
+            val x = (spread + drift * phase).coerceIn(-.04f, 1.04f) * size.width
+            val y = phase * (1.08f + (index % 24) / 100f) * size.height
+            val width = when (index % 3) { 0 -> 3.dp.toPx(); 1 -> 5.dp.toPx(); else -> 7.dp.toPx() }
+            val height = when (index % 3) { 0 -> 30.dp.toPx(); 1 -> 17.dp.toPx(); else -> 9.dp.toPx() }
+            drawRect(colors[index % colors.size].copy(alpha = (1f - phase).coerceIn(0f, 1f)), Offset(x, y), androidx.compose.ui.geometry.Size(width, height))
         }
     }
 }
@@ -625,11 +562,6 @@ private fun PreviewCardFront(
     post: HeikaPost?,
     alpha: Float,
     enabled: Boolean,
-    contentSettle: Float,
-    edgeStrength: Float,
-    edgeSweep: Float,
-    goldHighlight: Float,
-    goldRim: Boolean,
     onOpenDetails: () -> Unit,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
@@ -638,7 +570,7 @@ private fun PreviewCardFront(
 ) {
     val titleScale = LocalHeikaTitleTextScale.current
     Box(modifier.fillMaxSize().alpha(alpha).background(MaterialTheme.colorScheme.surface)) {
-      Column(Modifier.fillMaxSize().alpha(.78f + .22f * contentSettle)) {
+      Column(Modifier.fillMaxSize()) {
         val image = post?.thumbnail
         Box(Modifier.fillMaxWidth().weight(0.60f).background(MaterialTheme.colorScheme.surfaceVariant)) {
             if (image != null) {
@@ -696,47 +628,6 @@ private fun PreviewCardFront(
                 Icon(com.heika.nativeapp.ui.HeikaIcons.Forward, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF17191C))
             }
         }
-      }
-      if (edgeStrength > .001f || goldHighlight > .001f) {
-          Canvas(Modifier.fillMaxSize()) {
-              val center = Offset(size.width / 2f, size.height / 2f)
-              val base = if (goldRim) HeikaPalette.Gold else Color(0xFFE9F0F3)
-              val edge = Brush.sweepGradient(
-                  colors = listOf(
-                      Color.Transparent,
-                      base.copy(alpha = .20f * edgeStrength),
-                      Color.White.copy(alpha = .92f * edgeStrength),
-                      base.copy(alpha = .30f * edgeStrength),
-                      Color.Transparent,
-                  ),
-                  center = center,
-              )
-              rotate(degrees = edgeSweep * 360f, pivot = center) {
-                  drawRoundRect(
-                      brush = edge,
-                      cornerRadius = androidx.compose.ui.geometry.CornerRadius(HeikaRadii.dailyCard.toPx()),
-                      style = Stroke(width = (1.1f + goldHighlight * .8f).dp.toPx()),
-                  )
-              }
-              val bandCenter = size.width * (edgeSweep * 1.55f - .25f)
-              val bandHalf = size.width * .14f
-              drawRect(
-                  brush = Brush.horizontalGradient(
-                      colors = listOf(Color.Transparent, Color.White.copy(alpha = .15f * edgeStrength), Color.Transparent),
-                      startX = bandCenter - bandHalf,
-                      endX = bandCenter + bandHalf,
-                  ),
-                  topLeft = Offset(bandCenter - bandHalf, 0f),
-                  size = androidx.compose.ui.geometry.Size(bandHalf * 2f, size.height),
-              )
-              if (goldHighlight > .001f) {
-                  drawRoundRect(
-                      color = HeikaPalette.Gold.copy(alpha = .17f * goldHighlight),
-                      cornerRadius = androidx.compose.ui.geometry.CornerRadius(HeikaRadii.dailyCard.toPx()),
-                      style = Stroke(width = 3.dp.toPx()),
-                  )
-              }
-          }
       }
     }
 }
@@ -840,11 +731,15 @@ private fun NoticeLine(text: String, isError: Boolean, onRetry: (() -> Unit)? = 
 }
 
 @Composable
-private fun imageRequest(uri: String, id: String, index: Int): coil3.request.ImageRequest =
-    coil3.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-        .data(uri)
-        .memoryCacheKey(imageCacheKey(id, uri, "daily-thumb-$index"))
-        .diskCacheKey(imageCacheKey(id, uri, "daily-thumb-$index"))
-        .crossfade(140)
-        .build()
+private fun imageRequest(uri: String, id: String, index: Int): coil3.request.ImageRequest {
+    val context = LocalContext.current
+    return remember(uri, id, index, context) {
+        coil3.request.ImageRequest.Builder(context)
+            .data(uri)
+            .memoryCacheKey(imageCacheKey(id, uri, "daily-thumb-$index"))
+            .diskCacheKey(imageCacheKey(id, uri, "daily-thumb-$index"))
+            .crossfade(140)
+            .build()
+    }
+}
 

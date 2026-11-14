@@ -795,6 +795,17 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/progression", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun membershipState(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/membership", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun redeemMembership(action: String, code: String, requestId: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        require(action in setOf("preview", "redeem"))
+        val body = JSONObject().put("action", action).put("code", code)
+        if (requestId != null) body.put("requestId", requestId)
+        request("/api/v1/membership/redeem", method = "POST", body = body.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun claimExperienceReward(level: Int): JSONObject = withContext(Dispatchers.IO) {
         require(level in 1..10)
         request("/api/v1/progression", method = "POST", body = JSONObject().put("level", level).toString(), authenticated = true) as? JSONObject ?: JSONObject()

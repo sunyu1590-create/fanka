@@ -189,7 +189,7 @@ type ComposerVideo = { id: string; file?: File; path?: string; url: string; name
 type PageTransitionHandle = { finished: Promise<unknown> };
 const VIDEO_UPLOAD_BETA_ENABLED = process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA === "1";
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
-type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
+type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; dailyAllowance?: number; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
 type BookmarkCollection = { id: string; name: string; created_at?: string; role?: "owner" | "collaborator"; is_public?: boolean; allow_collaboration?: boolean; share_code?: string | null; user_id?: string };
 type PostSeries = { id: string; title: string; description: string; created_at?: string; postCount?: number };
 type TopicEvent = { id: string; title: string; description: string; topic: string; ends_at: string; postCount: number; participantCount: number; joined: boolean };
@@ -490,7 +490,7 @@ export default function Community() {
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
-  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
+  const [experienceSummary, setExperienceSummary] = useState<ExperienceSummary>({ total: 0, membershipTier: "free", dailyAllowance: 5, events: [], claimedLevels: [] });
   const [bookmarkCollections, setBookmarkCollections] = useState<BookmarkCollection[]>([]);
   const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
   const [bookmarkCollectionContents, setBookmarkCollectionContents] = useState<Record<string, Post[]>>({});
@@ -932,7 +932,7 @@ export default function Community() {
     : state.revealed[latestOpenedId] || null;
   const luckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
   const membershipTier = experienceSummary.membershipTier || "free";
-  const memberFlipAllowance = baseDailyFlipAllowance(membershipTier);
+  const memberFlipAllowance = experienceSummary.dailyAllowance ?? baseDailyFlipAllowance(membershipTier);
   const dailyAllowance = memberFlipAllowance + luckyBonusToday;
   const candidatePosts = state.cardIds.map(
     (id) =>
@@ -2398,7 +2398,7 @@ export default function Community() {
         lucky = confirmed.flipState.idempotent ? 0 : Number(confirmed.flipState.bonusAwarded) || 0;
         setAccountTimezone(typeof confirmed.flipState.timezone === "string" ? confirmed.flipState.timezone : accountTimezone);
         if (["free", "plus", "pro"].includes(confirmed.flipState.membershipTier)) {
-          setExperienceSummary((current) => ({ ...current, membershipTier: confirmed.flipState.membershipTier }));
+          setExperienceSummary((current) => ({ ...current, membershipTier: confirmed.flipState.membershipTier, dailyAllowance: Number(confirmed.flipState.baseAllowance) || current.dailyAllowance || 5 }));
         }
         if (confirmed.experience) {
           void cloudRequest("/api/v1/progression").then((summary) => {
@@ -3970,7 +3970,7 @@ export default function Community() {
             setAdminRole("member");
             setPublicBookmarks(false);
             setPublicBookmarksLoaded(true);
-            setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
+            setExperienceSummary({ total: 0, membershipTier: "free", dailyAllowance: 5, events: [], claimedLevels: [] });
             setStorageKey("heika-demo-v1");
             if (restoredUserId === null) return;
             restoredUserId = null;
@@ -3985,7 +3985,7 @@ export default function Community() {
           setIsStaff(false);
           setAdminRole("member");
           setPublicBookmarks(false);
-          setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
+          setExperienceSummary({ total: 0, membershipTier: "free", dailyAllowance: 5, events: [], claimedLevels: [] });
           restoredUserId = user.id;
           setStorageKey(`heika-user-${user.id}`);
           setState((previous) => {
@@ -4002,9 +4002,12 @@ export default function Community() {
             const flipState = data.dailyFlipState;
             if (typeof flipState?.timezone === "string") setAccountTimezone(flipState.timezone);
             else if (typeof data.profile?.timezone === "string") setAccountTimezone(data.profile.timezone);
-            if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
-              setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
-            }
+            const serverTier = ["free", "plus", "pro"].includes(flipState?.membershipTier) ? flipState.membershipTier : data.profile?.membership_tier;
+            if (["free", "plus", "pro"].includes(serverTier)) setExperienceSummary((current) => ({
+              ...current,
+              membershipTier: serverTier,
+              dailyAllowance: Number(flipState?.baseAllowance) || current.dailyAllowance || 5,
+            }));
             setPublicBookmarks(Boolean(data.profile?.show_bookmarks));
             setPublicBookmarksLoaded(true);
             const role = data.profile?.role === "admin" || data.profile?.role === "content_manager" || data.profile?.role === "reviewer" ? data.profile.role : "member";
@@ -4743,7 +4746,7 @@ export default function Community() {
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
           {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
-          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} onNotice={toast} /> }
+          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} onNotice={toast} onActivated={(nextTier) => { setExperienceSummary((current) => ({ ...current, membershipTier: nextTier })); void cloudRequest("/api/v1/progression").then((summary) => { if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary); }).catch(() => {}); }} /> }
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>兴趣保存在此设备，并按账号分别存储。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">

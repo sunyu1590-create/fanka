@@ -287,3 +287,14 @@
 - 验证：`npm run typecheck` 通过；Node `npm test` 75/75 通过；`npm run lint -- --no-cache` 0 error（51 条现存 warning）；`git diff --check` 通过；Android `testDebugUnitTest` 33/33 通过；`lintDebug` 0 error、267 warnings、2 hints；`assembleDebug` 和 `assembleRelease` 均成功。首轮 Lint 指出广告图加载状态直接访问 StateFlow `.value`，已修复为 `collectAsStateWithLifecycle()` 后全量重跑通过。
 - Debug APK：`native-android/app/build/HEIKA-artifacts/HEIKA-2.3.6-38-debug.apk`（32,757,065 bytes，SHA-256 `292175b6c879da095b436635120a2d1c8af9c813bbfe83c6bcf4e204a0232188`），已核对包名、versionCode、versionName，APK 由 Android Debug 证书签名，可安装验收。Release APK：`HEIKA-2.3.6-38-release-unsigned.apk`（19,632,132 bytes，SHA-256 `9f8345fb9d6b935a63c555cf3347a0ebcaae7d027279e51d097b28a9429e006f`）；构建通过但未签名，仓库无发布密钥/signingConfig，不可作为已签名正式分发包。
 - 当前无连接的 Android 设备或模拟器（`adb devices` 为空），未完成实体设备视觉、动画帧率、跨 Android 版本模糊和广告端到端上传验收。Node/Gradle 检查与 APK 构建不能替代真机验收。未部署生产、未提交或推送。
+
+
+## 当前动态基线与会员中心任务（2026-11-14）
+
+- 当前开发目录 `/workspace/heika-native3-followup`，分支 `codex/native32-phase1`，HEAD `2f7c52ffb540dda5a8a5f02f80e2badca59d4dfc`。本轮从此工作区增量开发；此前用户未提交的 UI、翻卡、广告、弹窗和消息系统改动继续保留。当前所有工作仍在未提交工作区，没有切分支、重置、提交、推送、部署或应用生产迁移。
+- 开发前核验的最近成功 GitHub Android workflow 为 Run #125（ID `43571640890`），同一源码 SHA，Android 版本 `2.3.6` / versionCode `38`。这是任务开始时的成功构建基线，不包含本轮未提交改动。
+- 本轮会员中心与支持功能增量涉及：会员网页/Android 页面、会员状态和每日额度 API、卡密生成/预览/兑换 API、管理员会员管理、会员到期 Cron、Supabase additive migration、服务端密钥配置示例及相关自动化测试。实现范围、批次导出规则、管理员权限、Afdian 第一阶段手工配置步骤和未启用的订单 Webhook 记录在 `docs/membership-support-implementation.md`。
+- 本地验证：`npm run typecheck` 通过；`npm test` 80/80 通过；`npm run lint` 退出码 0（51 条 lint warning，无 lint error）；`npm run build` 成功，Next.js 生产构建完成；`git diff --check` 复核通过。
+- Android 源码将版本递增为 `2.3.6` / versionCode `39`，并添加对应关于页更新记录；这是待构建源码版本，不代表已生成发布包。Gradle 验证尝试因环境未安装 Android SDK 失败（无 `ANDROID_HOME`、`ANDROID_SDK_ROOT`、`sdk.dir` 或可用 SDK）；没有产出本轮 APK。无设备/模拟器，不代表完成原生 UI、键盘、兑换端到端验收。
+- Supabase migration 尚未应用到任何环境，也未连接可用 PostgreSQL 做解析或事务测试；本地仅通过静态合同测试检查。此处无 Supabase 凭据。迁移必须先在 staging 审核运行再按项目流程部署。
+- 未配置 `HEIKA_REDEEM_CODE_KEY` 与 `CRON_SECRET`；卡密生成/兑换 API 在服务端配置密钥前会按设计拒绝执行。爱发电第一阶段使用后台生成卡密并由运营者在对应商品随机回复中分发；未创建或核验真实赞助订单。爱发电自动订单/Webhook 接入仍待官方签名、订单查询规范与凭据验证，不能视为已完成。

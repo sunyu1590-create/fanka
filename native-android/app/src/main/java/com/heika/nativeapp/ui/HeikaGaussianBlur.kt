@@ -16,11 +16,10 @@ import androidx.compose.ui.unit.Dp
  * Android 12+ performs this on the GPU. Older Android versions keep the normal
  * translucent surface/scrim fallback supplied by the caller.
  */
-fun Modifier.heikaGaussianBlur(radius: Dp, enabled: Boolean): Modifier = graphicsLayer {
-    renderEffect = if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+fun Modifier.heikaGaussianBlur(radius: Dp, enabled: Boolean): Modifier {
+    if (!enabled || radius.value <= 0.1f || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return this
+    return graphicsLayer {
         val radiusPx = radius.toPx().coerceAtLeast(0.1f)
-        RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
-    } else {
-        null
+        renderEffect = RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
     }
 }

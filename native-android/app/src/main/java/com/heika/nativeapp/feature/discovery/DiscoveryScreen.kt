@@ -424,7 +424,6 @@ private fun DiscoveryAdCard(ad: DiscoveryAd, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("广告", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, fontWeight = FontWeight.Medium)
             Text(ad.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (ad.body.isNotBlank()) Text(ad.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text("查看作品", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)

@@ -38,12 +38,10 @@ object HeikaGlassTokens {
     val menuRadius = 24.dp
     val capsuleRadius = 26.dp
     val borderWidth = .7.dp
-    val dialogBlurRadius = 36.dp
+    val dialogBlurRadius = 24.dp
     val menuBlurRadius = 18.dp
-    const val darkDialogGlassAlpha = .74f
-    const val lightDialogGlassAlpha = .80f
-    const val darkDialogAlpha = 1f
-    const val lightDialogAlpha = 1f
+    const val darkDialogTintAlpha = .38f
+    const val lightDialogTintAlpha = .30f
     const val backdropDimAmount = .16f
 }
 

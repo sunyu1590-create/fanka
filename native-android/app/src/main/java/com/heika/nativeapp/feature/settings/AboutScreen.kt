@@ -38,6 +38,7 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(39, "2026.11.14", listOf("重构会员与支持中心，接入服务端会员状态、每日额度和权益方案配置。", "新增会员激活码预览与兑换、会员到期同步及管理员卡密批次管理入口。")),
     NativeRelease(38, "2026.11.14", listOf("翻卡揭晓改为实体卡片 3D 翻转，增加银白边缘光与空间层叠，并移除普通翻卡彩带。", "修复确认弹窗模糊降级；发现页文字广告不再留图片占位，管理员可从相册上传广告图片。")),
     NativeRelease(37, "2026.11.14", listOf("中国网络提示改为优先读取本机运营商国家码，并直接查询公网 IP 归属地。", "修正聊天头像对齐与返回按钮颜色；优化翻卡背景模糊、压暗和庆祝动效。")),
     NativeRelease(36, "2026.11.14", listOf("修复确认弹窗背景模糊兼容与内容透出问题，收窄详情操作菜单。", "广告位改为显示在发现页精选信息流中，点击进入关联作品。")),

@@ -4,14 +4,17 @@ import { ApiError, context, dbError, jsonBody, respond } from "@/lib/server/api"
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
-    const [summary, claims] = await Promise.all([
+    const [summary, claims, flips] = await Promise.all([
       db.rpc("my_experience_summary"),
       db.from("experience_reward_claims").select("level").eq("user_id", user!.id),
+      db.rpc("get_daily_flip_state"),
     ]);
     dbError(summary.error);
     dbError(claims.error);
+    dbError(flips.error);
     return {
       ...(summary.data || { total: 0, events: [] }),
+      dailyAllowance: Number(flips.data?.baseAllowance) || 5,
       claimedLevels: (claims.data || []).map((claim) => claim.level),
     };
   });

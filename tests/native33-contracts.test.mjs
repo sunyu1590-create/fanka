@@ -36,10 +36,11 @@ test("detail shared image remains a shared element and content text has no stagg
   assert.doesNotMatch(detail, /titleShown|authorShown|bodyShown/);
 });
 
-test("dialog blur is bounded to the dialog window and never blurs the Activity root", async () => {
+test("dialog blur samples only its panel and does not depend on OEM cross-window blur", async () => {
   const discovery = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/discovery/DiscoveryScreen.kt");
   const glass = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaGlass.kt");
   const dialog = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaAlertDialog.kt");
+  const backdrop = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaDialogBackdrop.kt");
   const app = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaNativeApp.kt");
   assert.match(discovery, /val badgeHazeState = rememberHazeState\(\)/);
   assert.match(discovery, /\.hazeSource\(it\)/);
@@ -47,11 +48,12 @@ test("dialog blur is bounded to the dialog window and never blurs the Activity r
   assert.match(glass, /blurRadius = 16\.dp/);
   assert.match(glass, /fallbackTint = HazeTint\(surface\.copy\(alpha = if \(dark\) \.24f else \.30f\)\)/);
   assert.doesNotMatch(dialog, /LocalHeikaModalBackdropCount/);
-  assert.match(dialog, /setBackgroundBlurRadius/);
-  assert.match(dialog, /FLAG_BLUR_BEHIND/);
-  assert.match(dialog, /isCrossWindowBlurEnabled/);
-  assert.match(dialog, /darkDialogGlassAlpha/);
-  assert.match(dialog, /darkDialogAlpha/);
+  assert.match(dialog, /captureHeikaDialogBackdrop\(window, rect\)/);
+  assert.match(dialog, /heikaGaussianBlur\(blurRadius/);
+  assert.doesNotMatch(dialog, /setBackgroundBlurRadius|FLAG_BLUR_BEHIND|isCrossWindowBlurEnabled/);
+  assert.match(backdrop, /PixelCopy\.request\(window, captureRect, captured/);
+  assert.match(backdrop, /blurBitmapInPlace/);
+  assert.match(dialog, /darkDialogTintAlpha/);
   assert.match(dialog, /usePlatformDefaultWidth = true/);
   assert.match(dialog, /setDimAmount\(HeikaGlassTokens\.backdropDimAmount\)/);
   assert.match(dialog, /LocalContentColor provides MaterialTheme\.colorScheme\.onSurface/);
@@ -199,12 +201,13 @@ test("flip preview keeps the page clear, lightly dims it, and closes on outside 
   assert.doesNotMatch(overlay, /hazeEffect|blurRadius|HazeStyle|RenderEffect/);
   assert.match(overlay, /onClick = \{ requestDismiss\(\) \}/);
   assert.doesNotMatch(overlay, /contentDescription = "关闭预览"/);
-  assert.match(overlay, /rotation\.animateTo\(180f, tween\(680, easing = FastOutSlowInEasing\)\)/);
-  assert.match(overlay, /if \(rotation\.value < 90f\)/);
-  assert.match(overlay, /rotationY = 180f/);
-  assert.match(overlay, /touchScale\.animateTo\(1\.015f/);
-  assert.match(overlay, /edgeSweep\.animateTo\(1f/);
-  assert.match(overlay, /frontSettle\.animateTo\(1f/);
+  assert.match(home, /targetValue = if \(preview != null\) 16\.dp else 0\.dp/);
+  assert.match(overlay, /Crossfade\([\s\S]*?targetState = opened/);
+  assert.doesNotMatch(overlay, /rotationY|rotation\.animateTo|edgeSweep|goldHighlight/);
+  assert.match(home, /pressScale\.snapTo\(\.97f\)/);
+  assert.match(overlay, /haptic\.performHapticFeedback\(HapticFeedbackType\.TextHandleMove\)/);
+  assert.match(overlay, /rarityPhase = true/);
+  assert.match(home, /FlipConfetti\(enabled = opened\)/);
 });
 
 test("domestic network notice checks the serving network and public IP directly, not the HEIKA API", async () => {
@@ -227,16 +230,14 @@ test("chat avatars align to message bubbles and the composer omits the stray hai
   assert.match(glass, /drawTopHighlight: Boolean = true/);
 });
 
-test("flip reveal uses layered 3D card light and removes the old confetti effect", async () => {
+test("flip reveal crossfades the real result, restores confetti and removes 3D light effects", async () => {
   const home = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/home/HomeScreen.kt");
   const app = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaNativeApp.kt");
   assert.match(home, /Color\.Black\.copy\(alpha = 0\.14f \* expand\)/);
-  assert.match(home, /\.offset\(x = 8\.dp, y = 11\.dp\)/);
-  assert.match(home, /\.offset\(x = 4\.dp, y = 6\.dp\)/);
-  assert.match(home, /Color\(0xFFE9F0F3\)/);
-  assert.match(home, /HeikaPalette\.Gold\.copy\(alpha =/);
-  assert.match(home, /goldHighlight\.animateTo\(1f/);
-  assert.doesNotMatch(home, /FlipConfetti|rarityPhase|repeat\(28\)/);
+  assert.match(home, /Crossfade\([\s\S]*?targetState = opened/);
+  assert.match(home, /FlipConfetti\(enabled = opened\)/);
+  assert.match(home, /rarityPhase = true/);
+  assert.doesNotMatch(home, /rotationY|edgeSweep|goldHighlight|depth\.animateTo/);
   assert.match(app, /previewBackdropActive = homePreviewActive/);
 });
 

@@ -79,6 +79,7 @@ import com.heika.nativeapp.feature.publish.PublishScreen
 import com.heika.nativeapp.feature.search.SearchScreen
 import com.heika.nativeapp.feature.FeedbackScreen
 import com.heika.nativeapp.feature.MembershipScreen
+import com.heika.nativeapp.feature.MembershipRedeemScreen
 import com.heika.nativeapp.feature.settings.AboutScreen
 import com.heika.nativeapp.feature.settings.SettingsScreen
 import com.heika.nativeapp.feature.settings.SettingsDetailScreen
@@ -420,7 +421,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                     FeedbackScreen(onBack = { nav.popBackStack() }, onLogin = { nav.navigate("account") })
                 }
                 composable("membership") {
-                    MembershipScreen(onBack = { nav.popBackStack() }, onLogin = { nav.navigate("account") }, onAbout = { openDestination(HeikaDestination.About) })
+                    MembershipScreen(onBack = { nav.popBackStack() }, onLogin = { nav.navigate("account") }, onAbout = { openDestination(HeikaDestination.About) }, onRedeem = { nav.navigate("membership-redeem") })
+                }
+                composable("membership-redeem") {
+                    MembershipRedeemScreen(onBack = { nav.popBackStack() }, onLogin = { nav.navigate("account") })
                 }
                 composable("notifications") {
                     NotificationsScreen(
