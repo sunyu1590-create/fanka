@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, ChevronRight, CreditCard, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
@@ -29,10 +29,11 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "exploration-ad" | "membership";
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "exploration-ad" | "app-download" | "membership";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
+type AppDownloadSettings = { enabled: boolean; download_url: string | null; updated_at?: string };
 
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
@@ -58,7 +59,8 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
     { id: "ai-space", title: "AI 专区管理", description: "审核资源、管理精选与分类标签", icon: Sparkles },
   ] },
   { title: "运营配置", modules: [
-    { id: "exploration-ad", title: "探索中心广告位", description: "设置探索中心底部的图文入口", icon: Megaphone },
+    { id: "exploration-ad", title: "探索中心广告位", description: "设置探索页顶部广告及目标作品", icon: Megaphone },
+    { id: "app-download", title: "App 下载入口", description: "设置网页端下载按钮的跳转地址", icon: Download },
   ] },
 ];
 const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
@@ -75,6 +77,7 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   appeals: "申诉处理",
   membership: "会员与赞助",
   "exploration-ad": "探索中心广告位",
+  "app-download": "App 下载入口",
 };
 
 function CollapsibleMarkdown({ source, label }: { source: string; label: string }) {
@@ -134,6 +137,8 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const [explorationAdQuery, setExplorationAdQuery] = useState("");
   const [explorationAdCandidates, setExplorationAdCandidates] = useState<ExplorationAdCandidate[]>([]);
   const [explorationAdSearchBusy, setExplorationAdSearchBusy] = useState(false);
+  const [appDownload, setAppDownload] = useState<AppDownloadSettings | null>(null);
+  const [appDownloadBusy, setAppDownloadBusy] = useState(false);
 
   const loadTopicEvents = useCallback(async () => {
     setTopicEventBusy(true); setError("");
@@ -163,6 +168,15 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setExplorationAdBusy(false); }
   }, []);
   useEffect(() => { if (section === "exploration-ad") void loadExplorationAd(); }, [section, loadExplorationAd]);
+  const loadAppDownload = useCallback(async () => {
+    setAppDownloadBusy(true); setError("");
+    try {
+      const result = await cloudRequest("/api/v1/admin/app-download") as AppDownloadSettings;
+      setAppDownload({ ...result, enabled: Boolean(result.enabled), download_url: result.download_url || "" });
+    } catch (e) { setError(e instanceof Error ? e.message : "App 下载配置读取失败"); }
+    finally { setAppDownloadBusy(false); }
+  }, []);
+  useEffect(() => { if (section === "app-download") void loadAppDownload(); }, [section, loadAppDownload]);
   const searchExplorationAdPosts = async () => {
     if (explorationAdQuery.trim().length < 2) { setError("请输入至少 2 个字搜索作品"); return; }
     setExplorationAdSearchBusy(true); setError("");
@@ -345,6 +359,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     else if (section === "topic-events") void loadTopicEvents();
     else if (section === "ai-settings") void loadAiSettings();
     else if (section === "exploration-ad") void loadExplorationAd();
+    else if (section === "app-download") void loadAppDownload();
     else if (section === "appeals") setGovernanceRefreshKey((value) => value + 1);
     else if (section === "ai-space") setGovernanceRefreshKey((value) => value + 1);
     else if (section === "comments" || section === "keywords" || section === "audit") setGovernanceRefreshKey((value) => value + 1);
@@ -374,7 +389,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         {adminModuleGroups.map((group) => {
           const modules = group.modules.filter((module) => {
             if (role === "admin") return true;
-            if (["users", "membership", "ai-settings", "topic-events", "exploration-ad"].includes(module.id)) return false;
+            if (["users", "membership", "ai-settings", "topic-events", "exploration-ad", "app-download"].includes(module.id)) return false;
             if (module.id === "keywords" && role !== "content_manager") return false;
             return true;
           });
@@ -395,7 +410,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </> : <div className="admin-workspace-nav">
       <button type="button" onClick={() => navigateAdminSection("overview")}><ArrowLeft size={16}/> 管理台</button>
       <span>{adminSectionTitles[section]}</span>
-      <button type="button" className="admin-workspace-refresh" aria-label={`刷新${adminSectionTitles[section]}`} onClick={refreshCurrent} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy || explorationAdBusy || explorationAdSearchBusy}><RefreshCw size={15}/> 刷新</button>
+      <button type="button" className="admin-workspace-refresh" aria-label={`刷新${adminSectionTitles[section]}`} onClick={refreshCurrent} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy || explorationAdBusy || explorationAdSearchBusy || appDownloadBusy}><RefreshCw size={15}/> 刷新</button>
     </div>}
     {section === "reports" && <div className="moderation-filters" role="group" aria-label="举报状态">
       {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
@@ -431,7 +446,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     }}>
       <div className="admin-topic-event-form-heading"><div><small>EXPLORE / PROMOTION</small><h2>探索中心广告位</h2></div><span className={`admin-ai-status${explorationAd?.enabled ? " configured" : ""}`}>{explorationAdBusy ? "同步中" : explorationAd?.enabled ? "展示中" : "已关闭"}</span></div>
       {!explorationAd && explorationAdBusy ? <p>正在读取服务端配置…</p> : explorationAd ? <>
-        <p>广告卡片仅显示在探索中心底部，可展示文字或图片，并跳转至一篇已发布作品。关闭后用户端不显示。</p>
+        <p>广告显示在网页端探索页顶部，可展示文字或图片，并跳转至一篇已发布作品。关闭后用户端不显示。</p>
         <label className="admin-exploration-ad-switch"><input type="checkbox" checked={explorationAd.enabled} onChange={(event) => setExplorationAd({ ...explorationAd, enabled: event.target.checked })}/>启用广告位</label>
         <label>展示形式<ChoiceSelect label="广告展示形式" value={explorationAd.kind} onChange={(value) => setExplorationAd({ ...explorationAd, kind: value as "text" | "image" })} options={[{ value: "text", label: "文字" }, { value: "image", label: "图片 + 文字" }]}/></label>
         <label>标题<input maxLength={80} value={explorationAd.title} onChange={(event) => setExplorationAd({ ...explorationAd, title: event.target.value })} /></label>
@@ -443,6 +458,27 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         <small>服务端会校验管理员权限及目标作品公开状态，不会生成假统计或本地跳转。</small>
         <button className="primary-button full" disabled={explorationAdBusy || !explorationAd || (explorationAd.enabled && (!explorationAd.title.trim() || !explorationAdPostRef.trim() || (explorationAd.kind === "image" && !explorationAd.image_url?.startsWith("https://"))))}>{explorationAdBusy ? "正在保存…" : "保存配置"}</button>
       </> : <p>无法读取广告位配置，请刷新重试。</p>}
+    </form> : section === "app-download" ? <form className="admin-topic-event-form admin-ai-settings" onSubmit={async (event) => {
+      event.preventDefault();
+      if (!appDownload) return;
+      const downloadUrl = appDownload.download_url?.trim() || "";
+      if (appDownload.enabled && !/^https:\/\//i.test(downloadUrl)) { setError("启用下载入口需要填写 HTTPS 下载地址。"); return; }
+      setAppDownloadBusy(true); setError(""); setNotice("");
+      try {
+        const saved = await cloudRequest("/api/v1/admin/app-download", { enabled: appDownload.enabled, download_url: downloadUrl || null }, "PATCH") as AppDownloadSettings;
+        setAppDownload(saved);
+        setNotice(saved.enabled ? "App 下载入口已保存并启用。" : "App 下载入口已保存并关闭。");
+      } catch (e) { setError(userMessage(e, "App 下载入口保存失败，请检查链接和管理员权限。")); }
+      finally { setAppDownloadBusy(false); }
+    }}>
+      <div className="admin-topic-event-form-heading"><div><small>APP / DOWNLOAD</small><h2>网页端 App 下载入口</h2></div><span className={`admin-ai-status${appDownload?.enabled ? " configured" : ""}`}>{appDownloadBusy ? "同步中" : appDownload?.enabled ? "展示中" : "已关闭"}</span></div>
+      {!appDownload && appDownloadBusy ? <p>正在读取服务端配置…</p> : appDownload ? <>
+        <p>启用后，网页首页、探索页及个人页顶栏会显示“下载 App”。Android 原生应用内会自动隐藏此入口。</p>
+        <label className="admin-exploration-ad-switch"><input type="checkbox" checked={appDownload.enabled} onChange={(event) => setAppDownload({ ...appDownload, enabled: event.target.checked })}/>启用网页端下载入口</label>
+        <label>App 下载链接（HTTPS）<input type="url" inputMode="url" autoComplete="url" maxLength={2048} value={appDownload.download_url || ""} onChange={(event) => setAppDownload({ ...appDownload, download_url: event.target.value })} placeholder="https://…" /></label>
+        <small>支持官网、应用商店或 APK 托管地址。只有管理员可以修改；未启用或未配置时，网页端不显示入口。</small>
+        <button className="primary-button full" disabled={appDownloadBusy || !appDownload || (appDownload.enabled && !/^https:\/\//i.test(appDownload.download_url?.trim() || ""))}>{appDownloadBusy ? "正在保存…" : "保存下载设置"}</button>
+      </> : <p>无法读取 App 下载配置，请刷新重试。</p>}
     </form> : section === "topic-events" ? <>
       <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
         <div className="admin-topic-event-form-heading"><div><small>COMMUNITY / OPEN CALL</small><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>

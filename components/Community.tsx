@@ -38,6 +38,8 @@ import {
   Video as VideoIcon,
   LayoutGrid,
   List,
+  Smartphone,
+  Megaphone,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import ProgressiveImage from "./ProgressiveImage";
@@ -104,6 +106,7 @@ const FLIP_RAIN_STAGGER_WINDOW_MS = 900;
 const FLIP_RAIN_JITTER_MS = 90;
 const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
 const RATING_COLORS = ["#ff5d78", "#ff9452", "#edbd36", "#65b95e", "#34aeb5"];
+type PublicExplorationAd = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string; post_client_id: number | null };
 const AI_EDITOR_FIELDS: Record<AiContentType, { key: string; label: string; hint: string; multiline?: boolean; required?: boolean }[]> = {
   knowledge_article: [],
   agent: [
@@ -481,6 +484,9 @@ export default function Community() {
   const [seriesDescription, setSeriesDescription] = useState("");
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
   const [topicEvents, setTopicEvents] = useState<TopicEvent[]>([]);
+  const [explorationAd, setExplorationAd] = useState<PublicExplorationAd | null>(null);
+  const [appDownloadUrl, setAppDownloadUrl] = useState<string | null>(null);
+  const explorationAdLoadedAt = useRef(0);
   const [settingsPersonalOpen, setSettingsPersonalOpen] = useState(false);
   const [recentPreview, setRecentPreview] = useState<{ post: Post; source: "today" | "discover" } | null>(null);
   const [creatorCenterLoading, setCreatorCenterLoading] = useState(false);
@@ -1132,6 +1138,32 @@ export default function Community() {
     return () => { active = false; };
   }, [tab, discoverChannel]);
   useEffect(() => {
+    if (tab !== "discover" || discoverChannel !== "community" || Date.now() - explorationAdLoadedAt.current < 30_000) return;
+    let active = true;
+    explorationAdLoadedAt.current = Date.now();
+    void fetch("/api/v1/exploration-ad", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (!active) return;
+        const ad = result?.data as PublicExplorationAd | null | undefined;
+        setExplorationAd(ad?.enabled && ad.post_client_id ? ad : null);
+      })
+      .catch(() => { if (active) setExplorationAd(null); });
+    return () => { active = false; };
+  }, [tab, discoverChannel]);
+  useEffect(() => {
+    if (typeof window === "undefined" || "HeikaNative" in window) return;
+    let active = true;
+    void fetch("/api/v1/app-download", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        const url = result?.data?.download_url;
+        if (active && typeof url === "string" && /^https:\/\//i.test(url)) setAppDownloadUrl(url);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
     if (!accountId) { setCreatorSeries([]); return; }
     let active = true;
     void cloudRequest("/api/v1/series").then((data) => { if (active && Array.isArray(data?.items)) setCreatorSeries(data.items as PostSeries[]); }).catch(() => {});
@@ -1589,19 +1621,19 @@ export default function Community() {
       ? rect
       : null;
   };
-  const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null) => {
+  const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null, resolvedPost?: Post) => {
     if (source) detailSource.current = source;
     if (
       transitionBusy.current ||
       detail !== null ||
-      !all.some((p) => p.id === id)
+      (!resolvedPost && !all.some((p) => p.id === id))
     )
       return;
     if (pageTransition.current) {
       const activeTransition = pageTransition.current;
       const resume = () => {
         if (pageTransition.current === activeTransition) pageTransition.current = null;
-        openPost(id, source, sourceElement);
+        openPost(id, source, sourceElement, resolvedPost);
       };
       void activeTransition.finished.then(resume, resume);
       return;
@@ -1646,7 +1678,7 @@ export default function Community() {
     const cachedDetail = detailPostCache.current.get(id);
     setDetailPostOverride(cachedDetail && Date.now() - cachedDetail.at < 45 * 60 * 1000
       ? cachedDetail.post
-      : all.find((post) => post.id === id) || null);
+      : all.find((post) => post.id === id) || resolvedPost || null);
     setDetailImageTransition(
       detailTransition === "image-zoom" && sourceImage && sourceRect && sourceImageUrl && sourceRect.width && sourceRect.height
         ? { rect: sourceRect, src: sourceImageUrl, sourceImage }
@@ -1672,6 +1704,18 @@ export default function Community() {
       ...s,
       viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
     }));
+  };
+  const openExplorationAdPost = async (sourceElement: Element) => {
+    if (!explorationAd?.post_client_id) return;
+    const existing = all.find((post) => post.id === explorationAd.post_client_id);
+    if (existing) { openPost(existing.id, "discover", sourceElement); return; }
+    try {
+      const response = await fetch(`/api/v1/posts/${encodeURIComponent(explorationAd.post_id)}`, { cache: "no-store" });
+      const result = await response.json();
+      const post = result?.data as Post | undefined;
+      if (!response.ok || !post || post.id !== explorationAd.post_client_id || post.status !== "published") throw new Error("作品暂不可用");
+      openPost(post.id, "discover", sourceElement, post);
+    } catch { toast("这篇作品暂时无法打开，请稍后重试"); }
   };
   const cancelFlipRain = (id?: number) => {
     if (id !== undefined && flipRainId !== id) return;
@@ -3980,9 +4024,10 @@ export default function Community() {
     </Suspense>
   ) : null;
   return (
-    <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
+    <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
       <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}${tab === "discover" && !secondaryTitle ? " is-discover-topline" : ""}`}>
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand"><span>黑卡</span><i>HEIKA</i></span>}
+        <div className="topline-end-actions">
         {tab === "discover" && !secondaryTitle ? <div className="discover-top-actions">
           <button type="button" className={`topline-action${discoverSearchOpen ? " selected" : ""}`} aria-label={discoverSearchOpen ? "关闭搜索" : "搜索内容或用户"} aria-expanded={discoverSearchOpen} onClick={() => { setSearchDraft(searchTerm); setDiscoverSearchOpen((open) => !open); setDiscoverSettingsOpen(false); }}><Search size={19} strokeWidth={1.8}/></button>
           <button type="button" className={`topline-action${discoverSettingsOpen ? " selected" : ""}`} aria-label="更多" aria-expanded={discoverSettingsOpen} aria-controls="discover-quick-settings" onClick={() => { setDiscoverSettingsOpen((open) => !open); setDiscoverSearchOpen(false); }}><MoreHorizontal size={21} strokeWidth={1.8}/></button>
@@ -3996,6 +4041,8 @@ export default function Community() {
           <button type="button" className="topline-action" aria-label="搜索内容或用户" onClick={() => { setSearchReturnTab("today"); setSearchDraft(searchTerm); setTab("search"); }}><Search size={19} strokeWidth={1.8}/></button>
           <button type="button" className="topline-action" aria-label="打开通知" onClick={() => openNotifications("today")}><Bell size={19} strokeWidth={1.8}/></button>
         </div> : tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : null}
+        {!secondaryTitle && appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="app-download-link" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" aria-label="下载黑卡 Android App"><Smartphone size={16}/><span>下载 App</span></a>}
+        </div>
       </header>
       {tab === "today" && (
         <section
@@ -4140,6 +4187,11 @@ export default function Community() {
           </form>}
           <div className={`discover-channel-content${discoverChannelPhase ? ` is-${discoverChannelPhase}` : ""}`}>
           <div className={`discover-community-channel discover-channel-panel${discoverChannel === "community" ? " is-active" : ""}${outgoingDiscoverChannel === "community" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "community" && outgoingDiscoverChannel !== "community"}>
+          {explorationAd?.enabled && explorationAd.post_client_id && <button type="button" className={`exploration-ad-card${explorationAd.kind === "image" && explorationAd.image_url ? " has-image" : ""}`} aria-label={`${explorationAd.title}，打开相关作品`} onClick={(event) => void openExplorationAdPost(event.currentTarget)}>
+            {explorationAd.kind === "image" && explorationAd.image_url && <img src={explorationAd.image_url} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.remove(); event.currentTarget.closest(".exploration-ad-card")?.classList.remove("has-image"); }}/>}
+            <span className="exploration-ad-card-copy"><small><Megaphone size={12}/> HEIKA · 推荐</small><strong>{explorationAd.title}</strong>{explorationAd.body && <span>{explorationAd.body}</span>}</span>
+            <ArrowRight size={17} aria-hidden="true"/>
+          </button>}
           <div className="discover-category-nav" role="tablist" aria-label="发现内容分类">
             {["全部", ...(communityCategories.length ? communityCategories : tags)].map((t) => (
               <button

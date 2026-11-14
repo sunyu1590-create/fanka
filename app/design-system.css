@@ -4078,8 +4078,32 @@ img, video, canvas, iframe { max-width:100%; }
 }
 
 @media (max-width:767px) {
-  .app.app-nav-hidden-mobile .bottom-nav { display:none; }
+  .app.app-nav-hidden-mobile .bottom-nav-shell { display:none!important; }
 }
+
+.topline-end-actions { display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;margin-left:auto; }
+.topline-end-actions:empty { display:none; }
+.app-download-link { display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:0 12px;border:1px solid color-mix(in srgb,var(--action) 35%,var(--line));border-radius:999px;background:color-mix(in srgb,var(--action) 10%,var(--surface));color:var(--ink);font-size:12px;font-weight:650;white-space:nowrap;text-decoration:none;transition:background-color 180ms ease,border-color 180ms ease,transform 140ms ease; }
+.app-download-link svg { color:var(--action); }
+.app-download-link:hover { background:color-mix(in srgb,var(--action) 16%,var(--surface));border-color:color-mix(in srgb,var(--action) 54%,var(--line)); }
+.app-download-link:active { transform:scale(.97); }
+.exploration-ad-card { width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;margin:12px 0 16px;padding:14px 15px;border:1px solid color-mix(in srgb,var(--action) 24%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--action) 6%,var(--surface));color:var(--ink);text-align:left; }
+.exploration-ad-card.has-image { grid-template-columns:minmax(82px,25%) minmax(0,1fr) auto; }
+.exploration-ad-card-copy { grid-column:1;display:grid;min-width:0;gap:5px; }
+.exploration-ad-card.has-image .exploration-ad-card-copy { grid-column:2; }
+.exploration-ad-card-copy>small { color:var(--action);font-size:9px;font-weight:700;letter-spacing:.12em; }
+.exploration-ad-card-copy>small svg { display:inline-block;vertical-align:-2px;margin-right:4px; }
+.exploration-ad-card-copy>strong { overflow:hidden;font-size:14px;font-weight:700;text-overflow:ellipsis; }
+.exploration-ad-card-copy>span { display:-webkit-box;overflow:hidden;color:var(--muted);font-size:12px;line-height:1.55;-webkit-box-orient:vertical;-webkit-line-clamp:2; }
+.exploration-ad-card>img { grid-column:1;grid-row:1;width:100%;height:78px;object-fit:cover;border-radius:8px; }
+.exploration-ad-card>svg { grid-column:2;grid-row:1;color:var(--muted); }
+.exploration-ad-card.has-image>svg { grid-column:3; }
+@media(max-width:420px) {
+  .topline-end-actions { gap:4px; }
+  .app-download-link { min-height:36px;gap:5px;padding-inline:9px;font-size:11px; }
+  .app-download-link svg { width:15px;height:15px; }
+}
+@media(prefers-reduced-motion:reduce) { .app-download-link { transition:none; } }
 
 @media (prefers-reduced-motion:reduce) {
   .bottom-nav button,.settings-desktop-nav a,.discover-content-card,.mine-work-card { transition:none!important; }
