@@ -18,6 +18,7 @@ from unnest(array[
   'public.get_daily_flip_state()',
   'public.get_daily_deck()',
   'public.open_daily_card(integer)',
+  'public.open_daily_card_with_result(integer)',
   'public.record_experience_event(text,uuid)',
   'public.my_experience_summary()'
 ]) as signatures(signature)

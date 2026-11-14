@@ -39,6 +39,7 @@ begin
       'public.get_daily_flip_state()',
       'public.get_daily_deck()',
       'public.open_daily_card(integer)',
+      'public.open_daily_card_with_result(integer)',
       'public.record_experience_event(text,uuid)',
       'public.my_experience_summary()'
     ],signature)
@@ -48,7 +49,16 @@ begin
 end;
 $$;
 
-drop function if exists public.open_daily_card_with_result(integer);
+do $$ begin
+  if not exists (
+    select 1 from membership_private.rollback_function_defs
+    where signature='public.open_daily_card_with_result(integer)'
+  ) then
+    drop function if exists public.open_daily_card_with_result(integer);
+  end if;
+end;
+$$;
+
 drop function if exists public.get_my_membership_status();
 drop function if exists public.admin_membership_batches();
 drop function if exists public.admin_membership_summary();
