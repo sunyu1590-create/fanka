@@ -54,8 +54,12 @@ import coil3.request.crossfade
 import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaNoticeBus
+import com.heika.nativeapp.ui.HeikaNoticeKind
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,6 +73,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
     var keywordDraft by remember { mutableStateOf("") }
     var pendingKeywordDelete by remember { mutableStateOf<JSONObject?>(null) }
     var pendingAiKeyDelete by remember { mutableStateOf(false) }
+    var pendingCodeDisable by remember { mutableStateOf<JSONObject?>(null) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(if (state.section == "overview") "管理员中心" else adminSectionTitle(state.section), { if (state.section == "overview") onBack() else viewModel.select("overview") }, trailing = { IconButton(onClick = viewModel::refresh) { Icon(HeikaIcons.Retry, "刷新") } })
         if (state.section == "overview") {
@@ -82,7 +87,8 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
             }
             state.error?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
             state.notice?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
-            if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+            if (state.section == "membership-support") AdminMembershipPanel(state, viewModel, onDisableCode = { pendingCodeDisable = it })
+            else if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
             else if (state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text(if (state.error == null) "暂无待处理事项" else "无法读取管理队列", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.error != null) TextButton(onClick = viewModel::refresh) { Text("重试") }
@@ -146,6 +152,15 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
         onConfirm = { pendingAiKeyDelete = false; viewModel.deleteAiKey() },
         onCancel = { pendingAiKeyDelete = false },
     )
+    pendingCodeDisable?.let { code -> HeikaGlassDialog(
+        title = "停用这张卡密？",
+        message = "将停用末四位 ${code.optString("code_suffix")} 的未兑换卡密。已兑换卡密不会被修改。",
+        confirmText = "停用卡密",
+        destructive = true,
+        loading = state.saving != null,
+        onConfirm = { viewModel.disableMembershipCode(code.optString("id")); pendingCodeDisable = null },
+        onCancel = { pendingCodeDisable = null },
+    ) }
 }
 
 private data class AdminModuleSpec(val key: String, val title: String, val detail: String, val iconRes: Int, val countKey: String? = null)
@@ -165,6 +180,7 @@ private val adminModuleGroups = listOf(
         AdminModuleSpec("audit", "操作记录", "查看管理员处理历史", com.heika.nativeapp.ui.HeikaIconRes.Gavel),
     )),
     AdminModuleGroup("账号与工具", listOf(
+        AdminModuleSpec("membership-support", "会员与赞助", "卡密批次、会员状态、订单人工复核", com.heika.nativeapp.ui.HeikaIconRes.Medal),
         AdminModuleSpec("users", "账号管理", "角色、会员与社区发言限制", com.heika.nativeapp.ui.HeikaIconRes.BusinessUser),
         AdminModuleSpec("user-feedback", "用户反馈", "查看并处理用户意见", com.heika.nativeapp.ui.HeikaIconRes.Warning),
     )),
@@ -185,7 +201,7 @@ private val adminSectionNames = mapOf(
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
-    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助",
 )
 private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
 
@@ -300,6 +316,218 @@ private fun AdminModuleRow(module: AdminModuleSpec, overview: JSONObject?, onCli
 }
 
 private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad")
+
+@Composable
+private fun AdminMembershipPanel(state: AdminCenterState, viewModel: AdminCenterViewModel, onDisableCode: (JSONObject) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var fileName by remember { mutableStateOf("HEIKA-membership-codes.txt") }
+    val saveCodes = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val text = state.generatedCodeText
+        if (uri != null && !text.isNullOrBlank()) scope.launch(Dispatchers.IO) {
+            runCatching { context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(text) } ?: error("无法创建文件") }
+                .onSuccess { viewModel.clearGeneratedMembershipCodes() }
+                .onFailure { viewModel.reportMembershipError("卡密文件保存失败，请重新保存") }
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf("codes" to "卡密", "members" to "会员", "orders" to "订单复核", "plans" to "方案").forEach { (key, label) ->
+                TextButton(onClick = {
+                    if (state.membershipTab != key) {
+                        viewModel.selectMembershipTab(key)
+                        HeikaNoticeBus.showSelection("会员管理：$label")
+                    }
+                }) { Text(label, color = if (state.membershipTab == key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (state.membershipTab == key) FontWeight.SemiBold else FontWeight.Normal) }
+            }
+        }
+        state.membershipError?.let { Text(it, Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+        state.membershipNotice?.let { Text(it, Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
+        if (state.membershipLoading && state.membershipBatches.isEmpty() && state.membershipTab == "codes") {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            return@Column
+        }
+        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
+            item {
+                val summary = state.membershipSummary
+                if (summary != null) {
+                    val metrics = listOf("freeUsers" to "Free", "plusUsers" to "Plus", "proUsers" to "Pro", "generatedCodes" to "已生成", "availableCodes" to "可用卡密", "redeemedCodes" to "已兑换", "disabledCodes" to "已停用", "unverifiedOrders" to "待复核订单", "verifiedSupportCents" to "已核验赞助")
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        metrics.chunked(3).forEach { row -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { (key, label) ->
+                                Column(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(8.dp)) {
+                                    val value = if (key == "verifiedSupportCents") "¥%.2f".format(summary.optLong(key) / 100.0) else summary.optString(key, "0")
+                                    Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1)
+                                }
+                            }
+                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+            }
+            }
+            when (state.membershipTab) {
+                "codes" -> {
+                    item { MembershipCodeBatchForm(state, viewModel, onSave = { tier, days, batch -> fileName = "HEIKA-${tier.uppercase()}-${days}days-${batch.take(8)}.txt"; saveCodes.launch(fileName) }) }
+                    item { Text("卡密批次", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 7.dp)) }
+                    if (state.membershipBatches.isEmpty()) item { Text(if (state.membershipLoading) "正在读取卡密批次…" else "暂无卡密批次", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
+                    items(state.membershipBatches, key = { it.optString("id") }) { batch ->
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(batch.optString("name"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("${batch.optString("tier").uppercase()} · ${batch.optInt("duration_days")} 天 · ${batch.optInt("code_count")} 张 · 可用 ${batch.optInt("available_count")} / 已兑 ${batch.optInt("redeemed_count")} / 停用 ${batch.optInt("disabled_count")}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                            Text(batch.optString("export_label").takeIf(String::isNotBlank)?.let { "分发渠道：$it" } ?: "尚未分发", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                            if (batch.optInt("available_count") > 0 && batch.optString("export_ref").isNotBlank()) TextButton(enabled = state.saving == null && state.generatedCodeText.isNullOrBlank(), onClick = { viewModel.exportMembershipBatch(batch.optString("id"), batch.optString("export_label"), batch.optString("export_ref")) { fileName = "HEIKA-codes-${batch.optString("export_ref")}.txt"; saveCodes.launch(fileName) } }) { Text("重新下载本批次明文") }
+                            TextButton(onClick = { viewModel.toggleMembershipBatch(batch.optString("id")) }) { Text(if (state.membershipExpandedBatch == batch.optString("id")) "收起卡密状态" else "查看卡密状态") }
+                            if (state.membershipExpandedBatch == batch.optString("id")) state.membershipCodes.forEach { code ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("•••• ${code.optString("code_suffix")} · ${code.optString("tier").uppercase()} ${code.optInt("duration_days")}天 · ${when (code.optString("status")) { "available" -> "可兑换"; "redeemed" -> "已兑换"; else -> "已停用" }}", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                                    if (code.optString("status") == "available") TextButton(enabled = state.saving == null, onClick = { onDisableCode(code) }) { Text("停用", color = MaterialTheme.colorScheme.error) }
+                                }
+                            }
+                        }
+                    }
+                    if (!state.generatedCodeText.isNullOrBlank()) item { TextButton(onClick = { saveCodes.launch(fileName) }) { Text("重新保存本次新生成的卡密文件") } }
+                }
+                "members" -> item { MembershipUserAdmin(state, viewModel) }
+                "plans" -> {
+                    if (state.membershipPlans.isEmpty()) item { Text("方案数据加载中或暂不可用，请刷新重试。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
+                    items(state.membershipPlans, key = { it.optString("tier") }) { MembershipPlanAdminRow(it, state, viewModel) }
+                }
+                "orders" -> {
+                    item { Text("爱发电自动核验尚未接入。仅依据后台可核实的订单信息人工复核；此操作不会自动兑换会员或发放卡密。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 17.sp) }
+                    item { MembershipOrderIntake(state, viewModel) }
+                    if (state.membershipOrders.isEmpty()) item { Text("暂无已接收的订单记录。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
+                    items(state.membershipOrders, key = { it.optString("id") }) { MembershipOrderAdminRow(it, state, viewModel) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembershipOrderIntake(state: AdminCenterState, viewModel: AdminCenterViewModel) {
+    var orderId by remember { mutableStateOf("") }; var plan by remember { mutableStateOf("") }; var amount by remember { mutableStateOf("") }; var note by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text("登记平台订单", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text("只建立待复核记录，不会将订单视作已付款，也不会发放会员。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+        OutlinedTextField(orderId, { orderId = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("爱发电订单号") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("方案", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            listOf("plus", "pro", "未知").forEach { value -> TextButton(onClick = { plan = if (value == "未知") "" else value }) { Text(if (value == "未知") value else value.uppercase(), color = if ((value == "未知" && plan.isBlank()) || plan == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) } }
+        }
+        OutlinedTextField(amount, { amount = it.filter(Char::isDigit).take(10) }, Modifier.fillMaxWidth(), label = { Text("金额（分，可空）") }, singleLine = true)
+        OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("登记依据（如平台页面核对情况）") }, minLines = 2)
+        Button(enabled = state.saving == null && orderId.trim().length >= 3 && note.trim().length >= 3, onClick = { viewModel.recordMembershipOrder(orderId, plan, amount.toLongOrNull(), note) { orderId = ""; note = "" } }) { Text("登记为待复核") }
+    }
+}
+
+@Composable
+private fun MembershipCodeBatchForm(state: AdminCenterState, viewModel: AdminCenterViewModel, onSave: (String, Int, String) -> Unit) {
+    var name by remember { mutableStateOf("") }; var tier by remember { mutableStateOf("plus") }; var days by remember { mutableStateOf("30") }; var count by remember { mutableStateOf("10") }; var channel by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text("生成一次性卡密", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Text("卡密明文只在生成响应中返回并短暂保存在本页内存；请立即保存到安全位置。每批只能绑定一个分发渠道。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+        OutlinedTextField(name, { name = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("批次名称") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("会员档位", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            listOf("plus", "pro").forEach { option -> TextButton(onClick = { tier = option }) { Text(option.uppercase(), color = if (tier == option) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (tier == option) FontWeight.SemiBold else FontWeight.Normal) } }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            OutlinedTextField(days, { days = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text("有效天数（1–7300）") }, singleLine = true)
+            OutlinedTextField(count, { count = it.filter(Char::isDigit).take(4) }, Modifier.weight(1f), label = { Text("数量 1–1000") }, singleLine = true)
+        }
+        OutlinedTextField(channel, { channel = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("唯一分发渠道") }, placeholder = { Text("例如：爱发电商品 · ${tier.uppercase()} ${days} 天") }, singleLine = true)
+        val daysValue = days.toIntOrNull() ?: 0; val countValue = count.toIntOrNull() ?: 0
+        Button(enabled = state.saving == null && name.isNotBlank() && tier in setOf("plus", "pro") && daysValue in 1..7300 && countValue in 1..1000 && channel.trim().length in 2..120 && state.generatedCodeText.isNullOrBlank(), onClick = { viewModel.createMembershipBatch(name, tier, daysValue, countValue, channel) { batchId -> onSave(tier, daysValue, batchId); name = "" } }, modifier = Modifier.fillMaxWidth()) { Text(if (state.saving == "membership-batch") "生成中…" else "生成卡密并保存文件") }
+    }
+}
+
+@Composable
+private fun MembershipUserAdmin(state: AdminCenterState, viewModel: AdminCenterViewModel) {
+    var query by remember { mutableStateOf("") }; var selected by remember { mutableStateOf<JSONObject?>(null) }; var tier by remember { mutableStateOf("plus") }; var days by remember { mutableStateOf("30") }; var reason by remember { mutableStateOf("") }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(query, { query = it.take(80) }, Modifier.weight(1f), label = { Text("按昵称搜索（至少 2 字）") }, singleLine = true)
+            Button(enabled = query.trim().length >= 2 && state.saving == null, onClick = { viewModel.searchMembershipUsers(query) }) { Text("搜索") }
+        }
+        state.membershipUsers.forEach { user ->
+            TextButton(onClick = { selected = user; tier = user.optString("membership_tier", "free") }) {
+                Text("${user.optString("nickname", "探索者")} · ${user.optString("membership_tier").uppercase()} · 兑换 ${user.optJSONArray("redemptions")?.length() ?: 0} 次", color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        selected?.let { selectedUser ->
+            val user = state.membershipUsers.firstOrNull { it.optString("id") == selectedUser.optString("id") } ?: selectedUser
+            Text("${user.optString("nickname")} · 权益调整", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+            Text("仅人工补发/撤销使用；操作原因会写入管理员审计。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("调整至", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                listOf("free", "plus", "pro").forEach { option -> TextButton(onClick = { tier = option }) { Text(option.uppercase(), color = if (tier == option) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (tier == option) FontWeight.SemiBold else FontWeight.Normal) } }
+            }
+            if (tier != "free") OutlinedTextField(days, { days = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), label = { Text("有效天数") }, singleLine = true)
+            OutlinedTextField(reason, { reason = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("操作原因（至少 3 字）") }, minLines = 2)
+            Button(enabled = state.saving == null && reason.trim().length >= 3 && (tier == "free" || (days.toIntOrNull() ?: 0) in 1..7300), onClick = { viewModel.adjustMembership(user.optString("id"), tier, if (tier == "free") null else days.toIntOrNull() ?: 0, reason, query) }) { Text("保存会员状态") }
+            val periods = user.optJSONArray("periods") ?: JSONArray(); val redemptions = user.optJSONArray("redemptions") ?: JSONArray()
+            Text("会员周期与兑换记录", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            (0 until periods.length()).forEach { index -> periods.optJSONObject(index)?.let { period ->
+                Text("${period.optString("tier").uppercase()} · ${period.optString("source")} · ${period.optString("starts_at").take(10)} 至 ${period.optString("ends_at").take(10).ifBlank { "长期" }}${if (period.optString("revoked_at").isNotBlank()) " · 已撤销：${period.optString("revoke_reason")}" else ""}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+            } }
+            (0 until redemptions.length()).forEach { index -> redemptions.optJSONObject(index)?.let { redemption -> Text("卡密兑换 ${redemption.optString("tier").uppercase()} · ${redemption.optInt("duration_days")} 天 · ${redemption.optString("created_at").take(10)} · 到期 ${redemption.optString("expires_at").take(10)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } }
+            if (periods.length() == 0 && redemptions.length() == 0) Text("暂无会员历史。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+        }
+        if (state.membershipUsers.isEmpty()) Text("搜索用户以查看会员状态与历史。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun MembershipPlanAdminRow(plan: JSONObject, state: AdminCenterState, viewModel: AdminCenterViewModel) {
+    var flips by remember(plan) { mutableStateOf(plan.optInt("daily_flips").toString()) }; var cents by remember(plan) { mutableStateOf(plan.optInt("support_price_cents").toString()) }; var days by remember(plan) { mutableStateOf(plan.optInt("duration_days", 30).toString()) }; var enabled by remember(plan) { mutableStateOf(plan.optBoolean("enabled")) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(plan.optString("display_name", plan.optString("tier").uppercase()), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) { OutlinedTextField(flips, { flips = it.filter(Char::isDigit).take(3) }, Modifier.weight(1f), label = { Text("翻卡/日") }, singleLine = true); OutlinedTextField(cents, { cents = it.filter(Char::isDigit).take(7) }, Modifier.weight(1f), label = { Text("金额（分）") }, singleLine = true) }
+        if (plan.optString("tier") != "free") OutlinedTextField(days, { days = it.filter(Char::isDigit).take(4) }, Modifier.fillMaxWidth(), label = { Text("期限（天）") }, singleLine = true)
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("启用方案", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant); androidx.compose.material3.Switch(enabled, { enabled = it }, enabled = state.saving == null && plan.optString("tier") != "free") }
+        Button(enabled = state.saving == null, onClick = { viewModel.saveMembershipPlan(plan.optString("tier"), flips.toIntOrNull() ?: 0, cents.toIntOrNull() ?: -1, if (plan.optString("tier") == "free") null else days.toIntOrNull() ?: 0, enabled) }) { Text("保存方案") }
+    }
+}
+
+@Composable
+private fun MembershipOrderAdminRow(order: JSONObject, state: AdminCenterState, viewModel: AdminCenterViewModel) {
+    var note by remember(order) { mutableStateOf("") }
+    var pendingDecision by remember(order) { mutableStateOf<String?>(null) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(order.optString("provider_order_id"), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        val amountText = if (order.isNull("amount_cents")) "金额未知" else "¥%.2f".format(order.optLong("amount_cents") / 100.0)
+        Text("${order.optString("plan_id").ifBlank { "未映射方案" }} · ${order.optString("payment_status")} / ${order.optString("processing_status")} · $amountText", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+        order.optString("issue_note").takeIf(String::isNotBlank)?.let { Text("上次说明：$it", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+        OutlinedTextField(note, { note = it.take(500) }, Modifier.fillMaxWidth(), label = { Text("核对依据/处理说明") }, minLines = 2)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextButton(modifier = Modifier.weight(1f), enabled = state.saving == null && note.trim().length >= 3, onClick = { viewModel.reviewMembershipOrder(order.optString("id"), "unverified", "needs_review", note) }) { Text("标为需复核") }
+            TextButton(modifier = Modifier.weight(1f), enabled = state.saving == null && note.trim().length >= 10, onClick = { pendingDecision = "paid" }) { Text("确认已付款", color = MaterialTheme.colorScheme.primary) }
+        }
+        Text("退款状态只更新订单记录；如已发放会员权益，请另到会员用户页人工撤销并写明原因。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextButton(modifier = Modifier.weight(1f), enabled = state.saving == null && note.trim().length >= 3, onClick = { pendingDecision = "failed" }) { Text("标记未付款/无效", color = MaterialTheme.colorScheme.error) }
+            TextButton(modifier = Modifier.weight(1f), enabled = state.saving == null && note.trim().length >= 3, onClick = { pendingDecision = "refunded" }) { Text("标记已退款", color = MaterialTheme.colorScheme.error) }
+        }
+    }
+    pendingDecision?.let { decision ->
+        val paid = decision == "paid"
+        HeikaGlassDialog(
+            title = when (decision) { "paid" -> "确认订单已付款？"; "refunded" -> "确认订单已退款？"; else -> "标记订单无效？" },
+            message = if (paid) "将根据你填写的核验依据更新赞助统计，不会自动发放会员或卡密。" else "只更新订单状态，不会自动撤销已发放的会员权益。",
+            confirmText = if (paid) "确认核验" else "确认更新",
+            destructive = !paid,
+            loading = state.saving == order.optString("id"),
+            onConfirm = {
+                pendingDecision = null
+                val (payment, processing) = when (decision) { "paid" -> "paid" to "verified"; "refunded" -> "refunded" to "ignored"; else -> "failed" to "ignored" }
+                viewModel.reviewMembershipOrder(order.optString("id"), payment, processing, note)
+            },
+            onCancel = { pendingDecision = null },
+        )
+    }
+}
 
 @Composable
 private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterViewModel, onPendingAiKeyDelete: () -> Unit) {
@@ -550,6 +778,18 @@ data class AdminCenterState(
     val notice: String? = null,
     val adPosts: List<JSONObject> = emptyList(),
     val adPostsLoading: Boolean = false,
+    val membershipTab: String = "codes",
+    val membershipLoading: Boolean = false,
+    val membershipSummary: JSONObject? = null,
+    val membershipBatches: List<JSONObject> = emptyList(),
+    val membershipPlans: List<JSONObject> = emptyList(),
+    val membershipOrders: List<JSONObject> = emptyList(),
+    val membershipUsers: List<JSONObject> = emptyList(),
+    val membershipCodes: List<JSONObject> = emptyList(),
+    val membershipExpandedBatch: String? = null,
+    val generatedCodeText: String? = null,
+    val membershipError: String? = null,
+    val membershipNotice: String? = null,
 )
 
 @dagger.hilt.android.lifecycle.HiltViewModel
@@ -560,14 +800,34 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var adPostsGeneration = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "membership-support") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
     fun refresh() = viewModelScope.launch {
         val requestId = ++generation
-        mutableState.value = mutableState.value.copy(loading = true, error = null, notice = null)
+        mutableState.value = mutableState.value.copy(loading = true, membershipLoading = mutableState.value.section == "membership-support", error = null, notice = null, membershipError = if (mutableState.value.section == "membership-support") null else mutableState.value.membershipError)
         try {
-            val overview = repository.adminOverview() // server authorization is checked on every admin request
+            val overview = if (mutableState.value.section == "membership-support") mutableState.value.overview else repository.adminOverview() // each data API independently enforces admin authorization
             if (mutableState.value.section == "overview") {
                 if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, loading = false)
+                return@launch
+            }
+            if (mutableState.value.section == "membership-support") {
+                val data = coroutineScope {
+                    val summary = async { repository.adminMembershipSummary() }
+                    val batches = async { repository.adminMembershipBatches() }
+                    val plans = async { repository.adminMembershipPlans() }
+                    val orders = async { repository.adminMembershipOrders() }
+                    listOf(summary.await(), batches.await(), plans.await(), orders.await())
+                }
+                if (requestId == generation) mutableState.value = mutableState.value.copy(
+                    overview = overview,
+                    membershipSummary = data[0],
+                    membershipBatches = (data[1].optJSONArray("items") ?: JSONArray()).toJSONObjectList(),
+                    membershipPlans = (data[2].optJSONArray("items") ?: JSONArray()).toJSONObjectList(),
+                    membershipOrders = (data[3].optJSONArray("items") ?: JSONArray()).toJSONObjectList(),
+                    membershipLoading = false,
+                    loading = false,
+                    membershipError = null,
+                )
                 return@launch
             }
             val result = when (mutableState.value.section) {
@@ -580,8 +840,109 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
             }
             if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), metadata = result, loading = false)
         } catch (error: Exception) {
-            if (requestId == generation) mutableState.value = mutableState.value.copy(loading = false, error = "管理员权限不足或队列加载失败，请重试")
+            if (requestId == generation) mutableState.value = mutableState.value.copy(loading = false, membershipLoading = false, error = if (mutableState.value.section == "membership-support") null else "管理员权限不足或队列加载失败，请重试", membershipError = if (mutableState.value.section == "membership-support") error.message ?: "会员管理数据加载失败，请检查权限或服务端配置" else mutableState.value.membershipError)
         }
+    }
+
+    fun selectMembershipTab(tab: String) { if (tab in setOf("codes", "members", "orders", "plans")) mutableState.value = mutableState.value.copy(membershipTab = tab, membershipError = null, membershipNotice = null) }
+
+    fun createMembershipBatch(name: String, tier: String, days: Int, count: Int, channel: String, onCreated: (String) -> Unit) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "membership-batch", membershipError = null, membershipNotice = null)
+        try {
+            val result = repository.createAdminMembershipBatch(name, tier, days, count, channel)
+            val batch = result.optJSONObject("batch") ?: throw IllegalStateException("服务器未返回卡密批次")
+            val codes = result.optJSONArray("codes") ?: throw IllegalStateException("服务器未返回卡密，请检查生成结果")
+            val text = (0 until codes.length()).joinToString(separator = "\n", postfix = "\n") { codes.optString(it) }
+            if (text.isBlank()) throw IllegalStateException("服务器返回的卡密为空")
+            mutableState.value = mutableState.value.copy(saving = null, generatedCodeText = text, membershipNotice = result.optString("warning").ifBlank { "卡密已生成，请立即保存文件。" })
+            onCreated(batch.optString("id"))
+            refresh()
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "卡密批次生成失败") }
+    }
+
+    fun clearGeneratedMembershipCodes() { mutableState.value = mutableState.value.copy(generatedCodeText = null, membershipNotice = "卡密文本已保存到所选位置。请妥善保管。") }
+    fun reportMembershipError(message: String) { mutableState.value = mutableState.value.copy(membershipError = message) }
+
+    fun exportMembershipBatch(batchId: String, label: String, exportRef: String, onReady: () -> Unit) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "membership-export", membershipError = null)
+        try {
+            val text = repository.exportAdminMembershipBatch(batchId, label, exportRef)
+            mutableState.value = mutableState.value.copy(saving = null, generatedCodeText = text, membershipNotice = "卡密明文仅在本页内存暂存，请立即保存到安全位置。")
+            onReady()
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "卡密导出失败") }
+    }
+
+    fun toggleMembershipBatch(batchId: String) = viewModelScope.launch {
+        if (mutableState.value.membershipExpandedBatch == batchId) { mutableState.value = mutableState.value.copy(membershipExpandedBatch = null, membershipCodes = emptyList()); return@launch }
+        mutableState.value = mutableState.value.copy(saving = "membership-codes", membershipError = null)
+        try {
+            val result = repository.adminMembershipBatchCodes(batchId)
+            mutableState.value = mutableState.value.copy(saving = null, membershipExpandedBatch = batchId, membershipCodes = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList())
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "读取卡密状态失败") }
+    }
+
+    fun disableMembershipCode(codeId: String) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = codeId, membershipError = null)
+        try {
+            repository.disableAdminMembershipCode(codeId)
+            val batchId = mutableState.value.membershipExpandedBatch
+            val codes = if (batchId != null) runCatching { repository.adminMembershipBatchCodes(batchId) }.getOrNull() else null
+            mutableState.value = mutableState.value.copy(
+                saving = null,
+                membershipNotice = if (codes == null && batchId != null) "卡密已停用；状态列表刷新失败，请重新打开批次核对。" else "卡密已停用",
+                membershipCodes = codes?.let { (it.optJSONArray("items") ?: JSONArray()).toJSONObjectList() } ?: mutableState.value.membershipCodes,
+            )
+            refresh()
+        }
+        catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "停用卡密失败") }
+    }
+
+    fun searchMembershipUsers(query: String) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "membership-search", membershipError = null, membershipUsers = emptyList())
+        try { val result = repository.adminMembershipUsers(query); mutableState.value = mutableState.value.copy(saving = null, membershipUsers = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList()) }
+        catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "搜索会员用户失败") }
+    }
+
+    fun adjustMembership(userId: String, tier: String, days: Int?, reason: String, query: String) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "membership-user", membershipError = null)
+        try {
+            repository.adjustAdminMembership(userId, tier, days, reason)
+            val refreshedUsers = runCatching { repository.adminMembershipUsers(query) }.getOrNull()
+            mutableState.value = mutableState.value.copy(
+                saving = null,
+                membershipNotice = if (refreshedUsers == null) "会员状态已保存；历史列表未刷新，请重新搜索核对。" else "会员状态已更新并写入审计",
+                membershipError = null,
+                membershipUsers = refreshedUsers?.let { (it.optJSONArray("items") ?: JSONArray()).toJSONObjectList() } ?: mutableState.value.membershipUsers,
+            )
+            refresh()
+        }
+        catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "会员调整失败") }
+    }
+
+    fun saveMembershipPlan(tier: String, flips: Int, cents: Int, days: Int?, enabled: Boolean) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "membership-plan-$tier", membershipError = null)
+        try { repository.updateAdminMembershipPlan(tier, flips, cents, days, enabled); mutableState.value = mutableState.value.copy(saving = null, membershipNotice = "$tier 方案已保存"); refresh() }
+        catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "方案保存失败") }
+    }
+
+    fun reviewMembershipOrder(id: String, paymentStatus: String, processingStatus: String, note: String) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = id, membershipError = null)
+        try { repository.reviewAdminMembershipOrder(id, paymentStatus, processingStatus, note); mutableState.value = mutableState.value.copy(saving = null, membershipNotice = if (paymentStatus == "paid") "订单人工核验已记录；没有自动发放会员或卡密。" else "订单已标记为待复核"); refresh() }
+        catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "订单复核失败") }
+    }
+
+    fun recordMembershipOrder(orderId: String, planId: String, amountCents: Long?, note: String, onSaved: () -> Unit) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "membership-order", membershipError = null)
+        try { repository.recordAdminMembershipOrder(orderId, planId.trim().ifBlank { null }, amountCents, note); mutableState.value = mutableState.value.copy(saving = null, membershipNotice = "订单已登记为待复核；未发放会员权益"); onSaved(); refresh() }
+        catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "订单登记失败") }
     }
     fun process(id: String, accepted: Boolean, note: String) = viewModelScope.launch {
         if (mutableState.value.saving != null) return@launch

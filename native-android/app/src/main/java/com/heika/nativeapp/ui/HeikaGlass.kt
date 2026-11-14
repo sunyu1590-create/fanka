@@ -107,7 +107,9 @@ fun HeikaLiquidBadgeSurface(
                 style = HazeStyle(
                     backgroundColor = Color.Transparent,
                     tint = HazeTint(surface.copy(alpha = if (dark) .045f else .035f)),
-                    blurRadius = 16.dp,
+                    // Match the Gaussian depth used by the current centered glass dialog,
+                    // but keep it clipped to this small badge to limit scrolling cost.
+                    blurRadius = 20.dp,
                     fallbackTint = HazeTint(surface.copy(alpha = if (dark) .24f else .30f)),
                 ),
             ) else Modifier,

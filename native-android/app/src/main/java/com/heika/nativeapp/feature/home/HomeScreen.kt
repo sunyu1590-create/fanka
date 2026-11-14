@@ -92,11 +92,13 @@ import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.heikaSharedPostImage
 import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.heikaGaussianBlur
+import com.heika.nativeapp.ui.HeikaLiquidBadgeSurface
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.HazeState
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -190,6 +192,7 @@ fun HomeScreen(
                         cardId = id,
                         number = index + 1,
                         post = post,
+                        hazeState = previewHaze,
                         opened = opened,
                         opening = state.openingId == id,
                         visible = preview?.id != id,
@@ -198,7 +201,8 @@ fun HomeScreen(
                         sharedElementsEnabled = sharedElementsEnabled && preview == null && opened,
                         onClick = { bounds ->
                             if (opened) {
-                                if (post != null) onPost(post) else viewModel.reload()
+                                if (post == null) viewModel.reload()
+                                if (state.openingId == null) preview = DailyCardPreview(id, index + 1, bounds)
                             } else if (state.openingId == null) {
                                 preview = DailyCardPreview(id, index + 1, bounds)
                             }
@@ -216,6 +220,7 @@ fun HomeScreen(
                 opening = state.openingId == selected.id,
                 opened = selected.id in state.openedIds,
                 post = state.posts[selected.id],
+                hazeState = previewHaze,
                 canConfirm = state.remaining > 0 || state.userId != HomeUiState.GUEST_ID,
                 error = state.error,
                 closeRequest = closeRequest,
@@ -238,6 +243,7 @@ private fun FlipCard(
     cardId: Int,
     number: Int,
     post: HeikaPost?,
+    hazeState: HazeState,
     opened: Boolean,
     opening: Boolean,
     visible: Boolean,
@@ -268,6 +274,7 @@ private fun FlipCard(
             if (faceIsOpen) {
                 CardFront(
                     post,
+                    hazeState = hazeState,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
                     sharedElementsEnabled = sharedElementsEnabled,
@@ -294,6 +301,7 @@ private fun FlipPreviewOverlay(
     opening: Boolean,
     opened: Boolean,
     post: HeikaPost?,
+    hazeState: HazeState,
     canConfirm: Boolean,
     error: String?,
     closeRequest: Int,
@@ -306,6 +314,7 @@ private fun FlipPreviewOverlay(
 ) {
     val progress = remember(preview.id) { Animatable(0f) }
     val touchScale = remember(preview.id) { Animatable(1f) }
+    val flipProgress = remember(preview.id) { Animatable(if (opened) 1f else 0f) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -322,6 +331,7 @@ private fun FlipPreviewOverlay(
     var dismissing by remember(preview.id) { mutableStateOf(false) }
     var revealing by remember(preview.id) { mutableStateOf(false) }
     var rarityPhase by remember(preview.id) { mutableStateOf(false) }
+    var confirmSubmitted by remember(preview.id) { mutableStateOf(opened) }
     var handledCloseRequest by remember(preview.id) { mutableIntStateOf(closeRequest) }
     val targetWidth = (containerWidth - 52.dp).coerceAtMost(390.dp).coerceAtLeast(240.dp)
     val targetWidthPx = with(density) { targetWidth.toPx() }
@@ -334,10 +344,11 @@ private fun FlipPreviewOverlay(
         else progress.animateTo(1f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))
     }
     LaunchedEffect(opened) {
-        if (opened) {
-            // The ViewModel only marks this true after the server confirms the selected card.
+        if (opened && flipProgress.value < 1f) {
+            // Reveal starts only after the server confirms the selected card.
             revealing = true
-            delay(if (reduceMotion) 1L else 230L)
+            if (reduceMotion) flipProgress.snapTo(1f)
+            else flipProgress.animateTo(1f, tween(640, easing = FastOutSlowInEasing))
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             revealing = false
             rarityPhase = true
@@ -347,6 +358,9 @@ private fun FlipPreviewOverlay(
             revealing = false
             rarityPhase = false
         }
+    }
+    LaunchedEffect(opening, error, opened) {
+        if (!opening && !opened && error != null) confirmSubmitted = false
     }
     LaunchedEffect(closeRequest, opening, revealing, dismissing) {
         if (closeRequest > handledCloseRequest) {
@@ -401,6 +415,8 @@ private fun FlipPreviewOverlay(
                     val sourceScaleY = source?.let { (it.height / targetHeightPx).coerceAtLeast(0.05f) } ?: 0.94f
                     scaleX = (sourceScaleX + (1f - sourceScaleX) * p) * touchScale.value
                     scaleY = (sourceScaleY + (1f - sourceScaleY) * p) * touchScale.value
+                    rotationY = 180f * flipProgress.value
+                    cameraDistance = 26f * density.density
                     translationX = source?.let { ((it.left + it.right) / 2f - centerX) * (1f - p) } ?: 0f
                     translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
                     shadowElevation = with(density) { (4.dp + 16.dp * p).toPx() }
@@ -409,32 +425,37 @@ private fun FlipPreviewOverlay(
                 }
                 .clip(cardShape),
         ) {
-            Crossfade(
-                targetState = opened,
-                animationSpec = tween(if (reduceMotion) 0 else 230, easing = FastOutSlowInEasing),
-                label = "flip-preview-face",
-            ) { isOpened ->
-                if (!isOpened) {
+            if (flipProgress.value < .5f) {
                     PreviewCardBack(
                         number = preview.number,
                         alpha = progress.value,
-                        opening = opening,
+                        opening = opening || confirmSubmitted,
                         canConfirm = canConfirm && progress.value >= 0.92f,
                         error = error,
                         reduceMotion = reduceMotion,
                         onConfirm = {
-                            if (!opening && !revealing && canConfirm) {
+                            if (!opening && !confirmSubmitted && !revealing && canConfirm) {
+                                confirmSubmitted = true
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                if (!reduceMotion) scope.launch {
+                                    touchScale.snapTo(.985f)
+                                    touchScale.animateTo(1f, tween(150, easing = FastOutSlowInEasing))
+                                }
                                 onConfirm()
                             }
                         },
                     )
-                } else {
+            } else {
+                Box(Modifier.fillMaxSize().graphicsLayer {
+                    rotationY = 180f
+                    cameraDistance = 26f * density.density
+                }) {
                     PreviewCardFront(
                         post = post,
                         alpha = progress.value,
-                        enabled = !opening && !revealing && post != null,
+                        enabled = !opening && !revealing && !rarityPhase && post != null,
                         onOpenDetails = onOpenDetails,
+                        hazeState = hazeState,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         sharedElementsEnabled = sharedElementsEnabled,
@@ -563,6 +584,7 @@ private fun PreviewCardFront(
     alpha: Float,
     enabled: Boolean,
     onOpenDetails: () -> Unit,
+    hazeState: HazeState,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     sharedElementsEnabled: Boolean,
@@ -596,8 +618,12 @@ private fun PreviewCardFront(
                 Text(post?.tag ?: "黑卡内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 Spacer(Modifier.weight(1f))
                 if (post?.hasRating == true) {
-                    Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(13.dp))
-                    Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 10.sp)
+                    HeikaLiquidBadgeSurface(hazeState = hazeState, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(12.dp))
+                            Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 10.sp)
+                        }
+                    }
                 } else Text("待评级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
             }
             Text(
@@ -623,7 +649,7 @@ private fun PreviewCardFront(
                     disabledContentColor = Color(0xFF25292B),
                 ),
             ) {
-                Text("查看更多", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("确认查看", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.width(8.dp))
                 Icon(com.heika.nativeapp.ui.HeikaIcons.Forward, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF17191C))
             }
@@ -664,6 +690,7 @@ private fun CardBack(number: Int, preview: Boolean = false) {
 @OptIn(ExperimentalSharedTransitionApi::class)
 private fun CardFront(
     post: HeikaPost?,
+    hazeState: HazeState,
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
@@ -679,7 +706,7 @@ private fun CardFront(
     } else Modifier
     Box(modifier.fillMaxSize().then(if (image == null) sharedModifier else Modifier).background(MaterialTheme.colorScheme.surfaceVariant)) {
         if (image != null) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).then(sharedModifier)) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).then(sharedModifier).hazeSource(hazeState)) {
                 AsyncImage(
                     model = imageRequest(image, post.cloudId, 0),
                     contentDescription = post.title,
@@ -697,9 +724,15 @@ private fun CardFront(
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(post?.tag ?: "黑卡内容", color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
             Text(post?.title ?: "已翻开的卡片", color = Color.White, fontSize = 16.sp * titleScale, lineHeight = 22.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (post?.hasRating == true) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(13.dp))
-                Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 11.sp)
+            if (post?.hasRating == true) HeikaLiquidBadgeSurface(
+                hazeState = hazeState,
+                modifier = Modifier.align(Alignment.Start),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(13.dp))
+                    Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 11.sp)
+                }
             }
             if (post != null && post.rarityTier in setOf("ordinary", "S", "SS", "SSS")) {
                 Text(rarityLabel(post.rarityTier), color = HeikaPalette.Gold, fontSize = 10.sp)

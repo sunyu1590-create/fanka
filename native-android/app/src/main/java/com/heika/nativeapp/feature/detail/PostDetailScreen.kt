@@ -359,7 +359,12 @@ fun PostDetailScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 listOf("hot" to "热度", "new" to "最新").forEach { (sort, label) ->
                                     val selected = state.commentSort == sort
-                                    Text(label, Modifier.clickable { viewModel.setCommentSort(sort) }.padding(horizontal = 8.dp, vertical = 8.dp),
+                                    Text(label, Modifier.clickable {
+                                        if (!selected) {
+                                            viewModel.setCommentSort(sort)
+                                            HeikaNoticeBus.showSelection("评论已按${label}排序")
+                                        }
+                                    }.padding(horizontal = 8.dp, vertical = 8.dp),
                                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                                 }
@@ -455,7 +460,12 @@ fun PostDetailScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("举报信息仅用于平台安全与人工复核。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    reasons.forEach { reason -> FilterChip(reason, reportReason == reason, { reportReason = reason }) }
+                    reasons.forEach { reason -> FilterChip(reason, reportReason == reason, {
+                        if (reportReason != reason) {
+                            reportReason = reason
+                            HeikaNoticeBus.showSelection("举报原因：$reason")
+                        }
+                    }) }
                     OutlinedTextField(value = reportNote, onValueChange = { reportNote = it.take(300) }, label = { Text("补充说明（选填）") }, maxLines = 3)
                 }
             },
@@ -514,9 +524,9 @@ fun PostDetailScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip("问题", feedbackCategory == "problem", { feedbackCategory = "problem" })
-                        FilterChip("建议", feedbackCategory == "suggestion", { feedbackCategory = "suggestion" })
-                        FilterChip("其他", feedbackCategory == "other", { feedbackCategory = "other" })
+                        FilterChip("问题", feedbackCategory == "problem", { feedbackCategory = "problem"; HeikaNoticeBus.showSelection("反馈类型：问题") })
+                        FilterChip("建议", feedbackCategory == "suggestion", { feedbackCategory = "suggestion"; HeikaNoticeBus.showSelection("反馈类型：建议") })
+                        FilterChip("其他", feedbackCategory == "other", { feedbackCategory = "other"; HeikaNoticeBus.showSelection("反馈类型：其他") })
                     }
                     OutlinedTextField(value = feedbackText, onValueChange = { feedbackText = it.take(3000) }, label = { Text("反馈内容（至少 10 字）") }, minLines = 3, maxLines = 5)
                 }

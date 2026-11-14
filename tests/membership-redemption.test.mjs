@@ -65,3 +65,23 @@ test("membership configuration and deployment documentation keep secrets server-
   assert.match(docs, /has not been applied to staging or production/);
   assert.equal(cron.crons[0].path, "/api/v1/cron/membership-expiry");
 });
+
+test("native membership admin contracts cover batch, export, member, plan and order APIs", async () => {
+  const repo = await read("native-android/app/src/main/java/com/heika/nativeapp/data/HeikaRepository.kt");
+  const screen = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/settings/AdminCenterScreen.kt");
+  const orders = await read("app/api/v1/admin/membership/orders/route.ts");
+  assert.match(repo, /admin\/membership\/batches\/\$\{encode\(batchId\)\}\/export/);
+  assert.match(repo, /This endpoint intentionally returns text\/plain/);
+  assert.match(repo, /recordAdminMembershipOrder/);
+  assert.match(repo, /reviewAdminMembershipOrder/);
+  assert.match(screen, /AdminModuleSpec\("membership-support", "会员与赞助"/);
+  assert.match(screen, /ActivityResultContracts\.CreateDocument\("text\/plain"\)/);
+  assert.match(screen, /重新下载本批次明文/);
+  assert.match(screen, /订单已登记为待复核；未发放会员权益/);
+  assert.match(orders, /export async function POST/);
+  assert.match(orders, /payment_status: "unverified"/);
+  assert.match(orders, /export async function PATCH/);
+  assert.match(orders, /只有完成人工核验的已付款订单才能计入已核验赞助/);
+  assert.match(orders, /recordModerationAudit/);
+  assert.doesNotMatch(orders, /redeem_membership_code|membership_tier\s*:/);
+});

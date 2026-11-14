@@ -329,6 +329,89 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/overview", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun adminMembershipSummary(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/membership/summary", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminMembershipBatches(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/membership/batches", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun createAdminMembershipBatch(name: String, tier: String, durationDays: Int, count: Int, distributionLabel: String): JSONObject = withContext(Dispatchers.IO) {
+        require(name.trim().length in 1..100 && tier in setOf("plus", "pro") && durationDays in 1..7300 && count in 1..1000 && distributionLabel.trim().length in 2..120)
+        request("/api/v1/admin/membership/batches", method = "POST", body = JSONObject().put("name", name.trim()).put("tier", tier).put("durationDays", durationDays).put("count", count).put("distributionLabel", distributionLabel.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminMembershipBatchCodes(batchId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(batchId))
+        request("/api/v1/admin/membership/batches/${encode(batchId)}/codes", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** This endpoint intentionally returns text/plain rather than the normal JSON envelope. */
+    suspend fun exportAdminMembershipBatch(batchId: String, label: String, exportRef: String?): String = withContext(Dispatchers.IO) {
+        require(isUuid(batchId) && label.trim().length in 2..120)
+        val payload = JSONObject().put("label", label.trim())
+        if (!exportRef.isNullOrBlank()) payload.put("exportRef", exportRef)
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val response = api.post(
+            "${BuildConfig.API_BASE_URL}/api/v1/admin/membership/batches/${encode(batchId)}/export",
+            "Bearer $token",
+            payload.toString().toRequestBody(JSON),
+        )
+        val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        if (!response.isSuccessful) {
+            val error = runCatching { JSONObject(content).optString("error") }.getOrNull().orEmpty()
+            throw IOException(error.ifBlank { "卡密导出失败（HTTP ${response.code()}）" })
+        }
+        if (content.isBlank()) throw IOException("服务器没有返回可导出的卡密")
+        content
+    }
+
+    suspend fun disableAdminMembershipCode(codeId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(codeId))
+        request("/api/v1/admin/membership/codes/${encode(codeId)}", method = "PATCH", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminMembershipPlans(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/membership/plans", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun updateAdminMembershipPlan(tier: String, dailyFlips: Int, priceCents: Int, durationDays: Int?, enabled: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        require(tier in setOf("free", "plus", "pro") && dailyFlips in 1..100 && priceCents in 0..1_000_000 && (tier == "free" || (durationDays != null && durationDays in 1..7300)) && (tier != "free" || (priceCents == 0 && enabled)))
+        val payload = JSONObject().put("dailyFlips", dailyFlips).put("priceCents", priceCents).put("enabled", enabled)
+        if (durationDays != null) payload.put("durationDays", durationDays)
+        request("/api/v1/admin/membership/plans/${encode(tier)}", method = "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminMembershipUsers(queryText: String): JSONObject = withContext(Dispatchers.IO) {
+        require(queryText.trim().length in 2..80)
+        request("/api/v1/admin/membership/users?query=${encode(queryText.trim())}", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adjustAdminMembership(userId: String, tier: String, durationDays: Int?, reason: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(userId) && tier in setOf("free", "plus", "pro") && (tier == "free" || (durationDays != null && durationDays in 1..7300)) && reason.trim().length in 3..500)
+        val payload = JSONObject().put("tier", tier).put("reason", reason.trim())
+        if (durationDays != null) payload.put("durationDays", durationDays)
+        request("/api/v1/admin/membership/users/${encode(userId)}", method = "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminMembershipOrders(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/membership/orders", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun recordAdminMembershipOrder(providerOrderId: String, planId: String?, amountCents: Long?, note: String): JSONObject = withContext(Dispatchers.IO) {
+        require(providerOrderId.trim().length in 3..120 && (planId == null || planId.length in 1..80) && (amountCents == null || amountCents in 0L..100_000_000L) && note.trim().length in 3..500)
+        val payload = JSONObject().put("providerOrderId", providerOrderId.trim()).put("issueNote", note.trim())
+        if (planId != null) payload.put("planId", planId)
+        if (amountCents != null) payload.put("amountCents", amountCents)
+        request("/api/v1/admin/membership/orders", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun reviewAdminMembershipOrder(id: String, paymentStatus: String, processingStatus: String, issueNote: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id) && paymentStatus in setOf("unverified", "paid", "refunded", "failed", "unknown") && processingStatus in setOf("pending", "verified", "needs_review", "ignored") && issueNote.trim().length in 3..500)
+        request("/api/v1/admin/membership/orders", method = "PATCH", body = JSONObject().put("id", id).put("paymentStatus", paymentStatus).put("processingStatus", processingStatus).put("issueNote", issueNote.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun adminReports(status: String = "open", page: Int = 1): JSONObject = withContext(Dispatchers.IO) {
         require(status in setOf("open", "resolved", "dismissed", "all"))
         request("/api/v1/admin/reports?status=$status&page=${page.coerceAtLeast(1)}&limit=20", authenticated = true) as? JSONObject ?: JSONObject()

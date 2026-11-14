@@ -462,7 +462,12 @@ fun ExplorationCalendarScreen(
                                             Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(HeikaRadii.control))
                                                 .background(if (count > 0) MaterialTheme.colorScheme.primary.copy(alpha = (0.14f + count * 0.13f).coerceAtMost(0.65f)) else MaterialTheme.colorScheme.surface)
                                                 .then(if (isSelected) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(HeikaRadii.control)) else Modifier)
-                                                .clickable { viewModel.selectDate(date) },
+                                                .clickable {
+                                                    if (selectedDay != date) {
+                                                        viewModel.selectDate(date)
+                                                        HeikaNoticeBus.showSelection("探索日期：$date")
+                                                    }
+                                                },
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -619,7 +624,12 @@ fun CoExploreScreen(
                             if (state.guestId == null) Text("另一位探索者加入后即可选内容。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                         }
                         items(state.candidates.take(12), key = { it.cloudId }) { post ->
-                            CandidatePostRow(post, selected = state.selectedPostId == post.cloudId, enabled = state.guestId != null && !state.busy, onClick = { viewModel.selectPost(post.cloudId) })
+                            CandidatePostRow(post, selected = state.selectedPostId == post.cloudId, enabled = state.guestId != null && !state.busy, onClick = {
+                                if (state.selectedPostId != post.cloudId) {
+                                    viewModel.selectPost(post.cloudId)
+                                    HeikaNoticeBus.showSelection("已选择：${post.title}")
+                                }
+                            })
                         }
                         item {
                             OutlinedTextField(state.note, viewModel::setNote, Modifier.fillMaxWidth(), label = { Text("分享的话（选填）") }, supportingText = { Text("最多 180 字") }, maxLines = 4)
@@ -658,7 +668,12 @@ fun StoryChainListScreen(onBack: () -> Unit, onOpen: (String) -> Unit, viewModel
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         items(state.candidates.take(15), key = { it.cloudId }) { post ->
                             val selected = state.selectedPostId == post.cloudId
-                            Surface(onClick = { viewModel.selectPost(post.cloudId) }, shape = RoundedCornerShape(9.dp), color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant) {
+                            Surface(onClick = {
+                                if (!selected) {
+                                    viewModel.selectPost(post.cloudId)
+                                    HeikaNoticeBus.showSelection("接龙内容已选择：${post.title}")
+                                }
+                            }, shape = RoundedCornerShape(9.dp), color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant) {
                                 Row(Modifier.width(190.dp).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     if (!post.thumbnail.isNullOrBlank()) AsyncImage(post.thumbnail, null, imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(45.dp).clip(RoundedCornerShape(7.dp)), contentScale = ContentScale.Crop)
                                     Column(Modifier.weight(1f).padding(start = 8.dp)) {

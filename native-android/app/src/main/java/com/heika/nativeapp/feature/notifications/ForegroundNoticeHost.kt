@@ -76,6 +76,10 @@ fun ForegroundNoticeHost(
     }
     LaunchedEffect(Unit) {
         HeikaNoticeBus.events.collect { event ->
+            if (event.kind == HeikaNoticeKind.SELECTION) {
+                // Replace a pending selection message instead of replaying stale filter choices.
+                transientQueue.removeAll { it.kind == HeikaNoticeKind.SELECTION }
+            }
             if (transientQueue.none { it.id == event.id }) {
                 transientQueue.add(event)
                 if (transientQueue.size > 4) transientQueue.removeAt(1.coerceAtMost(transientQueue.lastIndex))
@@ -121,6 +125,7 @@ fun ForegroundNoticeHost(
             transient?.let { item ->
                 val icon = when (item.kind) {
                     HeikaNoticeKind.SUCCESS -> HeikaIcons.Check
+                    HeikaNoticeKind.SELECTION -> HeikaIcons.Check
                     HeikaNoticeKind.ERROR -> HeikaIcons.Warning
                     HeikaNoticeKind.WARNING -> HeikaIcons.Warning
                     HeikaNoticeKind.INFO -> HeikaIcons.Notifications

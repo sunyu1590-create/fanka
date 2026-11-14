@@ -5,7 +5,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-enum class HeikaNoticeKind { INFO, SUCCESS, ERROR, WARNING }
+enum class HeikaNoticeKind { INFO, SELECTION, SUCCESS, ERROR, WARNING }
 
 data class HeikaNotice(val id: Long, val message: String, val kind: HeikaNoticeKind)
 
@@ -18,4 +18,7 @@ object HeikaNoticeBus {
     fun show(message: String, kind: HeikaNoticeKind = HeikaNoticeKind.INFO) {
         if (message.isNotBlank()) mutableEvents.tryEmit(HeikaNotice(ids.incrementAndGet(), message, kind))
     }
+
+    /** A coalescing, low-priority confirmation for a user's current choice. */
+    fun showSelection(message: String) = show(message, HeikaNoticeKind.SELECTION)
 }

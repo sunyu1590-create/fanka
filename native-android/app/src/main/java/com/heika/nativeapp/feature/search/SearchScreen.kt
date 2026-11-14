@@ -62,6 +62,7 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaAvatar
+import com.heika.nativeapp.ui.HeikaNoticeBus
 
 private val searchKinds = listOf("all" to "综合", "content" to "内容", "people" to "用户", "topics" to "话题", "ai" to "AI 资源")
 
@@ -121,7 +122,12 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
             ) {
                 items(searchKinds, key = { it.first }) { (key, label) ->
-                    SearchKindTab(label, selected = state.kind == key) { viewModel.setKind(key) }
+                    SearchKindTab(label, selected = state.kind == key) {
+                        if (state.kind != key) {
+                            viewModel.setKind(key)
+                            HeikaNoticeBus.showSelection("搜索范围：$label")
+                        }
+                    }
                 }
             }
         }

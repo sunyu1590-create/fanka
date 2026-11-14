@@ -96,7 +96,10 @@ fun PublishScreen(
     BackHandler(enabled = showVideoBeta || (!state.loading && !state.publishing)) {
         if (showVideoBeta) showVideoBeta = false else viewModel.saveDraft(onBack)
     }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> selectedVideo = uri }
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        selectedVideo = uri
+        if (uri != null) HeikaNoticeBus.show("已选择视频", HeikaNoticeKind.SUCCESS)
+    }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia((9 - state.images.size).coerceAtLeast(1))) { uris ->
         scope.launch {
             for (uri in uris) {
@@ -104,6 +107,7 @@ fun PublishScreen(
                     .onSuccess { (name, mime, bytes) -> viewModel.addImage(name, mime, bytes) }
                     .onFailure { viewModel.reportError(it.message ?: "无法读取所选图片") }
             }
+            if (uris.isNotEmpty()) HeikaNoticeBus.show("已选择 ${uris.size} 张图片", HeikaNoticeKind.SUCCESS)
         }
     }
     LaunchedEffect(state.publishedPost) {
@@ -135,8 +139,18 @@ fun PublishScreen(
         })
         if (!state.loading && state.error != "登录后可以发布内容") {
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                FilterChip("社区作品", state.channel == "community", { viewModel.switchChannel("community") })
-                FilterChip("AI 资源", state.channel == "ai", { viewModel.switchChannel("ai") })
+                FilterChip("社区作品", state.channel == "community", {
+                    if (state.channel != "community") {
+                        viewModel.switchChannel("community")
+                        HeikaNoticeBus.showSelection("发布类型：社区作品")
+                    }
+                })
+                FilterChip("AI 资源", state.channel == "ai", {
+                    if (state.channel != "ai") {
+                        viewModel.switchChannel("ai")
+                        HeikaNoticeBus.showSelection("发布类型：AI 资源")
+                    }
+                })
             }
         }
         if (state.error == "登录后可以发布内容") {
@@ -203,7 +217,12 @@ fun PublishScreen(
                                         if (image.progress) CircularProgressIndicator(Modifier.align(Alignment.Center).size(22.dp), strokeWidth = 2.dp)
                                         Text(
                                             if (state.images.firstOrNull()?.key == image.key) "封面" else "设为封面",
-                                            Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface).clickable { viewModel.setCover(image.key) }.padding(horizontal = 7.dp, vertical = 5.dp),
+                                            Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface).clickable {
+                                                if (state.images.firstOrNull()?.key != image.key) {
+                                                    viewModel.setCover(image.key)
+                                                    HeikaNoticeBus.showSelection("已将该图片设为封面")
+                                                }
+                                            }.padding(horizontal = 7.dp, vertical = 5.dp),
                                             color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp,
                                         )
                                         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = .94f)), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -236,7 +255,12 @@ fun PublishScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("分类", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            state.categories.forEach { category -> FilterChip(category.name, category.name == state.category, { viewModel.edit(category = category.name) }) }
+                            state.categories.forEach { category -> FilterChip(category.name, category.name == state.category, {
+                                if (category.name != state.category) {
+                                    viewModel.edit(category = category.name)
+                                    HeikaNoticeBus.showSelection("内容分类：${category.name}")
+                                }
+                            }) }
                         }
                     }
                 }
@@ -255,7 +279,12 @@ fun PublishScreen(
                                 ) }.forEach { type ->
                                     val key = type.id
                                     val label = type.label
-                                    FilterChip(label, state.contentType == key, { viewModel.setAiContentType(key) })
+                                    FilterChip(label, state.contentType == key, {
+                                        if (state.contentType != key) {
+                                            viewModel.setAiContentType(key)
+                                            HeikaNoticeBus.showSelection("AI 资源类型：$label")
+                                        }
+                                    })
                                 }
                             }
                         }
@@ -265,7 +294,11 @@ fun PublishScreen(
                             Text("使用场景 · 可多选", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                 AiResourceRules.usageScenarios.forEach { (key, label) ->
-                                    FilterChip(label, key in state.usageScenarios, { viewModel.toggleAiUsageScenario(key) })
+                                    FilterChip(label, key in state.usageScenarios, {
+                                        val adding = key !in state.usageScenarios
+                                        viewModel.toggleAiUsageScenario(key)
+                                        HeikaNoticeBus.showSelection(if (adding) "已添加场景：$label" else "已移除场景：$label")
+                                    })
                                 }
                             }
                         }

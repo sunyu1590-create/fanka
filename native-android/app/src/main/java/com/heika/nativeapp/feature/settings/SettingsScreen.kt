@@ -5,6 +5,8 @@ import com.heika.nativeapp.ui.HeikaGlassDialog
 
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.HeikaIconRes
+import com.heika.nativeapp.ui.HeikaNoticeBus
+import com.heika.nativeapp.ui.HeikaNoticeKind
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -351,14 +353,20 @@ private fun DetailHeading(title: String) {
 private fun ChoiceList(iconKey: SettingIconKey, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp)) {
         options.forEachIndexed { index, (value, title) ->
+            val select = {
+                if (selected != value) {
+                    onSelect(value)
+                    HeikaNoticeBus.show("设置已更新：$title", HeikaNoticeKind.SUCCESS)
+                }
+            }
             Row(
-                Modifier.fillMaxWidth().clickable { onSelect(value) }.heightIn(min = 56.dp).padding(vertical = 8.dp, horizontal = 4.dp),
+                Modifier.fillMaxWidth().clickable { select() }.heightIn(min = 56.dp).padding(vertical = 8.dp, horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(settingIcon(iconKey)), null, tint = if (selected == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(21.dp))
                 Text(title, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
-                RadioButton(selected = selected == value, onClick = { onSelect(value) })
+                RadioButton(selected = selected == value, onClick = { select() })
             }
             if (index < options.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .38f))
         }
@@ -392,8 +400,14 @@ private fun TextSizeChoiceList(
         DetailHeading("选择字号")
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp)) {
             options.forEachIndexed { index, (value, label) ->
+                val select = {
+                    if (selected != value) {
+                        onSelect(value)
+                        HeikaNoticeBus.show("${if (title) "标题" else "正文"}字号：$label", HeikaNoticeKind.SUCCESS)
+                    }
+                }
                 Row(
-                    Modifier.fillMaxWidth().clickable { onSelect(value) }.heightIn(min = 62.dp).padding(vertical = 7.dp, horizontal = 4.dp),
+                    Modifier.fillMaxWidth().clickable { select() }.heightIn(min = 62.dp).padding(vertical = 7.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -412,7 +426,7 @@ private fun TextSizeChoiceList(
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                     }
-                    RadioButton(selected = selected == value, onClick = { onSelect(value) })
+                    RadioButton(selected = selected == value, onClick = { select() })
                 }
                 if (index < options.lastIndex) androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .38f))
             }
@@ -447,7 +461,10 @@ private fun SwitchSetting(title: String, iconKey: SettingIconKey, subtitle: Stri
             Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
         }
-        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
+        Switch(checked = checked, enabled = enabled, onCheckedChange = { value ->
+            onChange(value)
+            HeikaNoticeBus.showSelection("$title${if (value) "已开启" else "已关闭"}")
+        })
     }
 }
 

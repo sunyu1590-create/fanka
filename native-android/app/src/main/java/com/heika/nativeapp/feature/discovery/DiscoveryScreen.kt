@@ -88,6 +88,7 @@ import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaLiquidBadgeSurface
+import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
@@ -194,8 +195,14 @@ fun DiscoveryScreen(
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ChannelOption("精选", filter.channel == "community") { viewModel.selectChannel("community") }
-                ChannelOption("AI", filter.channel == "ai") { viewModel.selectChannel("ai") }
+                ChannelOption("精选", filter.channel == "community") {
+                    viewModel.selectChannel("community")
+                    HeikaNoticeBus.showSelection("已切换到精选")
+                }
+                ChannelOption("AI", filter.channel == "ai") {
+                    viewModel.selectChannel("ai")
+                    HeikaNoticeBus.showSelection("已切换到 AI")
+                }
             }
             Spacer(Modifier.weight(1f))
             Text(
@@ -225,10 +232,16 @@ fun DiscoveryScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     item(key = "all-categories") {
-                        CategoryTab("推荐", selected = filter.category == null) { viewModel.selectCategory(null) }
+                        CategoryTab("推荐", selected = filter.category == null) {
+                            viewModel.selectCategory(null)
+                            HeikaNoticeBus.showSelection("已显示推荐内容")
+                        }
                     }
                     items(categories, key = { "category-${it.id}" }) { category ->
-                        CategoryTab(category.name, selected = filter.category?.id == category.id) { viewModel.selectCategory(category) }
+                        CategoryTab(category.name, selected = filter.category?.id == category.id) {
+                            viewModel.selectCategory(category)
+                            HeikaNoticeBus.showSelection("分类：${category.name}")
+                        }
                     }
                 }
                 if (extraFiltersExpanded && tags.isNotEmpty()) {
@@ -238,9 +251,16 @@ fun DiscoveryScreen(
                         horizontalArrangement = Arrangement.spacedBy(15.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        item(key = "all-tags") { CompactFilter("全部话题", filter.topic == null) { viewModel.selectTopic(null) } }
+                        item(key = "all-tags") { CompactFilter("全部话题", filter.topic == null) {
+                            viewModel.selectTopic(null)
+                            HeikaNoticeBus.showSelection("已显示全部话题")
+                        } }
                         items(tags.take(12), key = { "topic-${it.id}" }) { tag ->
-                            CompactFilter("#${tag.name}", filter.topic == tag.name) { viewModel.selectTopic(if (filter.topic == tag.name) null else tag.name) }
+                            CompactFilter("#${tag.name}", filter.topic == tag.name) {
+                                val topic = if (filter.topic == tag.name) null else tag.name
+                                viewModel.selectTopic(topic)
+                                HeikaNoticeBus.showSelection(if (topic == null) "已取消话题筛选" else "话题：#${tag.name}")
+                            }
                         }
                     }
                 }
@@ -261,7 +281,10 @@ fun DiscoveryScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         items(types, key = { "ai-type-${it.first ?: "all"}" }) { (type, label) ->
-                            CompactFilter(label, filter.contentType == type) { viewModel.selectContentType(type) }
+                            CompactFilter(label, filter.contentType == type) {
+                                viewModel.selectContentType(type)
+                                HeikaNoticeBus.showSelection(if (type == null) "已显示全部 AI 资源" else "资源类型：$label")
+                            }
                         }
                     }
                 }
@@ -272,7 +295,10 @@ fun DiscoveryScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val sorts = if (filter.channel == "community") listOf("推荐", "最新", "高评分", "关注") else listOf("推荐", "最新", "热门")
-                    items(sorts, key = { "sort-$it" }) { sort -> SortTab(sort, filter.sort == sort) { viewModel.selectSort(sort) } }
+                    items(sorts, key = { "sort-$it" }) { sort -> SortTab(sort, filter.sort == sort) {
+                        viewModel.selectSort(sort)
+                        HeikaNoticeBus.showSelection("排序：$sort")
+                    } }
                 }
             }
         }
@@ -405,7 +431,7 @@ private fun SortTab(label: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun DiscoveryAdCard(ad: DiscoveryAd, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(HeikaRadii.surface)
+    val shape = RoundedCornerShape(18.dp)
     val imagePainter = ad.imageUrl?.takeIf { ad.kind == "image" }?.let { image ->
         rememberAsyncImagePainter(
             model = ImageRequest.Builder(LocalContext.current).data(image).crossfade(true).build(),
@@ -417,26 +443,29 @@ private fun DiscoveryAdCard(ad: DiscoveryAd, onClick: () -> Unit) {
         Modifier.fillMaxWidth()
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
-            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .5f), shape)
+            .border(.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = .30f), shape)
             .clickable(onClick = onClick)
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(ad.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (ad.body.isNotBlank()) Text(ad.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("查看作品", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(HeikaIcons.Megaphone, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Text("HEIKA · 推荐", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.1.sp)
+            }
+            Text(ad.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 20.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (ad.body.isNotBlank()) Text(ad.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (imageState is AsyncImagePainter.State.Success) {
             Image(
                 painter = imagePainter,
                 contentDescription = "广告：${ad.title}",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(width = 88.dp, height = 76.dp).clip(RoundedCornerShape(9.dp)),
+                modifier = Modifier.size(width = 76.dp, height = 76.dp).clip(RoundedCornerShape(10.dp)),
             )
         }
-        Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        Icon(HeikaIcons.Forward, contentDescription = "打开推荐作品", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }
 

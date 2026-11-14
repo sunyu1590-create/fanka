@@ -63,6 +63,7 @@ import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.feature.exploration.ExplorationLogic
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaRadii
+import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaAvatar
@@ -260,7 +261,12 @@ fun ProfileScreen(
                         }
                     }
                 }
-                item(span = StaggeredGridItemSpan.FullLine) { ProfileTabBar(selected, compact = true) { selected = it } }
+                item(span = StaggeredGridItemSpan.FullLine) { ProfileTabBar(selected, compact = true) {
+                    if (selected != it) {
+                        selected = it
+                        HeikaNoticeBus.showSelection("已切换到${ProfileTabs.firstOrNull { tab -> tab.second == it }?.first ?: "个人内容"}")
+                    }
+                } }
                 if (state.own && selected == "works") item(span = StaggeredGridItemSpan.FullLine) {
                     Row(Modifier.fillMaxWidth().padding(top = 1.dp, bottom = 1.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${state.posts.size} 篇作品", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
@@ -285,7 +291,12 @@ fun ProfileScreen(
                 }
             }
             if (gridState.firstVisibleItemIndex >= 2) {
-                ProfileTabBar(selected, modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().background(MaterialTheme.colorScheme.background), compact = true) { selected = it }
+                ProfileTabBar(selected, modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().background(MaterialTheme.colorScheme.background), compact = true) {
+                    if (selected != it) {
+                        selected = it
+                        HeikaNoticeBus.showSelection("已切换到${ProfileTabs.firstOrNull { tab -> tab.second == it }?.first ?: "个人内容"}")
+                    }
+                }
             }
         }
     }

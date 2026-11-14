@@ -298,3 +298,11 @@
 - Android 源码将版本递增为 `2.3.6` / versionCode `39`，并添加对应关于页更新记录；这是待构建源码版本，不代表已生成发布包。Gradle 验证尝试因环境未安装 Android SDK 失败（无 `ANDROID_HOME`、`ANDROID_SDK_ROOT`、`sdk.dir` 或可用 SDK）；没有产出本轮 APK。无设备/模拟器，不代表完成原生 UI、键盘、兑换端到端验收。
 - Supabase migration 尚未应用到任何环境，也未连接可用 PostgreSQL 做解析或事务测试；本地仅通过静态合同测试检查。此处无 Supabase 凭据。迁移必须先在 staging 审核运行再按项目流程部署。
 - 未配置 `HEIKA_REDEEM_CODE_KEY` 与 `CRON_SECRET`；卡密生成/兑换 API 在服务端配置密钥前会按设计拒绝执行。爱发电第一阶段使用后台生成卡密并由运营者在对应商品随机回复中分发；未创建或核验真实赞助订单。爱发电自动订单/Webhook 接入仍待官方签名、订单查询规范与凭据验证，不能视为已完成。
+
+## 交互提示、探索评分玻璃与主页翻卡流程（2026-11-14）
+
+- 当前分支 `codex/native32-phase1`，本地 HEAD `c3a438bc342553be13ee3743a18474c4c192fa50`；`git ls-remote` 确认远端同名分支 SHA 一致。会员订单、Repository、NativeAction、AdminCenter 与会员兑换测试等已有未提交修改均保留。
+- GitHub Actions API 返回 403，GH_TOKEN 无效，无法重新核验最新成功 Run；最近已记录的成功构建信息仍是上文 Run #125，但不视作本轮源码验证。本轮不构建 APK。
+- 原生选择反馈经 `HeikaNoticeBus.showSelection` 接入发现筛选、搜索范围、评论排序、个人内容页签、资料选择、发布类型/分类/场景、通知筛选、探索选择和设置选项；连续选择会合并较早的选择提示。爱发电外链失败提示改用应用内横幅。
+- 首页已翻卡列表点击改为打开大卡预览；确认翻开后等待服务端状态，再执行透视 `rotationY` 3D 翻转，加入轻微卡片按压和点击锁；预览 CTA 改为「确认查看」，卡片主体不导航详情。主页翻开卡片的评分徽标使用局部玻璃材质，统一徽标模糊半径调为 20dp。
+- `git diff --check` 通过。没有运行 Android 编译、自动化测试、APK 构建或真机交互验收。

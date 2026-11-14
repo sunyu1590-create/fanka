@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.heika.nativeapp.HeikaApplication
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaAvatar
+import com.heika.nativeapp.ui.HeikaNoticeBus
 
 @Composable
 fun NotificationsScreen(
@@ -103,7 +104,12 @@ fun NotificationsScreen(
                     label,
                     Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
                         .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .14f) else MaterialTheme.colorScheme.surface.copy(alpha = .42f))
-                        .clickable { selectedFilter = key }
+                        .clickable {
+                            if (selectedFilter != key) {
+                                selectedFilter = key
+                                HeikaNoticeBus.showSelection("通知筛选：$label")
+                            }
+                        }
                         .padding(horizontal = 12.dp, vertical = 7.dp),
                     color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,

@@ -52,6 +52,7 @@ import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaAvatar
+import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaGlassDialog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -133,7 +134,10 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
                             listOf("female" to "女", "male" to "男", "nonbinary" to "非二元", "undisclosed" to "不愿透露").forEach { (value, label) ->
                                 androidx.compose.material3.FilterChip(
                                     selected = gender == value,
-                                    onClick = { gender = if (gender == value) "" else value },
+                                    onClick = {
+                                        gender = if (gender == value) "" else value
+                                        HeikaNoticeBus.showSelection(if (gender.isBlank()) "已清除性别选择" else "性别：$label")
+                                    },
                                     label = { Text(label, fontSize = 11.sp) },
                                 )
                             }
@@ -143,7 +147,16 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
                             value = mbti,
                             onValueChange = { mbti = it.filter(Char::isLetter).uppercase().take(4) },
                             label = { Text("MBTI") },
-                            supportingText = { Text("例如 INFP、ENTJ；留空表示不填写") },
+                            supportingText = {
+                                val valid = mbti.isBlank() || mbti in setOf(
+                                    "INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP",
+                                    "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP",
+                                )
+                                Text(
+                                    if (valid) "例如 INFP、ENTJ；留空表示不填写" else "请输入有效的四字母 MBTI 类型",
+                                    color = if (valid) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                                )
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                         )
@@ -197,7 +210,10 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
 private fun ProfileAttributeVisibility(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = { value ->
+            onCheckedChange(value)
+            HeikaNoticeBus.showSelection("${label.removePrefix("公开")}${if (value) "将显示在个人主页" else "已设为私密"}")
+        })
     }
 }
 

@@ -30,9 +30,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -41,6 +41,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.FilterChip
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaNoticeBus
+import com.heika.nativeapp.ui.HeikaNoticeKind
 
 @Composable
 fun FeedbackScreen(onBack: () -> Unit, onLogin: () -> Unit, viewModel: NativeActionViewModel = hiltViewModel()) {
@@ -52,7 +54,14 @@ fun FeedbackScreen(onBack: () -> Unit, onLogin: () -> Unit, viewModel: NativeAct
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
             Text("告诉我们你遇到的问题或希望改进的地方。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                listOf("suggestion" to "建议", "problem" to "问题", "other" to "其他").forEach { (value, label) -> FilterChip(label, category == value, { category = value }) }
+                listOf("suggestion" to "建议", "problem" to "问题", "other" to "其他").forEach { (value, label) ->
+                    FilterChip(label, category == value, {
+                        if (category != value) {
+                            category = value
+                            HeikaNoticeBus.showSelection("反馈类型：$label")
+                        }
+                    })
+                }
             }
             OutlinedTextField(value = message, onValueChange = { message = it.take(3000) }, modifier = Modifier.fillMaxWidth(), label = { Text("反馈内容") }, placeholder = { Text("请尽量描述复现步骤或期望…") }, minLines = 7, maxLines = 12, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences), supportingText = { Text("${message.length}/3000 · 至少 10 个字符") })
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
@@ -147,7 +156,12 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, onAbout: () -> Uni
                         Column(Modifier.width(112.dp).heightIn(min = 102.dp).clip(RoundedCornerShape(14.dp))
                             .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = .10f) else MaterialTheme.colorScheme.surface)
                             .border(if (active) 1.dp else .5.dp, if (active) MaterialTheme.colorScheme.primary.copy(alpha = .65f) else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
-                            .clickable { previewTier = plan.id }.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            .clickable {
+                                if (previewTier != plan.id) {
+                                    previewTier = plan.id
+                                    HeikaNoticeBus.showSelection("正在预览 ${plan.title} 权益；不会修改账号等级")
+                                }
+                            }.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) { Text(plan.title, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); if (active) Icon(HeikaIcons.Check, contentDescription = "已选择${plan.title}预览", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp)) }
                             if (plan.id == actualTier) Text("当前账号", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
                             Text("${plan.quota} 次 / 日", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -174,7 +188,7 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, onAbout: () -> Uni
                     Text("一个人的开发，也需要大家的支持", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text("黑卡 HEIKA 由个人独立开发与维护，运行依赖 Vercel 应用服务和 Supabase 数据库及内容存储。海外部署可能让国内部分地区访问较慢；存储、网络与持续维护也需要投入。作为一名还在读高三的开发者，我希望将更多时间用于改善体验和建设内容。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
                     Text("支持完全自愿，免费功能会持续保留。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                    Button(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://afdian.com/a/heikaka"))) }.onFailure { Toast.makeText(context, "无法打开爱发电，请稍后重试", Toast.LENGTH_SHORT).show() } }, modifier = Modifier.fillMaxWidth()) { Text("前往爱发电支持  ↗") }
+                    Button(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://afdian.com/a/heikaka"))) }.onFailure { HeikaNoticeBus.show("无法打开爱发电，请稍后重试", HeikaNoticeKind.ERROR) } }, modifier = Modifier.fillMaxWidth()) { Text("前往爱发电支持  ↗") }
                     TextButton(onClick = onRedeem) { Text("已经获得卡密？兑换会员") }
                     Row(Modifier.fillMaxWidth().clickable { supportInfoExpanded = !supportInfoExpanded }, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -222,7 +236,14 @@ fun MembershipRedeemScreen(onBack: () -> Unit, onLogin: () -> Unit, viewModel: N
                 Text("输入通过爱发电获得的会员激活码。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
             if (result == null) {
-                OutlinedTextField(value = code, onValueChange = { code = it.uppercase().filter { ch -> ch.isLetterOrDigit() || ch == '-' }.take(40); viewModel.clearMembershipRedemption() }, modifier = Modifier.fillMaxWidth(), label = { Text("会员激活码") }, placeholder = { Text("HEIKA-XXXX-XXXX-XXXX-XXXX-XXXX") }, singleLine = true, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, keyboardType = KeyboardType.Ascii, autoCorrect = false))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(value = code, onValueChange = { code = it.uppercase().filter { ch -> ch in 'A'..'Z' || ch in '0'..'9' || ch == '-' }.take(40); viewModel.clearMembershipRedemption() }, modifier = Modifier.weight(1f), label = { Text("会员激活码") }, placeholder = { Text("HEIKA-XXXX-XXXX-XXXX-XXXX-XXXX") }, singleLine = true, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, keyboardType = KeyboardType.Ascii, autoCorrect = false))
+                    TextButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val pasted = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                        if (pasted.isNotBlank()) { code = pasted.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' || it == '-' }.take(40); viewModel.clearMembershipRedemption() }
+                    }) { Text("粘贴") }
+                }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                 if (state.error?.contains("登录") == true) Button(onClick = onLogin, modifier = Modifier.fillMaxWidth()) { Text("登录后继续兑换") }
                 if (preview == null) Button(onClick = { viewModel.previewMembershipCode(code) }, enabled = !state.sending && code.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (state.sending) "正在验证…" else "验证激活码") }
@@ -242,7 +263,7 @@ fun MembershipRedeemScreen(onBack: () -> Unit, onLogin: () -> Unit, viewModel: N
                     Button(onClick = { code = ""; viewModel.clearMembershipRedemption(); onBack() }, modifier = Modifier.fillMaxWidth()) { Text("完成") }
                 }
             }
-            TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://afdian.com/a/heikaka"))) }.onFailure { Toast.makeText(context, "无法打开爱发电，请稍后重试", Toast.LENGTH_SHORT).show() } }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("还没有激活码？前往爱发电") }
+            TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://afdian.com/a/heikaka"))) }.onFailure { HeikaNoticeBus.show("无法打开爱发电，请稍后重试", HeikaNoticeKind.ERROR) } }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("还没有激活码？前往爱发电") }
         }
     }
 }
