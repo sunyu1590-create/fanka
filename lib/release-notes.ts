@@ -7,6 +7,16 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.40.8",
+    date: "2026.11.14",
+    notes: [
+      { category: "新功能", text: "会员中心接入服务端 Free / Plus / Pro 权益与有效期查询，新增激活码预览、原子兑换、个人兑换记录和管理员卡密批次管理。" },
+      { category: "新功能", text: "爱发电支持入口接入官方页面；在官方 API 凭证未配置前，订单仅支持管理员核对后的人工登记与核验，不生成虚假支付状态。" },
+      { category: "体验优化", text: "翻卡次数与幸运奖励改由 Supabase 服务端统一记录，网页和 Android 共用每日额度及到期回落规则。" },
+      { category: "问题修复", text: "保留已有会员等级与阅读记录，并复用当前服务端翻卡流水，避免引入第二套额度记录。" },
+    ],
+  },
+  {
     version: "2.40.7",
     date: "2026.11.08",
     notes: [

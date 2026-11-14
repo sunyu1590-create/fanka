@@ -9,6 +9,8 @@ const mbtiTypes = new Set(["INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
+    const membership = await db.rpc("get_my_membership_status");
+    dbError(membership.error);
     const [profile, interests, bookmarks, details] = await Promise.all([
       db.from("profiles").select("id,nickname,bio,timezone,avatar_url,show_bookmarks,role,membership_tier").eq("id", user!.id).single(),
       db.from("user_interests").select("tag_id").eq("user_id", user!.id),
@@ -16,7 +18,7 @@ export async function GET(req: NextRequest) {
       db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),
     ]);
     for (const result of [profile, interests, bookmarks, details]) dbError(result.error);
-    return { profile: profile.data, details: details.data, interests: interests.data, bookmarks: bookmarks.data };
+    return { profile: profile.data, membership: membership.data, details: details.data, interests: interests.data, bookmarks: bookmarks.data };
   });
 }
 

@@ -174,7 +174,7 @@ type ComposerVideo = { id: string; file?: File; path?: string; url: string; name
 type PageTransitionHandle = { finished: Promise<unknown> };
 const VIDEO_UPLOAD_BETA_ENABLED = process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA === "1";
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
-type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
+type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; dailyFlipAllowance?: number; baseDailyFlipAllowance?: number; dailyLuckyBonus?: number; dailyFlipsUsed?: number; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
 type BookmarkCollection = { id: string; name: string; created_at?: string; role?: "owner" | "collaborator"; is_public?: boolean; allow_collaboration?: boolean; share_code?: string | null; user_id?: string };
 type PostSeries = { id: string; title: string; description: string; created_at?: string; postCount?: number };
 type TopicEvent = { id: string; title: string; description: string; topic: string; ends_at: string; postCount: number; participantCount: number; joined: boolean };
@@ -867,9 +867,12 @@ export default function Community() {
   const latestOpenedPost = latestOpenedId === undefined
     ? null
     : state.revealed[latestOpenedId] || null;
-  const luckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
+  const localLuckyBonusToday = Math.min(10, state.luckyBonus?.[today] || 0);
   const membershipTier = experienceSummary.membershipTier || "free";
-  const memberFlipAllowance = baseDailyFlipAllowance(membershipTier);
+  const memberFlipAllowance = experienceSummary.baseDailyFlipAllowance ?? baseDailyFlipAllowance(membershipTier);
+  const luckyBonusToday = accountId && Number.isFinite(experienceSummary.dailyLuckyBonus)
+    ? Math.min(10, experienceSummary.dailyLuckyBonus || 0)
+    : localLuckyBonusToday;
   const dailyAllowance = memberFlipAllowance + luckyBonusToday;
   const candidatePosts = state.cardIds.map(
     (id) =>
@@ -1986,7 +1989,7 @@ export default function Community() {
       setViewerPhase("opening");
       return;
     }
-    if (opened.length >= dailyAllowance) {
+    if (!accountId && opened.length >= dailyAllowance) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
     }
@@ -2005,7 +2008,7 @@ export default function Community() {
       (candidate) => !opened.includes(candidate.id),
     );
     const unlocked = candidates.filter((candidate) => opened.includes(candidate.id) && Boolean(state.revealed[candidate.id]));
-    const pool = opened.length < dailyAllowance ? [...available, ...unlocked] : unlocked;
+    const pool = accountId || opened.length < dailyAllowance ? [...available, ...unlocked] : unlocked;
     if (!pool.length) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       return;
@@ -2028,7 +2031,7 @@ export default function Community() {
     const id = viewerId,
       used = state.opened[today] || [],
       scrollBefore = window.scrollY;
-    if (used.length >= dailyAllowance && !used.includes(id)) {
+    if (!accountId && used.length >= dailyAllowance && !used.includes(id)) {
       toast(`今天的 ${dailyAllowance} 张卡片已经选完，已解锁内容仍可查看。`);
       closeViewer();
       return;
@@ -2036,6 +2039,10 @@ export default function Community() {
     flipBusy.current = true;
     setFlippingId(id);
     try {
+      const serverOpen = accountId
+        ? await cloudRequest("/api/v1/library-state", { action: "open", id }) as { quota?: { used?: number; base?: number; allowance?: number; bonus?: number; grantedBonus?: number } } | null
+        : null;
+      if (accountId && !serverOpen?.quota) throw new Error("会员额度同步失败，请重试");
       const response = await cloudFetch("/api/demo/cards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2044,12 +2051,18 @@ export default function Community() {
       const result = await response.json();
       if (!response.ok || !result.data)
         throw new Error(result.error || "卡片加载失败");
-      const lucky = used.includes(id) || luckyBonusToday >= 10
-        ? 0
-        : Math.min(drawLuckyBonus(), 10 - luckyBonusToday);
-      const nextLuckyBonus = lucky
-        ? { ...state.luckyBonus, [today]: luckyBonusToday + lucky }
+      const lucky = accountId
+        ? Math.max(0, Number(serverOpen?.quota?.grantedBonus) || 0)
+        : used.includes(id) || luckyBonusToday >= 10 ? 0 : Math.min(drawLuckyBonus(), 10 - luckyBonusToday);
+      const nextBonus = accountId
+        ? Math.min(10, Number(serverOpen?.quota?.bonus) || 0)
+        : luckyBonusToday + lucky;
+      const nextLuckyBonus = nextBonus !== luckyBonusToday
+        ? { ...state.luckyBonus, [today]: nextBonus }
         : state.luckyBonus;
+      const nextAllowance = accountId
+        ? Math.max(1, Number(serverOpen?.quota?.allowance) || dailyAllowance)
+        : dailyAllowance;
       const rarityTier = (result.data.rarityTier || cardRarityTier(
         communityRatings[id]?.average || 0,
         communityRatings[id]?.count || 0,
@@ -2062,10 +2075,20 @@ export default function Community() {
         rarityTiers: { ...state.rarityTiers, [id]: rarityTier },
         opened: {
           ...state.opened,
-          [today]: openDailyCard(used, id, dailyAllowance),
+          [today]: openDailyCard(used, id, nextAllowance),
         },
       };
       setState(next);
+      if (accountId && serverOpen?.quota) {
+        const quota = serverOpen.quota;
+        setExperienceSummary((current) => ({
+          ...current,
+          dailyFlipAllowance: quota.allowance ?? current.dailyFlipAllowance,
+          baseDailyFlipAllowance: quota.base ?? current.baseDailyFlipAllowance,
+          dailyLuckyBonus: quota.bonus ?? current.dailyLuckyBonus,
+          dailyFlipsUsed: quota.used ?? current.dailyFlipsUsed,
+        }));
+      }
       setViewerFlipped(true);
       setViewerRevealPhase("rarity");
       if (rarityRevealTimer.current !== null) window.clearTimeout(rarityRevealTimer.current);
@@ -2078,12 +2101,9 @@ export default function Community() {
         setLuckyReward({ postId: id, amount: lucky });
         luckyRewardTimer.current = window.setTimeout(() => setLuckyReward(null), 3000);
       }
-      void cloudRequest("/api/v1/library-state", { action: "open", id }).then(async (saved) => {
-        if (accountId && saved?.experience) {
-          const summary = await cloudRequest("/api/v1/progression");
-          if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
-        }
-      }).catch(() => toast("阅读记录云端同步失败，本地已保留"));
+      if (accountId) void cloudRequest("/api/v1/progression").then((summary) => {
+        if (summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+      }).catch(() => {});
       setJustFlippedId(id);
       cancelFlipRain();
       if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -2100,8 +2120,8 @@ export default function Community() {
       );
       window.setTimeout(() => setJustFlippedId(null), 950);
       if (!lucky) toast("已翻开 · 今日探索进度已更新");
-    } catch {
-      toast("内容加载失败，请重试");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "内容加载失败，请重试");
     } finally {
       setFlippingId(null);
       flipBusy.current = false;
@@ -3614,8 +3634,14 @@ export default function Community() {
           try {
             const data = await cloudRequest("/api/v1/library-state");
             if (!isCurrent() || !data) return;
-            if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
-              setExperienceSummary((current) => ({ ...current, membershipTier: data.profile.membership_tier }));
+            if (["free", "plus", "pro"].includes(data.membership?.tier)) {
+              setExperienceSummary((current) => ({ ...current,
+                membershipTier: data.membership.tier,
+                dailyFlipAllowance: Number(data.membership.dailyFlipAllowance) || current.dailyFlipAllowance,
+                baseDailyFlipAllowance: Number(data.membership.baseDailyFlipAllowance) || current.baseDailyFlipAllowance,
+                dailyLuckyBonus: Number(data.membership.dailyLuckyBonus) || 0,
+                dailyFlipsUsed: Number(data.membership.dailyFlipsUsed) || 0,
+              }));
             }
             setPublicBookmarks(Boolean(data.profile?.show_bookmarks));
             setPublicBookmarksLoaded(true);
@@ -3777,8 +3803,12 @@ export default function Community() {
         event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${accountId}`,
       }, (payload) => {
         const tier = (payload.new as { membership_tier?: string }).membership_tier;
-        if (alive && (tier === "free" || tier === "plus" || tier === "pro"))
+        if (alive && (tier === "free" || tier === "plus" || tier === "pro")) {
           setExperienceSummary((current) => ({ ...current, membershipTier: tier }));
+          void cloudRequest("/api/v1/progression").then((summary) => {
+            if (alive && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
+          }).catch(() => {});
+        }
       }).subscribe();
       remove = () => { void db.removeChannel(channel); };
     }).catch(() => {});
@@ -4242,7 +4272,7 @@ export default function Community() {
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
           {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
-          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} onNotice={toast} /> }
+          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} accountId={accountReady ? accountId : undefined} experienceTotal={experienceSummary.total} /> }
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>兴趣保存在此设备，并按账号分别存储。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">

@@ -10,7 +10,6 @@ import {
 import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateTopicNames } from "@/lib/topic-validation";
-import { cardRarityTier } from "@/lib/progression";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
 const mediaVariants = (path: string) => {
@@ -92,6 +91,8 @@ async function replaceTopics(db: SupabaseClient, postId: string, value: unknown)
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
+    const membership = await db.rpc("get_my_membership_status");
+    dbError(membership.error);
     const [profile, details, prefs, bookmarks, interactions, interests, own, revisions] =
       await Promise.all([
         db
@@ -139,6 +140,7 @@ export async function GET(req: NextRequest) {
     }]));
     return {
       profile: profile.data,
+      membership: membership.data,
       profileDetails: details.data,
       prefs: prefs.data,
       bookmarks: bookmarks.data,
@@ -414,6 +416,15 @@ export async function POST(req: NextRequest) {
     else postQuery = postQuery.eq("status", "published");
     const { data: post, error } = await postQuery.single();
     dbError(error);
+    if (action === "open") {
+      const opened = await db.rpc("confirm_daily_flip", {
+        p_post_id: post!.id,
+        p_idempotency_key: `web:${post!.id}`,
+      });
+      if (opened.error?.message.includes("daily_flip_limit_reached")) throw new ApiError(429, "今日翻卡次数已用完");
+      dbError(opened.error);
+      return opened.data;
+    }
     if (action === "delete") {
       const media = await db.from("post_media").select("storage_path,thumbnail_path,retina_thumbnail_path").eq("post_id", post!.id);
       dbError(media.error);
@@ -461,17 +472,6 @@ export async function POST(req: NextRequest) {
       dbError(viewError);
       return { saved: true, viewCount: Number(viewCount) || 0 };
     }
-    else if (action === "open") {
-      fields.opened_at = new Date().toISOString();
-      const { data: stats, error: statsError } = await db
-        .from("post_rating_stats")
-        .select("rating_count,rating_sum")
-        .eq("post_id", post!.id)
-        .maybeSingle();
-      dbError(statsError);
-      const count = stats?.rating_count || 0;
-      fields.rarity_tier = cardRarityTier(count ? (stats!.rating_sum / count) : 0, count);
-    }
     else if (action === "complete")
       fields.completed_at = new Date().toISOString();
     else if (action === "like") fields.liked = !!b.value;
@@ -479,14 +479,6 @@ export async function POST(req: NextRequest) {
     else throw new ApiError(400, "操作无效");
     const { error: write } = await db.from("user_interactions").upsert(fields);
     dbError(write);
-    if (action === "open" && post!.author_id !== user!.id) {
-      const { data: experience, error: experienceError } = await db.rpc(
-        "record_experience_event",
-        { p_event_type: "flip", p_post_id: post!.id },
-      );
-      dbError(experienceError);
-      return { saved: true, experience };
-    }
     return { saved: true };
   });
 }

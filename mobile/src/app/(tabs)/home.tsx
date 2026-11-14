@@ -114,17 +114,14 @@ export default function HomeScreen() {
     if (card.opened_at) { setError("这张卡已翻开，刷新后可以重新打开内容。"); return; }
     setBusySlot(card.slot); setError(""); setNotice("");
     try {
-      const updatedDeck = await api<DeckCard[]>("/api/v1/deck", session, { method: "POST", body: JSON.stringify({ action: "open", slot: card.slot }) });
+      const opened = await api<{ deck?: DeckCard[]; experience?: { awarded?: number; total?: number }; quota?: { used: number; allowance: number } }>("/api/v1/deck/open", session, { method: "POST", body: JSON.stringify({ slot: card.slot }) });
+      const experienceAward = Number(opened.experience?.awarded) || 0;
+      const updatedDeck = opened.deck || await api<DeckCard[]>("/api/v1/deck", session);
       setDeck(Array.isArray(updatedDeck) ? updatedDeck : deck);
       Vibration.vibrate(12);
       const raw = await api<RawPost>(`/api/v1/posts/${card.post_id}`, session);
       const postMedia = [...(raw.post_media || [])].sort((a, b) => a.sort_order - b.sort_order);
       const firstImage = raw.image_url || (postMedia[0] ? `${API_BASE}/api/v1/media?path=${encodeURIComponent(postMedia[0].storage_path)}&redirect=1` : undefined);
-      let experienceAward = 0;
-      try {
-        const opened = await api<{ experience?: { awarded?: number; total?: number } }>("/api/v1/library-state", session, { method: "POST", body: JSON.stringify({ action: "open", id: raw.client_id }) });
-        experienceAward = Number(opened.experience?.awarded) || 0;
-      } catch { /* Opening the card remains valid if experience sync is temporarily unavailable. */ }
       const rating = await api<{ average: number; count: number }>(`/api/v1/posts/${raw.client_id}/rating`, session).catch(() => ({ average: 0, count: 0 }));
       const rarity = rating.count < 5 ? "评分形成中" : rating.average >= 4.8 && rating.count >= 20 ? "SSS" : rating.average >= 4.5 && rating.count >= 10 ? "SS" : rating.average >= 4 && rating.count >= 5 ? "S" : "普通黑卡";
       const post: NativePost = { id: raw.client_id, cloudId: raw.id, title: raw.title, body: raw.body || "", tag: raw.interest_tags?.name || "生活", topics: [], image: firstImage, images: firstImage ? [firstImage] : [], author: raw.profiles?.nickname || "黑卡探索者", authorId: raw.author_id || undefined, date: "", likeCount: 0, viewCount: 0, channel: "community", isDemo: false };
