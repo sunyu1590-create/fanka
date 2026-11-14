@@ -34,7 +34,7 @@ internal suspend fun captureHeikaDialogBackdrop(window: Window, screenRect: Rect
     val captured = Bitmap.createBitmap(right - left, bottom - top, Bitmap.Config.ARGB_8888)
 
     val copyResult = try {
-        suspendCancellableCoroutine { continuation ->
+        suspendCancellableCoroutine<Int> { continuation ->
             PixelCopy.request(window, captureRect, captured, { result ->
                 if (continuation.isActive) continuation.resume(result)
                 else if (!captured.isRecycled) captured.recycle()
