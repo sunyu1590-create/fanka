@@ -1,6 +1,7 @@
 package com.heika.nativeapp.ui
 
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,7 +29,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.shape.CircleShape
 
-/** Centered glass dialog; the app's GPU layer blurs underneath, never the dialog content. */
+/** Centered glass dialog using Android's native cross-window blur, bounded to this dialog window. */
 @Composable
 fun HeikaAlertDialog(
     onDismissRequest: () -> Unit,
@@ -55,18 +55,38 @@ fun HeikaAlertDialog(
     icon: (@Composable () -> Unit)? = null,
     properties: DialogProperties = DialogProperties(usePlatformDefaultWidth = true),
 ) {
-    val blurController = LocalHeikaModalBlurController.current
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-        DisposableEffect(blurController) {
-            blurController?.acquire()
-            onDispose { blurController?.release() }
-        }
         val view = LocalView.current
-        SideEffect {
-            val window = (view.parent as? DialogWindowProvider)?.window
+        val blurWindow = (view.parent as? DialogWindowProvider)?.window
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val blurRadiusPx = with(density) { HeikaGlassTokens.dialogBlurRadius.roundToPx() }
+        DisposableEffect(blurWindow, blurRadiusPx) {
+            val window = blurWindow
             window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
             window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             window?.setDimAmount(HeikaGlassTokens.backdropDimAmount)
+            if (window != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val manager = view.context.getSystemService(WindowManager::class.java)
+                val applyBlur: (Boolean) -> Unit = { enabled ->
+                    if (enabled) {
+                        window.setBackgroundBlurRadius(blurRadiusPx)
+                        window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    } else {
+                        window.setBackgroundBlurRadius(0)
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    }
+                }
+                val listener = java.util.function.Consumer<Boolean> { enabled -> applyBlur(enabled) }
+                applyBlur(manager.isCrossWindowBlurEnabled)
+                manager.addCrossWindowBlurEnabledListener(listener)
+                onDispose {
+                    manager.removeCrossWindowBlurEnabledListener(listener)
+                    window.setBackgroundBlurRadius(0)
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                }
+            } else {
+                onDispose { }
+            }
         }
         val dark = LocalHeikaDark.current
         val shape = RoundedCornerShape(HeikaGlassTokens.dialogRadius)
@@ -75,7 +95,13 @@ fun HeikaAlertDialog(
             Column(
                 modifier.fillMaxWidth(.88f).widthIn(max = 340.dp).heightIn(max = 600.dp)
                     .clip(shape)
-                    .background(background.copy(alpha = if (dark) .76f else .82f), shape)
+                    .background(
+                        background.copy(
+                            alpha = if (dark) HeikaGlassTokens.darkDialogGlassAlpha * HeikaGlassTokens.darkDialogAlpha
+                            else HeikaGlassTokens.lightDialogGlassAlpha * HeikaGlassTokens.lightDialogAlpha,
+                        ),
+                        shape,
+                    )
                     .border(HeikaGlassTokens.borderWidth, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .48f else .60f), shape)
                     .padding(horizontal = 20.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),

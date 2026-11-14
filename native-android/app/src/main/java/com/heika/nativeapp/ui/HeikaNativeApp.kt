@@ -10,7 +10,6 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.background
@@ -96,12 +95,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
         val networkRegionWarning by networkRegionNoticeViewModel.warning.collectAsState()
         val nav = rememberNavController()
         val hazeState = rememberHazeState()
-        val modalBlurController = remember { HeikaModalBlurController() }
-        val modalBackdropRadius by animateDpAsState(
-            targetValue = if (modalBlurController.activeDialogs > 0) 18.dp else 0.dp,
-            animationSpec = tween(220, easing = HeikaMotion.standard),
-            label = "modal-backdrop-gaussian-blur",
-        )
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
         val sharedPosts = remember { mutableStateMapOf<String, HeikaPost>() }
@@ -150,10 +143,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                 openDestination(post.destination())
             }
         }
-        CompositionLocalProvider(LocalHeikaModalBlurController provides modalBlurController) {
         Box(
             Modifier.fillMaxSize()
-                .heikaGaussianBlur(modalBackdropRadius, enabled = modalBackdropRadius > 0.dp)
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
         ) {
@@ -621,7 +612,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                     },
                 )
             }
-        }
         }
     }
 }

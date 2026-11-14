@@ -199,7 +199,7 @@ test("flip preview keeps the page clear, lightly dims it, and closes on outside 
   assert.doesNotMatch(overlay, /hazeEffect|blurRadius|HazeStyle|RenderEffect/);
   assert.match(overlay, /onClick = \{ requestDismiss\(\) \}/);
   assert.doesNotMatch(overlay, /contentDescription = "关闭预览"/);
-  assert.match(overlay, /rotation\.animateTo\(180f, tween\(500, easing = FastOutSlowInEasing\)\)/);
+  assert.match(overlay, /rotation\.animateTo\(180f, tween\(680, easing = FastOutSlowInEasing\)\)/);
   assert.match(overlay, /if \(rotation\.value < 90f\)/);
   assert.match(overlay, /rotationY = 180f/);
   assert.match(overlay, /touchScale\.animateTo\(1\.015f/);
