@@ -8,18 +8,36 @@ import { cardRarityTier } from "@/lib/progression";
 
 const safeQuery = (value: string) => value.replace(/[%,_()."\\*]/g, "").slice(0, 60);
 const validType = (value: unknown): value is AiContentType => AI_CONTENT_TYPES.includes(value as AiContentType);
+const AI_USAGE_SCENARIOS = ["learning", "programming", "writing", "office", "creation", "life"] as const;
+type AiUsageScenario = (typeof AI_USAGE_SCENARIOS)[number];
+const validScenario = (value: unknown): value is AiUsageScenario => AI_USAGE_SCENARIOS.includes(value as AiUsageScenario);
+
+function parseScenarios(value: unknown): AiUsageScenario[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > AI_USAGE_SCENARIOS.length || value.some((item) => !validScenario(item))) {
+    throw new ApiError(400, "AI 使用场景无效");
+  }
+  return [...new Set(value as AiUsageScenario[])];
+}
 
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req, false);
     const params = req.nextUrl.searchParams;
     const queryText = safeQuery((params.get("q") || "").trim());
+    const topicName = safeQuery((params.get("topic") || "").trim());
     const type = params.get("type");
+    const scenario = params.get("scenario");
     const sort = params.get("sort") || "latest";
     const categoryId = Number(params.get("category")) || null;
+    const requestedPostId = params.get("postId");
+    const postId = requestedPostId ? uuid(requestedPostId) : null;
     const page = Math.max(1, Math.min(1000, Number(params.get("page")) || 1));
     const limit = Math.max(1, Math.min(24, Number(params.get("limit")) || 12));
     if (type && !validType(type)) throw new ApiError(400, "AI 内容类型无效");
+    if (scenario && !validScenario(scenario)) throw new ApiError(400, "AI 使用场景无效");
+    // Disabled types disappear from discovery and publishing, but historical
+    // links and saved searches remain readable so existing resources are not orphaned.
     let savedIds: string[] | null = null;
     if (params.get("saved") === "1") {
       if (!user) throw new ApiError(401, "登录后查看收藏的 AI 资源");
@@ -38,8 +56,21 @@ export async function GET(req: NextRequest) {
         categoryIds = [categoryId, ...(children.data || []).map((item) => item.id)];
       }
     }
-    let request = db.from("posts").select(libraryFields, { count: "exact" }).eq("channel", "ai").eq("status", "published");
+    const selectedFields = topicName
+      ? libraryFields.replace("post_topics(", "post_topics!inner(").replace(
+        "interest_tags!post_topics_topic_id_fkey(name)",
+        "interest_tags!inner(name,channel,kind,active,moderation_status)",
+      )
+      : libraryFields;
+    let request = db.from("posts").select(selectedFields, { count: "exact" }).eq("channel", "ai").eq("status", "published");
+    if (postId) request = request.eq("id", postId);
     if (type) request = request.eq("content_type", type);
+    if (scenario) request = request.overlaps("usage_scenarios", [scenario]);
+    if (topicName) request = request.eq("post_topics.interest_tags.name", topicName)
+      .eq("post_topics.interest_tags.channel", "ai")
+      .eq("post_topics.interest_tags.kind", "tag")
+      .eq("post_topics.interest_tags.active", true)
+      .eq("post_topics.interest_tags.moderation_status", "approved");
     if (categoryIds) request = request.in("tag_id", categoryIds);
     if (queryText) request = request.or(`title.ilike.%${queryText}%,body.ilike.%${queryText}%`);
     if (sort === "featured") request = request.not("featured_at", "is", null).order("featured_at", { ascending: false });
@@ -79,7 +110,12 @@ export async function POST(req: NextRequest) {
     const body = await jsonBody(req);
     const action = body.action === "submit" ? "submit" : body.action === "draft" ? "draft" : null;
     if (!action) throw new ApiError(400, "AI 内容操作无效");
+    if (body.contentType !== undefined && !validType(body.contentType)) throw new ApiError(400, "AI 内容类型无效");
     const contentType = validType(body.contentType) ? body.contentType : "knowledge_article";
+    const typeState = await db.from("ai_resource_types").select("enabled").eq("resource_type", contentType).maybeSingle();
+    dbError(typeState.error);
+    if (!typeState.data?.enabled) throw new ApiError(400, "此 AI 资源类型已暂停发布");
+    const usageScenarios = parseScenarios(body.usageScenarios);
     const title = action === "submit" ? textField(body.title, "标题", 1, 80) : String(body.title || "").trim().slice(0, 80) || "新建 AI 内容";
     const content = action === "submit" ? textField(body.body, "正文", 1, 5000) : String(body.body || "").trim().slice(0, 5000) || "待补充正文";
     const categoryName = typeof body.category === "string" ? body.category.trim() : "";
@@ -118,7 +154,7 @@ export async function POST(req: NextRequest) {
       const oldMedia = Array.isArray(body.mediaPaths) ? mediaPaths : await db.from("post_media").select("storage_path").eq("post_id", current.id).order("sort_order").then((result) => {
         dbError(result.error); return (result.data || []).map((item) => item.storage_path);
       });
-      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: null, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData: resourceResult };
+      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: null, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData: resourceResult, usageScenarios };
       const revision = await db.from("post_revisions").upsert({ post_id: current.id, author_id: user!.id, payload, status: "pending", review_note: null, reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString() }, { onConflict: "post_id" }).select("status,review_note").single();
       dbError(revision.error);
       if (!revision.data) throw new ApiError(500, "修改已提交但审核记录读取失败，请刷新后重试");
@@ -128,7 +164,7 @@ export async function POST(req: NextRequest) {
       return { ...post, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload } };
     }
     if (current && current.status !== "draft" && current.status !== "pending_review") throw new ApiError(409, "此 AI 內容目前不可編輯");
-    const values = { channel: "ai", content_type: contentType, resource_data: resourceResult, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString() };
+    const values = { channel: "ai", content_type: contentType, resource_data: resourceResult, usage_scenarios: usageScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString() };
     const saved = current
       ? await db.from("posts").update(values).eq("id", current.id).eq("author_id", user!.id).select(libraryFields).single()
       : await db.from("posts").insert({ ...values, author_id: user!.id, is_demo: false }).select(libraryFields).single();

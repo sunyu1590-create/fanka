@@ -8,13 +8,14 @@ import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
 
 type Area = "review" | "resources" | "feedback" | "categories";
-type Entry = { id: string; kind?: "new" | "revision"; title: string; body: string; author?: string; created_at?: string; status?: string; contentType?: string; resourceData?: Record<string, unknown>; images?: string[]; videos?: string[]; originalTitle?: string | null; featuredAt?: string | null; viewCount?: number; tag?: string; date?: string; channel?: "community" | "ai" };
+type Entry = { id: string; kind?: "new" | "revision"; title: string; body: string; author?: string; created_at?: string; status?: string; contentType?: string; usageScenarios?: string[]; resourceData?: Record<string, unknown>; images?: string[]; videos?: string[]; originalTitle?: string | null; featuredAt?: string | null; viewCount?: number; tag?: string; date?: string; channel?: "community" | "ai" };
+type ResourceType = { resource_type: string; label: string; description: string; enabled: boolean; sort_order: number; content_count?: number; published_count?: number };
 type Category = { id: number; name: string; channel: "community" | "ai"; parent_id: number | null; kind: "category" | "tag"; sort_order: number; description: string; is_featured: boolean; active: boolean; aliases: string[]; moderation_status: "pending" | "approved" | "rejected"; contentCount: number };
 type Feedback = { id: string; post_id: string; reporter_id: string; kind: string; details: string; status: string; review_note: string | null; handled_at: string | null; created_at: string; posts?: { title: string } | { title: string }[]; profiles?: { nickname: string } | { nickname: string }[] };
 type PageData<T> = { items: T[]; total: number; page: number; limit: number };
 const typeFilters = [
   ["", "全部类型"], ["knowledge_article", "AI 知识"], ["agent", "Agent"], ["skill", "Skills"],
-  ["prompt", "Prompt"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"],
+  ["prompt", "Prompt"], ["ai_tool", "AI 工具"], ["tutorial", "案例实践"],
 ] as const;
 const areas: { id: Area; label: string; note: string }[] = [
   { id: "review", label: "待审核", note: "新 AI 内容与编辑版本" },
@@ -23,6 +24,7 @@ const areas: { id: Area; label: string; note: string }[] = [
   { id: "categories", label: "分类与标签", note: "层级、排序、停用和治理" },
 ];
 const first = <T,>(value: T | T[] | null | undefined): T | null => Array.isArray(value) ? value[0] || null : value || null;
+const resourceScenarios = [["learning", "学习"], ["programming", "编程"], ["writing", "写作"], ["office", "办公"], ["creation", "创作"], ["life", "生活"]] as const;
 
 export default function AdminAIWorkspace({ canManageCategories = true }: { canManageCategories?: boolean }) {
   const [area, setArea] = useState<Area>("review");
@@ -35,6 +37,8 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [resourceTypes, setResourceTypes] = useState<ResourceType[]>([]);
+  const [classifyDrafts, setClassifyDrafts] = useState<Record<string, { type: string; scenarios: string[] }>>({});
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -51,8 +55,11 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
     setBusy(true); setError("");
     try {
       if (area === "categories") {
-        const result = await cloudRequest("/api/v1/admin/categories") as { items: Category[] };
-        setCategories(result.items || []);
+        const [result, typeResult] = await Promise.all([
+          cloudRequest("/api/v1/admin/categories") as Promise<{ items: Category[] }>,
+          cloudRequest("/api/v1/admin/ai-resource-types") as Promise<{ items: ResourceType[] }>,
+        ]);
+        setCategories(result.items || []); setResourceTypes(typeResult.items || []);
       } else if (area === "feedback") {
         const result = await cloudRequest(`/api/v1/admin/ai-space?status=feedback&feedbackStatus=${feedbackStatus}&page=${nextPage}&limit=20`) as PageData<Feedback>;
         setFeedback((current) => append ? [...current, ...(result.items || [])] : result.items || []); setTotal(result.total || 0); setPage(nextPage);
@@ -68,6 +75,15 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
     finally { setBusy(false); }
   }, [area, status, feedbackStatus, contentType, search]);
   useEffect(() => { void load(1, false); }, [load]);
+  useEffect(() => {
+    let active = true;
+    void cloudRequest("/api/v1/admin/ai-resource-types").then((result) => {
+      if (active) setResourceTypes((result as { items?: ResourceType[] }).items || []);
+    }).catch((e) => {
+      if (active) setError(e instanceof Error ? e.message : "AI 资源分类读取失败");
+    });
+    return () => { active = false; };
+  }, []);
 
   const actOnPost = async (item: Entry, action: "approve" | "reject" | "hide" | "restore" | "feature") => {
     if (!item.id) return;
@@ -87,6 +103,27 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
       setNotice(action === "reject" ? "内容已驳回，未公开" : action === "hide" ? "内容已下架" : action === "restore" ? "内容已恢复公开" : "内容已审核发布");
       setNotes((current) => ({ ...current, [item.id]: "" })); await load(page);
     } catch (e) { setError(e instanceof Error ? e.message : "AI 内容审核失败"); }
+    finally { setSaving(null); }
+  };
+
+  const classifyPost = async (item: Entry) => {
+    const draft = classifyDrafts[item.id] || { type: item.contentType || "knowledge_article", scenarios: item.usageScenarios || [] };
+    setSaving(`classify-${item.id}`); setError(""); setNotice("");
+    try {
+      await cloudRequest(`/api/v1/admin/ai-space/${item.id}`, { action: "classify", resourceType: draft.type, usageScenarios: draft.scenarios }, "PATCH");
+      setClassifyDrafts((current) => { const next = { ...current }; delete next[item.id]; return next; });
+      setNotice("AI 资源分类已保存"); await load(page);
+    } catch (e) { setError(e instanceof Error ? e.message : "AI 资源分类保存失败"); }
+    finally { setSaving(null); }
+  };
+
+  const updateResourceType = async (item: ResourceType, values: Partial<ResourceType>) => {
+    setSaving(`resource-type-${item.resource_type}`); setError(""); setNotice("");
+    try {
+      const updated = await cloudRequest("/api/v1/admin/ai-resource-types", { resource_type: item.resource_type, ...values }, "PATCH") as ResourceType;
+      setResourceTypes((current) => current.map((row) => row.resource_type === item.resource_type ? { ...row, ...updated } : row));
+      setNotice("AI 资源类型设置已保存");
+    } catch (e) { setError(e instanceof Error ? e.message : "AI 资源类型设置失败"); }
     finally { setSaving(null); }
   };
 
@@ -136,6 +173,19 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
         <div className="moderation-item-heading"><strong><Sparkles size={15}/> {area === "review" ? item.kind === "revision" ? "AI 内容修改待审核" : "AI 内容待审核" : `${item.status === "hidden" ? "已下架" : "已发布"} · ${item.featuredAt ? "精选" : "普通"}`}</strong><time>{item.created_at ? new Date(item.created_at).toLocaleString("zh-CN") : item.date}</time></div>
         <p className="moderation-author">{item.author || "探索者"} · {item.contentType || "knowledge_article"}{item.originalTitle ? ` · 公开版：${item.originalTitle}` : ""}</p>
         <h3 className="moderation-submission-title">{item.title}</h3>
+        <div className="admin-ai-classifier">
+          <strong>资源分类</strong>
+          {(() => {
+            const draft = classifyDrafts[item.id] || { type: item.contentType || "knowledge_article", scenarios: item.usageScenarios || [] };
+            return <>
+              <label>资源类型<select value={draft.type} onChange={(event) => setClassifyDrafts((current) => ({ ...current, [item.id]: { ...draft, type: event.target.value } }))}>
+                {resourceTypes.filter((type) => type.enabled || type.resource_type === draft.type).map((type) => <option key={type.resource_type} value={type.resource_type}>{type.label}{type.enabled ? "" : "（已停用）"}</option>)}
+              </select></label>
+              <div className="admin-ai-scenario-options" aria-label="AI 使用场景">{resourceScenarios.map(([key, label]) => <button type="button" key={key} aria-pressed={draft.scenarios.includes(key)} className={draft.scenarios.includes(key) ? "selected" : ""} onClick={() => setClassifyDrafts((current) => ({ ...current, [item.id]: { ...draft, scenarios: draft.scenarios.includes(key) ? draft.scenarios.filter((value) => value !== key) : [...draft.scenarios, key] } }))}>{label}</button>)}</div>
+              <button type="button" className="soft-button" disabled={saving === `classify-${item.id}`} onClick={() => void classifyPost(item)}>{saving === `classify-${item.id}` ? "保存中…" : "保存分类"}</button>
+            </>;
+          })()}
+        </div>
         <details className="moderation-longtext"><summary>展开正文 · {item.body.length} 字</summary><MarkdownContent source={item.body} className="moderation-markdown"/></details>
         {item.resourceData && Object.keys(item.resourceData).length > 0 && <details className="admin-ai-resource-json"><summary>结构化资源字段 · {Object.keys(item.resourceData).length}</summary><dl>{Object.entries(item.resourceData).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{Array.isArray(value) ? value.join("\n") : String(value)}</dd></div>)}</dl></details>}
         {!!item.images?.length && <details className="moderation-image-details"><summary>查看图片 · {item.images.length}</summary><div className="moderation-images">{item.images.map((src, index) => <img key={`${src}-${index}`} src={src} alt="AI 内容配图" loading="lazy"/>)}</div></details>}
@@ -148,6 +198,16 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
     {area === "feedback" && <><div className="moderation-filters" role="group" aria-label="资源反馈状态">{([["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const).map(([value, label]) => <button key={value} className={feedbackStatus === value ? "selected" : ""} onClick={() => setFeedbackStatus(value)}>{label}</button>)}</div>{feedback.length ? <div className="moderation-list">{feedback.map((item) => { const profile = first(item.profiles); const post = first(item.posts); return <article className="moderation-item" key={item.id}><div className="moderation-item-heading"><strong><Flag size={15}/> {item.kind === "broken_link" ? "链接失效" : item.kind === "unsafe" ? "安全风险" : item.kind === "outdated" ? "内容过时" : "其他反馈"} · {item.status === "open" ? "待处理" : item.status === "resolved" ? "已处理" : "已驳回"} · {post?.title || "AI 资源"}</strong><time>{new Date(item.created_at).toLocaleString("zh-CN")}</time></div><p className="moderation-author">反馈人：{profile?.nickname || item.reporter_id.slice(0, 8)}</p><p>{item.details}</p>{item.review_note && <p className="moderation-history"><strong>处理记录</strong> {item.review_note}{item.handled_at ? ` · ${new Date(item.handled_at).toLocaleString("zh-CN")}` : ""}</p>}{item.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[item.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="简述核查结果，至少 3 个字"/></label><div className="moderation-actions"><button disabled={saving === item.id} onClick={() => void changeFeedback(item, "resolved")}><Check size={15}/>已核实并处理</button><button disabled={saving === item.id} onClick={() => void changeFeedback(item, "dismissed")}><X size={15}/>驳回反馈</button></div></>}</article>; })}</div> : <p className="moderation-empty">当前筛选没有 AI 资源反馈。</p>}{feedback.length < total && <button className="comments-load-more" disabled={busy} onClick={() => void load(page + 1, true)}>加载更多</button>}</>}
 
     {area === "categories" && <>
+      <section className="admin-ai-resource-catalog" aria-label="AI 资源类型目录">
+        <div><small>AI RESOURCE TYPES</small><h3>六大资源类型</h3><p>稳定 ID 用于内容筛选与历史关联。停用只会隐藏新入口，不会删除既有内容。</p></div>
+        {resourceTypes.map((type) => <article key={type.resource_type}>
+          <strong>{type.label}</strong><code>{type.resource_type}</code>
+          <small>{type.content_count ?? type.published_count ?? 0} 篇关联内容</small>
+          <label>显示名称<input defaultValue={type.label} maxLength={24} onBlur={(event) => { if (event.currentTarget.value.trim() && event.currentTarget.value.trim() !== type.label) void updateResourceType(type, { label: event.currentTarget.value.trim() }); }}/></label>
+          <label>说明<input defaultValue={type.description} maxLength={120} onBlur={(event) => { if (event.currentTarget.value !== type.description) void updateResourceType(type, { description: event.currentTarget.value }); }}/></label>
+          <button type="button" className="soft-button" disabled={saving === `resource-type-${type.resource_type}`} onClick={() => void updateResourceType(type, { enabled: !type.enabled })}>{type.enabled ? "停用入口" : "启用入口"}</button>
+        </article>)}
+      </section>
       <form className="admin-ai-category-form" onSubmit={(event) => void createCategory(event)}><div><small>CATALOG / CREATE</small><h3>新增分类或标签</h3></div><label>名称<input required minLength={2} maxLength={32} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}/></label><div className="admin-ai-category-form-row"><label>频道<ChoiceSelect label="频道" value={draft.channel} onChange={(value) => setDraft((current) => ({ ...current, channel: value as "ai" | "community", parent_id: "" }))} options={[{value:"ai",label:"AI 空间"},{value:"community",label:"社区"}]}/></label><label>类型<ChoiceSelect label="类型" value={draft.kind} onChange={(value) => setDraft((current) => ({ ...current, kind: value as "category" | "tag", parent_id: "" }))} options={[{value:"category",label:"内容分类"},{value:"tag",label:"内容标签"}]}/></label>{draft.kind === "category" && <label>上级分类<ChoiceSelect label="上级分类" value={draft.parent_id} onChange={(value) => setDraft((current) => ({ ...current, parent_id: value }))} options={[{value:"",label:"一级分类"},...categories.filter((item) => item.channel === draft.channel && item.kind === "category" && !item.parent_id && item.active).map((item) => ({value:String(item.id),label:item.name}))]}/></label>}</div><label>说明<input maxLength={240} value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="简要说明这个分类的内容范围"/></label><label>排序<input type="number" min={0} max={10000} value={draft.sort_order} onChange={(event) => setDraft((current) => ({ ...current, sort_order: Number(event.target.value) }))}/></label><button className="primary-button" disabled={saving === "create-category"}>{saving === "create-category" ? "创建中…" : "新增"}</button></form>
       <div className="admin-ai-category-filters"><input value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} placeholder="搜索分类和标签"/><ChoiceSelect label="频道筛选" value={categoryChannel} onChange={setCategoryChannel} options={[{value:"all",label:"全部频道"},{value:"community",label:"社区"},{value:"ai",label:"AI 空间"}]}/><ChoiceSelect label="类型筛选" value={categoryKind} onChange={setCategoryKind} options={[{value:"all",label:"全部类型"},{value:"category",label:"分类"},{value:"tag",label:"标签"}]}/></div>
       {categories.length ? <div className="admin-ai-category-list">{categories.filter((category) => (categoryChannel === "all" || category.channel === categoryChannel) && (categoryKind === "all" || category.kind === categoryKind) && (!categorySearch.trim() || category.name.toLowerCase().includes(categorySearch.trim().toLowerCase()) || (category.aliases || []).some((alias) => alias.toLowerCase().includes(categorySearch.trim().toLowerCase())))).map((category) => <article className="admin-ai-category-row" key={category.id}><div className="admin-ai-category-main"><span className="admin-ai-category-icon"><Tag size={15}/></span><div><strong>{category.parent_id ? "↳ " : ""}{category.name}</strong><small>{category.channel === "ai" ? "AI 空间" : "社区"} · {category.kind === "category" ? "分类" : "标签"} · {category.contentCount} 篇内容 · {category.moderation_status === "pending" ? "待审核" : category.active ? "启用中" : "已停用"}</small>{category.aliases?.length > 0 && <small>别名：{category.aliases.join("、")}</small>}</div></div><div className="admin-ai-category-actions">{category.kind === "tag" && category.moderation_status === "pending" && <><button className="soft-button" disabled={saving === `category-${category.id}`} onClick={() => void updateCategory(category, { moderation_status: "approved", active: true })}>通过标签</button><button className="soft-button" disabled={saving === `category-${category.id}`} onClick={() => void updateCategory(category, { moderation_status: "rejected" })}>驳回</button></>}{category.kind === "category" && <button className={`soft-button${category.is_featured ? " selected" : ""}`} disabled={saving === `category-${category.id}`} onClick={() => void updateCategory(category, { is_featured: !category.is_featured })}>{category.is_featured ? "取消精选" : "设为精选"}</button>}<button className="soft-button" disabled={saving === `category-${category.id}`} onClick={() => void updateCategory(category, { active: !category.active })}>{category.active ? "停用" : "启用"}</button></div>{category.active && <details className="admin-ai-merge"><summary>编辑 / 合并 <ChevronRight size={14}/></summary><div><label>名称<input defaultValue={category.name} maxLength={32} onBlur={(event) => { if (event.currentTarget.value.trim() !== category.name) void updateCategory(category, { name: event.currentTarget.value.trim() }); }}/></label>{category.kind === "category" && <label>上级分类<ChoiceSelect label="上级分类" value={category.parent_id ? String(category.parent_id) : ""} onChange={(value) => { const parent_id = value ? Number(value) : null; if (parent_id !== category.parent_id) void updateCategory(category, { parent_id }); }} options={[{value:"",label:"一级分类"},...categories.filter((item) => item.id !== category.id && item.channel === category.channel && item.kind === "category" && item.active && !item.parent_id).map((item) => ({value:String(item.id),label:item.name}))]}/></label>}<label>排序<input type="number" min={0} max={10000} defaultValue={category.sort_order} onBlur={(event) => { const value = Number(event.currentTarget.value); if (value !== category.sort_order) void updateCategory(category, { sort_order: value }); }}/></label><label>说明<input defaultValue={category.description} maxLength={240} onBlur={(event) => { if (event.currentTarget.value !== category.description) void updateCategory(category, { description: event.currentTarget.value }); }}/></label><label>别名（逗号分隔）<input defaultValue={(category.aliases || []).join(",")} onBlur={(event) => { const values = event.currentTarget.value.split(",").map((value) => value.trim()).filter(Boolean); if (values.join(",") !== (category.aliases || []).join(",")) void updateCategory(category, { aliases: values }); }}/></label><label>合并至<ChoiceSelect label="合并至" value={mergeTarget[category.id] || ""} onChange={(value) => setMergeTarget((current) => ({ ...current, [category.id]: value }))} placeholder="选择同频道同类型目标" options={[{value:"",label:"选择同频道同类型目标"},...categories.filter((item) => item.id !== category.id && item.channel === category.channel && item.kind === category.kind && item.active).map((item) => ({value:String(item.id),label:item.name}))]}/></label><button className="soft-button" disabled={saving === `category-${category.id}` || !mergeTarget[category.id]} onClick={() => void mergeCategory(category)}>合并并保留历史关联</button></div></details>}</article>)}</div> : <p className="moderation-empty">正在加载动态分类…</p>}

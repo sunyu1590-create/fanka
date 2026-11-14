@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, ChevronRight, CreditCard, FileCheck, Flag, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, CreditCard, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
@@ -29,8 +29,10 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "membership";
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "exploration-ad" | "membership";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
+type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
+type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
 
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
@@ -55,6 +57,9 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
   { title: "AI 内容运营", modules: [
     { id: "ai-space", title: "AI 专区管理", description: "审核资源、管理精选与分类标签", icon: Sparkles },
   ] },
+  { title: "运营配置", modules: [
+    { id: "exploration-ad", title: "探索中心广告位", description: "设置探索中心底部的图文入口", icon: Megaphone },
+  ] },
 ];
 const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   reports: "内容举报",
@@ -69,6 +74,7 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   "ai-space": "AI 专区管理",
   appeals: "申诉处理",
   membership: "会员与赞助",
+  "exploration-ad": "探索中心广告位",
 };
 
 function CollapsibleMarkdown({ source, label }: { source: string; label: string }) {
@@ -122,6 +128,12 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const [restrictionReason, setRestrictionReason] = useState("");
   const [restrictionDuration, setRestrictionDuration] = useState<"1h" | "24h" | "7d" | "30d" | "permanent">("24h");
   const [governanceRefreshKey, setGovernanceRefreshKey] = useState(0);
+  const [explorationAd, setExplorationAd] = useState<ExplorationAdSettings | null>(null);
+  const [explorationAdPostRef, setExplorationAdPostRef] = useState("");
+  const [explorationAdBusy, setExplorationAdBusy] = useState(false);
+  const [explorationAdQuery, setExplorationAdQuery] = useState("");
+  const [explorationAdCandidates, setExplorationAdCandidates] = useState<ExplorationAdCandidate[]>([]);
+  const [explorationAdSearchBusy, setExplorationAdSearchBusy] = useState(false);
 
   const loadTopicEvents = useCallback(async () => {
     setTopicEventBusy(true); setError("");
@@ -141,6 +153,25 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setAiSettingsBusy(false); }
   }, []);
   useEffect(() => { if (section === "ai-settings") void loadAiSettings(); }, [section, loadAiSettings]);
+  const loadExplorationAd = useCallback(async () => {
+    setExplorationAdBusy(true); setError("");
+    try {
+      const result = await cloudRequest("/api/v1/admin/exploration-ad") as ExplorationAdSettings;
+      setExplorationAd({ ...result, enabled: Boolean(result.enabled), kind: result.kind === "image" ? "image" : "text" });
+      setExplorationAdPostRef(result.post_client_id ? String(result.post_client_id) : result.post_id || "");
+    } catch (e) { setError(e instanceof Error ? e.message : "广告位配置读取失败"); }
+    finally { setExplorationAdBusy(false); }
+  }, []);
+  useEffect(() => { if (section === "exploration-ad") void loadExplorationAd(); }, [section, loadExplorationAd]);
+  const searchExplorationAdPosts = async () => {
+    if (explorationAdQuery.trim().length < 2) { setError("请输入至少 2 个字搜索作品"); return; }
+    setExplorationAdSearchBusy(true); setError("");
+    try {
+      const result = await cloudRequest(`/api/v1/admin/exploration-ad/posts?q=${encodeURIComponent(explorationAdQuery.trim())}`) as { items: ExplorationAdCandidate[] };
+      setExplorationAdCandidates(result.items || []);
+    } catch (e) { setError(userMessage(e, "作品搜索失败，请重试")); }
+    finally { setExplorationAdSearchBusy(false); }
+  };
   const saveAiSettings = async (event: FormEvent) => {
     event.preventDefault();
     if (!aiKey.trim()) { setError("请输入 DeepSeek API 密钥"); return; }
@@ -313,6 +344,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     if (section === "users") void loadUsers();
     else if (section === "topic-events") void loadTopicEvents();
     else if (section === "ai-settings") void loadAiSettings();
+    else if (section === "exploration-ad") void loadExplorationAd();
     else if (section === "appeals") setGovernanceRefreshKey((value) => value + 1);
     else if (section === "ai-space") setGovernanceRefreshKey((value) => value + 1);
     else if (section === "comments" || section === "keywords" || section === "audit") setGovernanceRefreshKey((value) => value + 1);
@@ -342,7 +374,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         {adminModuleGroups.map((group) => {
           const modules = group.modules.filter((module) => {
             if (role === "admin") return true;
-            if (["users", "membership", "ai-settings", "topic-events"].includes(module.id)) return false;
+            if (["users", "membership", "ai-settings", "topic-events", "exploration-ad"].includes(module.id)) return false;
             if (module.id === "keywords" && role !== "content_manager") return false;
             return true;
           });
@@ -363,7 +395,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </> : <div className="admin-workspace-nav">
       <button type="button" onClick={() => navigateAdminSection("overview")}><ArrowLeft size={16}/> 管理台</button>
       <span>{adminSectionTitles[section]}</span>
-      <button type="button" className="admin-workspace-refresh" aria-label={`刷新${adminSectionTitles[section]}`} onClick={refreshCurrent} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy}><RefreshCw size={15}/> 刷新</button>
+      <button type="button" className="admin-workspace-refresh" aria-label={`刷新${adminSectionTitles[section]}`} onClick={refreshCurrent} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy || explorationAdBusy || explorationAdSearchBusy}><RefreshCw size={15}/> 刷新</button>
     </div>}
     {section === "reports" && <div className="moderation-filters" role="group" aria-label="举报状态">
       {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
@@ -380,7 +412,38 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         {aiConfigured && <button type="button" className="soft-button" disabled={aiSettingsBusy} onClick={() => void removeAiSettings()}>删除云端密钥</button>}
         <small>推荐仅在可信设备上操作。更换后所有用户的 AI 创作工作台会立即使用新密钥。</small>
       </form>
-    </> : section === "topic-events" ? <>
+    </> : section === "exploration-ad" ? <form className="admin-topic-event-form admin-ai-settings" onSubmit={async (event) => {
+      event.preventDefault();
+      if (!explorationAd) return;
+      if (explorationAd.enabled && (!explorationAd.title.trim() || !explorationAdPostRef.trim() || (explorationAd.kind === "image" && !explorationAd.image_url?.startsWith("https://")))) {
+        setError("启用广告位需要标题、有效作品编号；图片形式还需要 HTTPS 图片地址。"); return;
+      }
+      setExplorationAdBusy(true); setError(""); setNotice("");
+      try {
+        const saved = await cloudRequest("/api/v1/admin/exploration-ad", {
+          enabled: explorationAd.enabled, kind: explorationAd.kind, title: explorationAd.title.trim(), body: explorationAd.body.trim(),
+          image_url: explorationAd.kind === "image" ? explorationAd.image_url?.trim() || null : null, post_ref: explorationAdPostRef.trim(),
+        }, "PATCH") as ExplorationAdSettings;
+        setExplorationAd(saved); setExplorationAdPostRef(saved.post_client_id ? String(saved.post_client_id) : saved.post_id || "");
+        setNotice(saved.enabled ? "探索中心广告位已保存并启用。" : "探索中心广告位已保存并关闭。");
+      } catch (e) { setError(userMessage(e, "广告位保存失败，请检查目标作品编号与管理员权限。")); }
+      finally { setExplorationAdBusy(false); }
+    }}>
+      <div className="admin-topic-event-form-heading"><div><small>EXPLORE / PROMOTION</small><h2>探索中心广告位</h2></div><span className={`admin-ai-status${explorationAd?.enabled ? " configured" : ""}`}>{explorationAdBusy ? "同步中" : explorationAd?.enabled ? "展示中" : "已关闭"}</span></div>
+      {!explorationAd && explorationAdBusy ? <p>正在读取服务端配置…</p> : explorationAd ? <>
+        <p>广告卡片仅显示在探索中心底部，可展示文字或图片，并跳转至一篇已发布作品。关闭后用户端不显示。</p>
+        <label className="admin-exploration-ad-switch"><input type="checkbox" checked={explorationAd.enabled} onChange={(event) => setExplorationAd({ ...explorationAd, enabled: event.target.checked })}/>启用广告位</label>
+        <label>展示形式<ChoiceSelect label="广告展示形式" value={explorationAd.kind} onChange={(value) => setExplorationAd({ ...explorationAd, kind: value as "text" | "image" })} options={[{ value: "text", label: "文字" }, { value: "image", label: "图片 + 文字" }]}/></label>
+        <label>标题<input maxLength={80} value={explorationAd.title} onChange={(event) => setExplorationAd({ ...explorationAd, title: event.target.value })} /></label>
+        <label>说明<textarea maxLength={300} value={explorationAd.body} onChange={(event) => setExplorationAd({ ...explorationAd, body: event.target.value })} /></label>
+        {explorationAd.kind === "image" && <label>图片 HTTPS 地址<input type="url" maxLength={2048} value={explorationAd.image_url || ""} onChange={(event) => setExplorationAd({ ...explorationAd, image_url: event.target.value })} placeholder="https://…" /></label>}
+        <label>目标作品 client_id 或 UUID<input maxLength={80} value={explorationAdPostRef} onChange={(event) => setExplorationAdPostRef(event.target.value)} placeholder="可以手动填写编号" /></label>
+        <div className="admin-user-search"><input aria-label="按标题搜索公开作品" maxLength={60} value={explorationAdQuery} onChange={(event) => setExplorationAdQuery(event.target.value)} placeholder="按作品标题查找公开作品"/><button type="button" className="soft-button" disabled={explorationAdSearchBusy || explorationAdQuery.trim().length < 2} onClick={() => void searchExplorationAdPosts()}>{explorationAdSearchBusy ? "搜索中…" : "搜索作品"}</button></div>
+        {explorationAdCandidates.length > 0 && <div className="admin-user-list">{explorationAdCandidates.map((post) => <button type="button" className="admin-user-row" key={post.id} onClick={() => setExplorationAdPostRef(String(post.client_id))}><span className="admin-user-copy"><strong>{post.title}</strong><small>{post.author} · client_id {post.client_id}</small></span><span className="admin-ai-status">选择</span></button>)}</div>}
+        <small>服务端会校验管理员权限及目标作品公开状态，不会生成假统计或本地跳转。</small>
+        <button className="primary-button full" disabled={explorationAdBusy || !explorationAd || (explorationAd.enabled && (!explorationAd.title.trim() || !explorationAdPostRef.trim() || (explorationAd.kind === "image" && !explorationAd.image_url?.startsWith("https://"))))}>{explorationAdBusy ? "正在保存…" : "保存配置"}</button>
+      </> : <p>无法读取广告位配置，请刷新重试。</p>}
+    </form> : section === "topic-events" ? <>
       <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
         <div className="admin-topic-event-form-heading"><div><small>COMMUNITY / OPEN CALL</small><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
         <label>关联话题<ChoiceSelect label="关联话题" value={eventTopic} onChange={setEventTopic} placeholder="选择一个话题" options={[{value:"",label:"选择一个话题"},...topicTags.map((topic) => ({value:String(topic.id),label:`#${topic.name}`}))]}/></label>

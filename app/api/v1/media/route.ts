@@ -91,26 +91,29 @@ export async function POST(req: NextRequest) {
     if (!(file instanceof File)) throw new ApiError(400, "请选择图片");
     await validImage(file);
     const revisionMode = form.has("revision_post_id");
-    const postId = uuid(revisionMode ? form.get("revision_post_id") : form.get("post_id"), revisionMode ? "内容" : "草稿");
+    const stagingMode = !revisionMode && !form.has("post_id") && form.get("staging") === "1";
+    const postId = stagingMode ? null : uuid(revisionMode ? form.get("revision_post_id") : form.get("post_id"), revisionMode ? "内容" : "草稿");
     const uploadId = uuid(form.get("upload_id"), "上传编号");
     const sortOrder = Number(form.get("sort_order") || 0);
     if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 8) throw new ApiError(400, "图片顺序无效");
-    const { data: post, error: postError } = await db.from("posts").select("id,status").eq("id", postId).eq("author_id", user!.id).single();
-    dbError(postError);
-    if (!post || (revisionMode ? post.status !== "published" : !["draft", "pending_review", "published", "hidden"].includes(post.status))) throw new ApiError(403, "无权为此内容上传图片");
+    if (postId) {
+      const { data: post, error: postError } = await db.from("posts").select("id,status").eq("id", postId).eq("author_id", user!.id).single();
+      dbError(postError);
+      if (!post || (revisionMode ? post.status !== "published" : !["draft", "pending_review", "published", "hidden"].includes(post.status))) throw new ApiError(403, "无权为此内容上传图片");
+    }
 
     const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
     const paths = imagePaths(`${user!.id}/${uploadId}.${ext}`);
     const { data: linked, error: linkedError } = await db.from("post_media").select("post_id,thumbnail_path,retina_thumbnail_path").eq("storage_path", paths.original).maybeSingle();
     dbError(linkedError);
-    if (revisionMode && linked) throw new ApiError(409, "图片已关联公开内容，请重新选择后再上传");
+    if ((revisionMode || stagingMode) && linked) throw new ApiError(409, "图片已关联其他内容，请重新选择后再上传");
     if (linked?.post_id && linked.post_id !== postId) throw new ApiError(409, "该图片已关联其他内容");
     if (linked?.post_id === postId && linked.thumbnail_path && linked.retina_thumbnail_path) {
       const { error } = await db.from("post_media").update({ sort_order: sortOrder }).eq("post_id", postId).eq("storage_path", paths.original);
       dbError(error);
       return { path: paths.original, thumbnail_path: linked.thumbnail_path, retina_thumbnail_path: linked.retina_thumbnail_path };
     }
-    if (!revisionMode && !linked) {
+    if (postId && !revisionMode && !stagingMode && !linked) {
       const { count, error: countError } = await db.from("post_media").select("id", { count: "exact", head: true }).eq("post_id", postId);
       dbError(countError);
       if ((count || 0) >= 9) throw new ApiError(400, "一篇内容最多添加 9 张图片");
@@ -132,17 +135,22 @@ export async function POST(req: NextRequest) {
     const failedUpload = uploads.find((upload) => upload.error);
     if (failedUpload?.error) dbError(failedUpload.error);
     if (revisionMode) return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina };
+    // Save selected media as an authenticated, unlinked object. The publish API
+    // attaches it only when the user submits the content.
+    if (stagingMode) return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, staged: true };
+    const linkedPostId = postId;
+    if (!linkedPostId) throw new ApiError(400, "内容编号无效");
 
     const mediaValues = { thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, sort_order: sortOrder };
-    if (linked?.post_id === postId) {
-      const { error } = await db.from("post_media").update(mediaValues).eq("post_id", postId).eq("storage_path", paths.original);
+    if (linked?.post_id === linkedPostId) {
+      const { error } = await db.from("post_media").update(mediaValues).eq("post_id", linkedPostId).eq("storage_path", paths.original);
       dbError(error);
     } else {
-      const { error: linkError } = await db.from("post_media").insert({ post_id: postId, storage_path: paths.original, ...mediaValues });
+      const { error: linkError } = await db.from("post_media").insert({ post_id: linkedPostId, storage_path: paths.original, ...mediaValues });
       if (linkError) {
         const { data: retryLink } = await db.from("post_media").select("post_id").eq("storage_path", paths.original).maybeSingle();
-        if (retryLink?.post_id === postId) {
-          const { error } = await db.from("post_media").update(mediaValues).eq("post_id", postId).eq("storage_path", paths.original);
+        if (retryLink?.post_id === linkedPostId) {
+          const { error } = await db.from("post_media").update(mediaValues).eq("post_id", linkedPostId).eq("storage_path", paths.original);
           dbError(error);
         } else dbError(linkError);
       }
@@ -167,6 +175,11 @@ export async function DELETE(req: NextRequest) {
     const postId = body.post_id ? uuid(body.post_id, "草稿") : null;
     const { data: linked, error: linkedError } = await db.from("post_media").select("post_id,thumbnail_path,retina_thumbnail_path").eq("storage_path", path).maybeSingle();
     dbError(linkedError);
+    if (linked?.post_id) {
+      const { data: linkedPost, error: linkedPostError } = await db.from("posts").select("status").eq("id", linked.post_id).eq("author_id", user!.id).maybeSingle();
+      dbError(linkedPostError);
+      if (linkedPost?.status === "published") throw new ApiError(409, "已发布作品的图片不能作为草稿资源删除");
+    }
     if (linked?.post_id && postId !== linked.post_id) throw new ApiError(403, "图片与草稿不匹配");
     if (postId && !linked) {
       const { data: post, error } = await db.from("posts").select("id").eq("id", postId).eq("author_id", user!.id).maybeSingle();
