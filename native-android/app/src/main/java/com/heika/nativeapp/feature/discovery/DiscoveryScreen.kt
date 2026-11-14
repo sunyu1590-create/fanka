@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -67,11 +69,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import com.heika.nativeapp.data.FeedFilter
 import com.heika.nativeapp.data.HeikaCategory
@@ -104,18 +110,32 @@ fun DiscoveryScreen(
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedElementsEnabled: Boolean,
     viewModel: DiscoveryViewModel = hiltViewModel(),
+    adViewModel: DiscoveryAdViewModel = hiltViewModel(),
 ) {
     DisposableEffect(Unit) {
         Log.i("HEIKA_NATIVE", "renderer=compose screen=discovery")
         onDispose { }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val adState by adViewModel.state.collectAsStateWithLifecycle()
     val feedLayout by viewModel.feedLayout.collectAsStateWithLifecycle()
     val posts = viewModel.posts.collectAsLazyPagingItems()
     val communityGrid = rememberLazyStaggeredGridState()
     val aiGrid = rememberLazyStaggeredGridState()
     val badgeHazeState = rememberHazeState()
     val filter = state.filter
+    LaunchedEffect(adViewModel) { adViewModel.refresh() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var discoveryResumedOnce by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner, adViewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (discoveryResumedOnce) adViewModel.refresh() else discoveryResumedOnce = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val categories = if (filter.channel == "community") state.communityCategories else state.aiCategories
     val tags = if (filter.channel == "community") state.communityTags else state.aiTags
     var communityCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
@@ -259,7 +279,7 @@ fun DiscoveryScreen(
         val gridState = if (filter.channel == "community") communityGrid else aiGrid
         PullToRefreshBox(
             isRefreshing = posts.itemCount > 0 && posts.loadState.refresh is LoadState.Loading,
-            onRefresh = { posts.refresh() },
+            onRefresh = { posts.refresh(); adViewModel.refresh() },
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
             FeedGrid(
@@ -274,6 +294,8 @@ fun DiscoveryScreen(
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedElementsEnabled = sharedElementsEnabled,
+                ad = if (filter.channel == "community") adState.ad else null,
+                adUnavailable = filter.channel == "community" && adState.unavailable,
             )
         }
     }
@@ -382,6 +404,44 @@ private fun SortTab(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun DiscoveryAdCard(ad: DiscoveryAd, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(HeikaRadii.surface)
+    val imagePainter = ad.imageUrl?.takeIf { ad.kind == "image" }?.let { image ->
+        rememberAsyncImagePainter(
+            model = ImageRequest.Builder(LocalContext.current).data(image).crossfade(true).build(),
+            imageLoader = LocalHeikaImageLoader.current,
+        )
+    }
+    val imageState = imagePainter?.state?.collectAsStateWithLifecycle()?.value
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .5f), shape)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("广告", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+            Text(ad.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (ad.body.isNotBlank()) Text(ad.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("查看作品", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+        }
+        if (imageState is AsyncImagePainter.State.Success) {
+            Image(
+                painter = imagePainter,
+                contentDescription = "广告：${ad.title}",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(width = 88.dp, height = 76.dp).clip(RoundedCornerShape(9.dp)),
+            )
+        }
+        Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+    }
+}
+
+@Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
 internal fun FeedGrid(
     posts: androidx.paging.compose.LazyPagingItems<HeikaPost>,
@@ -395,6 +455,8 @@ internal fun FeedGrid(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedElementsEnabled: Boolean,
+    ad: DiscoveryAd? = null,
+    adUnavailable: Boolean = false,
 ) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(columns.coerceIn(1, 2)),
@@ -404,6 +466,12 @@ internal fun FeedGrid(
         horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalItemSpacing = 18.dp,
     ) {
+        if (ad != null) item(key = "discovery-ad", span = StaggeredGridItemSpan.FullLine) {
+            DiscoveryAdCard(ad, onClick = { onPost(ad.post) })
+        }
+        if (ad == null && adUnavailable) item(key = "discovery-ad-unavailable", span = StaggeredGridItemSpan.FullLine) {
+            Text("广告暂时无法加载", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+        }
         items(count = posts.itemCount, key = posts.itemKey { it.cloudId }) { index ->
             val post = posts[index] ?: return@items
             FeedCard(post, onClick = { onPost(post) }, hazeState = hazeState, sharedTransitionScope = sharedTransitionScope, animatedVisibilityScope = animatedVisibilityScope, sharedElementsEnabled = sharedElementsEnabled)

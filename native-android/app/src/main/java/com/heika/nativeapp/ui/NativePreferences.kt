@@ -9,6 +9,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 
@@ -26,6 +27,7 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val bodyTextSizeKey = stringPreferencesKey("body_text_size")
     private val titleTextSizeKey = stringPreferencesKey("title_text_size")
     private val searchHistoryKey = stringPreferencesKey("search_history")
+    private val networkNoticeVersionKey = stringPreferencesKey("network_notice_seen_version")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
@@ -72,5 +74,10 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
         }
     }
     suspend fun clearRecentSearches() { dataStore.edit { it.remove(searchHistoryKey) } }
+    suspend fun hasSeenNetworkNotice(version: String): Boolean =
+        dataStore.data.map { it[networkNoticeVersionKey] == version }.first()
+    suspend fun markNetworkNoticeSeen(version: String) {
+        dataStore.edit { it[networkNoticeVersionKey] = version }
+    }
 
 }

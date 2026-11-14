@@ -35,13 +35,6 @@ data class MissionItem(
 
 data class ExperienceEvent(val type: String, val points: Int, val createdAt: String)
 
-data class ExplorationAd(
-    val title: String,
-    val body: String,
-    val imageUrl: String?,
-    val post: HeikaPost,
-)
-
 data class ExplorationCenterState(
     val accountId: String? = null,
     val loading: Boolean = true,
@@ -53,7 +46,6 @@ data class ExplorationCenterState(
     val experience: Int = 0,
     val claimedLevels: Set<Int> = emptySet(),
     val events: List<ExperienceEvent> = emptyList(),
-    val ad: ExplorationAd? = null,
     val busyMission: String? = null,
     val busyLevel: Int? = null,
     val error: String? = null,
@@ -105,7 +97,9 @@ class ExplorationViewModel @Inject constructor(
 
     private fun loadFor(userId: String, force: Boolean) = viewModelScope.launch {
         if (!force && loadingUserId == userId) return@launch
-        if (!force && mutableState.value.accountId == userId && mutableState.value.error == null && System.currentTimeMillis() - (lastLoadedAtByUser[userId] ?: 0L) < 45_000L) return@launch
+        if (!force && mutableState.value.accountId == userId && mutableState.value.error == null && System.currentTimeMillis() - (lastLoadedAtByUser[userId] ?: 0L) < 45_000L) {
+            return@launch
+        }
         loadingUserId = userId
         val requestGeneration = ++generation
         if (mutableState.value.accountId != userId) mutableState.value = ExplorationCenterState(accountId = userId)
@@ -153,19 +147,6 @@ class ExplorationViewModel @Inject constructor(
             mutableState.value = next
             repository.saveExplorationSnapshot(userId, encodeSnapshot(next, missionsJson, progressionJson, calendarJson))
             lastLoadedAtByUser[userId] = System.currentTimeMillis()
-            viewModelScope.launch {
-                val configured = runCatching { repository.explorationAd() }.getOrNull()
-                val ad = configured?.takeIf { it.optBoolean("enabled") }?.let { value ->
-                    val postId = value.optString("post_id")
-                    val title = value.optString("title").takeIf(String::isNotBlank)
-                    if (postId.isBlank() || title == null) null else runCatching { repository.postDetailByKey(postId) }.getOrNull()?.let { post ->
-                        ExplorationAd(title, value.optString("body"), value.optString("image_url").takeIf(String::isNotBlank), post)
-                    }
-                }
-                if (activeUserId == userId && generation == requestGeneration && mutableState.value.accountId == userId) {
-                    mutableState.update { it.copy(ad = ad) }
-                }
-            }
         } catch (error: Exception) {
             if (activeUserId == userId && requestGeneration == generation) {
                 mutableState.update { it.copy(loading = false, refreshing = false, error = error.message ?: "探索数据加载失败") }

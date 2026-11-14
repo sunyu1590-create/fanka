@@ -1,6 +1,7 @@
 package com.heika.nativeapp.feature.detail
 
 import com.heika.nativeapp.ui.HeikaAlertDialog
+import com.heika.nativeapp.ui.HeikaGlassDialog
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
 
@@ -15,6 +16,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,6 +36,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,7 +55,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -75,7 +79,10 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -99,6 +106,7 @@ import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.LocalHeikaBodyTextScale
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaGlassSurface
+import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
 import com.heika.nativeapp.ui.sharedImageKey
@@ -181,9 +189,24 @@ fun PostDetailScreen(
         BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, centeredTitleSize = 18.sp, trailing = {
             Box {
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
-                DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
-                    val current = state.post
-                    if (current != null) {
+                BackHandler(enabled = moreOpen) { moreOpen = false }
+                val current = state.post
+                if (moreOpen && current != null) Popup(
+                    alignment = Alignment.TopEnd,
+                    offset = IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
+                    onDismissRequest = { moreOpen = false },
+                    properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
+                ) {
+                    val menuShape = RoundedCornerShape(24.dp)
+                    HeikaGlassSurface(
+                        hazeState = hazeState,
+                        modifier = Modifier.widthIn(min = 220.dp, max = 250.dp).heightIn(max = 480.dp)
+                            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .55f), menuShape),
+                        shape = menuShape,
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                    Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                        Text("常用操作", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                         DropdownMenuItem(text = { Text("复制链接") }, leadingIcon = { Icon(HeikaIcons.Copy, null) }, onClick = {
                             moreOpen = false
                             val url = if (current.channel == "ai") "https://moonclean.shop/?aiPost=${current.id}&cloudId=${android.net.Uri.encode(current.cloudId)}" else "https://moonclean.shop/?post=${current.id}"
@@ -191,18 +214,27 @@ fun PostDetailScreen(
                             viewModel.showNotice("链接已复制")
                         })
                         DropdownMenuItem(text = { Text("分享内容") }, leadingIcon = { Icon(HeikaIcons.Share, null) }, onClick = { moreOpen = false; onShare(current) })
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                        Text("内容反馈", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                         DropdownMenuItem(text = { Text("内容反馈") }, leadingIcon = { Icon(HeikaIcons.Comment, null) }, onClick = { moreOpen = false; feedbackOpen = true })
                         DropdownMenuItem(text = { Text("举报内容") }, leadingIcon = { Icon(HeikaIcons.Report, null) }, onClick = { moreOpen = false; commentReport = null; reportOpen = true })
-                        current.tags.firstOrNull()?.let { topic ->
-                            DropdownMenuItem(text = { Text("减少话题推荐 · #$topic") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.muteTopic(topic) })
-                        }
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                        Text("个性化推荐", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        current.tags.firstOrNull()?.let { topic -> DropdownMenuItem(
+                            text = { Column { Text("减少话题推荐"); Text("#$topic", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } },
+                            leadingIcon = { Icon(HeikaIcons.Block, null) },
+                            onClick = { moreOpen = false; viewModel.muteTopic(topic) },
+                        ) }
                         if (current.authorId != null) {
-                            DropdownMenuItem(text = { Text("不感兴趣：减少此作者推荐") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.muteAuthor() })
+                            DropdownMenuItem(text = { Column { Text("不感兴趣"); Text("减少此作者推荐", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.muteAuthor() })
                             DropdownMenuItem(text = { Text("屏蔽作者") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.blockAuthor() })
                         }
                         if (state.currentUserId != null && state.currentUserId == current.authorId) {
-                            DropdownMenuItem(text = { Text("删除内容") }, leadingIcon = { Icon(HeikaIcons.Delete, null) }, onClick = { moreOpen = false; postDeleteConfirm = true })
+                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                            Text("危险操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.error.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            DropdownMenuItem(text = { Text("删除内容", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(HeikaIcons.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { moreOpen = false; postDeleteConfirm = true })
                         }
+                    }
                     }
                 }
             }
@@ -279,8 +311,7 @@ fun PostDetailScreen(
                         }
                         Text(item.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp * titleTextScale, lineHeight = 31.sp * titleTextScale, fontWeight = FontWeight.SemiBold)
                         Row(Modifier.fillMaxWidth().clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (!item.authorAvatar.isNullOrBlank()) AsyncImage(item.authorAvatar, "${item.author}头像", imageLoader = imageLoader, contentScale = ContentScale.Crop, modifier = Modifier.size(38.dp).clip(androidx.compose.foundation.shape.CircleShape))
-                            else Icon(HeikaIcons.Profile, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(38.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp))
+                            HeikaAvatar(item.authorAvatar, item.author, 38.dp, contentDescription = "${item.author}头像")
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 Text(item.author, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 Text(item.date, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 10.sp)
@@ -456,20 +487,25 @@ fun PostDetailScreen(
         )
     }
     commentDeleteConfirm?.let { comment ->
-        HeikaAlertDialog(
-            onDismissRequest = { commentDeleteConfirm = null },
-            title = { Text("删除评论？") },
-            text = { Text("该操作不可撤销。") },
-            confirmButton = { TextButton(enabled = !state.operationSending, onClick = { viewModel.deleteComment(comment.id); commentDeleteConfirm = null }) { Text("删除") } },
-            dismissButton = { TextButton(onClick = { commentDeleteConfirm = null }) { Text("取消") } },
+        HeikaGlassDialog(
+            title = "删除评论？",
+            message = "删除后无法恢复。",
+            confirmText = "删除",
+            destructive = true,
+            loading = state.operationSending,
+            onConfirm = { viewModel.deleteComment(comment.id); commentDeleteConfirm = null },
+            onCancel = { commentDeleteConfirm = null },
         )
     }
-    if (postDeleteConfirm) HeikaAlertDialog(
-        onDismissRequest = { if (!state.operationSending) postDeleteConfirm = false },
-        title = { Text("删除内容？") },
-        text = { Text("删除后内容将从社区移除，此操作不可撤销。") },
-        confirmButton = { TextButton(enabled = !state.operationSending, onClick = { viewModel.deletePost(onBack); postDeleteConfirm = false }) { Text(if (state.operationSending) "删除中…" else "删除") } },
-        dismissButton = { TextButton(enabled = !state.operationSending, onClick = { postDeleteConfirm = false }) { Text("取消") } },
+    if (postDeleteConfirm) HeikaGlassDialog(
+        title = "删除内容？",
+        message = "删除后内容将从社区移除，此操作不可撤销。",
+        confirmText = "删除",
+        destructive = true,
+        dismissible = !state.operationSending,
+        loading = state.operationSending,
+        onConfirm = { viewModel.deletePost(onBack); postDeleteConfirm = false },
+        onCancel = { postDeleteConfirm = false },
     )
     if (feedbackOpen) {
         HeikaAlertDialog(
@@ -526,8 +562,7 @@ private fun CommentRow(
 ) {
     val imageLoader = LocalHeikaImageLoader.current
     Row(modifier.fillMaxWidth().padding(start = if (reply) 4.dp else 0.dp), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.Top) {
-        if (!comment.authorAvatar.isNullOrBlank()) AsyncImage(comment.authorAvatar, "${comment.author}头像", imageLoader = imageLoader, contentScale = ContentScale.Crop, modifier = Modifier.size(if (reply) 28.dp else 36.dp).clip(androidx.compose.foundation.shape.CircleShape))
-        else Icon(HeikaIcons.Profile, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(if (reply) 28.dp else 36.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).padding(6.dp))
+        HeikaAvatar(comment.authorAvatar, comment.author, if (reply) 28.dp else 36.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(comment.author, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val bodyScale = LocalHeikaBodyTextScale.current

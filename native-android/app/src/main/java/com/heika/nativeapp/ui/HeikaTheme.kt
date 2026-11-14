@@ -13,6 +13,10 @@ import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Stable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -30,6 +34,21 @@ object HeikaRadii {
     val control = 10.dp
     val surface = 12.dp
     val dialog = 16.dp
+}
+
+/** Shared material and motion values for transient HEIKA glass surfaces. */
+object HeikaGlassTokens {
+    val dialogRadius = 28.dp
+    val menuRadius = 24.dp
+    val capsuleRadius = 26.dp
+    val borderWidth = .7.dp
+    val dialogBlurRadius = 36.dp
+    val menuBlurRadius = 18.dp
+    const val darkDialogGlassAlpha = .88f
+    const val lightDialogGlassAlpha = .90f
+    const val darkDialogAlpha = 1f
+    const val lightDialogAlpha = 1f
+    const val backdropDimAmount = .16f
 }
 
 private val HeikaShapes = Shapes(
@@ -88,6 +107,17 @@ object HeikaMotion {
 }
 
 val LocalHeikaDark = staticCompositionLocalOf { true }
+
+@Stable
+class HeikaModalBlurController {
+    var activeDialogs by mutableIntStateOf(0)
+        private set
+
+    fun acquire() { activeDialogs += 1 }
+    fun release() { activeDialogs = (activeDialogs - 1).coerceAtLeast(0) }
+}
+
+val LocalHeikaModalBlurController = staticCompositionLocalOf<HeikaModalBlurController?> { null }
 
 /** Fonts are bundled locally; selectable families are restricted to packaged resources. */
 object HeikaFontCatalog {

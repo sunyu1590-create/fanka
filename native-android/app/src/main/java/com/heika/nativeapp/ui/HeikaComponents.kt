@@ -160,6 +160,7 @@ fun GlassNavigationBar(
     onPublish: () -> Unit,
     modifier: Modifier = Modifier,
     blurEnabled: Boolean = true,
+    previewBackdropActive: Boolean = false,
 ) {
     val tabShape = RoundedCornerShape(36.dp)
     val dark = LocalHeikaDark.current
@@ -181,13 +182,13 @@ fun GlassNavigationBar(
                         state = hazeState,
                         style = HazeStyle(
                             backgroundColor = surface,
-                            tint = HazeTint(surface.copy(alpha = if (dark) .20f else .30f)),
-                            blurRadius = 24.dp,
+                            tint = HazeTint(surface.copy(alpha = if (previewBackdropActive) .08f else if (dark) .20f else .30f)),
+                            blurRadius = if (previewBackdropActive) 20.dp else 24.dp,
                             fallbackTint = HazeTint(surface.copy(alpha = if (dark) .82f else .90f)),
                         ),
                     ) else Modifier,
                 )
-                .background(surface.copy(alpha = if (dark) .34f else .48f), tabShape)
+                .background(surface.copy(alpha = if (previewBackdropActive) { if (dark) .24f else .36f } else if (dark) .34f else .48f), tabShape)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .56f else .46f), tabShape)
                 .padding(horizontal = 3.dp),
             verticalAlignment = Alignment.CenterVertically,

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ApiError, context, dbError, jsonBody, respond, uuid } from "@/lib/server/api";
+import { ApiError, config, context, dbError, jsonBody, respond, uuid } from "@/lib/server/api";
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -9,6 +9,20 @@ async function adminContext(req: NextRequest) {
   dbError(role.error);
   if (role.data?.role !== "admin") throw new ApiError(403, "需要管理员权限");
   return { db, user: user! };
+}
+
+function managedAdAssetPath(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const asset = new URL(value);
+    const supabaseOrigin = new URL(config().url).origin;
+    const marker = "/storage/v1/object/public/heika-ad-assets/";
+    if (asset.origin !== supabaseOrigin || !asset.pathname.includes(marker)) return null;
+    const path = decodeURIComponent(asset.pathname.slice(asset.pathname.indexOf(marker) + marker.length));
+    return /^admin\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(?:jpg|png|webp)$/i.test(path) ? path : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -68,6 +82,9 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    const previous = await db.from("exploration_ad_settings").select("image_url").eq("id", 1).single();
+    dbError(previous.error);
+
     const { data, error } = await db.from("exploration_ad_settings").update({
       enabled,
       kind,
@@ -79,6 +96,12 @@ export async function PATCH(req: NextRequest) {
       updated_by: user.id,
     }).eq("id", 1).select("id,enabled,kind,title,body,image_url,post_id,updated_at").single();
     dbError(error);
+    if (!data) throw new ApiError(500, "广告位保存后未返回配置");
+    const previousAsset = managedAdAssetPath(previous.data?.image_url);
+    if (previousAsset && previousAsset !== managedAdAssetPath(data.image_url)) {
+      const cleanup = await db.storage.from("heika-ad-assets").remove([previousAsset]);
+      if (cleanup.error) console.warn("[exploration-ad] stale image cleanup failed", cleanup.error.message);
+    }
     return { ...data, post_client_id: target?.client_id ?? null, post_status: target?.status ?? null };
   });
 }

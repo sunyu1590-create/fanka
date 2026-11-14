@@ -38,6 +38,10 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(38, "2026.11.14", listOf("翻卡揭晓改为实体卡片 3D 翻转，增加银白边缘光与空间层叠，并移除普通翻卡彩带。", "修复确认弹窗模糊降级；发现页文字广告不再留图片占位，管理员可从相册上传广告图片。")),
+    NativeRelease(37, "2026.11.14", listOf("中国网络提示改为优先读取本机运营商国家码，并直接查询公网 IP 归属地。", "修正聊天头像对齐与返回按钮颜色；优化翻卡背景模糊、压暗和庆祝动效。")),
+    NativeRelease(36, "2026.11.14", listOf("修复确认弹窗背景模糊兼容与内容透出问题，收窄详情操作菜单。", "广告位改为显示在发现页精选信息流中，点击进入关联作品。")),
+    NativeRelease(35, "2026.11.13", listOf("加入网络环境提示，完善跨境服务不稳定时的说明。", "更新黑卡品牌图标与关于页展示。")),
     NativeRelease(34, "2026.11.13", listOf("个人页探索成长入口更紧凑；底部主导航改为仅图标。", "探索中心支持管理员配置可关闭的图文广告位。", "关于页加入原生版本更新记录，并完整展示黑卡图标留白。")),
     NativeRelease(33, "2026.11.13", listOf("内置 OPPO Sans 4.0 并保留字体许可文件。", "更新黑卡金色应用图标，优化底栏空间和发现页滚动绘制。")),
 )

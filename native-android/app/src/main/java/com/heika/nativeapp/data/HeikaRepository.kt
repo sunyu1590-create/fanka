@@ -497,6 +497,22 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/exploration-ad", method = "PATCH", body = values.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun uploadAdminExplorationAdImage(fileName: String, mimeType: String, bytes: ByteArray): JSONObject = withContext(Dispatchers.IO) {
+        require(bytes.size in 1..(4 * 1024 * 1024)) { "广告图片不能超过 4 MB" }
+        require(mimeType in setOf("image/jpeg", "image/png", "image/webp")) { "广告图片仅支持 JPG、PNG 或 WebP" }
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
+            .build()
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/admin/exploration-ad/image", "Bearer $token", body)
+        val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
+        if (!response.isSuccessful || root.has("error")) {
+            throw IOException(root.optString("error").ifBlank { "广告图片上传失败（${response.code()}）" })
+        }
+        (root.opt("data") as? JSONObject) ?: root
+    }
+
     suspend fun adminAiSettings(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/admin/ai-settings", authenticated = true) as? JSONObject ?: JSONObject()
     }

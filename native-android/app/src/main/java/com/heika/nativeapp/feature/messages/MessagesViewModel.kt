@@ -32,7 +32,9 @@ data class MessagesState(
     val activeId: String? = null,
     val activePeer: NativePeer? = null,
     val userId: String? = null,
+    val currentUserAvatarUrl: String? = null,
     val query: String = "",
+    val searchingPeople: Boolean = false,
     val draft: String = "",
     val loading: Boolean = true,
     val sending: Boolean = false,
@@ -53,6 +55,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     private val conversationMutex = Mutex()
     private var conversationGeneration = 0L
     private var retryReadFor: String? = null
+    private var avatarLookupAttemptedFor: String? = null
 
     init {
         viewModelScope.launch {
@@ -64,6 +67,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
                     conversationGeneration++
                     retryReadFor = null
                     observedUserId = session?.userId
+                    avatarLookupAttemptedFor = null
                     mutableState.value = MessagesState(loading = session != null, userId = session?.userId, error = if (session == null) "登录后查看私信" else null)
                     if (session != null) load()
                 }
@@ -87,6 +91,18 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
             if (mutableState.value.userId != requestUser) {
                 conversationGeneration++
                 mutableState.value = MessagesState(userId = requestUser, loading = true)
+            }
+            if (avatarLookupAttemptedFor != requestUser) {
+                avatarLookupAttemptedFor = requestUser
+                viewModelScope.launch {
+                    runCatching { repository.myProfile() }.onSuccess { data ->
+                        val profile = data.optJSONObject("profile") ?: data
+                        val avatar = profile.optString("avatar_url").takeIf(String::isNotBlank)
+                        if (runCatching { auth.current()?.userId }.getOrNull() == requestUser) {
+                            mutableState.update { if (it.userId == requestUser) it.copy(currentUserAvatarUrl = avatar) else it }
+                        }
+                    }
+                }
             }
             if (mutableState.value.conversations.isEmpty()) {
                 val cached = runCatching { repository.cachedInbox(requestUser) }.getOrNull()
@@ -193,21 +209,21 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     }
 
     fun search(query: String) {
-        mutableState.update { it.copy(query = query.take(60), error = null) }
+        mutableState.update { it.copy(query = query.take(60), people = emptyList(), error = null, searchingPeople = query.trim().length >= 2) }
         searchJob?.cancel()
-        if (query.trim().length < 2) { mutableState.update { it.copy(people = emptyList()) }; return }
+        if (query.trim().length < 2) { mutableState.update { it.copy(people = emptyList(), searchingPeople = false) }; return }
         val requested = query.trim().take(60)
         searchJob = viewModelScope.launch {
             delay(250)
             runCatching { repository.searchPeople(requested) }.onSuccess { data ->
                 if (mutableState.value.query.trim() != requested) return@onSuccess
                 val people = data.optJSONArray("items").jsonObjects().map(::parsePeer)
-                mutableState.update { it.copy(people = people) }
-            }.onFailure { error -> if (mutableState.value.query.trim() == requested) mutableState.update { it.copy(error = error.message ?: "用户搜索失败") } }
+                mutableState.update { it.copy(people = people, searchingPeople = false) }
+            }.onFailure { error -> if (mutableState.value.query.trim() == requested) mutableState.update { it.copy(searchingPeople = false, error = error.message ?: "用户搜索失败") } }
         }
     }
 
-    fun setQuery(query: String) = mutableState.update { it.copy(query = query.take(60), people = emptyList(), error = null) }
+    fun setQuery(query: String) = mutableState.update { it.copy(query = query.take(60), people = emptyList(), searchingPeople = false, error = null) }
 
     fun openPeer(peer: NativePeer) = viewModelScope.launch {
         if (openingPeerId == peer.id || mutableState.value.activePeer?.id == peer.id) return@launch

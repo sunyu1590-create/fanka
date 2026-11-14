@@ -51,6 +51,8 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import com.heika.nativeapp.ui.HeikaAvatar
+import com.heika.nativeapp.ui.HeikaGlassDialog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import androidx.lifecycle.ViewModel
@@ -116,7 +118,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        AsyncImage(profile.avatar, "个人头像", imageLoader = LocalHeikaImageLoader.current, contentScale = ContentScale.Crop, modifier = Modifier.size(88.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).clickable { imagePicker.launch("image/*") })
+                        HeikaAvatar(profile.avatar, profile.nickname, 88.dp, contentDescription = "个人头像", modifier = Modifier.clickable { imagePicker.launch("image/*") })
                         Text("更换头像 · JPEG / PNG / WebP，最大 2 MB", Modifier.clickable { imagePicker.launch("image/*") }.padding(10.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                     }
                 }
@@ -236,14 +238,14 @@ fun ManageWorksScreen(
         }
     }
     deleteTarget?.let { post ->
-        HeikaAlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("删除这篇作品？") },
-            text = { Text("“${post.title.ifBlank { "未命名内容" }}”将从账号中删除。此操作不可撤销。") },
-            confirmButton = {
-                TextButton(onClick = { viewModel.deleteOwnPost(post); deleteTarget = null }) { Text("确认删除", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
+        HeikaGlassDialog(
+            title = "删除这篇作品？",
+            message = "“${post.title.ifBlank { "未命名内容" }}”将从账号中删除。此操作不可撤销。",
+            confirmText = "删除",
+            destructive = true,
+            loading = state.saving,
+            onConfirm = { viewModel.deleteOwnPost(post); deleteTarget = null },
+            onCancel = { deleteTarget = null },
         )
     }
 }

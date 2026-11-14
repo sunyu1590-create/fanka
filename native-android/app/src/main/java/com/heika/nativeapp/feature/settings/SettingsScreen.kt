@@ -1,6 +1,7 @@
 package com.heika.nativeapp.feature.settings
 
 import com.heika.nativeapp.ui.HeikaAlertDialog
+import com.heika.nativeapp.ui.HeikaGlassDialog
 
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.HeikaIconRes
@@ -305,20 +306,22 @@ fun SettingsDetailScreen(
         }
     }
     pendingNotesPrivate?.let { value ->
-        HeikaAlertDialog(
-            onDismissRequest = { pendingNotesPrivate = null },
-            title = { Text("更新作品可见范围？") },
-            text = { Text(if (value) "已发布作品及关联媒体将设为仅自己可见。" else "已发布作品将按社区规则公开展示。") },
-            confirmButton = { TextButton(onClick = { viewModel.setNotesPrivate(value); pendingNotesPrivate = null }) { Text("确认") } },
-            dismissButton = { TextButton(onClick = { pendingNotesPrivate = null }) { Text("取消") } },
+        HeikaGlassDialog(
+            title = "更新作品可见范围？",
+            message = if (value) "已发布作品及关联媒体将设为仅自己可见。" else "已发布作品将按社区规则公开展示。",
+            confirmText = "确认",
+            onConfirm = { viewModel.setNotesPrivate(value); pendingNotesPrivate = null },
+            onCancel = { pendingNotesPrivate = null },
         )
     }
-    if (recoveryConfirm) HeikaAlertDialog(
-        onDismissRequest = { recoveryConfirm = false },
-        title = { Text("生成新的恢复码？") },
-        text = { Text("这会立即使之前生成的恢复码失效。新恢复码只显示一次，请安全保存。") },
-        confirmButton = { TextButton(enabled = !recoveryCodesLoading, onClick = { recoveryConfirm = false; viewModel.generateRecoveryCodes() }) { Text("生成") } },
-        dismissButton = { TextButton(onClick = { recoveryConfirm = false }) { Text("取消") } },
+    if (recoveryConfirm) HeikaGlassDialog(
+        title = "生成新的恢复码？",
+        message = "这会立即使之前生成的恢复码失效。新恢复码只显示一次，请安全保存。",
+        confirmText = "生成",
+        dismissible = !recoveryCodesLoading,
+        loading = recoveryCodesLoading,
+        onConfirm = { viewModel.generateRecoveryCodes(); recoveryConfirm = false },
+        onCancel = { recoveryConfirm = false },
     )
     if (recoveryCodesOpen) HeikaAlertDialog(
         onDismissRequest = { recoveryCodesOpen = false; viewModel.clearRecoveryCodes() },

@@ -1,8 +1,5 @@
 package com.heika.nativeapp.ui
 
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.fadeIn
@@ -14,6 +11,8 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,10 +37,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -93,13 +92,15 @@ import dev.chrisbanes.haze.rememberHazeState
 fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade") {
     CompositionLocalProvider(LocalHeikaImageLoader provides imageLoader) {
         val context = LocalContext.current
+        val networkRegionNoticeViewModel: NetworkRegionNoticeViewModel = hiltViewModel()
+        val networkRegionWarning by networkRegionNoticeViewModel.warning.collectAsState()
         val nav = rememberNavController()
         val hazeState = rememberHazeState()
-        val modalBackdropCount = remember { mutableIntStateOf(0) }
-        val modalBlurRadius by animateDpAsState(
-            targetValue = if (modalBackdropCount.intValue > 0) 9.dp else 0.dp,
-            animationSpec = tween(210),
-            label = "modal-backdrop-blur",
+        val modalBlurController = remember { HeikaModalBlurController() }
+        val modalBackdropRadius by animateDpAsState(
+            targetValue = if (modalBlurController.activeDialogs > 0) 18.dp else 0.dp,
+            animationSpec = tween(220, easing = HeikaMotion.standard),
+            label = "modal-backdrop-gaussian-blur",
         )
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
@@ -115,6 +116,17 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
         val topLevelRoute = route in setOf("home", "discovery", "messages", "profile")
         val mainTabRoutes = setOf("home", "discovery", "messages", "profile")
         var mainTabSwitchActive by remember { mutableStateOf(false) }
+        var networkNoticeCountdown by remember { mutableIntStateOf(2) }
+        LaunchedEffect(networkRegionNoticeViewModel) { networkRegionNoticeViewModel.checkNetworkRegion() }
+        LaunchedEffect(networkRegionWarning) {
+            if (networkRegionWarning != null) {
+                networkNoticeCountdown = 2
+                delay(1_000)
+                networkNoticeCountdown = 1
+                delay(1_000)
+                networkNoticeCountdown = 0
+            }
+        }
         LaunchedEffect(mainTabSwitchActive, route) {
             if (mainTabSwitchActive && route in mainTabRoutes) {
                 delay((HeikaMotion.transition + 60).toLong())
@@ -138,17 +150,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                 openDestination(post.destination())
             }
         }
-        CompositionLocalProvider(LocalHeikaModalBackdropCount provides modalBackdropCount) {
+        CompositionLocalProvider(LocalHeikaModalBlurController provides modalBlurController) {
         Box(
             Modifier.fillMaxSize()
+                .heikaGaussianBlur(modalBackdropRadius, enabled = modalBackdropRadius > 0.dp)
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .graphicsLayer {
-                    val radiusPx = modalBlurRadius.toPx()
-                    renderEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && radiusPx > 0f) {
-                        RenderEffect.createBlurEffect(radiusPx, radiusPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
-                    } else null
-                },
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
         ) {
             Box(
                 Modifier.fillMaxSize().hazeSource(hazeState),
@@ -255,6 +262,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         onLogin = { nav.navigate("account") },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onConversationChange = { chatConversationOpen = it },
+                        hazeState = hazeState,
                     )
                 }
                 composable("profile") {
@@ -472,7 +480,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         onCalendar = { nav.navigate("exploration/calendar") },
                         onCoExplore = { nav.navigate("exploration/co-explore?inviteCode=") },
                         onStoryChains = { nav.navigate("exploration/chains-graph") },
-                        onPost = openPost,
                     )
                 }
                 composable("exploration/tasks") {
@@ -577,7 +584,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                     },
                     onPublish = { openDestination(HeikaDestination.Publish) },
                     modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
-                    blurEnabled = !homePreviewActive,
+                    blurEnabled = true,
+                    previewBackdropActive = homePreviewActive,
                 )
             }
             ForegroundNoticeHost(
@@ -591,6 +599,28 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                     }
                 },
             )
+            if (networkRegionWarning != null) {
+                HeikaAlertDialog(
+                    onDismissRequest = {},
+                    properties = DialogProperties(
+                        dismissOnBackPress = false,
+                        dismissOnClickOutside = false,
+                        usePlatformDefaultWidth = true,
+                    ),
+                    title = { Text("网络环境提示") },
+                    text = {
+                        Text("检测到您当前的网络可能位于中国大陆。黑卡服务目前部署在境外，跨境连接可能不稳定，造成登录状态异常、内容加载失败或数据更新不同步，少数情况下也可能导致应用异常退出。\n\n建议切换至稳定的境外网络（例如连接 VPN）后重新打开 App。您也可以继续访问，但部分功能可能无法正常使用。")
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = networkNoticeCountdown == 0,
+                            onClick = networkRegionNoticeViewModel::continueIntoApp,
+                        ) {
+                            Text(if (networkNoticeCountdown > 0) "继续访问（$networkNoticeCountdown）" else "继续访问")
+                        }
+                    },
+                )
+            }
         }
         }
     }

@@ -61,6 +61,7 @@ import coil3.compose.AsyncImage
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import com.heika.nativeapp.ui.HeikaAvatar
 
 private val searchKinds = listOf("all" to "综合", "content" to "内容", "people" to "用户", "topics" to "话题", "ai" to "AI 资源")
 
@@ -358,10 +359,7 @@ private fun PersonResultRow(person: SearchPerson, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        if (person.avatar != null) AsyncImage(person.avatar, "${person.name}头像", imageLoader = LocalHeikaImageLoader.current, modifier = Modifier.size(43.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-        else Box(Modifier.size(43.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            Text(person.name.take(1), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-        }
+        HeikaAvatar(person.avatar, person.name, 44.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(person.name, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(person.bio.ifBlank { "黑卡用户" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

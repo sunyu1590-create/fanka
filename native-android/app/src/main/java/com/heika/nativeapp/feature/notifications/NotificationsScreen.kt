@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +49,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.heika.nativeapp.HeikaApplication
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.HeikaAvatar
 
 @Composable
 fun NotificationsScreen(
@@ -60,6 +62,17 @@ fun NotificationsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var permissionRefresh by remember { mutableIntStateOf(0) }
+    var selectedFilter by remember { mutableStateOf("all") }
+    val filteredItems = remember(state.items, selectedFilter) {
+        state.items.filter { item ->
+            when (selectedFilter) {
+                "social" -> item.type in setOf("comment", "reply", "like", "bookmark")
+                "moderation" -> item.type == "moderation"
+                "unread" -> item.readAt == null
+                else -> true
+            }
+        }
+    }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionRefresh++ }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) permissionRefresh++ }
@@ -79,6 +92,24 @@ fun NotificationsScreen(
                 Text("最近动态", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
             }
             if (state.unread > 0) Text("全部已读", Modifier.clickable(onClick = viewModel::markAllRead).padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            listOf("all" to "全部", "social" to "互动", "moderation" to "审核", "unread" to "未读").forEach { (key, label) ->
+                val selected = selectedFilter == key
+                Text(
+                    label,
+                    Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .14f) else MaterialTheme.colorScheme.surface.copy(alpha = .42f))
+                        .clickable { selectedFilter = key }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                )
+            }
         }
         SystemPermissionNotice(context = context, refreshKey = permissionRefresh, onRequest = {
             if (Build.VERSION.SDK_INT >= 33) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -101,14 +132,23 @@ fun NotificationsScreen(
                 Icon(HeikaIcons.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
                 Text("暂时没有新通知", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
+            filteredItems.isEmpty() -> Text(
+                if (selectedFilter == "unread") "没有未读通知" else "该分类暂无通知",
+                Modifier.fillMaxWidth().padding(35.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+            )
             else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                items(state.items, key = { it.id }) { item ->
-                    NotificationRow(item, onClick = {
-                        if (item.readAt == null) viewModel.markRead(item.id)
-                        item.postId?.let { onContent(it, true) } ?: item.actorId?.let { onContent(it, false) }
-                    })
+                items(filteredItems, key = { it.id }) { item ->
+                    Column {
+                        NotificationRow(item, onClick = {
+                            if (item.readAt == null) viewModel.markRead(item.id)
+                            item.postId?.let { onContent(it, true) } ?: item.actorId?.let { onContent(it, false) }
+                        })
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 72.dp, end = 18.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f), thickness = .5.dp)
+                    }
                 }
-                item { Text("目前显示最近 ${state.items.size} 条通知", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+                item { Text("目前显示 ${filteredItems.size} 条通知", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
             }
         }
     }
@@ -144,14 +184,12 @@ fun SystemPermissionNotice(context: Context, refreshKey: Int = 0, onRequest: () 
 private fun NotificationRow(item: com.heika.nativeapp.data.HeikaNotification, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
-            .background(if (item.readAt == null) MaterialTheme.colorScheme.surface.copy(alpha = .62f) else MaterialTheme.colorScheme.background)
-            .padding(horizontal = 20.dp, vertical = 15.dp),
+            .background(if (item.readAt == null) MaterialTheme.colorScheme.surface.copy(alpha = .30f) else MaterialTheme.colorScheme.background)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.size(39.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            Text(item.actorName.take(1), color = MaterialTheme.colorScheme.primary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        }
+        HeikaAvatar(item.actorAvatar, item.actorName, 40.dp, contentDescription = "${item.actorName}头像")
         Column(Modifier.weight(1f)) {
             val action = when (item.type) {
                 "comment" -> "评论了你的作品"

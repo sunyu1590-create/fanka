@@ -65,6 +65,7 @@ import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import com.heika.nativeapp.ui.HeikaAvatar
 
 private val ProfileTabs = listOf("我的作品" to "works", "我的收藏" to "bookmarks", "我的点赞" to "liked")
 
@@ -173,7 +174,7 @@ fun ProfileScreen(
                 item(span = StaggeredGridItemSpan.FullLine) {
                     Column {
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                            AsyncImage(profile.avatar, contentDescription = "${profile.nickname}头像", imageLoader = LocalHeikaImageLoader.current, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant))
+                            HeikaAvatar(profile.avatar, profile.nickname, 56.dp, contentDescription = "${profile.nickname}头像")
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Text(profile.nickname, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

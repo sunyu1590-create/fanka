@@ -1,7 +1,12 @@
 package com.heika.nativeapp.feature.settings
 
 import com.heika.nativeapp.ui.HeikaAlertDialog
+import com.heika.nativeapp.ui.HeikaGlassDialog
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,23 +35,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 
 @Composable
 fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hiltViewModel()) {
@@ -111,20 +127,24 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
         }
     }
     pendingKeywordDelete?.let { rule ->
-        HeikaAlertDialog(
-            onDismissRequest = { pendingKeywordDelete = null },
-            title = { Text("删除关键词规则？") },
-            text = { Text("“${rule.optString("keyword")}”将不再被服务端拦截。") },
-            confirmButton = { TextButton(enabled = state.saving == null, onClick = { viewModel.deleteKeyword(rule.optString("id")); pendingKeywordDelete = null }) { Text("删除") } },
-            dismissButton = { TextButton(onClick = { pendingKeywordDelete = null }) { Text("取消") } },
+        HeikaGlassDialog(
+            title = "删除关键词规则？",
+            message = "“${rule.optString("keyword")}”将不再被服务端拦截。",
+            confirmText = "删除",
+            destructive = true,
+            loading = state.saving != null,
+            onConfirm = { viewModel.deleteKeyword(rule.optString("id")); pendingKeywordDelete = null },
+            onCancel = { pendingKeywordDelete = null },
         )
     }
-    if (pendingAiKeyDelete) HeikaAlertDialog(
-        onDismissRequest = { pendingAiKeyDelete = false },
-        title = { Text("删除 AI 密钥？") },
-        text = { Text("删除后，依赖该密钥的 AI 工作台将暂停服务。") },
-        confirmButton = { TextButton(onClick = { pendingAiKeyDelete = false; viewModel.deleteAiKey() }) { Text("删除") } },
-        dismissButton = { TextButton(onClick = { pendingAiKeyDelete = false }) { Text("取消") } },
+    if (pendingAiKeyDelete) HeikaGlassDialog(
+        title = "删除 AI 密钥？",
+        message = "删除后，依赖该密钥的 AI 工作台将暂停服务。",
+        confirmText = "删除",
+        destructive = true,
+        loading = state.saving != null,
+        onConfirm = { pendingAiKeyDelete = false; viewModel.deleteAiKey() },
+        onCancel = { pendingAiKeyDelete = false },
     )
 }
 
@@ -157,7 +177,7 @@ private val adminModuleGroups = listOf(
     )),
     AdminModuleGroup("运营配置", listOf(
         AdminModuleSpec("recommendation-settings", "推荐配置", "设置每日内容来源配比", com.heika.nativeapp.ui.HeikaIconRes.Settings),
-        AdminModuleSpec("exploration-ad", "探索中心广告位", "管理探索中心底部展示的图文入口", com.heika.nativeapp.ui.HeikaIconRes.Image),
+        AdminModuleSpec("exploration-ad", "发现页广告位", "管理精选信息流顶部的图文推广入口", com.heika.nativeapp.ui.HeikaIconRes.Image),
     )),
 )
 
@@ -165,7 +185,7 @@ private val adminSectionNames = mapOf(
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
-    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "探索中心广告位",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位",
 )
 private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
 
@@ -283,6 +303,8 @@ private val adminConfigSections = setOf("categories", "topic-events", "recommend
 
 @Composable
 private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterViewModel, onPendingAiKeyDelete: () -> Unit) {
+    val context = LocalContext.current
+    val uploadScope = rememberCoroutineScope()
     var categoryName by remember { mutableStateOf("") }
     var topicName by remember { mutableStateOf("") }
     var eventTitle by remember { mutableStateOf("") }
@@ -297,11 +319,31 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
     var adTitle by remember(meta) { mutableStateOf(meta.optString("title")) }
     var adBody by remember(meta) { mutableStateOf(meta.optString("body")) }
     var adImageUrl by remember(meta) { mutableStateOf(meta.optString("image_url").takeUnless { it == "null" }.orEmpty()) }
+    var adImagePickerNotice by remember { mutableStateOf<String?>(null) }
     var adPostRef by remember(meta) {
         mutableStateOf(meta.optString("post_client_id").takeUnless { it == "null" || it.isBlank() } ?: meta.optString("post_id").takeUnless { it == "null" }.orEmpty())
     }
     var settingsDraft by remember(meta) {
         mutableStateOf(listOf("interest_slots", "adjacent_slots", "curated_slots", "surprise_slots").associateWith { meta.optInt(it).toString() })
+    }
+    val adImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) uploadScope.launch {
+            val picked = withContext(Dispatchers.IO) { readAdImage(context, uri, 4 * 1024 * 1024) }
+            val mimeType = picked?.first
+            val bytes = picked?.second
+            if (mimeType == null || bytes == null || bytes.isEmpty()) {
+                adImagePickerNotice = "图片无法读取，或文件超过 4 MB。请选择 JPG、PNG 或 WebP。"
+            } else if (mimeType !in setOf("image/jpeg", "image/png", "image/webp")) {
+                adImagePickerNotice = "只支持 JPG、PNG 或 WebP 图片。"
+            } else {
+                adImagePickerNotice = null
+                val extension = when (mimeType) { "image/png" -> "png"; "image/webp" -> "webp"; else -> "jpg" }
+                viewModel.uploadExplorationAdImage("ad-cover.$extension", mimeType, bytes) { url ->
+                    adImageUrl = url
+                    adImagePickerNotice = "图片已上传，保存广告位后生效。"
+                }
+            }
+        }
     }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
         if (state.loading && state.metadata == null) item { CircularProgressIndicator(Modifier.padding(16.dp)) }
@@ -346,11 +388,11 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
             }
             "exploration-ad" -> item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("探索中心底部广告位", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("发现页广告位", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(11.dp)).padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("展示广告位", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("关闭时不会向用户显示此入口", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            Text("启用后显示在发现页精选信息流顶部", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
                         androidx.compose.material3.Switch(checked = adEnabled, enabled = state.saving == null, onCheckedChange = { adEnabled = it })
                     }
@@ -361,7 +403,23 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
                     }
                     OutlinedTextField(adTitle, { adTitle = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("标题（最多 80 字）") }, singleLine = true)
                     OutlinedTextField(adBody, { adBody = it.take(300) }, Modifier.fillMaxWidth(), label = { Text("说明（可选，最多 300 字）") }, minLines = 2, maxLines = 4)
-                    if (adKind == "image") OutlinedTextField(adImageUrl, { adImageUrl = it.take(2048) }, Modifier.fillMaxWidth(), label = { Text("图片 HTTPS 地址") }, singleLine = true)
+                    if (adKind == "image") {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(enabled = state.saving == null, onClick = { adImagePicker.launch("image/*") }) {
+                                Text(if (state.saving == "exploration-ad-image") "上传中…" else if (adImageUrl.isBlank()) "选择并上传图片" else "更换图片")
+                            }
+                            if (adImageUrl.isNotBlank()) TextButton(enabled = state.saving == null, onClick = { adImageUrl = "" }) { Text("移除") }
+                            Text("最大 4 MB", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        }
+                        adImagePickerNotice?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+                        if (adImageUrl.startsWith("https://")) AsyncImage(
+                            model = ImageRequest.Builder(context).data(adImageUrl).crossfade(true).build(),
+                            contentDescription = "广告图片预览",
+                            imageLoader = LocalHeikaImageLoader.current,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().height(164.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+                        )
+                    }
                     OutlinedTextField(adPostRef, { adPostRef = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("目标作品 client_id 或 UUID") }, singleLine = true)
                     var adPostSearch by remember { mutableStateOf("") }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -377,7 +435,7 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
                             Text("选择", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                         }
                     }
-                    Text("只允许跳转到已发布作品；服务端会校验作品状态和管理员权限。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    Text("图片由管理员直接上传；广告只跳转到已发布作品，服务端会校验作品状态和管理员权限。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     Button(
                         enabled = state.saving == null && (!adEnabled || (adTitle.isNotBlank() && adPostRef.isNotBlank() && (adKind != "image" || adImageUrl.startsWith("https://")))),
                         onClick = {
@@ -469,12 +527,14 @@ private fun AdminQueueItem(
             "role" to "member" -> "普通用户"; "role" to "reviewer" -> "审核员"; "role" to "content_manager" -> "内容管理员"; "role" to "admin" -> "管理员"
             "membership" to "plus" -> "Plus"; "membership" to "pro" -> "Pro"; else -> "Free"
         }
-        HeikaAlertDialog(
-            onDismissRequest = { if (!saving) pendingUserUpdate = null },
-            title = { Text(if (kind == "role") "更新账号角色？" else "更新会员等级？") },
-            text = { Text("${item.optString("nickname", "该账号")}将设置为 $label。服务端会执行权限检查并记录操作。") },
-            confirmButton = { TextButton(enabled = !saving, onClick = { if (kind == "role") onUserRole(item.optString("id"), value) else onUserMembership(item.optString("id"), value); pendingUserUpdate = null }) { Text("确认") } },
-            dismissButton = { TextButton(onClick = { pendingUserUpdate = null }) { Text("取消") } },
+        HeikaGlassDialog(
+            title = if (kind == "role") "更新账号角色？" else "更新会员等级？",
+            message = "${item.optString("nickname", "该账号")}将设置为 $label。服务端会执行权限检查并记录操作。",
+            confirmText = "确认",
+            dismissible = !saving,
+            loading = saving,
+            onConfirm = { if (kind == "role") onUserRole(item.optString("id"), value) else onUserMembership(item.optString("id"), value); pendingUserUpdate = null },
+            onCancel = { pendingUserUpdate = null },
         )
     }
 }
@@ -637,6 +697,20 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         }
     }
 
+    fun uploadExplorationAdImage(fileName: String, mimeType: String, bytes: ByteArray, onUploaded: (String) -> Unit) = viewModelScope.launch {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "exploration-ad-image", error = null, notice = null)
+        try {
+            val result = repository.uploadAdminExplorationAdImage(fileName, mimeType, bytes)
+            val url = result.optString("image_url").takeIf { it.startsWith("https://") }
+                ?: throw IllegalStateException("服务器没有返回有效图片地址")
+            mutableState.value = mutableState.value.copy(saving = null, notice = "广告图片上传完成")
+            onUploaded(url)
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "广告图片上传失败，请重试")
+        }
+    }
+
     fun searchExplorationAdPosts(query: String) = viewModelScope.launch {
         if (mutableState.value.saving != null || mutableState.value.adPostsLoading) return@launch
         val requestId = ++adPostsGeneration
@@ -681,3 +755,19 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
 }
 
 private fun JSONArray.toJSONObjectList(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
+
+private fun readAdImage(context: Context, uri: Uri, maximumBytes: Int): Pair<String, ByteArray?>? {
+    val mimeType = context.contentResolver.getType(uri) ?: return null
+    val input = context.contentResolver.openInputStream(uri) ?: return null
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    input.use {
+        while (true) {
+            val read = it.read(buffer)
+            if (read < 0) break
+            if (output.size() + read > maximumBytes) return mimeType to null
+            output.write(buffer, 0, read)
+        }
+    }
+    return mimeType to output.toByteArray()
+}

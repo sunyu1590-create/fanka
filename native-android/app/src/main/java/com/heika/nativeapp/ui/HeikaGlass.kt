@@ -31,6 +31,7 @@ fun HeikaGlassSurface(
     contentPadding: PaddingValues = PaddingValues(horizontal = 9.dp, vertical = 6.dp),
     emphasis: Float = 1f,
     glassColor: Color? = null,
+    drawTopHighlight: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val dark = LocalHeikaDark.current
@@ -52,10 +53,10 @@ fun HeikaGlassSurface(
                 ) else Modifier,
             )
             .background(surface.copy(alpha = alpha), shape)
-            .drawBehind {
+            .then(if (drawTopHighlight) Modifier.drawBehind {
                 val edge = Color.White.copy(alpha = if (dark) .14f else .34f)
                 drawLine(edge, Offset(8.dp.toPx(), .7.dp.toPx()), Offset(size.width - 8.dp.toPx(), .7.dp.toPx()), .7.dp.toPx())
-            }
+            } else Modifier)
             .padding(contentPadding),
         content = content,
     )

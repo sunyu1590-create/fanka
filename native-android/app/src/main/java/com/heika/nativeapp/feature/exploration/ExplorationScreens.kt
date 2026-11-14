@@ -1,6 +1,7 @@
 package com.heika.nativeapp.feature.exploration
 
 import com.heika.nativeapp.ui.HeikaAlertDialog
+import com.heika.nativeapp.ui.HeikaGlassDialog
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
 
@@ -98,7 +99,6 @@ fun ExplorationCenterScreen(
     onCalendar: () -> Unit,
     onCoExplore: () -> Unit,
     onStoryChains: () -> Unit,
-    onPost: (HeikaPost) -> Unit,
     viewModel: ExplorationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -193,39 +193,6 @@ fun ExplorationCenterScreen(
                     }
                 }
             }
-            state.ad?.let { ad -> item(key = "exploration-ad") { ExplorationAdRow(ad) { onPost(ad.post) } } }
-        }
-    }
-}
-
-@Composable
-private fun ExplorationAdRow(ad: ExplorationAd, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(HeikaRadii.surface))
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("推广", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, fontWeight = FontWeight.Medium)
-            Text(ad.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (ad.body.isNotBlank()) Text(ad.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("查看作品", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
-                androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
-            }
-        }
-        ad.imageUrl?.let { image ->
-            AsyncImage(
-                model = image,
-                contentDescription = ad.title,
-                imageLoader = LocalHeikaImageLoader.current,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(82.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-            )
         }
     }
 }
@@ -786,12 +753,13 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
             }
         }
     }
-    if (showCloseConfirm && chain != null) HeikaAlertDialog(
-        onDismissRequest = { showCloseConfirm = false },
-        title = { Text("结束这个接龙？") },
-        text = { Text("结束后其他探索者将不能继续参与，已有记录会保留。") },
-        confirmButton = { TextButton(onClick = { showCloseConfirm = false; viewModel.close(chain.id) }) { Text("结束接龙") } },
-        dismissButton = { TextButton(onClick = { showCloseConfirm = false }) { Text("取消") } },
+    if (showCloseConfirm && chain != null) HeikaGlassDialog(
+        title = "结束这个接龙？",
+        message = "结束后其他探索者将不能继续参与，已有记录会保留。",
+        confirmText = "结束接龙",
+        destructive = true,
+        onConfirm = { showCloseConfirm = false; viewModel.close(chain.id) },
+        onCancel = { showCloseConfirm = false },
     )
 }
 

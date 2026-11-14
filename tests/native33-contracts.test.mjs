@@ -36,7 +36,7 @@ test("detail shared image remains a shared element and content text has no stagg
   assert.doesNotMatch(detail, /titleShown|authorShown|bodyShown/);
 });
 
-test("glass blur is sourced from discovery covers and app content while dialogs are open", async () => {
+test("dialog blur is bounded to the dialog window and never blurs the Activity root", async () => {
   const discovery = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/discovery/DiscoveryScreen.kt");
   const glass = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaGlass.kt");
   const dialog = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaAlertDialog.kt");
@@ -46,10 +46,17 @@ test("glass blur is sourced from discovery covers and app content while dialogs 
   assert.match(discovery, /FeedCard\(post,[\s\S]*?hazeState = hazeState/);
   assert.match(glass, /blurRadius = 16\.dp/);
   assert.match(glass, /fallbackTint = HazeTint\(surface\.copy\(alpha = if \(dark\) \.24f else \.30f\)\)/);
-  assert.match(dialog, /LocalHeikaModalBackdropCount/);
+  assert.doesNotMatch(dialog, /LocalHeikaModalBackdropCount/);
+  assert.match(dialog, /setBackgroundBlurRadius/);
+  assert.match(dialog, /FLAG_BLUR_BEHIND/);
+  assert.match(dialog, /isCrossWindowBlurEnabled/);
+  assert.match(dialog, /darkDialogGlassAlpha/);
+  assert.match(dialog, /darkDialogAlpha/);
+  assert.match(dialog, /usePlatformDefaultWidth = true/);
+  assert.match(dialog, /setDimAmount\(HeikaGlassTokens\.backdropDimAmount\)/);
   assert.match(dialog, /LocalContentColor provides MaterialTheme\.colorScheme\.onSurface/);
-  assert.match(app, /RenderEffect\.createBlurEffect\(radiusPx, radiusPx, Shader\.TileMode\.CLAMP\)/);
-  assert.match(app, /if \(modalBackdropCount\.intValue > 0\) 9\.dp/);
+  assert.match(app, /\.hazeSource\(hazeState\)/);
+  assert.doesNotMatch(app, /RenderEffect|modalBlurRadius|LocalHeikaModalBackdropCount/);
 });
 
 test("top-level tabs suppress shared images during crossfade and detail metadata stays left aligned", async () => {
@@ -108,6 +115,10 @@ test("exploration ad is admin controlled, disabled by default, and only links to
   const publicRoute = await read("app/api/v1/exploration-ad/route.ts");
   const nativeAdmin = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/settings/AdminCenterScreen.kt");
   const nativeExploration = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/exploration/ExplorationScreens.kt");
+  const discovery = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/discovery/DiscoveryScreen.kt");
+  const discoveryAdViewModel = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/discovery/DiscoveryAdViewModel.kt");
+  const detail = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/detail/PostDetailScreen.kt");
+  const about = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/settings/AboutScreen.kt");
   const webAdmin = await read("components/AdminModeration.tsx");
   assert.match(migration, /enabled boolean not null default false/);
   assert.match(migration, /public\.is_admin\(\)/);
@@ -125,7 +136,14 @@ test("exploration ad is admin controlled, disabled by default, and only links to
   assert.match(nativeAdmin, /saveAdminExplorationAd\(payload\)/);
   assert.match(nativeAdmin, /searchExplorationAdPosts\(adPostSearch\)/);
   assert.match(await read("native-android/app/src/main/java/com/heika/nativeapp/data/HeikaRepository.kt"), /adminExplorationAdPosts\(query: String\)/);
-  assert.match(nativeExploration, /ExplorationAdRow\(ad\) \{ onPost\(ad\.post\) \}/);
+  assert.doesNotMatch(nativeExploration, /ExplorationAdRow|state\.adUnavailable/);
+  assert.match(discovery, /DiscoveryAdCard\(ad, onClick = \{ onPost\(ad\.post\) \}\)/);
+  assert.match(discovery, /item\(key = "discovery-ad", span = StaggeredGridItemSpan\.FullLine\)/);
+  assert.match(discoveryAdViewModel, /repository\.explorationAd\(\)/);
+  assert.match(discoveryAdViewModel, /repository\.postDetailByKey\(postId\)/);
+  assert.match(discoveryAdViewModel, /fun refresh\(\)/);
+  assert.match(detail, /widthIn\(min = 220\.dp, max = 250\.dp\)/);
+  assert.match(about, /NativeRelease\(36, "2026\.11\.14"[\s\S]*发现页精选信息流/);
   assert.match(webAdmin, /id: "exploration-ad"/);
   assert.match(webAdmin, /cloudRequest\("\/api\/v1\/admin\/exploration-ad"/);
   assert.match(webAdmin, /admin\/exploration-ad\/posts\?q=/);
@@ -174,13 +192,75 @@ test("publish image selection uploads to staging immediately and blocks submissi
   assert.match(repository, /addFormDataPart\("staging", "1"\)/);
 });
 
-test("flip preview dims and Gaussian-blurs the backdrop, closes on outside tap, and has no close button", async () => {
+test("flip preview keeps the page clear, lightly dims it, and closes on outside tap", async () => {
   const home = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/home/HomeScreen.kt");
   const overlay = home.slice(home.indexOf("private fun FlipPreviewOverlay"), home.indexOf("private fun PreviewCardBack"));
-  assert.match(overlay, /HazeStyle\([\s\S]*blurRadius = 32\.dp \* expand/);
-  assert.match(overlay, /Color\.Black\.copy\(alpha = 0\.24f \* expand\)/);
+  assert.match(overlay, /Color\.Black\.copy\(alpha = 0\.14f \* expand\)/);
+  assert.doesNotMatch(overlay, /hazeEffect|blurRadius|HazeStyle|RenderEffect/);
   assert.match(overlay, /onClick = \{ requestDismiss\(\) \}/);
   assert.doesNotMatch(overlay, /contentDescription = "关闭预览"/);
+  assert.match(overlay, /rotation\.animateTo\(180f, tween\(500, easing = FastOutSlowInEasing\)\)/);
+  assert.match(overlay, /if \(rotation\.value < 90f\)/);
+  assert.match(overlay, /rotationY = 180f/);
+  assert.match(overlay, /touchScale\.animateTo\(1\.015f/);
+  assert.match(overlay, /edgeSweep\.animateTo\(1f/);
+  assert.match(overlay, /frontSettle\.animateTo\(1f/);
+});
+
+test("domestic network notice checks the serving network and public IP directly, not the HEIKA API", async () => {
+  const detector = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/NetworkRegionNoticeViewModel.kt");
+  const app = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaNativeApp.kt");
+  assert.match(detector, /TelephonyManager::class\.java\)\?\.networkCountryIso/);
+  assert.match(detector, /https:\/\/api\.country\.is\//);
+  assert.match(detector, /optString\("country"\)/);
+  assert.doesNotMatch(detector, /API_BASE_URL.*network-region|SERVER_UNREACHABLE/);
+  assert.match(detector, /NetworkRegionWarning\.MAINLAND_NETWORK/);
+  assert.match(app, /切换至稳定的境外网络（例如连接 VPN）/);
+});
+
+test("chat avatars align to message bubbles and the composer omits the stray hairline", async () => {
+  const messages = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/messages/MessagesScreen.kt");
+  const glass = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaGlass.kt");
+  assert.match(messages, /HeikaIcons\.Back, "返回会话列表"[\s\S]*tint = MaterialTheme\.colorScheme\.onBackground/);
+  assert.match(messages, /verticalAlignment = Alignment\.Top\) \{\s*if \(!mine && peer != null\) HeikaAvatar[\s\S]*top = 17\.dp/);
+  assert.match(messages, /drawTopHighlight = false/);
+  assert.match(glass, /drawTopHighlight: Boolean = true/);
+});
+
+test("flip reveal uses layered 3D card light and removes the old confetti effect", async () => {
+  const home = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/home/HomeScreen.kt");
+  const app = await read("native-android/app/src/main/java/com/heika/nativeapp/ui/HeikaNativeApp.kt");
+  assert.match(home, /Color\.Black\.copy\(alpha = 0\.14f \* expand\)/);
+  assert.match(home, /\.offset\(x = 8\.dp, y = 11\.dp\)/);
+  assert.match(home, /\.offset\(x = 4\.dp, y = 6\.dp\)/);
+  assert.match(home, /Color\(0xFFE9F0F3\)/);
+  assert.match(home, /HeikaPalette\.Gold\.copy\(alpha =/);
+  assert.match(home, /goldHighlight\.animateTo\(1f/);
+  assert.doesNotMatch(home, /FlipConfetti|rarityPhase|repeat\(28\)/);
+  assert.match(app, /previewBackdropActive = homePreviewActive/);
+});
+
+test("exploration ad images upload through an authenticated admin endpoint and text ads have no image placeholder", async () => {
+  const uploadRoute = await read("app/api/v1/admin/exploration-ad/image/route.ts");
+  const migration = await read("supabase/migrations/20261114040539_heika_ad_asset_upload.sql");
+  const repository = await read("native-android/app/src/main/java/com/heika/nativeapp/data/HeikaRepository.kt");
+  const admin = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/settings/AdminCenterScreen.kt");
+  const discovery = await read("native-android/app/src/main/java/com/heika/nativeapp/feature/discovery/DiscoveryScreen.kt");
+  const discoveryAd = discovery.slice(discovery.indexOf("private fun DiscoveryAdCard"), discovery.indexOf("internal fun FeedGrid"));
+  assert.match(uploadRoute, /role\.data\?\.role !== "admin"/);
+  assert.match(uploadRoute, /file\.size > maximumBytes/);
+  assert.match(uploadRoute, /matchesImageSignature/);
+  assert.match(uploadRoute, /storage\.upload\(path, bytes/);
+  assert.doesNotMatch(uploadRoute, /service_role|SUPABASE_SERVICE_ROLE/);
+  assert.match(migration, /file_size_limit, allowed_mime_types/);
+  assert.match(migration, /with check \(bucket_id = 'heika-ad-assets' and public\.is_admin\(\)\)/);
+  assert.match(repository, /uploadAdminExplorationAdImage[\s\S]*MultipartBody/);
+  assert.match(admin, /ActivityResultContracts\.GetContent\(\)/);
+  assert.match(admin, /选择并上传图片/);
+  assert.match(discoveryAd, /ad\.imageUrl\?\.takeIf \{ ad\.kind == "image" \}/);
+  assert.match(discoveryAd, /imagePainter\?\.state\?\.collectAsStateWithLifecycle\(\)\?\.value/);
+  assert.match(discoveryAd, /if \(imageState is AsyncImagePainter\.State\.Success\)[\s\S]*?Image\(/);
+  assert.doesNotMatch(discoveryAd, /else\s*\{\s*Box|background\(MaterialTheme\.colorScheme\.surfaceVariant\)/);
 });
 
 test("native profile and about presentation retain icon whitespace and semantic navigation labels", async () => {

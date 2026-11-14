@@ -1,6 +1,6 @@
 # HEIKA Native 3.0 / 3.1 基线记录
 
-> 状态核验日期：2026-11-10。每次开发前重新核验远端分支及 Actions；以下 SHA 是本次核验结果，不是永久基线。
+> 状态核验日期：2026-11-14。每次开发前重新核验远端分支及 Actions；以下 SHA 是本次核验结果，不是永久基线。
 
 ## 唯一本地工程与当前有效源码
 
@@ -242,3 +242,48 @@
 - 启动图标和关于页直接引用用户提供的 `drawable-nodpi/ic_heika_original.jpg` 原始 1280×1280 JPEG；不重新采样、不裁切。自适应图标只沿用 Android 系统图标遮罩，原图黑色背景和主体留白均保留。
 - Android versionName 保持 `2.3.6`，versionCode 提升至 `35`，用于区分这次生产源码与 versionCode 34 的既有构建。
 - 本轮完成后补录 Supabase 迁移状态、网站生产部署 SHA/URL、GitHub Actions Run 和 APK artifact 校验信息。
+
+## Native 3.3 全局交互与消息系统重构（本地构建 versionCode 36）
+
+- 开始基线：`codex/native32-phase1` / `85b7fdc99e21617aada4e4fdaff3393e0f5ae05e`。核验时本地 `origin/codex/native32-phase1` 与该 HEAD 一致。GitHub Actions 最近成功 Android 构建为 Run #108（ID `43437316295`），同一 SHA、versionCode 35；Artifact ID `14044966135`，50,713,067 bytes，SHA-256 `ebecb6e72628344af2580d9804357f62bd3c86758dbd5e880b0d9d0f87a970bb`，有效期至 `2026-11-27 14:00 UTC`。此次源码仍在工作区未提交；没有切换分支、提交或推送。
+- 保留先前工作区中的境内网络提示 API 与原生提示逻辑，并在其上继续修改。Android `applicationId` 仍为 `com.heika.community`，`versionName=2.3.6`，`versionCode` 提升到 36。
+- 修复全屏模糊根因：移除 Activity 根 `RenderEffect`，不再模糊整页；弹窗背景 dim 和窗口背景模糊分别控制，限制对话框窗口宽度到内容区域。Android 12+ 使用窗口背景模糊，其他设备使用高可读半透明底色。统一 `HeikaGlassDialog` 左对齐标题/正文、独立胶囊操作按钮、危险操作红色、加载锁定与取消策略，并用于内容/评论/作品/后台删除以及设置确认等场景。
+- 详情页更多菜单改为一体式 Haze 玻璃浮层，分为常用、反馈、个性化推荐、危险操作四组。复制、分享、反馈、举报、动态话题推荐抑制、作者推荐抑制/屏蔽、权限内删除仍走原有业务逻辑。
+- `HeikaAvatar` 为消息、聊天、找人、通知、帖子作者/评论和个人资料统一处理圆形尺寸、裁切、异步加载与失败回退。聊天发送方头像原先错误显示账号 ID 首字符；现改为读取当前用户资料头像，并以昵称/“我”作为加载失败回退。
+- 消息页压缩会话/找人导航，统一玻璃搜索框和全部/未读筛选；聊天改为紧凑日期标记、左右消息气泡、消息时间、共享局部玻璃输入栏和独立发送按钮，保留现有会话、搜索、未读、历史加载、发送失败重试与消息 API。通知列表增加全部/互动/审核/未读筛选，使用真实通知头像并保留 Android 权限状态检测与系统授权流程。
+- 验证：`git diff --check`、`npm run typecheck`、Node `npm test`（71 项，0 失败）通过；Android `testDebugUnitTest` 33 项通过、0 失败；`lintDebug` 成功（Lint 报告 0 error、267 warning、2 hint，包含仓库资源和现有代码告警）；`assembleDebug` 和 `assembleRelease` 成功。Debug APK `native-android/app/build/HEIKA-artifacts/HEIKA-2.3.6-36-debug.apk` 为 32,349,139 bytes，SHA-256 `0640aa98fba2e42d3a4a90bed537e9831e61a96ce51649c38388dfa20227689a`；Release APK `HEIKA-2.3.6-36-release-unsigned.apk` 为 19,615,748 bytes，SHA-256 `31ddb434d21b92010797d0d2d22849fba48bfbf5f01ffe4a454ad7f3c74bac68`，未签名，仅供检查。
+- 没有可用 Android 设备或模拟器（环境无 `adb`），未进行真机/模拟器视觉、键盘 Insets、消息收发与网络错误端到端验收。Run #108 是基线构建，不是本轮未提交源码的 GitHub Actions 构建；本轮 APK 为本地 JDK 17 / Android SDK 35 对工作区完整源码构建。未部署生产、未提交或推送。
+
+## Native 3.3 交互反馈修正（2026-11-14，本轮不构建 APK）
+
+- 继续基于 `codex/native32-phase1` / `85b7fdc99e21617aada4e4fdaff3393e0f5ae05e` 工作区；保留上一轮消息组件、网络地区提示与已生成的 versionCode 36 APK，不提交或推送。
+- Android 确认弹窗在 API 31+ 监听系统跨窗口模糊开关；开启时设置 24dp 窗口模糊并使用可透出模糊背景的玻璃底色，关闭或不支持时自动切换高可读不透明底色。页面根视图仍不施加模糊。
+- 详情“更多”浮层宽度收紧到 220–250dp。关于页更新记录加入 versionName 2.3.6 / build 36，并列出本轮实际弹窗、菜单和广告刷新修正。
+- 探索中心广告查询与成长数据 45 秒缓存解耦：首次/返回加载及成长缓存命中时都会重新读取广告配置；帖子详情加载失败时显示轻量不可用提示。数据查询仍要求公开启用配置和已发布目标帖。生产 API 通过当前执行环境 curl 访问时被网络代理返回 403，无法现场核验线上配置与 API 响应；本轮不修改或部署生产数据/API。
+- 验证：`npm test` 71 项全通过，`npm run typecheck` 通过，`:app:compileDebugKotlin` 通过，`git diff --check` 通过。本轮按要求没有执行 assemble/ APK 构建，也没有真机视觉验收。
+
+## 广告位移至发现页信息流（2026-11-14，本轮不构建 APK）
+
+- 按用户最新确认，广告不放在探索中心；迁移至发现页「精选」信息流顶部，作为全宽广告卡片。显示后台配置的标题、文案和图片，标注“广告”，点击进入关联的已发布作品。
+- 探索中心不再加载或展示广告。新增独立 `DiscoveryAdViewModel`，公开读取广告配置，发现页首次进入、下拉刷新及从后台返回时刷新；网络失败仅在原广告位显示轻量提示。
+- 保留现有管理员配置/API/数据库，不改变开关与目标帖逻辑。广告仅在有效启用配置及目标帖子详情可用时展示。
+- Node 合同测试、TypeScript 检查及 Android Kotlin 编译通过；未构建 APK、未连接设备验收，也未部署生产数据/API。
+
+## 网络识别、聊天对齐与翻卡遮罩修正（versionCode 37）
+
+- 继续在现有工作区增量修改，不重置其他更改。国内网络识别改为先读取 Android 当前服务网络国家码；未确认时由设备直接请求 `api.country.is` 查询公网 IP 国家，不再依赖 Vercel API，也不把网络错误误报为境内网络。仅确认 CN 时弹提示。
+- 私信消息头像对准气泡而非“时间+气泡”的整列；返回按钮明确使用主题高亮 tint；聊天输入玻璃容器关闭其顶部细高光线。
+- 翻卡遮罩压暗从 24% 降至 14%，Haze 染色设为透明并略增模糊半径；根导航栏在预览期间保留轻量模糊，避免清晰浮在模糊背景之上。
+- 翻卡庆祝改为约 1 秒的扩散金色光环与少量星屑粒子，不再绘制多色矩形彩带。
+- Android 版本号提升至 `2.3.6 (37)`，关于页记录本次更新。`npm test` 74 项通过、`npm run typecheck`、`:app:testDebugUnitTest`、`:app:lintDebug`、`:app:assembleDebug`、`:app:assembleRelease` 与 `git diff --check` 均通过。Debug APK：`native-android/app/build/HEIKA-artifacts/HEIKA-2.3.6-37-debug.apk`，约 31 MB，SHA-256 `262db4d3f574a13c26e1afa492e7f86971887fa99c315c71450822ecff5ad916`；Release APK：`native-android/app/build/HEIKA-artifacts/HEIKA-2.3.6-37-release-unsigned.apk`，约 19 MB，SHA-256 `254a2a67f770996ba1ea227294683e0f25c03c0f01787fcf9eb02613abd04a5b`，未签名。包信息确认为 `com.heika.community`、`versionCode=37`。当前工程没有发布密钥或 signingConfig，故尚无可正式分发/覆盖安装的签名 Release APK。Lint 有 267 warning、2 hints，无 error。未发现 `adb`，因此没有真机交互验收；未提交/推送。
+
+## 翻卡动画、弹窗模糊与发现广告图片修复（versionCode 38）
+
+- 基于当前 `codex/native32-phase1` / `85b7fdc99e21617aada4e4fdaff3393e0f5ae05e` 工作区增量处理，保留之前所有未提交页面、消息、网络提示和广告入口修改；没有切换/重置工作区。Android `versionName=2.3.6`、`versionCode=38`、`applicationId=com.heika.community`。
+- 翻卡确认链路保留服务端成功结果作为 3D 翻转前提；请求中立即给按钮轻触、卡片轻抬和银白边缘扫光，返回真实内容后用 `rotationY` 180° 翻转并在边缘位置切换正反面，加入两层错位卡片、透视、低强度高光与揭晓收尾。快速重复确认仍由 ViewModel 的 opening 状态和互斥锁拦截；请求失败复位以便重试；减少动画设置走简化路径。普通翻卡的彩带和彩色粒子实现已删除；只有高评分或当日最后一张可以出现短暂金色高光。未改变翻卡接口、次数/经验数据或持久化规则；今日任务没有单独翻卡成功事件，因此未伪造任务粒子反馈。
+- 修正弹窗模糊：仍使用 Android 12+ 对话框窗口 `FLAG_BLUR_BEHIND` 局部高斯模糊，半径调整为 36dp；背景 dim 独立降低至 16%，暗/浅主题玻璃透明度分开配置。系统关闭跨窗口模糊或旧系统不支持时使用不透明且主题正确的面板底色，避免出现只有透明透底、文字背景发黑的问题。弹窗文字和按钮不参与模糊。
+- 修复发现广告图片永不出现的问题：原逻辑比较 Coil 的 `StateFlow` 容器而非其发射的加载状态，导致 Success 判断恒假；现通过生命周期感知的 Flow 收集，只有真实加载成功时绘制图片。文字广告和图片失败均不创建图片占位。原生管理员入口可从系统相册选取并上传 JPG/PNG/WebP（≤4 MB），服务端校验管理员角色、MIME、文件签名和尺寸，并上传至单独公开读取的广告图片 bucket；替换配置后尝试清理旧的本应用资源。
+- 新增 `GET /api/v1/admin/exploration-ad/image` 上传 API 和 Supabase Storage bucket/RLS migration `20261114040539_heika_ad_asset_upload.sql`。数据库 migration 与 API 仅写入当前工作区，未应用到生产、未部署 Vercel；因此正式环境启用管理员上传前还需部署此 API 并应用 migration。没有更改既有帖子表或翻卡业务数据。
+- 验证：`npm run typecheck` 通过；Node `npm test` 75/75 通过；`npm run lint -- --no-cache` 0 error（51 条现存 warning）；`git diff --check` 通过；Android `testDebugUnitTest` 33/33 通过；`lintDebug` 0 error、267 warnings、2 hints；`assembleDebug` 和 `assembleRelease` 均成功。首轮 Lint 指出广告图加载状态直接访问 StateFlow `.value`，已修复为 `collectAsStateWithLifecycle()` 后全量重跑通过。
+- Debug APK：`native-android/app/build/HEIKA-artifacts/HEIKA-2.3.6-38-debug.apk`（32,757,065 bytes，SHA-256 `292175b6c879da095b436635120a2d1c8af9c813bbfe83c6bcf4e204a0232188`），已核对包名、versionCode、versionName，APK 由 Android Debug 证书签名，可安装验收。Release APK：`HEIKA-2.3.6-38-release-unsigned.apk`（19,632,132 bytes，SHA-256 `9f8345fb9d6b935a63c555cf3347a0ebcaae7d027279e51d097b28a9429e006f`）；构建通过但未签名，仓库无发布密钥/signingConfig，不可作为已签名正式分发包。
+- 当前无连接的 Android 设备或模拟器（`adb devices` 为空），未完成实体设备视觉、动画帧率、跨 Android 版本模糊和广告端到端上传验收。Node/Gradle 检查与 APK 构建不能替代真机验收。未部署生产、未提交或推送。
