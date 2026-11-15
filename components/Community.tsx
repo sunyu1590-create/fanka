@@ -2386,14 +2386,7 @@ export default function Community() {
       const clientConfig = await browserDbConfig();
       const { data } = await db.auth.getSession();
       if (!data.session) throw new Error("登录状态已失效，请重新登录");
-      await uploadVideoResumable({
-        file,
-        path,
-        supabaseUrl: clientConfig.url,
-        publishableKey: clientConfig.key,
-        accessToken: data.session.access_token,
-        onProgress: (progress) => setComposerVideo((current) => current?.id === video.id ? { ...current, progress, status: "uploading" } : current),
-      });
+      throw new Error("视频上传正在迁移到腾讯云存储，暂时不可用，请改用图片或文字发布");
       video = { ...video, path, status: "ready", progress: 100 };
       setComposerVideo((current) => current?.id === video.id ? video : current);
     }

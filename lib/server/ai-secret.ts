@@ -1,8 +1,8 @@
-import { del, get, put } from "@vercel/blob";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { ApiError } from "@/lib/server/api";
+import { aiStore } from "@/lib/server/ai-store";
 
-const SECRET_PATH = "private/ai/deepseek-key.json";
+const SECRET_PATH = "ai/deepseek-key.json";
 
 function encryptionKey() {
   const encoded = process.env.AI_SETTINGS_ENCRYPTION_KEY;
@@ -32,15 +32,19 @@ export function decryptAiKey(value: string) {
 }
 
 export async function saveAiKey(key: string) {
-  await put(SECRET_PATH, encryptAiKey(key), { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json", cacheControlMaxAge: 0 });
+  await aiStore().write(SECRET_PATH, encryptAiKey(key));
 }
 
 export async function readAiKey() {
-  const file = await get(SECRET_PATH, { access: "private", useCache: false });
-  if (!file) return null;
-  return decryptAiKey(await new Response(file.stream).text());
+  const stored = await aiStore().read(SECRET_PATH);
+  if (!stored) return null;
+  return decryptAiKey(stored);
 }
 
 export async function deleteAiKey() {
-  await del(SECRET_PATH);
+  await aiStore().remove(SECRET_PATH);
+}
+
+export function aiStoreLabel() {
+  return aiStore().label;
 }

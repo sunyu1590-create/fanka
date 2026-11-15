@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, jsonBody, respond } from "@/lib/server/api";
-import { deleteAiKey, readAiKey, saveAiKey } from "@/lib/server/ai-secret";
+import { aiStoreLabel, deleteAiKey, readAiKey, saveAiKey } from "@/lib/server/ai-secret";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   return respond(async () => {
     await requireAdmin(req);
     const key = await readAiKey();
-    return { configured: Boolean(key), masked: key ? `••••••••${key.slice(-4)}` : "" };
+    return { configured: Boolean(key), masked: key ? `••••••••${key.slice(-4)}` : "", store: aiStoreLabel() };
   });
 }
 

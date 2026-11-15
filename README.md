@@ -4,24 +4,29 @@
 
 ## 当前版本
 
-- 网站：`2.40.9`（`publish-vercel` 同步到 `main`）
+- 网站：`3.0.0`
 - Android：原生应用工程保留在 `android/`，应用 ID 为 `com.heika.community`；当前底包版本为 `2.2.3`。
 - 网站生产域名：`https://moonclean.shop`
+- 托管与后端：腾讯云开发 CloudBase（云托管 + PostgreSQL），已停止使用 Vercel 与 Supabase。
 
 ## 最近更新
 
-- 网站升级到 2.40.9，修复桌面端作品详情布局，并完善探索页广告与网页端 App 下载入口配置。
+- **基础设施迁移到腾讯云开发**：数据库、对象存储、身份认证、AI 密钥保管全部迁入 CloudBase，站点运行在腾讯云云托管（上海）。
+- 数据库由 `cloudbase/migrations/` 管理，共 75 个迁移文件，含 6 张会员相关表（`membership_plans`、`user_memberships`、`membership_redemptions`、`membership_events` 等）。
+- 认证改为云开发身份认证：登录走网关 `/auth/v1/signin`，用户主键（bigint）通过 `cb_user_map` 映射为应用侧 uuid，使既有 RLS 策略继续生效。
+- 注册由服务端调用腾讯云用户管理接口建号，用户侧仍为「邮箱 + 密码」。
+- 前端数据访问改用 PostgREST 兼容层（`/v1/rdb/rest`），存储改用云开发存储（`/v1/storages`），不再向前端下发任何长期密钥。
+- AI 密钥保险箱由 Vercel Blob 迁移到云开发私有存储桶 `heika-private`。
+- 网站升级到 3.0.0，修复桌面端作品详情布局，并完善探索页广告与网页端 App 下载入口配置。
 - 统一二级页面移动端导航显示，避免旧版悬浮导航残留。
-- 持续完善发现内容、AI 空间、会员、通知、资料和社区 API。
-- 更新全局动效与页面视觉一致性，优化公开主页及玻璃质感底部导航。
 - 保留 Android 原生关于页、通知权限与偏好设置、缓存刷新能力。
-- 保留首页已翻开卡片的冷启动恢复修复：账号隔离持久化、稳定图片引用、网络恢复后的内容同步与图片重试。
 
 ## 项目结构
 
 - `app/`、`components/`：Next.js App Router 页面、服务端 API 与网站界面。
 - `lib/`：共享业务逻辑、数据访问、内容呈现与图片资源处理。
-- `supabase/`：数据库迁移、策略及相关配置。
+- `cloudbase/migrations/`：当前生效的数据库迁移（云开发 PostgreSQL）。
+- `supabase/`：历史迁移，仅作参考，不再对生产环境执行。
 - `android/`：Kotlin Android 应用、WebView 容器及原生系统能力。
 - `mobile/`：Expo/React Native 辅助工程；APK 正式构建以 `android/` 原生工程为准。
 
@@ -46,4 +51,16 @@ Android APK 由 `.github/workflows/android-apk.yml` 中的 GitHub Actions 工作
 
 ## 技术栈
 
-网站使用 Next.js、React、TypeScript 与原生 CSS；后端业务通过服务端 API 访问 Supabase。Android 使用 Kotlin 原生应用容器，并复用网站账号与业务 API。数据库迁移位于 `supabase/migrations/`。密钥应通过部署环境变量或 GitHub Secrets 配置，不得提交到仓库。
+网站使用 Next.js、React、TypeScript 与原生 CSS；后端业务通过服务端 API 访问腾讯云开发（CloudBase）的 PostgreSQL 与对象存储，身份认证使用云开发身份认证。Android 使用 Kotlin 原生应用容器，并复用网站账号与业务 API。数据库迁移位于 `cloudbase/migrations/`。密钥应通过云托管环境变量或 GitHub Secrets 配置，不得提交到仓库。
+
+### 运行所需环境变量
+
+| 变量 | 说明 |
+| --- | --- |
+| `TCB_ENV_ID` | 云开发环境 ID |
+| `CLOUDBASE_GATEWAY` | 网关地址，形如 `https://<envId>.api.tcloudbasegateway.com` |
+| `CLOUDBASE_APIKEY` | 云开发服务端 API Key（仅服务端使用） |
+| `TENCENTCLOUD_SECRETID` / `TENCENTCLOUD_SECRETKEY` | 腾讯云子账号密钥，用于注册与改密 |
+| `AI_SETTINGS_ENCRYPTION_KEY` | AI 密钥加密密钥（32 字节 base64） |
+| `AI_SECRET_BUCKET` | AI 密钥存储桶，默认 `heika-private` |
+| `NEXT_PUBLIC_AUTH_REDIRECT_URL` | 认证回跳地址，生产为 `https://moonclean.shop` |
