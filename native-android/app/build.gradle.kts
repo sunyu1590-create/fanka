@@ -15,11 +15,12 @@ android {
         applicationId = "com.heika.community"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
-        versionName = "2.3.6"
+                versionCode = 41
+        versionName = "2.3.7-test1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "API_BASE_URL", "\"https://moonclean.shop\"")
+        buildConfigField("String", "API_BASE_URL", "\"https://heika-web-347874-5-1532707730.sh.run.tcloudbase.com\"")
         buildConfigField("String", "GITHUB_URL", "\"https://github.com/sunyu1590-create/fanka\"")
+
     }
 
     buildFeatures {
