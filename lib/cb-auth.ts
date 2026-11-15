@@ -15,8 +15,10 @@ export type CbSession = {
   user: CbUser;
 };
 type Listener = (event: string, session: CbSession | null) => void;
+type Pending = { email: string; id: string };
 
 const STORAGE_KEY = "heika-cb-session";
+const PENDING_KEY = "heika-cb-verify";
 const REFRESH_MARGIN = 60_000;
 
 function decodeJwt(token: string): Record<string, unknown> {
@@ -32,6 +34,8 @@ export class CloudBaseAuth {
   private session: CbSession | null = null;
   private listeners = new Set<Listener>();
   private refreshing: Promise<CbSession | null> | null = null;
+  /** 等待校验的邮箱验证码，跨「发送」和「校验」两次调用保留。 */
+  private pending: Pending | null = null;
 
   constructor(private gateway: string) {
     this.session = this.read();
@@ -187,16 +191,108 @@ export class CloudBaseAuth {
     return { data: { user: session.user }, error: null };
   }
 
-  /** 邮箱验证码相关能力依赖邮件服务商配置，当前未开通，返回明确提示。 */
-  async signInWithOtp() {
-    return { data: {}, error: new Error("邮箱验证码暂时不可用，请使用密码登录或恢复码找回。") };
+  /** 邮箱验证码：直接调用云开发认证网关。 */
+  private mailHint(payload: { code?: string; error?: string; error_description?: string }) {
+    const text = `${payload.code || ""} ${payload.error || ""} ${payload.error_description || ""}`.toLowerCase();
+    if (text.includes("provider") && text.includes("not found"))
+      return "邮箱验证码尚未开通。请在云开发控制台进入「身份认证 → 登录方式 → 邮箱」，启用邮件代理后再试。";
+    if (text.includes("rate") || text.includes("frequent"))
+      return "发送过于频繁，请稍后再试。";
+    return payload.error_description || payload.error || "验证码发送失败，请稍后重试。";
   }
 
-  async verifyOtp() {
-    return { data: {}, error: new Error("邮箱验证码暂时不可用，请使用密码登录或恢复码找回。") };
+  async signInWithOtp({ email }: { email: string; options?: unknown }) {
+    const target = email.trim();
+    if (!target) return { data: {}, error: new Error("请填写邮箱。") };
+    try {
+      const response = await fetch(`${this.gateway}/auth/v1/verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: target }),
+      });
+      const data = (await response.json()) as {
+        verification_id?: string;
+        code?: string;
+        error?: string;
+        error_description?: string;
+      };
+      if (!response.ok || !data.verification_id)
+        return { data: {}, error: new Error(this.mailHint(data)) };
+      this.pending = { email: target, id: data.verification_id };
+      if (typeof window !== "undefined")
+        window.sessionStorage.setItem(PENDING_KEY, JSON.stringify(this.pending));
+      return { data: { verificationId: data.verification_id }, error: null };
+    } catch {
+      return { data: {}, error: new Error("网络异常，验证码发送失败。") };
+    }
   }
 
-  async resend() {
-    return { data: {}, error: new Error("邮件服务尚未开通。") };
+  async verifyOtp({ email, token }: { email: string; token: string; type?: string }) {
+    const target = email.trim();
+    const code = token.trim();
+    if (!code) return { data: {}, error: new Error("请输入邮箱验证码。") };
+
+    let pending = this.pending;
+    if (!pending && typeof window !== "undefined") {
+      try {
+        pending = JSON.parse(window.sessionStorage.getItem(PENDING_KEY) || "null") as Pending | null;
+      } catch {
+        pending = null;
+      }
+    }
+    if (!pending?.id) return { data: {}, error: new Error("请先点击「发送验证码」获取邮件验证码。") };
+    if (pending.email && pending.email !== target)
+      return { data: {}, error: new Error("邮箱与验证码不匹配，请重新发送验证码。") };
+
+    try {
+      const verified = await fetch(`${this.gateway}/auth/v1/verification/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verification_id: pending.id, verification_code: code }),
+      });
+      const result = (await verified.json()) as {
+        verification_token?: string;
+        error?: string;
+        error_description?: string;
+      };
+      if (!verified.ok || !result.verification_token)
+        return {
+          data: {},
+          error: new Error(
+            result.error_description || result.error || "验证码不正确或已过期，请重新获取。",
+          ),
+        };
+
+      const signed = await fetch(`${this.gateway}/auth/v1/signin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verification_token: result.verification_token }),
+      });
+      const session = (await signed.json()) as {
+        access_token?: string;
+        refresh_token?: string;
+        expires_in?: number;
+        error?: string;
+        error_description?: string;
+      };
+      if (signed.status === 404 || !session.access_token)
+        return {
+          data: {},
+          error: new Error(
+            session.error_description || session.error || "该邮箱还没有账号，请先注册。",
+          ),
+        };
+      const persisted = this.persist(session as { access_token: string; refresh_token: string; expires_in?: number }, target);
+      this.pending = null;
+      if (typeof window !== "undefined") window.sessionStorage.removeItem(PENDING_KEY);
+      await this.bootstrap(persisted);
+      return { data: { user: persisted.user, session: persisted }, error: null };
+    } catch {
+      return { data: {}, error: new Error("网络异常，验证失败。") };
+    }
+  }
+
+  async resend({ email }: { type?: string; email: string; options?: unknown }) {
+    return this.signInWithOtp({ email });
   }
 }

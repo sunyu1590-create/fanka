@@ -3852,19 +3852,31 @@ export default function Community() {
   useEffect(() => {
     if (!accountId) return;
     let alive = true;
-    let remove = () => {};
+    let timer: ReturnType<typeof setInterval> | null = null;
     void browserDb().then((db) => {
       if (!alive) return;
-      const channel = db.channel(`membership-${accountId}`).on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${accountId}`,
-      }, (payload) => {
-        const tier = (payload.new as { membership_tier?: string }).membership_tier;
+      // Realtime 不可用，会员等级改为低频轮询：等级变动极少，30 秒足够。
+      const syncTier = async () => {
+        const { data } = await db
+          .from("profiles")
+          .select("membership_tier")
+          .eq("id", accountId)
+          .maybeSingle();
+        const tier = (data as { membership_tier?: string } | null)?.membership_tier;
         if (alive && (tier === "free" || tier === "plus" || tier === "pro"))
-          setExperienceSummary((current) => ({ ...current, membershipTier: tier }));
-      }).subscribe();
-      remove = () => { void db.removeChannel(channel); };
+          setExperienceSummary((current) =>
+            current.membershipTier === tier ? current : { ...current, membershipTier: tier },
+          );
+      };
+      void syncTier();
+      timer = setInterval(() => {
+        if (document.visibilityState === "visible") void syncTier();
+      }, 30000);
     }).catch(() => {});
-    return () => { alive = false; remove(); };
+    return () => {
+      alive = false;
+      if (timer) clearInterval(timer);
+    };
   }, [accountId]);
   useEffect(() => {
     const syncProfile = (event: Event) => {

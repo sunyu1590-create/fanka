@@ -124,6 +124,8 @@ export default function Messages({
     messageNoticesEnabledRef = useRef(messageNotificationsEnabled);
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = user?.id ?? null;
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   activeRef.current = active;
   roomsRef.current = rooms;
   namesRef.current = names;
@@ -270,65 +272,51 @@ export default function Messages({
   useEffect(() => {
     if (!db || !user || !isActive) return;
     void refresh();
-    const channel = db
-      .channel(`heika-inbox-${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "dm_messages" },
-        (payload) => {
-          if (payload.eventType === "DELETE") {
-            setMessages((old) => old.filter((m) => m.id !== payload.old.id));
-            void refresh();
-            return;
-          }
-          const row = payload.new as Message;
-          if (activeRef.current?.id === row.conversation_id) {
-            setPreview((current) => ({ ...current, [row.conversation_id]: row }));
-            setMessages((old) =>
-              old.some((m) => m.id === row.id) ? old : [...old, row],
-            );
-            if (nearBottom.current && document.visibilityState === "visible")
-              void read(row.conversation_id);
-            if (nearBottom.current)
-              requestAnimationFrame(() =>
-                list.current?.scrollTo({
-                  top: list.current.scrollHeight,
-                  behavior: "smooth",
-                }),
-              );
-            else setNewBelow(true);
-          } else {
-            void refresh();
-            const room = roomsRef.current.find((item) => item.id === row.conversation_id);
-            const peerId = room ? (room.user_a === user.id ? room.user_b : room.user_a) : "";
-            const peer = peerId ? namesRef.current[peerId] : null;
-            if (row.sender_id !== user.id && messageNoticesEnabledRef.current && document.visibilityState === "visible") {
-              noticeRef.current?.(row.media_path ? "向你发送了一张图片" : row.body, {
-                title: peer?.nickname || "新消息",
-                avatarUrl: peer?.avatar_url,
-                kind: "message",
-                onActivate: () => { if (peerId) openPeerRef.current?.(peerId); },
-              });
-            }
-          }
-        },
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED" && activeRef.current)
-          void load(activeRef.current);
+
+    // 云开发共享版 PG 实例不支持 Realtime，改用增量轮询：
+    // 只拉取比本地最后一条更新的消息，避免整页重载和滚动跳动。
+    const tail = async (room: Room) => {
+      const current = messagesRef.current;
+      const last = current[current.length - 1];
+      let request = db
+        .from("dm_messages")
+        .select("*")
+        .eq("conversation_id", room.id)
+        .order("created_at", { ascending: true })
+        .limit(50);
+      if (last?.created_at) request = request.gte("created_at", last.created_at);
+      const { data } = await request;
+      const rows = (data || []) as Message[];
+      if (!rows.length) return;
+      const known = new Set(current.map((m) => m.id));
+      const fresh = rows.filter((m) => !known.has(m.id));
+      if (!fresh.length) return;
+      setMessages((old) => {
+        const ids = new Set(old.map((m) => m.id));
+        const add = fresh.filter((m) => !ids.has(m.id));
+        return add.length ? [...old, ...add] : old;
       });
+      setPreview((currentPreview) => ({ ...currentPreview, [room.id]: fresh[fresh.length - 1] }));
+      if (nearBottom.current) {
+        if (document.visibilityState === "visible") void read(room.id);
+        requestAnimationFrame(() =>
+          list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "smooth" }),
+        );
+      } else setNewBelow(true);
+    };
     const recover = () => {
       if (document.visibilityState !== "visible") return;
       void refresh();
-      if (activeRef.current) void load(activeRef.current);
+      if (activeRef.current) void tail(activeRef.current);
     };
     window.addEventListener("online", recover);
     document.addEventListener("visibilitychange", recover);
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 15000);
+      if (document.visibilityState !== "visible") return;
+      void refresh();
+      if (activeRef.current) void tail(activeRef.current);
+    }, 4000);
     return () => {
-      void db.removeChannel(channel);
       clearInterval(timer);
       window.removeEventListener("online", recover);
       document.removeEventListener("visibilitychange", recover);

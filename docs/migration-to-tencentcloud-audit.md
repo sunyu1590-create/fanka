@@ -114,9 +114,27 @@
 
 ## 五、功能缺口（迁移不解决，但要知道）
 
-- **Realtime 已静默失效**：`db.channel()` 在 `lib/cb-db.ts:42` 返回 `noopChannel`。三处订阅（`Community.tsx:3858` 会员状态、`InboxBadge.tsx:54` 未读、`Messages.tsx:274` 会话流）都收不到推送。
-- 目前靠轮询兜底：`InboxBadge.tsx:92` 每 12 秒刷新、`Messages.tsx:327` 定时拉取。体验是「有延迟但能用」。
-- 若要真实时：CloudBase 侧走「云开发实时数据推送」，或换 WebSocket 自建。属新功能，非迁移项。
+### Realtime（已解决为轮询）
+
+`db.channel()` 在 `lib/cb-db.ts:42` 仍返回 `noopChannel`。原始的三处订阅已全部改为轮询：
+
+| 位置 | 数据源 | 间隔 | 说明 |
+|---|---|---|---|
+| `InboxBadge.tsx` | `dm_inbox_summary` RPC | 5 秒 | 未读数 + 比对 `latest_message_id` 触发站内通知与系统通知 |
+| `Messages.tsx` | `dm_inbox_summary` + `dm_messages` 增量 | 4 秒 | 只拉取比本地最后一条更新的消息，追加而非重载，保留滚动位置 |
+| `Community.tsx` | `profiles.membership_tier` | 30 秒 | 会员等级变动极少，低频足够 |
+
+统一策略：`document.visibilityState !== "visible"` 时跳过请求，回到前台立即补一次；`online` 事件与 `heika-read` 事件触发即时刷新。
+
+**为什么不接官方 Realtime**：CloudBase 的 PostgreSQL Realtime 目前是 Private Alpha，且 `tcb db pg realtime enable` 明确要求**独享 PostgreSQL 实例**，本环境为共享实例，返回 `realtime requires a dedicated PostgreSQL instance`。要启用需升级实例规格并申请白名单，成本与收益不匹配。
+
+### 邮箱验证码
+
+云开发提供零配置的「邮件代理」，开通后 `/auth/v1/verification` 即可发验证码，无需 SMTP 参数。当前未开通，接口返回 `provider email not found`。
+
+开通路径：云开发控制台 → 身份认证 → 登录方式 → 邮箱 → 配置发件人 → 选择「启用邮件代理」→ 保存（即时生效）。
+
+代码侧已完成对接（`lib/cb-auth.ts` 的 `signInWithOtp` / `verifyOtp` / `resend`），开通后即生效，用于密码找回与免密登录。注册可进一步改为验证码流程（`/auth/v1/signup` 已确认可用），从而不再依赖 `TENCENTCLOUD_SECRETID/SECRETKEY`。
 
 ---
 

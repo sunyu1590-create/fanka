@@ -13,6 +13,8 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
   const openPeer = useRef(onOpenConversationPeer);
   openPeer.current = onOpenConversationPeer;
   const previous = useRef<number | null>(null);
+  // conversation_id -> 已见过的最后一条消息 id，用于在轮询中识别新消息
+  const seen = useRef<Map<string, string>>(new Map());
   const [count, setCount] = useState(0);
   useEffect(() => {
     let alive = true;
@@ -26,6 +28,7 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
           if (!session.session) {
             if (signedInUserId) clearInboxSummary(signedInUserId);
             signedInUserId = null;
+            seen.current.clear();
             if (alive) setCount(0);
             return;
           }
@@ -33,6 +36,32 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
           const rows = await readInboxSummary(db, signedInUserId).catch(() => null);
           if (alive && rows) {
             const total = rows.reduce((sum, row) => sum + Number(row.unread), 0);
+
+            // 首次加载只建立基线，不把历史消息当成新消息推送
+            const firstPass = previous.current === null && seen.current.size === 0;
+            const fresh = rows.filter((row) => {
+              const latest = row.latest_message_id;
+              if (!latest) return false;
+              const known = seen.current.get(row.conversation_id);
+              seen.current.set(row.conversation_id, latest);
+              return !firstPass && known !== undefined && known !== latest && row.latest_sender_id !== signedInUserId;
+            });
+
+            if (fresh.length && notify.current && inApp.current && document.visibilityState === "visible") {
+              fresh.sort((a, b) => String(b.latest_created_at || "").localeCompare(String(a.latest_created_at || "")));
+              const newest = fresh[0];
+              const senderId = newest.latest_sender_id || "";
+              void db.from("profiles").select("nickname,avatar_url").eq("id", senderId).maybeSingle().then(({ data: sender }) => {
+                if (!alive || document.visibilityState !== "visible" || !notify.current || !inApp.current) return;
+                notice.current?.(newest.latest_media_path ? "向你发送了一张图片" : newest.latest_body || "你收到了一条新消息", {
+                  title: sender?.nickname || "新消息",
+                  avatarUrl: sender?.avatar_url,
+                  kind: "message",
+                  onActivate: () => openPeer.current?.(senderId),
+                });
+              });
+            }
+
             if (
               previous.current !== null &&
               total > previous.current &&
@@ -50,50 +79,25 @@ export default function InboxBadge({ enabled = false, inAppEnabled = true, onNot
           }
         };
         void refresh();
-        const channel = db
-          .channel("heika-unread")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "dm_messages" },
-            (payload) => {
-              if (payload.eventType === "INSERT") {
-                const row = payload.new as { sender_id?: string; body?: string; media_path?: string | null };
-                const senderId = row.sender_id;
-                if (senderId && senderId !== signedInUserId && inApp.current && notify.current && document.visibilityState === "visible") {
-                  void db.from("profiles").select("nickname,avatar_url").eq("id", senderId).maybeSingle().then(({ data: sender }) => {
-                    if (!alive || document.visibilityState !== "visible" || !notify.current || !inApp.current) return;
-                    notice.current?.(row.media_path ? "向你发送了一张图片" : row.body || "你收到了一条新消息", {
-                      title: sender?.nickname || "新消息",
-                      avatarUrl: sender?.avatar_url,
-                      kind: "message",
-                      onActivate: () => openPeer.current?.(senderId),
-                    });
-                  });
-                }
-              }
-              void refresh();
-            },
-          )
-          .subscribe();
+        // 云开发共享版实例不支持 Realtime，改用可见性感知的轮询：
+        // 页面在后台时停止请求，回到前台立即补一次。
         const { data } = db.auth.onAuthStateChange((_event, session) => {
           const nextUserId = session?.user.id || null;
           if (signedInUserId && signedInUserId !== nextUserId) {
             clearInboxSummary(signedInUserId);
             previous.current = null;
+            seen.current.clear();
           }
           signedInUserId = nextUserId;
-          // Supabase emits auth events while holding its session lock. A
-          // microtask can run before that lock is released and stall getSession.
           setTimeout(() => void refresh(), 0);
         });
         const refreshWhenVisible = () => {
           if (document.visibilityState === "visible") void refresh();
         };
-        const timer = setInterval(refreshWhenVisible, 12000);
+        const timer = setInterval(refreshWhenVisible, 5000);
         window.addEventListener("heika-read", refresh);
         document.addEventListener("visibilitychange", refreshWhenVisible);
         dispose = () => {
-          void db.removeChannel(channel);
           data.subscription.unsubscribe();
           clearInterval(timer);
           window.removeEventListener("heika-read", refresh);
