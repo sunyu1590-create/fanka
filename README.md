@@ -5,7 +5,7 @@
 ## 当前版本
 
 - 网站：`3.0.0`
-- Android：原生应用工程保留在 `android/`，应用 ID 为 `com.heika.community`；当前底包版本为 `2.2.3`。
+- Android：当前原生应用为 `native-android/` 中的 HEIKA Native 3.0，应用 ID 为 `com.heika.community`，版本 `2.3.6`（versionCode 40）。旧 `android/` WebView 工程仅保留兼容参考。
 - 网站生产域名：`https://moonclean.shop`
 - 托管与后端：腾讯云开发 CloudBase（云托管 + PostgreSQL），已停止使用 Vercel 与 Supabase。
 
@@ -19,7 +19,7 @@
 - AI 密钥保险箱由 Vercel Blob 迁移到云开发私有存储桶 `heika-private`。
 - 网站升级到 3.0.0，修复桌面端作品详情布局，并完善探索页广告与网页端 App 下载入口配置。
 - 统一二级页面移动端导航显示，避免旧版悬浮导航残留。
-- 保留 Android 原生关于页、通知权限与偏好设置、缓存刷新能力。
+- Android Native 3.0 接入 CloudBase 登录网关及当前 `/api/v1` 业务 API；消息和探索日历也由 CloudBase 服务端 API 统一鉴权。
 
 ## 项目结构
 
@@ -27,8 +27,9 @@
 - `lib/`：共享业务逻辑、数据访问、内容呈现与图片资源处理。
 - `cloudbase/migrations/`：当前生效的数据库迁移（云开发 PostgreSQL）。
 - `supabase/`：历史迁移，仅作参考，不再对生产环境执行。
-- `android/`：Kotlin Android 应用、WebView 容器及原生系统能力。
-- `mobile/`：Expo/React Native 辅助工程；APK 正式构建以 `android/` 原生工程为准。
+- `native-android/`：当前 Kotlin + Jetpack Compose Android App。
+- `android/`：旧 WebView 应用参考工程，不作为 Native 3.0 的打包来源。
+- `mobile/`：Expo/React Native 辅助工程；HEIKA Native 3.0 APK 以 `native-android/` 工程为准。
 
 ## 本地开发
 
@@ -47,7 +48,7 @@ npm test
 npm run build
 ```
 
-Android APK 由 `.github/workflows/android-apk.yml` 中的 GitHub Actions 工作流构建。构建应使用最新成功的 Android 原生源代码版本，并从 `publish-vercel` 获取网站代码；不要从落后的 `main` 版本单独选取网站源代码。
+Native 3.0 Android 校验与 APK artifact 由 `.github/workflows/android-apk.yml` 在对应分支或 PR 提交上构建。APK 只访问本仓库配置的 HEIKA/CloudBase 服务入口；正式分发仍需配置受保护的 Android 发布签名。
 
 ## 技术栈
 

@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const { db } = await requireAdmin(req);
     const [statsResult, plansResult, batchesResult, ordersResult] = await Promise.all([
       db.rpc("admin_membership_summary"),
-      db.from("membership_plans").select("tier,price_cents,currency,duration_days,daily_flip_allowance").eq("active", true).order("sort_order"),
+      db.from("membership_plans").select("tier,name,price_cents,currency,duration_days,daily_flip_allowance,active,sort_order,updated_at").order("sort_order"),
       db.rpc("admin_membership_batches"),
       db.from("afdian_orders").select("id,provider_order_id,user_id,tier,duration_days,amount_cents,currency,status,verified_at,processed_at,failure_reason,created_at").order("created_at", { ascending: false }).limit(30),
     ]);
