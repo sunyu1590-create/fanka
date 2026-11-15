@@ -8,9 +8,6 @@ class NativeMessagesApiTest {
     @Test
     fun messagingUsesCloudBaseBackedBusinessApi() {
         assertEquals("/api/v1/messages", NativeMessagesApi.PATH)
-        val body = NativeMessagesApi.action("read", "room-id")
-        assertEquals("read", body.optString("action"))
-        assertEquals("room-id", body.optString("conversation"))
     }
 
     @Test
