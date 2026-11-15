@@ -1,0 +1,3 @@
+-keep class androidx.security.crypto.** { *; }
+-keep class com.heika.nativeapp.data.** { *; }
+-keep class com.heika.nativeapp.db.** { *; }

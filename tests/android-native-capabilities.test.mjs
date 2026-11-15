@@ -3,75 +3,40 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+const native = (path) => `native-android/app/src/main/java/com/heika/nativeapp/${path}`;
 
-test("Android notification status and settings use the actual OS state", async () => {
-  const bridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
-  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
-  const webBridge = await read("lib/native-bridge.ts");
-
-  assert.match(bridge, /"notifications\.status" -> callbacks\.onNotificationStatusRequest/);
-  assert.match(bridge, /"notifications\.openSettings" -> callbacks\.onNotificationSettingsRequest/);
-  assert.match(activity, /NotificationManagerCompat\.from\(this@MainActivity\)\.areNotificationsEnabled\(\)/);
-  assert.match(activity, /Settings\.ACTION_APP_NOTIFICATION_SETTINGS/);
-  assert.match(webBridge, /getNativeNotificationStatus/);
-  assert.match(webBridge, /openNativeNotificationSettings/);
+test("Native Android notification settings reflect OS permission and sync account preferences", async () => {
+  const settings = await read(native("feature/settings/SettingsScreen.kt"));
+  const repository = await read(native("data/HeikaRepository.kt"));
+  assert.match(settings, /NotificationManagerCompat\.from\(context\)\.areNotificationsEnabled\(\)/);
+  assert.match(settings, /Settings\.ACTION_APP_NOTIFICATION_SETTINGS/);
+  assert.match(settings, /此开关与网站账号偏好同步/);
+  assert.match(repository, /\/api\/v1\/settings\/notifications/);
 });
 
-test("native sharing and image selection use Android system UI", async () => {
-  const bridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
-  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
-  const webBridge = await read("lib/native-bridge.ts");
-  const inbox = await read("components/InboxBadge.tsx");
-
-  assert.match(bridge, /"system\.share" ->/);
-  assert.match(activity, /Intent\.createChooser\(intent, "分享黑卡内容"\)/);
-  assert.match(webBridge, /shareViaNative/);
-  assert.match(activity, /ActivityResultContracts\.PickVisualMedia\(\)/);
-  assert.match(activity, /PickMultipleVisualMedia\(9\)/);
-  assert.match(inbox, /!hasNativeBridge\(\)[\s\S]*?Notification\.permission/);
+test("Native sharing and image selection use Android system UI", async () => {
+  const app = await read(native("ui/HeikaNativeApp.kt"));
+  const publish = await read(native("feature/publish/PublishScreen.kt"));
+  assert.match(app, /Intent\.createChooser\(send, "分享内容"\)/);
+  assert.match(publish, /ActivityResultContracts\.PickVisualMedia\(\)/);
+  assert.match(publish, /PickMultipleVisualMedia\(\(9 - state\.images\.size\)/);
 });
 
-test("Android exposes the existing today deck as a launcher shortcut", async () => {
-  const manifest = await read("android/app/src/main/AndroidManifest.xml");
-  const shortcuts = await read("android/app/src/main/res/xml/shortcuts.xml");
-
-  assert.match(manifest, /android\.app\.shortcuts/);
-  assert.match(shortcuts, /android:shortcutId="today_flip"/);
-  assert.match(shortcuts, /android:data="https:\/\/moonclean\.shop\/"/);
+test("Native About screen shows the installed version and current release history", async () => {
+  const about = await read(native("feature/settings/AboutScreen.kt"));
+  const app = await read(native("ui/HeikaNativeApp.kt"));
+  assert.match(about, /installedVersion\(context\)/);
+  assert.match(about, /BuildConfig\.API_BASE_URL/);
+  assert.match(about, /NativeRelease\(40, "2026\.11\.15"/);
+  assert.match(app, /AboutScreen\(/);
+  assert.doesNotMatch(about, /版本 1\.44|版本 2\.2\.3/);
 });
 
-test("Android About opens the native screen and browser About stays on the website", async () => {
-  const bridge = await read("android/app/src/main/java/com/heika/android/NativeBridge.kt");
-  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
-  const community = await read("components/Community.tsx");
-
-  assert.match(bridge, /"app\.about\.open" -> callbacks\.onAboutOpenRequest/);
-  assert.match(activity, /text = "ANDROID APP  ·  \$\{BuildConfig\.VERSION_NAME\} \(\$\{BuildConfig\.VERSION_CODE\}\)"/);
-  assert.match(activity, /webView\?\.clearCache\(true\)/);
-  assert.match(community, /next === "about" && hasNativeBridge\(\)[\s\S]*?openNativeAbout\(\)/);
-  assert.match(community, /黑卡 HEIKA · 版本 1\.44/);
-  assert.match(activity, /installNativeAboutCompatibilityHook\(view\)/);
-  assert.match(activity, /label\.startsWith\('关于黑卡'\)/);
-});
-
-test("Android internal notification preferences do not depend on OS permission", async () => {
-  const community = await read("components/Community.tsx");
-  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
-
-  assert.match(community, /These are account preferences[\s\S]*?notifications: \{ \.\.\.s\.notifications, \[key\]: true \}/);
-  assert.match(community, /申请系统权限/);
-  assert.match(activity, /NotificationManagerCompat\.from\(this@MainActivity\)\.areNotificationsEnabled\(\)/);
-});
-
-test("Android app upgrade refreshes only web resource and public content caches", async () => {
-  const gradle = await read("android/app/build.gradle.kts");
-  const activity = await read("android/app/src/main/java/com/heika/android/MainActivity.kt");
-  const cache = await read("lib/public-content-cache.ts");
-
-  assert.match(gradle, /versionCode = 9/);
-  assert.match(gradle, /versionName = "2\.2\.3"/);
-  assert.match(activity, /view\.clearCache\(true\)/);
-  assert.match(activity, /preserving cookies, localStorage, drafts, and account state/);
-  assert.match(cache, /heika-public-content-v2/);
-  assert.match(cache, /indexedDB\.deleteDatabase\(name\)/);
+test("Native Android build uses the current HEIKA Native release identity", async () => {
+  const gradle = await read("native-android/app/build.gradle.kts");
+  const manifest = await read("native-android/app/src/main/AndroidManifest.xml");
+  assert.match(gradle, /versionCode = 40/);
+  assert.match(gradle, /versionName = "2\.3\.6"/);
+  assert.match(manifest, /android:name="\.MainActivity"/);
+  assert.match(manifest, /android:usesCleartextTraffic="false"/);
 });
