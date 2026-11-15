@@ -55,16 +55,69 @@ class AuthRepository @Inject constructor(
         save(bootstrap(sessionFromCloudBase(json)))
     }
 
-    suspend fun signUp(email: String, password: String, nickname: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun requestSignUpCode(email: String): String = withContext(Dispatchers.IO) {
         require(email.isNotBlank()) { "请输入邮箱" }
-        require(password.length >= 8) { "密码至少需要 8 位" }
-        require(nickname.trim().length in 2..24) { "昵称请填写 2–24 个字" }
+        val response = parseResponse(
+            Request.Builder().url("${getCloudBaseGateway()}/auth/v1/verification")
+                .post(JSONObject().put("email", email.trim()).toString().toRequestBody(JSON)).build(),
+            "验证码发送失败，请稍后重试",
+        ) as? JSONObject ?: JSONObject()
+        response.optString("verification_id").takeIf(String::isNotBlank)
+            ?: throw IOException(cloudBaseError(response, "验证码发送失败，请稍后重试"))
+    }
+
+    suspend fun signUpWithCode(
+        email: String,
+        password: String,
+        nickname: String,
+        code: String,
+        verificationId: String,
+    ) = withContext(Dispatchers.IO) {
+        require(email.isNotBlank() && code.isNotBlank() && verificationId.isNotBlank()) { "请输入邮箱验证码" }
+        val verified = execute(
+            Request.Builder().url("${getCloudBaseGateway()}/auth/v1/verification/verify")
+                .post(JSONObject().put("verification_id", verificationId).put("verification_code", code.trim())
+                    .toString().toRequestBody(JSON)).build(),
+            "验证码不正确或已过期，请重新获取",
+        )
+        val verificationToken = verified.optString("verification_token")
+        if (verificationToken.isBlank()) throw IOException(cloudBaseError(verified, "验证码不正确或已过期，请重新获取"))
+
+        val created = execute(
+            Request.Builder().url("${getCloudBaseGateway()}/auth/v1/signup")
+                .post(JSONObject()
+                    .put("email", email.trim())
+                    .put("password", password)
+                    .put("username", email.trim())
+                    .put("name", nickname.trim().ifBlank { email.substringBefore('@') })
+                    .put("verification_code", code.trim())
+                    .put("verification_token", verificationToken)
+                    .toString().toRequestBody(JSON)).build(),
+            "注册失败，请稍后重试",
+        )
+        val accessToken = created.optString("access_token")
+        val refreshToken = created.optString("refresh_token")
+        val session = if (accessToken.isNotBlank() && refreshToken.isNotBlank()) {
+            sessionFromCloudBase(created)
+        } else {
+            val signedIn = execute(
+                Request.Builder().url("${getCloudBaseGateway()}/auth/v1/signin")
+                    .post(JSONObject().put("username", email.trim()).put("password", password)
+                        .toString().toRequestBody(JSON)).build(),
+                "账号已创建，请使用邮箱和密码登录",
+            )
+            sessionFromCloudBase(signedIn)
+        }
+        save(bootstrap(session.copy(userJson = session.userJson)))
+    }
+
+    suspend fun signUpWithPasswordFallback(email: String, password: String, nickname: String) = withContext(Dispatchers.IO) {
+        require(email.isNotBlank()) { "请输入邮箱" }
         apiRequest(
             "/api/v1/auth/register",
             body = JSONObject().put("email", email.trim()).put("password", password).put("nickname", nickname.trim()),
         )
         signIn(email, password)
-        true
     }
 
     suspend fun recoverWithCode(email: String, code: String, password: String) = withContext(Dispatchers.IO) {
@@ -169,6 +222,10 @@ class AuthRepository @Inject constructor(
             userJson = user.toString(),
         )
     }
+
+    private fun cloudBaseError(json: JSONObject, fallback: String): String =
+        sequenceOf("error_description", "error", "message", "code")
+            .map { json.optString(it) }.firstOrNull(String::isNotBlank) ?: fallback
 
     private suspend fun save(session: HeikaSession): HeikaSession {
         store.write(session)

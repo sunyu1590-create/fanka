@@ -14,6 +14,10 @@ test("Native Android authentication is backed by the CloudBase gateway and HEIKA
   assert.match(auth, /\/auth\/v1\/token\?grant_type=refresh_token/);
   assert.match(auth, /\/api\/v1\/auth\/bootstrap/);
   assert.match(auth, /\/api\/v1\/auth\/register/);
+  assert.match(auth, /\/auth\/v1\/verification/);
+  assert.match(auth, /\/auth\/v1\/verification\/verify/);
+  assert.match(auth, /\/auth\/v1\/signup/);
+  assert.match(auth, /signUpWithPasswordFallback/);
   assert.doesNotMatch(auth, /\/rest\/v1|Supabase|supabase\.co|api\/client-config.*key/);
 });
 
@@ -70,4 +74,3 @@ test("Native admin membership and ad image upload align with CloudBase storage A
   assert.match(migration, /create policy exploration_ad_images_admin_insert/);
   assert.doesNotMatch(repository, /\/batches\/\$\{encode\(batchId\)\}\/export/);
 });
-

@@ -19,6 +19,8 @@ data class AccountUiState(
     val error: String? = null,
     val message: String? = null,
     val flow: AccountFlow = AccountFlow.LOGIN,
+    val verificationId: String? = null,
+    val verificationEmail: String? = null,
 )
 
 @HiltViewModel
@@ -36,7 +38,9 @@ class AccountViewModel @Inject constructor(
         }
     }
 
-    fun setFlow(flow: AccountFlow) = mutableState.update { it.copy(flow = flow, error = null, message = null) }
+    fun setFlow(flow: AccountFlow) = mutableState.update {
+        it.copy(flow = flow, error = null, message = null, verificationId = null, verificationEmail = null)
+    }
 
     fun signIn(email: String, password: String) = viewModelScope.launch {
         perform({ auth.signIn(email, password) }) { session ->
@@ -46,13 +50,67 @@ class AccountViewModel @Inject constructor(
 
     fun signUp(email: String, password: String, confirm: String, nickname: String) = viewModelScope.launch {
         if (password != confirm) return@launch showError("两次输入的密码不一致")
-        perform({ auth.signUp(email, password, nickname) }) { signedIn ->
-            mutableState.value = AccountUiState(
-                session = if (signedIn) auth.current() else null,
-                loading = false,
-                flow = AccountFlow.LOGIN,
-                message = if (signedIn) "账号已创建，欢迎来到黑卡。" else "确认邮件已发送。请先完成邮箱验证，再回来登录。",
-            )
+        val current = mutableState.value
+        val pendingId = current.verificationId?.takeIf { current.verificationEmail.equals(email.trim(), ignoreCase = true) }
+        if (pendingId == null) {
+            mutableState.update { it.copy(busy = true, error = null, message = null) }
+            try {
+                val id = auth.requestSignUpCode(email)
+                mutableState.update {
+                    it.copy(
+                        busy = false,
+                        verificationId = id,
+                        verificationEmail = email.trim(),
+                        message = "验证码已发送到邮箱，请输入验证码后创建账号。",
+                    )
+                }
+                return@launch
+            } catch (error: Exception) {
+                // 与网页端保持一致：CloudBase 邮件验证服务未开通或暂不可用时，回退到现有服务端建号 API。
+                try {
+                    val session = auth.signUpWithPasswordFallback(email, password, nickname)
+                    mutableState.value = AccountUiState(session = session, loading = false, message = "账号已创建，欢迎来到黑卡。")
+                } catch (fallbackError: Exception) {
+                    mutableState.value = mutableState.value.copy(
+                        busy = false,
+                        error = fallbackError.message ?: error.message ?: "注册失败，请稍后重试。",
+                    )
+                }
+                return@launch
+            }
+        }
+
+        if (current.verificationEmail.equals(email.trim(), ignoreCase = true).not())
+            return@launch showError("邮箱已更改，请重新获取验证码。")
+        showError("请输入邮箱验证码。")
+    }
+
+    fun requestSignUpCode(email: String) = viewModelScope.launch {
+        mutableState.update { it.copy(busy = true, error = null, message = null) }
+        try {
+            val id = auth.requestSignUpCode(email)
+            mutableState.update {
+                it.copy(
+                    busy = false,
+                    verificationId = id,
+                    verificationEmail = email.trim(),
+                    message = "验证码已发送到邮箱，请查收。",
+                )
+            }
+        } catch (error: Exception) {
+            mutableState.update { it.copy(busy = false, error = error.message ?: "验证码发送失败，请稍后重试。") }
+        }
+    }
+
+    fun signUpWithCode(email: String, password: String, confirm: String, nickname: String, code: String) = viewModelScope.launch {
+        if (password != confirm) return@launch showError("两次输入的密码不一致")
+        if (code.isBlank()) return@launch showError("请输入邮箱验证码。")
+        val current = mutableState.value
+        val verificationId = current.verificationId
+            ?.takeIf { current.verificationEmail.equals(email.trim(), ignoreCase = true) }
+            ?: return@launch showError("请先获取邮箱验证码。")
+        perform({ auth.signUpWithCode(email, password, nickname, code, verificationId) }) { session ->
+            mutableState.value = AccountUiState(session = session, loading = false, message = "账号已创建，欢迎来到黑卡。")
         }
     }
 

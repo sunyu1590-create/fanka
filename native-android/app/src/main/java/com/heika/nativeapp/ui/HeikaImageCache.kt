@@ -80,4 +80,3 @@ class HeikaImageCache @Inject constructor(
         .components { add(OkHttpNetworkFetcherFactory(callFactory = { client })) }
         .build()
 }
-

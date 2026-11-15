@@ -212,4 +212,3 @@ class AiResourceFeedViewModel @Inject constructor(
     fun search(query: String) { mutableFilter.update { it?.copy(query = query.trim().take(60).takeIf(String::isNotBlank)) } }
     fun resetSearch() { mutableFilter.update { it?.copy(query = null) } }
 }
-

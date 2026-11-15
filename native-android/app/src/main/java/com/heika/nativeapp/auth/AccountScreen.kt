@@ -16,6 +16,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,6 +80,11 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                 OutlinedTextField(value = email, onValueChange = { email = it.take(254) }, label = { Text("邮箱") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (flow == AccountFlow.SIGN_UP) {
                     OutlinedTextField(value = nickname, onValueChange = { nickname = it.take(24) }, label = { Text("昵称（2–24 字）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = code, onValueChange = { code = it.filter(Char::isDigit).take(8) }, label = { Text("邮箱验证码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    TextButton(
+                        enabled = !state.busy && email.contains('@'),
+                        onClick = { viewModel.requestSignUpCode(email) },
+                    ) { Text(if (state.verificationId != null && state.verificationEmail.equals(email.trim(), ignoreCase = true)) "重新发送验证码" else "发送邮箱验证码") }
                 }
                 if (flow == AccountFlow.RECOVERY_CODE) {
                     OutlinedTextField(value = code, onValueChange = { code = it.take(64) }, label = { Text("账号恢复码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -101,13 +107,15 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                 Button(
                     enabled = !state.busy && when (flow) {
                         AccountFlow.LOGIN -> email.isNotBlank() && password.isNotEmpty()
-                        AccountFlow.SIGN_UP -> email.isNotBlank() && nickname.trim().length >= 2 && password.length >= 8 && confirmation.isNotEmpty()
+                        AccountFlow.SIGN_UP -> email.isNotBlank() && nickname.trim().length >= 2 && password.length >= 8 && confirmation.isNotEmpty() && (state.verificationId == null || code.isNotBlank())
                         AccountFlow.RECOVERY_CODE -> email.isNotBlank() && code.isNotBlank() && password.length >= 8 && confirmation.isNotEmpty()
                     },
                     onClick = {
                         when (flow) {
                             AccountFlow.LOGIN -> viewModel.signIn(email, password)
-                            AccountFlow.SIGN_UP -> viewModel.signUp(email, password, confirmation, nickname)
+                            AccountFlow.SIGN_UP -> if (state.verificationId != null && state.verificationEmail.equals(email.trim(), ignoreCase = true)) {
+                                viewModel.signUpWithCode(email, password, confirmation, nickname, code)
+                            } else viewModel.signUp(email, password, confirmation, nickname)
                             AccountFlow.RECOVERY_CODE -> viewModel.recoverWithCode(email, code, password, confirmation)
                         }
                     },
