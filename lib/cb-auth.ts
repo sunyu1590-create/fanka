@@ -161,15 +161,105 @@ export class CloudBaseAuth {
   }
 
   async signUp({ email, password, options }: { email: string; password: string; options?: { data?: { nickname?: string } } }) {
+    const target = email.trim();
+    // 优先走邮箱验证码：云开发邮件代理开通后可用，且完全不依赖服务端密钥。
+    // 邮件未开通时自动回退到服务端建号，行为与之前一致。
+    const sent = await this.requestCode(target);
+    if (!sent.error) return { data: { needsVerification: true, email: target }, error: null };
+
     const response = await fetch("/api/v1/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), password, nickname: options?.data?.nickname }),
+      body: JSON.stringify({ email: target, password, nickname: options?.data?.nickname }),
     });
     const result = (await response.json()) as { error?: string };
-    if (!response.ok) return { data: { user: null, session: null }, error: new Error(result.error || "注册失败，请稍后重试。") };
-    const signed = await this.signInWithPassword({ email, password });
+    if (!response.ok)
+      return {
+        data: { user: null, session: null },
+        error: new Error(result.error || sent.error.message || "注册失败，请稍后重试。"),
+      };
+    const signed = await this.signInWithPassword({ email: target, password });
     return signed;
+  }
+
+  /** 用邮箱验证码完成注册（邮件代理已开通时使用）。 */
+  async signUpWithCode({
+    email,
+    code,
+    password,
+    nickname,
+  }: {
+    email: string;
+    code: string;
+    password: string;
+    nickname?: string;
+  }) {
+    const target = email.trim();
+    const pending = this.readPending(target);
+    if (!pending) return { data: { user: null, session: null }, error: new Error("验证码已失效，请重新获取。") };
+
+    try {
+      const verified = await fetch(`${this.gateway}/auth/v1/verification/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verification_id: pending.id, verification_code: code.trim() }),
+      });
+      const result = (await verified.json()) as {
+        verification_token?: string;
+        error?: string;
+        error_description?: string;
+      };
+      if (!verified.ok || !result.verification_token)
+        return {
+          data: { user: null, session: null },
+          error: new Error(result.error_description || result.error || "验证码不正确或已过期。"),
+        };
+
+      const created = await fetch(`${this.gateway}/auth/v1/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: target,
+          password,
+          username: target,
+          name: nickname || target.split("@")[0],
+          verification_code: code.trim(),
+          verification_token: result.verification_token,
+        }),
+      });
+      const payload = (await created.json()) as {
+        access_token?: string;
+        refresh_token?: string;
+        expires_in?: number;
+        error?: string;
+        error_description?: string;
+        code?: string;
+      };
+      if (!created.ok)
+        return {
+          data: { user: null, session: null },
+          error: new Error(
+            payload.code === "ALREADY_EXISTS"
+              ? "这个邮箱已经注册过，请直接登录。"
+              : payload.error_description || payload.error || "注册失败，请稍后重试。",
+          ),
+        };
+
+      this.pending = null;
+      if (typeof window !== "undefined") window.sessionStorage.removeItem(PENDING_KEY);
+
+      if (payload.access_token && payload.refresh_token) {
+        const session = this.persist(
+          payload as { access_token: string; refresh_token: string; expires_in?: number },
+          target,
+        );
+        await this.bootstrap(session, nickname);
+        return { data: { user: session.user, session }, error: null };
+      }
+      return this.signInWithPassword({ email: target, password });
+    } catch {
+      return { data: { user: null, session: null }, error: new Error("网络异常，注册失败。") };
+    }
   }
 
   async signOut() {
@@ -204,6 +294,11 @@ export class CloudBaseAuth {
   async signInWithOtp({ email }: { email: string; options?: unknown }) {
     const target = email.trim();
     if (!target) return { data: {}, error: new Error("请填写邮箱。") };
+    return this.requestCode(target);
+  }
+
+  /** 向云开发申请一封验证码邮件，并记住 verification_id 供后续校验。 */
+  private async requestCode(target: string) {
     try {
       const response = await fetch(`${this.gateway}/auth/v1/verification`, {
         method: "POST",
@@ -227,11 +322,8 @@ export class CloudBaseAuth {
     }
   }
 
-  async verifyOtp({ email, token }: { email: string; token: string; type?: string }) {
-    const target = email.trim();
-    const code = token.trim();
-    if (!code) return { data: {}, error: new Error("请输入邮箱验证码。") };
-
+  /** 取出待校验的验证码记录，邮箱不一致视为无效。 */
+  private readPending(target?: string): Pending | null {
     let pending = this.pending;
     if (!pending && typeof window !== "undefined") {
       try {
@@ -240,9 +332,18 @@ export class CloudBaseAuth {
         pending = null;
       }
     }
-    if (!pending?.id) return { data: {}, error: new Error("请先点击「发送验证码」获取邮件验证码。") };
-    if (pending.email && pending.email !== target)
-      return { data: {}, error: new Error("邮箱与验证码不匹配，请重新发送验证码。") };
+    if (!pending?.id) return null;
+    if (target && pending.email && pending.email !== target) return null;
+    return pending;
+  }
+
+  async verifyOtp({ email, token }: { email: string; token: string; type?: string }) {
+    const target = email.trim();
+    const code = token.trim();
+    if (!code) return { data: {}, error: new Error("请输入邮箱验证码。") };
+
+    const pending = this.readPending(target);
+    if (!pending) return { data: {}, error: new Error("请先点击「发送验证码」获取邮件验证码。") };
 
     try {
       const verified = await fetch(`${this.gateway}/auth/v1/verification/verify`, {
