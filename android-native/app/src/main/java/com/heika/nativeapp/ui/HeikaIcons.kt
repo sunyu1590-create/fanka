@@ -46,6 +46,7 @@ object HeikaIconRes {
     val Logout = R.drawable.ic_lucide_log_out
     val Shield = R.drawable.ic_lucide_shield
     val Storage = R.drawable.ic_lucide_database
+    val Download = R.drawable.ic_lucide_download
     val Info = R.drawable.ic_lucide_info
     val Tag = R.drawable.ic_lucide_tag
     val Gavel = R.drawable.ic_lucide_gavel
@@ -118,6 +119,7 @@ object HeikaIcons {
     val Logout: ImageVector @Composable get() = icon(HeikaIconRes.Logout)
     val Shield: ImageVector @Composable get() = icon(HeikaIconRes.Shield)
     val Storage: ImageVector @Composable get() = icon(HeikaIconRes.Storage)
+    val Download: ImageVector @Composable get() = icon(HeikaIconRes.Download)
     val Info: ImageVector @Composable get() = icon(HeikaIconRes.Info)
     val Tag: ImageVector @Composable get() = icon(HeikaIconRes.Tag)
     val Gavel: ImageVector @Composable get() = icon(HeikaIconRes.Gavel)

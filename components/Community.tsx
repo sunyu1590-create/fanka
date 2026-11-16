@@ -4041,7 +4041,7 @@ export default function Community() {
           <button type="button" className="topline-action" aria-label="搜索内容或用户" onClick={() => { setSearchReturnTab("today"); setSearchDraft(searchTerm); setTab("search"); }}><Search size={19} strokeWidth={1.8}/></button>
           <button type="button" className="topline-action" aria-label="打开通知" onClick={() => openNotifications("today")}><Bell size={19} strokeWidth={1.8}/></button>
         </div> : tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : null}
-        {!secondaryTitle && appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="app-download-link" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" aria-label="下载黑卡 Android App"><Smartphone size={16}/><span>下载 App</span></a>}
+        {!secondaryTitle && tab !== "discover" && appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="app-download-link" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" aria-label="下载黑卡 Android App"><Smartphone size={16}/><span>下载 App</span></a>}
         </div>
       </header>
       {tab === "today" && (

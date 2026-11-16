@@ -42,6 +42,7 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(49, "2026.11.16", listOf("「我的作品」顶部新增下载卡片，点一下直达下载页，不再占用底栏。", "关于黑卡新增「下载黑卡 App」入口，与检查更新合并为同一张卡片，行高与图标统一。", "网页端下载入口只在首页保留，探索页不再显示。")),
     NativeRelease(48, "2026.11.16", listOf("修复切换账号后登回原账号提示密码错误：退出登录会清空上一个账号的邮箱与密码，不再把新旧密码拼在一起。", "密码框新增显示/隐藏开关，登录失败自动清空密码并给出中文原因。", "账号请求自动清理邮箱里的隐藏字符与全角空格，复制粘贴的邮箱也能正常登录。")),
     NativeRelease(47, "2026.11.16", listOf("登录与令牌刷新不再跨境直连，统一走 moonclean.shop 网关，弱网下不再卡在连接阶段。", "放宽接口并发并缩短超时，首屏不再等待登录刷新，打开速度明显提升。", "修复私信打开闪退与会话列表重复项导致的崩溃，慢网络下会话加载失败可重试。", "网络抖动不再误清登录状态；设置页管理员入口优先使用上次结果，不再空白等待。")),
     NativeRelease(46, "2026.11.16", listOf("修复删除作品失败：翻卡记录不再阻塞作品删除，删除后相关记录同步清理。", "修复会员中心读不到等级、每日额度与经验值的问题，方案价格与次数同步显示真实配置。", "关于页新增手动检查更新；设置中心一级到三级统一为同一套列表样式，图标、间距与字号全面对齐。", "翻卡翻转改用更顺滑的缓动曲线，加入轻微的抬起与阴影层次。")),
@@ -118,18 +119,14 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
             }
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) {
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(enabled = !checkingUpdate) { updateViewModel.checkForUpdate(force = true) }.padding(horizontal = 13.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(11.dp),
-                    ) {
-                        Icon(HeikaIcons.Retry, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(if (checkingUpdate) "正在检查更新…" else "检查更新", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text(updateMessage ?: "当前 ${version.first} · 构建 ${version.second}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                        }
-                        Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
-                    }
+                    AboutAction(
+                        HeikaIcons.Retry,
+                        if (checkingUpdate) "正在检查更新…" else "检查更新",
+                        updateMessage ?: "当前 ${version.first} · 构建 ${version.second}",
+                        enabled = !checkingUpdate,
+                    ) { updateViewModel.checkForUpdate(force = true) }
+                    FeatureDivider()
+                    AboutAction(HeikaIcons.Download, "下载黑卡 App", "打开网页下载页，获取安卓安装包", onClick = { updateViewModel.openDownloadPage() })
                 }
             }
             item { ReleaseSection(version.second, historyExpanded) { historyExpanded = !historyExpanded } }
@@ -179,9 +176,9 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
 
 @Composable private fun FeatureDivider() { HorizontalDivider(Modifier.padding(horizontal = 13.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f)) }
 
-@Composable private fun AboutAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onClick).padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+@Composable private fun AboutAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+        Icon(icon, null, tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .45f), modifier = Modifier.size(19.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium); Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
         Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
     }
