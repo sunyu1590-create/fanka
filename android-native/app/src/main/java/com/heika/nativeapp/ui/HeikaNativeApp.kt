@@ -100,10 +100,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
         val networkRegionWarning by networkRegionNoticeViewModel.warning.collectAsState()
         val appUpdateViewModel: AppUpdateViewModel = hiltViewModel()
         val appUpdate by appUpdateViewModel.update.collectAsState()
-        val announcementViewModel: AnnouncementViewModel = hiltViewModel()
-        val announcement by announcementViewModel.state.collectAsState()
-        LaunchedEffect(Unit) { announcementViewModel.load() }
-        announcement?.let { AnnouncementDialog(it, announcementViewModel::dismiss) }
+        AnnouncementHost()
         val nav = rememberNavController()
         val hazeState = rememberHazeState()
         val backStack by nav.currentBackStackEntryAsState()

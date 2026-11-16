@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.Build
 import android.util.Log
 import com.heika.nativeapp.auth.AuthRepository
+import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.ui.HeikaImageCache
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -18,6 +19,8 @@ import kotlinx.coroutines.launch
 class HeikaApplication : Application() {
     @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var imageCache: HeikaImageCache
+    /** 公告读取走这里，不经过 ViewModel，避免注入绑定缺失时把启动路径带崩。 */
+    @Inject lateinit var announcementRepository: HeikaRepository
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {

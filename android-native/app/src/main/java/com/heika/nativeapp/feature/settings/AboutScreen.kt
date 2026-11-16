@@ -42,6 +42,11 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(52, "2026.11.17", listOf(
+        "修复 2.5.0/2.6.0 一打开就闪退：公告的依赖没在构建时生成完整，启动即报错退出。",
+        "公告改为不经过依赖注入的独立加载，单个组件出问题不再连带整个 App 起不来。",
+        "构建流程加入代码生成完整性校验，同类问题会在发布前被拦下。",
+    )),
     NativeRelease(51, "2026.11.16", listOf(
         "卡片点开改为真正的连续转场：封面图与标题从卡片原位长成详情页，不再整页淡入淡出。",
         "翻开的卡片在转场中保持可见，圆角、位置与尺寸一路插值，不再出现闪白或跳变。",

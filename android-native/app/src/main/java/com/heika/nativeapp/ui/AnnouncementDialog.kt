@@ -16,53 +16,53 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.heika.nativeapp.data.HeikaRepository
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import com.heika.nativeapp.HeikaApplication
 
 data class AnnouncementUi(val title: String, val body: String, val version: Int)
 
-@HiltViewModel
-class AnnouncementViewModel @Inject constructor(
-    private val repository: HeikaRepository,
-    @ApplicationContext private val context: Context,
-) : ViewModel() {
-    private val mutableState = MutableStateFlow<AnnouncementUi?>(null)
-    val state = mutableState.asStateFlow()
-    private var loaded = false
+/**
+ * 公告加载与展示。
+ *
+ * 这里故意不经过 Hilt ViewModel：公告挂在启动路径上，一旦某个 ViewModel 的注入绑定
+ * 没有在构建期生成，hiltViewModel() 会退回反射构造并抛 NoSuchMethodException，
+ * 整个 App 起不来（2.5.0/2.6.0 的闪退就是这样发生的）。
+ * 公告只读、无状态迁移，用 Composable 自带协程就够，少一层生命周期也少一个崩溃点。
+ */
+@Composable
+fun AnnouncementHost() {
+    val context = LocalContext.current
+    var item by remember { mutableStateOf<AnnouncementUi?>(null) }
 
-    /** 每个公告版本只弹一次；网络失败时静默跳过，不影响启动。 */
-    fun load() {
-        if (loaded) return
-        loaded = true
-        viewModelScope.launch {
-            val data = runCatching { repository.announcement() }.getOrNull() ?: return@launch
-            val version = data.optInt("version", 0)
-            val title = data.optString("title").trim()
-            val body = data.optString("body").trim()
-            if (version <= 0 || title.isEmpty() || body.isEmpty()) return@launch
-            val prefs = context.getSharedPreferences("heika-announcement", Context.MODE_PRIVATE)
-            if (prefs.getInt("seen_version", 0) == version) return@launch
-            mutableState.value = AnnouncementUi(title, body, version)
-        }
+    LaunchedEffect(Unit) {
+        val repository = (context.applicationContext as? HeikaApplication)?.announcementRepository
+            ?: return@LaunchedEffect
+        val data = runCatching { repository.announcement() }.getOrNull() ?: return@LaunchedEffect
+        val version = data.optInt("version", 0)
+        val title = data.optString("title").trim()
+        val body = data.optString("body").trim()
+        if (version <= 0 || title.isEmpty() || body.isEmpty()) return@LaunchedEffect
+        val prefs = context.getSharedPreferences("heika-announcement", Context.MODE_PRIVATE)
+        if (prefs.getInt("seen_version", 0) == version) return@LaunchedEffect
+        item = AnnouncementUi(title, body, version)
     }
 
-    fun dismiss() {
-        val current = mutableState.value ?: return
-        context.getSharedPreferences("heika-announcement", Context.MODE_PRIVATE)
-            .edit().putInt("seen_version", current.version).apply()
-        mutableState.value = null
+    item?.let { current ->
+        AnnouncementDialog(current) {
+            context.getSharedPreferences("heika-announcement", Context.MODE_PRIVATE)
+                .edit().putInt("seen_version", current.version).apply()
+            item = null
+        }
     }
 }
 
