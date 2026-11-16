@@ -21,10 +21,17 @@ object NativeModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
-        .callTimeout(35, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        // 默认每个域名只允许 5 个并发连接。首屏一次要拉十几个接口，
+        // 国内网络往返高，排队会让页面慢好几秒，这里放宽到 16。
+        .dispatcher(okhttp3.Dispatcher().apply {
+            maxRequests = 64
+            maxRequestsPerHost = 16
+        })
+        .connectionPool(okhttp3.ConnectionPool(12, 5, java.util.concurrent.TimeUnit.MINUTES))
         .retryOnConnectionFailure(true)
         .build()
 

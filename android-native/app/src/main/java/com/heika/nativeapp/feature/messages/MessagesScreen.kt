@@ -182,7 +182,7 @@ fun MessagesScreen(
                 if (peopleMode && state.query.length >= 2 && state.people.isNotEmpty()) {
                     Text("用户", Modifier.padding(start = 21.dp, top = 14.dp, bottom = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     LazyColumn(state = peopleListState, modifier = Modifier.weight(1f), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 128.dp)) {
-                        items(state.people, key = { it.id }) { peer -> PeerRow(peer) { viewModel.openPeer(peer) } }
+                        items(state.people.distinctBy { it.id }, key = { it.id }) { peer -> PeerRow(peer) { viewModel.openPeer(peer) } }
                     }
                 } else if (peopleMode && state.query.length >= 2 && state.searchingPeople) {
                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
@@ -204,7 +204,7 @@ fun MessagesScreen(
                         val query = state.query.trim().lowercase()
                         val conversations = state.conversations.filter { item ->
                             (!unreadOnly || item.unread > 0) && (query.isEmpty() || item.peer.name.lowercase().contains(query) || item.latest.lowercase().contains(query))
-                        }
+                        }.distinctBy { it.id }
                         items(conversations, key = { it.id }) { item ->
                             Column(Modifier.animateItem()) { ConversationRow(item) { viewModel.openConversation(item) }; androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .25f), thickness = .5.dp) }
                         }
@@ -240,7 +240,7 @@ fun MessagesScreen(
                 if (state.historyHasMore) item {
                     Text(if (state.loadingHistory) "正在加载…" else "加载更早消息", Modifier.fillMaxWidth().clickable(enabled = !state.loadingHistory) { viewModel.loadOlderMessages() }.padding(9.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
-                itemsIndexed(state.messages, key = { _, it -> it.id }) { index, message ->
+                itemsIndexed(state.messages, key = { index, it -> if (it.id.isBlank()) "blank-$index" else it.id }) { index, message ->
                     val mine = message.senderId == state.userId
                     val day = message.createdAt.take(10)
                     val previousDay = state.messages.getOrNull(index - 1)?.createdAt?.take(10)

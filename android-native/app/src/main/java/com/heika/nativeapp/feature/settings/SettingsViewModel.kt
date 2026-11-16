@@ -83,9 +83,14 @@ class SettingsViewModel @Inject constructor(
                     mutableAdminAccess.value = null
                     if (session != null) {
                         val userId = session.userId
+                        // 先用上次的结果渲染，慢网络下管理员入口不会凭空消失。
+                        cachedAdminAccess?.takeIf { it.first == userId }?.let { mutableAdminAccess.value = it.second }
                         viewModelScope.launch {
                             val allowed = runCatching { repository.adminOverview(); true }.getOrDefault(false)
-                            if (auth.current()?.userId == userId) mutableAdminAccess.value = allowed
+                            if (auth.current()?.userId == userId) {
+                                mutableAdminAccess.value = allowed
+                                cachedAdminAccess = userId to allowed
+                            }
                         }
                     }
                 }
@@ -224,6 +229,11 @@ class SettingsViewModel @Inject constructor(
     }
     fun signOut(onDone: () -> Unit) = viewModelScope.launch {
         runCatching { auth.signOut() }
+        cachedAdminAccess = null
         onDone()
+    }
+
+    private companion object {
+        @Volatile private var cachedAdminAccess: Pair<String, Boolean>? = null
     }
 }

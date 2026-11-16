@@ -33,16 +33,37 @@ class AuthRepository @Inject constructor(
     private val mutableSession = MutableStateFlow<HeikaSession?>(null)
     private var restored = false
     private var authConfig: AuthConfig? = null
+    // 认证请求是所有接口的前置步骤，必须快速失败，
+    // 否则一次弱网刷新会把整个 App 的首屏一起拖住。
+    private val authClient: OkHttpClient by lazy {
+        httpClient.newBuilder()
+            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
     val session: StateFlow<HeikaSession?> = mutableSession.asStateFlow()
 
-    suspend fun restore(): HeikaSession? = mutex.withLock {
+    suspend fun restore(): HeikaSession? {
         if (!restored) {
-            mutableSession.value = store.read()
-            restored = true
+            mutex.withLock {
+                if (!restored) {
+                    mutableSession.value = store.read()
+                    restored = true
+                }
+            }
         }
-        val existing = mutableSession.value ?: return@withLock null
-        if (existing.expiresAtSeconds > nowSeconds() + 90) return@withLock existing
-        refreshLocked(existing)
+        val existing = mutableSession.value ?: return null
+        if (existing.expiresAtSeconds > nowSeconds() + 90) return existing
+        // 已经有协程在刷新令牌时，本次直接用现有会话返回，
+        // 不让首屏十几个请求一起排在刷新后面空等。
+        if (!mutex.tryLock()) return existing
+        return try {
+            refreshLocked(existing)
+        } finally {
+            mutex.unlock()
+        }
     }
 
     suspend fun currentToken(): String? = restore()?.accessToken
@@ -118,7 +139,12 @@ class AuthRepository @Inject constructor(
                 save(refreshed)
             }
         } catch (error: Exception) {
-            if (error is AuthHttpException && error.statusCode in setOf(400, 401, 403)) {
+            // 网络抖动、DNS 解析失败、网关 502 都不应该把用户踢下线。
+            // 只有服务端明确判定 refresh token 已失效时，才清理本地会话。
+            val revoked = error is AuthHttpException &&
+                error.statusCode in setOf(400, 401) &&
+                REVOKED_HINTS.any { error.message?.contains(it, ignoreCase = true) == true }
+            if (revoked) {
                 clearSession()
                 null
             } else {
@@ -142,7 +168,10 @@ class AuthRepository @Inject constructor(
         val raw = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
         val json = parseJson(raw)
         if (!response.isSuccessful) throw IOException(json.optString("error").ifBlank { "账号服务暂不可用" })
-        val url = sequenceOf("url", "gateway").map { json.optString(it) }
+        // gateway 是本站同域网关，认证请求由服务端转发；
+        // 只有旧版服务端没有该字段时才退回 Supabase 原始地址。
+        val url = sequenceOf("gateway", "url")
+            .map { json.optString(it) }
             .firstOrNull { it.startsWith("https://") }
             ?.trimEnd('/')
             ?: throw IOException("账号服务地址配置无效")
@@ -173,7 +202,7 @@ class AuthRepository @Inject constructor(
     }
 
     private fun parseResponse(request: Request, fallback: String): Any? {
-        val response = httpClient.newCall(request).execute()
+        val response = authClient.newCall(request).execute()
         val raw = response.body?.use { it.string() }.orEmpty()
         val value = parseValue(raw)
         if (!response.isSuccessful) {
@@ -226,5 +255,6 @@ class AuthRepository @Inject constructor(
 
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaType()
+        val REVOKED_HINTS = listOf("refresh_token", "invalid_grant", "refresh token")
     }
 }

@@ -54,6 +54,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     private val inboxMutex = Mutex()
     private val conversationMutex = Mutex()
     private var conversationGeneration = 0L
+    @Volatile private var pendingConversationId: String? = null
     private var retryReadFor: String? = null
     private var avatarLookupAttemptedFor: String? = null
 
@@ -153,7 +154,18 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     fun stopForegroundSync() { pollingJob?.cancel(); pollingJob = null }
 
     private suspend fun loadConversation(id: String) {
-        if (!conversationMutex.tryLock()) return
+        // 慢网络下会话请求会排队，这里用循环而不是递归重试，
+        // 避免 generation 连续变化时堆栈无限增长导致崩溃。
+        var target: String? = id
+        var hops = 0
+        while (target != null && hops < 3) {
+            hops++
+            target = loadConversationOnce(target)
+        }
+    }
+
+    private suspend fun loadConversationOnce(id: String): String? {
+        if (!conversationMutex.tryLock()) { pendingConversationId = id; return null }
         val requestGeneration = conversationGeneration
         val requestUserId = mutableState.value.userId
         try {
@@ -187,8 +199,14 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }
         } finally {
             conversationMutex.unlock()
-            val active = mutableState.value.activeId
-            if (requestGeneration != conversationGeneration && active != null) loadConversation(active)
+        }
+        val pending = pendingConversationId
+        pendingConversationId = null
+        val active = mutableState.value.activeId
+        return when {
+            pending != null && pending == active -> pending
+            requestGeneration != conversationGeneration && active != null -> active
+            else -> null
         }
     }
 
@@ -217,7 +235,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
             delay(250)
             runCatching { repository.searchPeople(requested) }.onSuccess { data ->
                 if (mutableState.value.query.trim() != requested) return@onSuccess
-                val people = data.optJSONArray("items").jsonObjects().map(::parsePeer)
+                val people = data.optJSONArray("items").jsonObjects().map(::parsePeer).filter { it.id.isNotBlank() }.distinctBy { it.id }
                 mutableState.update { it.copy(people = people, searchingPeople = false) }
             }.onFailure { error -> if (mutableState.value.query.trim() == requested) mutableState.update { it.copy(searchingPeople = false, error = error.message ?: "用户搜索失败") } }
         }
@@ -299,5 +317,5 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     private fun parseInbox(data: JSONObject): List<NativeConversation> = data.optJSONArray("items").jsonObjects().map { row ->
         val peer = parsePeer(row.optJSONObject("peer") ?: JSONObject())
         NativeConversation(row.optString("conversation_id"), peer, row.optString("latest_body"), row.optInt("unread"), row.optString("created_at"))
-    }
+    }.filter { it.id.isNotBlank() }.distinctBy { it.id }
 }

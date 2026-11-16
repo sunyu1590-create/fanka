@@ -24,6 +24,27 @@ moonclean.shop {
 		}
 	}
 
+	# Supabase Auth 反向代理：登录与 token 刷新同样走本站域名。
+	# 手机端不再跨境直连东京认证节点，弱网下也不会卡在 TLS 握手。
+	handle /auth/v1/* {
+		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
+			header_up Host dnotobyltytpgplfimzo.supabase.co
+		}
+	}
+
+	# 数据与实时通道同样兜底反代，避免客户端跨境直连。
+	handle /rest/v1/* {
+		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
+			header_up Host dnotobyltytpgplfimzo.supabase.co
+		}
+	}
+
+	handle /realtime/v1/* {
+		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
+			header_up Host dnotobyltytpgplfimzo.supabase.co
+		}
+	}
+
 	reverse_proxy app:3000
 }
 
