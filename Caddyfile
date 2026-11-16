@@ -15,6 +15,15 @@ moonclean.shop {
 		file_server
 	}
 
+	# Supabase Storage 反向代理：图片统一走本站域名，
+	# 避免客户端跨境直连存储节点造成的间歇性加载失败。
+	handle /storage/* {
+		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
+			header_up Host dnotobyltytpgplfimzo.supabase.co
+			header_down Cache-Control "public, max-age=86400"
+		}
+	}
+
 	reverse_proxy app:3000
 }
 

@@ -9,4 +9,16 @@ export async function jsonBody(req:NextRequest){try{return await req.json() as R
 export function textField(value:unknown,name:string,min:number,max:number){if(typeof value!=='string'||value.trim().length<min||value.trim().length>max)throw new ApiError(400,`${name}长度须为 ${min}-${max}`);return value.trim()}
 export function uuid(value:unknown,name='id'){if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new ApiError(400,`${name}无效`);return value}
 export function dbError(error:{message:string;code?:string}|null){if(!error)return;const status=error.code==='23505'?409:error.code==='42501'?403:400;throw new ApiError(status,error.message)}
-export function respond(fn:()=>Promise<unknown>){return fn().then(data=>NextResponse.json({data})).catch(error=>NextResponse.json({error:error instanceof ApiError?error.message:'服务器内部错误'},{status:error instanceof ApiError?error.status:500}))}
+
+// 图片统一由站点域名分发：Caddy 把 /storage/* 反向代理到 Supabase Storage，
+// 客户端因此不必跨境直连存储节点（这是原生端图片间歇性加载失败的主因）。
+const PUBLIC_BASE=(process.env.PUBLIC_BASE_URL||'https://moonclean.shop').replace(/\/$/,'');
+function storageOrigin(){return (process.env.SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL||'').replace(/\/$/,'')}
+export function publicStorageUrl(url:string){const from=storageOrigin();if(!from||!url.startsWith(`${from}/storage/v1/object/`))return url;return `${PUBLIC_BASE}${url.slice(from.length)}`}
+function rewriteStorage(value:unknown):unknown{
+  if(typeof value==='string')return publicStorageUrl(value);
+  if(Array.isArray(value))return value.map(rewriteStorage);
+  if(value&&typeof value==='object'){const out:Record<string,unknown>={};for(const [key,item] of Object.entries(value as Record<string,unknown>))out[key]=rewriteStorage(item);return out}
+  return value;
+}
+export function respond(fn:()=>Promise<unknown>){return fn().then(data=>NextResponse.json({data:rewriteStorage(data)})).catch(error=>NextResponse.json({error:error instanceof ApiError?error.message:'服务器内部错误'},{status:error instanceof ApiError?error.status:500}))}

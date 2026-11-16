@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { context, respond, ApiError, dbError, uuid } from "@/lib/server/api";
+import { context, respond, ApiError, dbError, publicStorageUrl, uuid } from "@/lib/server/api";
 import { mediaBucketForPath } from "@/lib/media-path";
 import { createMediaThumbnails } from "@/lib/server/media-thumbnails";
 import { createFeedThumbnail } from "@/lib/server/feed-thumbnail";
@@ -64,10 +64,10 @@ export async function GET(req: NextRequest) {
           });
         } catch (error) {
           console.warn("[media] feed thumbnail fallback", error instanceof Error ? error.name : "unknown");
-          return NextResponse.redirect(data.signedUrl, 302);
+          return NextResponse.redirect(publicStorageUrl(data.signedUrl), 302);
         }
       }
-      return NextResponse.redirect(data.signedUrl, 302);
+      return NextResponse.redirect(publicStorageUrl(data.signedUrl), 302);
     } catch (error) {
       return NextResponse.json({ error: error instanceof ApiError ? error.message : "媒体加载失败" }, { status: error instanceof ApiError ? error.status : 500 });
     }
