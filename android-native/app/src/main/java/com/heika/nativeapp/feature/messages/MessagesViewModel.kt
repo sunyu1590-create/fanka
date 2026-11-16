@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.messages
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -59,7 +60,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     private var avatarLookupAttemptedFor: String? = null
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 if (!authInitialized) return@collect
                 val currentUserId = mutableState.value.userId
@@ -76,7 +77,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }
     }
 
-    fun load(initialConversation: String? = null) = viewModelScope.launch {
+    fun load(initialConversation: String? = null) = viewModelScope.launch(HeikaCoroutineGuard) {
         val session = runCatching { auth.current() }.getOrNull()
         if (!authInitialized) {
             authInitialized = true
@@ -95,7 +96,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
             }
             if (avatarLookupAttemptedFor != requestUser) {
                 avatarLookupAttemptedFor = requestUser
-                viewModelScope.launch {
+                viewModelScope.launch(HeikaCoroutineGuard) {
                     runCatching { repository.myProfile() }.onSuccess { data ->
                         val profile = data.optJSONObject("profile") ?: data
                         val avatar = profile.optString("avatar_url").takeIf(String::isNotBlank)
@@ -135,14 +136,14 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }
     }
 
-    fun refreshActive() = viewModelScope.launch {
+    fun refreshActive() = viewModelScope.launch(HeikaCoroutineGuard) {
         val id = mutableState.value.activeId ?: return@launch
         loadConversation(id)
     }
 
     fun startForegroundSync() {
         if (pollingJob?.isActive == true) return
-        pollingJob = viewModelScope.launch {
+        pollingJob = viewModelScope.launch(HeikaCoroutineGuard) {
             while (true) {
                 val active = mutableState.value.activeId
                 if (active == null) load() else refreshActive()
@@ -210,7 +211,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }
     }
 
-    fun loadOlderMessages() = viewModelScope.launch {
+    fun loadOlderMessages() = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val id = current.activeId ?: return@launch
         val before = current.messages.firstOrNull()?.createdAt ?: return@launch
@@ -231,7 +232,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         searchJob?.cancel()
         if (query.trim().length < 2) { mutableState.update { it.copy(people = emptyList(), searchingPeople = false) }; return }
         val requested = query.trim().take(60)
-        searchJob = viewModelScope.launch {
+        searchJob = viewModelScope.launch(HeikaCoroutineGuard) {
             delay(250)
             runCatching { repository.searchPeople(requested) }.onSuccess { data ->
                 if (mutableState.value.query.trim() != requested) return@onSuccess
@@ -243,7 +244,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
 
     fun setQuery(query: String) = mutableState.update { it.copy(query = query.take(60), people = emptyList(), searchingPeople = false, error = null) }
 
-    fun openPeer(peer: NativePeer) = viewModelScope.launch {
+    fun openPeer(peer: NativePeer) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (openingPeerId == peer.id || mutableState.value.activePeer?.id == peer.id) return@launch
         openingPeerId = peer.id
         try {
@@ -264,7 +265,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }
     }
 
-    fun startWithPeer(userId: String) = viewModelScope.launch {
+    fun startWithPeer(userId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (userId.isBlank()) return@launch
         runCatching { repository.profile(userId) }.onSuccess { data ->
             val peer = parsePeer(data.optJSONObject("profile") ?: JSONObject())
@@ -272,7 +273,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }.onFailure { error -> mutableState.update { it.copy(loading = false, error = error.message ?: "无法打开用户资料") } }
     }
 
-    fun openConversation(item: NativeConversation) = viewModelScope.launch {
+    fun openConversation(item: NativeConversation) = viewModelScope.launch(HeikaCoroutineGuard) {
         conversationGeneration++
         retryReadFor = null
         mutableState.update { it.copy(activeId = item.id, activePeer = item.peer, messages = emptyList(), loading = true, error = null) }
@@ -286,7 +287,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     }
     fun setDraft(value: String) = mutableState.update { it.copy(draft = value.take(2000)) }
 
-    fun send() = viewModelScope.launch {
+    fun send() = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val id = current.activeId ?: return@launch
         val text = current.draft.trim()
@@ -294,7 +295,7 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         sendWithNonce(id, text, UUID.randomUUID().toString())
     }
 
-    fun retryMessage(nonce: String) = viewModelScope.launch {
+    fun retryMessage(nonce: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val item = mutableState.value.pendingMessages.firstOrNull { it.nonce == nonce && it.failed } ?: return@launch
         sendWithNonce(item.conversationId, item.body, item.nonce)
     }

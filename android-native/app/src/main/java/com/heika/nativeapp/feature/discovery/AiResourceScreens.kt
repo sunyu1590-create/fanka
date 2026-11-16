@@ -5,6 +5,7 @@
 
 package com.heika.nativeapp.feature.discovery
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -164,27 +165,27 @@ fun AiResourceResultsScreen(
                 placeholder = { Text("搜索 AI 资源标题或正文") },
                 leadingIcon = { Icon(HeikaIcons.Search, contentDescription = null) },
                 trailingIcon = {
-                    IconButton(onClick = { scope.launch { viewModel.search(searchText); feedState.scrollToItem(0) }; focusManager.clearFocus() }) {
+                    IconButton(onClick = { scope.launch(HeikaCoroutineGuard) { viewModel.search(searchText); feedState.scrollToItem(0) }; focusManager.clearFocus() }) {
                         Icon(HeikaIcons.Search, contentDescription = "搜索")
                     }
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(HeikaRadii.control),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { scope.launch { viewModel.search(searchText); feedState.scrollToItem(0) }; focusManager.clearFocus() }),
+                keyboardActions = KeyboardActions(onSearch = { scope.launch(HeikaCoroutineGuard) { viewModel.search(searchText); feedState.scrollToItem(0) }; focusManager.clearFocus() }),
             )
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                item { AiScenarioChip("全部类型", filter.contentType == null) { scope.launch { viewModel.setType(null); feedState.scrollToItem(0) } } }
-                items(typeState.items, key = AiResourceType::id) { type -> AiScenarioChip(type.label, filter.contentType == type.id) { scope.launch { viewModel.setType(type.id); feedState.scrollToItem(0) } } }
+                item { AiScenarioChip("全部类型", filter.contentType == null) { scope.launch(HeikaCoroutineGuard) { viewModel.setType(null); feedState.scrollToItem(0) } } }
+                items(typeState.items, key = AiResourceType::id) { type -> AiScenarioChip(type.label, filter.contentType == type.id) { scope.launch(HeikaCoroutineGuard) { viewModel.setType(type.id); feedState.scrollToItem(0) } } }
             }
         }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 9.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            item { AiScenarioChip("全部场景", filter.usageScenario == null) { scope.launch { viewModel.setScenario(null); feedState.scrollToItem(0) } } }
+            item { AiScenarioChip("全部场景", filter.usageScenario == null) { scope.launch(HeikaCoroutineGuard) { viewModel.setScenario(null); feedState.scrollToItem(0) } } }
             items(AI_SCENARIOS, key = { it.first }) { (key, label) ->
-                AiScenarioChip(label, filter.usageScenario == key) { scope.launch { viewModel.setScenario(if (filter.usageScenario == key) null else key); feedState.scrollToItem(0) } }
+                AiScenarioChip(label, filter.usageScenario == key) { scope.launch(HeikaCoroutineGuard) { viewModel.setScenario(if (filter.usageScenario == key) null else key); feedState.scrollToItem(0) } }
             }
         }
         PullToRefreshBox(

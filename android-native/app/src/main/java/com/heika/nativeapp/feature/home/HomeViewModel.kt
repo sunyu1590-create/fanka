@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.home
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -49,7 +50,7 @@ class HomeViewModel @Inject constructor(
     private val loadMutex = Mutex()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             val session = auth.restore()
             load(session?.userId ?: HomeUiState.GUEST_ID)
             auth.session.drop(1).collect { changed ->
@@ -64,7 +65,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun reload() = viewModelScope.launch { openMutex.withLock { load(mutableState.value.userId) } }
+    fun reload() = viewModelScope.launch(HeikaCoroutineGuard) { openMutex.withLock { load(mutableState.value.userId) } }
 
     private suspend fun load(userId: String) = loadMutex.withLock { loadLatest(userId) }
 
@@ -149,7 +150,7 @@ class HomeViewModel @Inject constructor(
         persist()
     }
 
-    fun flip(id: Int) = viewModelScope.launch {
+    fun flip(id: Int) = viewModelScope.launch(HeikaCoroutineGuard) {
         openMutex.withLock {
             val current = mutableState.value
             // Ignore taps from a second card while the selected card is waiting for the

@@ -1,6 +1,7 @@
 package com.heika.nativeapp;
 
 import com.heika.nativeapp.auth.AuthRepository;
+import com.heika.nativeapp.data.HeikaRepository;
 import com.heika.nativeapp.ui.HeikaImageCache;
 import dagger.MembersInjector;
 import dagger.internal.DaggerGenerated;
@@ -29,22 +30,27 @@ public final class HeikaApplication_MembersInjector implements MembersInjector<H
 
   private final Provider<HeikaImageCache> imageCacheProvider;
 
+  private final Provider<HeikaRepository> announcementRepositoryProvider;
+
   public HeikaApplication_MembersInjector(Provider<AuthRepository> authRepositoryProvider,
-      Provider<HeikaImageCache> imageCacheProvider) {
+      Provider<HeikaImageCache> imageCacheProvider,
+      Provider<HeikaRepository> announcementRepositoryProvider) {
     this.authRepositoryProvider = authRepositoryProvider;
     this.imageCacheProvider = imageCacheProvider;
+    this.announcementRepositoryProvider = announcementRepositoryProvider;
   }
 
   public static MembersInjector<HeikaApplication> create(
-      Provider<AuthRepository> authRepositoryProvider,
-      Provider<HeikaImageCache> imageCacheProvider) {
-    return new HeikaApplication_MembersInjector(authRepositoryProvider, imageCacheProvider);
+      Provider<AuthRepository> authRepositoryProvider, Provider<HeikaImageCache> imageCacheProvider,
+      Provider<HeikaRepository> announcementRepositoryProvider) {
+    return new HeikaApplication_MembersInjector(authRepositoryProvider, imageCacheProvider, announcementRepositoryProvider);
   }
 
   @Override
   public void injectMembers(HeikaApplication instance) {
     injectAuthRepository(instance, authRepositoryProvider.get());
     injectImageCache(instance, imageCacheProvider.get());
+    injectAnnouncementRepository(instance, announcementRepositoryProvider.get());
   }
 
   @InjectedFieldSignature("com.heika.nativeapp.HeikaApplication.authRepository")
@@ -56,5 +62,11 @@ public final class HeikaApplication_MembersInjector implements MembersInjector<H
   @InjectedFieldSignature("com.heika.nativeapp.HeikaApplication.imageCache")
   public static void injectImageCache(HeikaApplication instance, HeikaImageCache imageCache) {
     instance.imageCache = imageCache;
+  }
+
+  @InjectedFieldSignature("com.heika.nativeapp.HeikaApplication.announcementRepository")
+  public static void injectAnnouncementRepository(HeikaApplication instance,
+      HeikaRepository announcementRepository) {
+    instance.announcementRepository = announcementRepository;
   }
 }

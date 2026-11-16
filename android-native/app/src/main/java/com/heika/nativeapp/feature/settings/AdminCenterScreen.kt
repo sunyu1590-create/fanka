@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.settings
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import com.heika.nativeapp.ui.HeikaAlertDialog
 import com.heika.nativeapp.ui.HeikaGlassDialog
 
@@ -799,7 +800,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
 
     init { refresh() }
     fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "membership-support") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
-    fun refresh() = viewModelScope.launch {
+    fun refresh() = viewModelScope.launch(HeikaCoroutineGuard) {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, membershipLoading = mutableState.value.section == "membership-support", error = null, notice = null, membershipError = if (mutableState.value.section == "membership-support") null else mutableState.value.membershipError)
         try {
@@ -838,7 +839,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
 
     fun selectMembershipTab(tab: String) { if (tab in setOf("codes", "members", "orders", "plans")) mutableState.value = mutableState.value.copy(membershipTab = tab, membershipError = null, membershipNotice = null) }
 
-    fun createMembershipBatch(name: String, tier: String, days: Int, count: Int, channel: String, onCreated: (String) -> Unit) = viewModelScope.launch {
+    fun createMembershipBatch(name: String, tier: String, days: Int, count: Int, channel: String, onCreated: (String) -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "membership-batch", membershipError = null, membershipNotice = null)
         try {
@@ -856,7 +857,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     fun clearGeneratedMembershipCodes() { mutableState.value = mutableState.value.copy(generatedCodeText = null, membershipNotice = "卡密文本已保存到所选位置。请妥善保管。") }
     fun reportMembershipError(message: String) { mutableState.value = mutableState.value.copy(membershipError = message) }
 
-    fun toggleMembershipBatch(batchId: String) = viewModelScope.launch {
+    fun toggleMembershipBatch(batchId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.membershipExpandedBatch == batchId) { mutableState.value = mutableState.value.copy(membershipExpandedBatch = null, membershipCodes = emptyList()); return@launch }
         mutableState.value = mutableState.value.copy(saving = "membership-codes", membershipError = null)
         try {
@@ -865,7 +866,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "读取卡密状态失败") }
     }
 
-    fun disableMembershipCode(codeId: String) = viewModelScope.launch {
+    fun disableMembershipCode(codeId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = codeId, membershipError = null)
         try {
@@ -882,14 +883,14 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "停用卡密失败") }
     }
 
-    fun searchMembershipUsers(query: String) = viewModelScope.launch {
+    fun searchMembershipUsers(query: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "membership-search", membershipError = null, membershipUsers = emptyList())
         try { val result = repository.adminMembershipUsers(query); mutableState.value = mutableState.value.copy(saving = null, membershipUsers = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList()) }
         catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "搜索会员用户失败") }
     }
 
-    fun adjustMembership(userId: String, tier: String, days: Int?, reason: String, query: String) = viewModelScope.launch {
+    fun adjustMembership(userId: String, tier: String, days: Int?, reason: String, query: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "membership-user", membershipError = null)
         try {
@@ -906,27 +907,27 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "会员调整失败") }
     }
 
-    fun saveMembershipPlan(tier: String, flips: Int, cents: Int, days: Int?, enabled: Boolean) = viewModelScope.launch {
+    fun saveMembershipPlan(tier: String, flips: Int, cents: Int, days: Int?, enabled: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "membership-plan-$tier", membershipError = null)
         try { repository.updateAdminMembershipPlan(tier, flips, cents, days, enabled); mutableState.value = mutableState.value.copy(saving = null, membershipNotice = "$tier 方案已保存"); refresh() }
         catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "方案保存失败") }
     }
 
-    fun reviewMembershipOrder(id: String, paymentStatus: String, processingStatus: String, note: String) = viewModelScope.launch {
+    fun reviewMembershipOrder(id: String, paymentStatus: String, processingStatus: String, note: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, membershipError = null)
         try { repository.reviewAdminMembershipOrder(id, paymentStatus, processingStatus, note); mutableState.value = mutableState.value.copy(saving = null, membershipNotice = if (paymentStatus == "paid") "订单人工核验已记录；没有自动发放会员或卡密。" else "订单已标记为待复核"); refresh() }
         catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "订单复核失败") }
     }
 
-    fun recordMembershipOrder(orderId: String, userId: String, tier: String, days: Int, amountCents: Long, providerUserRef: String, onSaved: () -> Unit) = viewModelScope.launch {
+    fun recordMembershipOrder(orderId: String, userId: String, tier: String, days: Int, amountCents: Long, providerUserRef: String, onSaved: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "membership-order", membershipError = null)
         try { repository.recordAdminMembershipOrder(orderId, userId, tier, days, amountCents, providerUserRef.trim().ifBlank { null }); mutableState.value = mutableState.value.copy(saving = null, membershipNotice = "订单已登记为待核验；核验通过后将按方案发放会员权益"); onSaved(); refresh() }
         catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "订单登记失败") }
     }
-    fun process(id: String, accepted: Boolean, note: String) = viewModelScope.launch {
+    fun process(id: String, accepted: Boolean, note: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, error = null)
         try {
@@ -948,42 +949,42 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         }
     }
 
-    fun addKeyword(keyword: String, onAdded: () -> Unit) = viewModelScope.launch {
+    fun addKeyword(keyword: String, onAdded: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "new-keyword", error = null)
         try { repository.createAdminKeywordRule(keyword); mutableState.value = mutableState.value.copy(saving = null, notice = "规则已添加"); onAdded(); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "添加规则失败，请检查内容或权限") }
     }
 
-    fun setKeywordEnabled(id: String, enabled: Boolean) = viewModelScope.launch {
+    fun setKeywordEnabled(id: String, enabled: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, error = null)
         try { repository.setAdminKeywordEnabled(id, enabled); mutableState.value = mutableState.value.copy(saving = null, notice = if (enabled) "规则已启用" else "规则已暂停"); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "更新规则失败，请重试") }
     }
 
-    fun deleteKeyword(id: String) = viewModelScope.launch {
+    fun deleteKeyword(id: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, error = null)
         try { repository.deleteAdminKeywordRule(id); mutableState.value = mutableState.value.copy(saving = null, notice = "规则已删除"); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "删除规则失败，请重试") }
     }
 
-    fun createCategory(name: String, onCreated: () -> Unit) = viewModelScope.launch {
+    fun createCategory(name: String, onCreated: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "category", error = null)
         try { repository.createAdminCategory(name); mutableState.value = mutableState.value.copy(saving = null, notice = "分类已创建"); onCreated(); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "分类创建失败，请检查名称或权限") }
     }
 
-    fun setCategoryActive(id: Int, active: Boolean) = viewModelScope.launch {
+    fun setCategoryActive(id: Int, active: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id.toString(), error = null)
         try { repository.setAdminCategoryActive(id, active); mutableState.value = mutableState.value.copy(saving = null, notice = "分类设置已保存"); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "分类设置保存失败，请重试") }
     }
 
-    fun updateAiResourceType(resourceType: String, label: String, description: String, enabled: Boolean, sortOrder: Int) = viewModelScope.launch {
+    fun updateAiResourceType(resourceType: String, label: String, description: String, enabled: Boolean, sortOrder: Int) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         val key = "ai-type-$resourceType"
         mutableState.value = mutableState.value.copy(saving = key, error = null, notice = null)
@@ -994,7 +995,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         } catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "AI 资源类型保存失败，请确认权限与名称") }
     }
 
-    fun createTopicEvent(topic: String, title: String, description: String, starts: String, ends: String, onCreated: () -> Unit) = viewModelScope.launch {
+    fun createTopicEvent(topic: String, title: String, description: String, starts: String, ends: String, onCreated: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "topic-event", error = null)
         try {
@@ -1005,7 +1006,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         } catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "创建失败，请检查话题与时间格式") }
     }
 
-    fun setTopicEventActive(event: JSONObject, active: Boolean) = viewModelScope.launch {
+    fun setTopicEventActive(event: JSONObject, active: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         val topics = mutableState.value.metadata?.optJSONArray("topics") ?: JSONArray()
         val topicId = event.optInt("topic_id")
@@ -1020,7 +1021,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         } catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "活动设置失败，请重试") }
     }
 
-    fun saveRecommendationSettings(values: Map<String, Int>) = viewModelScope.launch {
+    fun saveRecommendationSettings(values: Map<String, Int>) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         if (values.values.any { it < 0 } || values.values.sum() != 5) { mutableState.value = mutableState.value.copy(error = "四类数量必须合计为 5"); return@launch }
         mutableState.value = mutableState.value.copy(saving = "recommendations", error = null)
@@ -1028,7 +1029,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "保存失败，请检查管理员权限") }
     }
 
-    fun saveExplorationAd(payload: JSONObject) = viewModelScope.launch {
+    fun saveExplorationAd(payload: JSONObject) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "exploration-ad", error = null, notice = null)
         try {
@@ -1040,7 +1041,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         }
     }
 
-    fun uploadExplorationAdImage(fileName: String, mimeType: String, bytes: ByteArray, onUploaded: (String) -> Unit) = viewModelScope.launch {
+    fun uploadExplorationAdImage(fileName: String, mimeType: String, bytes: ByteArray, onUploaded: (String) -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "exploration-ad-image", error = null, notice = null)
         try {
@@ -1054,7 +1055,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         }
     }
 
-    fun searchExplorationAdPosts(query: String) = viewModelScope.launch {
+    fun searchExplorationAdPosts(query: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null || mutableState.value.adPostsLoading) return@launch
         val requestId = ++adPostsGeneration
         mutableState.value = mutableState.value.copy(adPostsLoading = true, error = null)
@@ -1068,28 +1069,28 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         }
     }
 
-    fun saveAiKey(key: String, onSaved: () -> Unit) = viewModelScope.launch {
+    fun saveAiKey(key: String, onSaved: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "ai-key", error = null)
         try { repository.saveAdminAiKey(key); mutableState.value = mutableState.value.copy(saving = null, notice = "AI 密钥已加密保存"); onSaved(); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "保存失败，请检查密钥格式或管理员权限") }
     }
 
-    fun deleteAiKey() = viewModelScope.launch {
+    fun deleteAiKey() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "ai-key", error = null)
         try { repository.deleteAdminAiKey(); mutableState.value = mutableState.value.copy(saving = null, notice = "AI 密钥已删除"); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "删除 AI 密钥失败，请重试") }
     }
 
-    fun setUserRole(id: String, role: String) = viewModelScope.launch {
+    fun setUserRole(id: String, role: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, error = null)
         try { repository.setAdminUserRole(id, role); mutableState.value = mutableState.value.copy(saving = null, notice = "账号角色已更新"); refresh() }
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "角色更新失败，请确认管理员权限") }
     }
 
-    fun setUserMembership(id: String, tier: String) = viewModelScope.launch {
+    fun setUserMembership(id: String, tier: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, error = null)
         try { repository.setAdminUserMembership(id, tier); mutableState.value = mutableState.value.copy(saving = null, notice = "会员等级已更新"); refresh() }

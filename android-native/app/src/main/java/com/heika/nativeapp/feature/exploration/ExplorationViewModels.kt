@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.exploration
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -65,7 +66,7 @@ class ExplorationViewModel @Inject constructor(
     private var lastLoadedAtByUser = mutableMapOf<String, Long>()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 val userId = session?.userId
                 if (userId != activeUserId) {
@@ -79,7 +80,7 @@ class ExplorationViewModel @Inject constructor(
         }
     }
 
-    fun load(force: Boolean = false) = viewModelScope.launch {
+    fun load(force: Boolean = false) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = runCatching { auth.current()?.userId }.getOrNull()
         if (userId == null) {
             activeUserId = null
@@ -95,7 +96,7 @@ class ExplorationViewModel @Inject constructor(
         loadFor(userId, force)
     }
 
-    private fun loadFor(userId: String, force: Boolean) = viewModelScope.launch {
+    private fun loadFor(userId: String, force: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!force && loadingUserId == userId) return@launch
         if (!force && mutableState.value.accountId == userId && mutableState.value.error == null && System.currentTimeMillis() - (lastLoadedAtByUser[userId] ?: 0L) < 45_000L) {
             return@launch
@@ -157,7 +158,7 @@ class ExplorationViewModel @Inject constructor(
         }
     }
 
-    fun claimMission(key: String) = viewModelScope.launch {
+    fun claimMission(key: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val mission = current.missions.firstOrNull { it.key == key } ?: return@launch
         if (!ExplorationLogic.canClaim(mission.progress, mission.target, mission.claimed, current.busyMission != null)) return@launch
@@ -175,7 +176,7 @@ class ExplorationViewModel @Inject constructor(
             }
     }
 
-    fun claimLevel(level: Int) = viewModelScope.launch {
+    fun claimLevel(level: Int) = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val reward = ExplorationLogic.levels.firstOrNull { it.level == level } ?: return@launch
         if (current.experience < reward.threshold || level in current.claimedLevels || current.busyLevel != null) return@launch
@@ -262,7 +263,7 @@ class ExplorationCalendarViewModel @Inject constructor(
     private var lastLoadedCalendarAt = 0L
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 if (session?.userId != activeUserId) {
                     val retainedMonth = mutableState.value.month
@@ -283,7 +284,7 @@ class ExplorationCalendarViewModel @Inject constructor(
         if (!refresh && calendarLoadJob?.isActive == true && calendarRequestMonth == requestedMonth) return calendarLoadJob!!
         calendarRequestMonth = requestedMonth
         val requestGeneration = ++generation
-        val job = viewModelScope.launch {
+        val job = viewModelScope.launch(HeikaCoroutineGuard) {
         val session = runCatching { auth.current() }.getOrNull()
         if (session == null) {
             activeUserId = null
@@ -402,7 +403,7 @@ class CoExploreViewModel @Inject constructor(
     private var candidateCacheAt = 0L
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 if (session?.userId != activeUserId) {
                     activeUserId = session?.userId
@@ -417,7 +418,7 @@ class CoExploreViewModel @Inject constructor(
         }
     }
 
-    fun initialize(inviteCode: String?) = viewModelScope.launch {
+    fun initialize(inviteCode: String?) = viewModelScope.launch(HeikaCoroutineGuard) {
         requestedInviteCode = inviteCode?.takeIf(String::isNotBlank)
         val session = runCatching { auth.current() }.getOrNull()
         if (session == null) {
@@ -446,7 +447,7 @@ class CoExploreViewModel @Inject constructor(
     fun selectPost(id: String) = mutableState.update { it.copy(selectedPostId = id) }
     fun setNote(value: String) = mutableState.update { it.copy(note = value.take(180)) }
 
-    fun create() = viewModelScope.launch {
+    fun create() = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = mutableState.value.accountId ?: return@launch
         if (mutableState.value.busy) return@launch
         beginAction()
@@ -460,7 +461,7 @@ class CoExploreViewModel @Inject constructor(
             .onFailure { if (activeUserId == userId) failAction(it.message ?: "创建房间失败") }
     }
 
-    fun join(code: String = mutableState.value.joiningCode) = viewModelScope.launch {
+    fun join(code: String = mutableState.value.joiningCode) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = mutableState.value.accountId ?: return@launch
         if (mutableState.value.busy) return@launch
         val invite = code.trim().uppercase()
@@ -475,10 +476,10 @@ class CoExploreViewModel @Inject constructor(
 
     fun refresh() {
         val code = mutableState.value.inviteCode
-        if (code.isNotBlank()) viewModelScope.launch { loadRoom(code, null) }
+        if (code.isNotBlank()) viewModelScope.launch(HeikaCoroutineGuard) { loadRoom(code, null) }
     }
 
-    fun lockSelection() = viewModelScope.launch {
+    fun lockSelection() = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val userId = current.accountId ?: return@launch
         val code = current.inviteCode
@@ -588,7 +589,7 @@ class ExplorationChainsViewModel @Inject constructor(
     private var lastChainsLoadAt = 0L
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 if (session?.userId != activeUserId) {
                     chainsLoadUserId = null
@@ -605,7 +606,7 @@ class ExplorationChainsViewModel @Inject constructor(
         if (!force && chainsLoadJob?.isActive == true && chainsLoadUserId == activeUserId) return chainsLoadJob!!
         chainsLoadUserId = activeUserId
         val token = ++generation
-        val job = viewModelScope.launch {
+        val job = viewModelScope.launch(HeikaCoroutineGuard) {
         val session = runCatching { auth.current() }.getOrNull()
         if (session == null) {
             activeUserId = null
@@ -644,7 +645,7 @@ class ExplorationChainsViewModel @Inject constructor(
 
     fun selectPost(id: String) = mutableState.update { it.copy(selectedPostId = id) }
 
-    fun create(postId: String, title: String, prompt: String, content: String) = viewModelScope.launch {
+    fun create(postId: String, title: String, prompt: String, content: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = mutableState.value.accountId ?: return@launch
         if (mutableState.value.busy) return@launch
         mutableState.update { it.copy(busy = true, error = null, notice = null) }
@@ -658,7 +659,7 @@ class ExplorationChainsViewModel @Inject constructor(
             .onFailure { error -> if (activeUserId == userId) mutableState.update { it.copy(busy = false, error = error.message ?: "创建失败，请检查输入后重试") } }
     }
 
-    fun contribute(chainId: String, content: String) = viewModelScope.launch {
+    fun contribute(chainId: String, content: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = mutableState.value.accountId ?: return@launch
         if (mutableState.value.busy) return@launch
         mutableState.update { it.copy(busy = true, error = null, notice = null) }
@@ -671,7 +672,7 @@ class ExplorationChainsViewModel @Inject constructor(
             .onFailure { error -> if (activeUserId == userId) mutableState.update { it.copy(busy = false, error = error.message ?: "续写失败，请重试") } }
     }
 
-    fun close(chainId: String) = viewModelScope.launch {
+    fun close(chainId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = mutableState.value.accountId ?: return@launch
         if (mutableState.value.busy) return@launch
         mutableState.update { it.copy(busy = true, error = null, notice = null) }

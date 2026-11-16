@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.settings
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -63,7 +64,7 @@ class SettingsViewModel @Inject constructor(
     private var privacyRequestUserId: String? = null
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 if (session?.userId != activeUserId) {
                     activeUserId = session?.userId
@@ -85,7 +86,7 @@ class SettingsViewModel @Inject constructor(
                         val userId = session.userId
                         // 先用上次的结果渲染，慢网络下管理员入口不会凭空消失。
                         cachedAdminAccess?.takeIf { it.first == userId }?.let { mutableAdminAccess.value = it.second }
-                        viewModelScope.launch {
+                        viewModelScope.launch(HeikaCoroutineGuard) {
                             val allowed = runCatching { repository.adminOverview(); true }.getOrDefault(false)
                             if (auth.current()?.userId == userId) {
                                 mutableAdminAccess.value = allowed
@@ -98,7 +99,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun loadNotificationSettings(force: Boolean = false) = viewModelScope.launch {
+    fun loadNotificationSettings(force: Boolean = false) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = auth.restore()?.userId
         if (userId == null) { mutableNotificationError.value = "登录后同步站内通知偏好"; return@launch }
         if (!force && notificationSettingsLoadedFor == userId && mutableCommentsEnabled.value != null) return@launch
@@ -125,7 +126,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun loadPrivacySettings(force: Boolean = false) = viewModelScope.launch {
+    fun loadPrivacySettings(force: Boolean = false) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = auth.restore()?.userId
         if (userId == null) { mutablePrivacyError.value = "登录后管理账号隐私偏好"; return@launch }
         if (!force && privacySettingsLoadedFor == userId && mutableBookmarksVisible.value != null) return@launch
@@ -153,7 +154,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setBookmarksVisible(value: Boolean) = viewModelScope.launch {
+    fun setBookmarksVisible(value: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (auth.restore() == null) { mutablePrivacyError.value = "登录后管理账号隐私偏好"; return@launch }
         val previous = mutableBookmarksVisible.value ?: return@launch
         mutableBookmarksVisible.value = value
@@ -170,7 +171,7 @@ class SettingsViewModel @Inject constructor(
     fun setNotesPrivate(value: Boolean) = updatePrivacyValue("notes_private", value)
     fun setDmPermission(value: String) = updatePrivacyValue("dm_permission", value)
 
-    private fun updatePrivacyValue(key: String, value: Any) = viewModelScope.launch {
+    private fun updatePrivacyValue(key: String, value: Any) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (auth.restore() == null) { mutablePrivacyError.value = "登录后管理账号隐私偏好"; return@launch }
         val before = mutablePrivacyData.value?.opt(key)
         mutablePrivacyData.value = org.json.JSONObject((mutablePrivacyData.value ?: org.json.JSONObject()).toString()).put(key, value)
@@ -179,7 +180,7 @@ class SettingsViewModel @Inject constructor(
             .onFailure { if (before != null && before !== org.json.JSONObject.NULL) mutablePrivacyData.value = mutablePrivacyData.value?.let { org.json.JSONObject(it.toString()).put(key, before) }; mutablePrivacyError.value = "隐私偏好保存失败，请重试" }
     }
 
-    fun unblockAccount(userId: String) = viewModelScope.launch {
+    fun unblockAccount(userId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutablePrivacyData.value ?: return@launch
         val rows = current.optJSONArray("blocked") ?: org.json.JSONArray()
         val previous = current.toString()
@@ -189,7 +190,7 @@ class SettingsViewModel @Inject constructor(
             .onSuccess { mutablePrivacyError.value = null }
     }
 
-    fun setCommentsEnabled(value: Boolean) = viewModelScope.launch {
+    fun setCommentsEnabled(value: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (auth.restore() == null) { mutableNotificationError.value = "登录后同步站内通知偏好"; return@launch }
         val previous = mutableCommentsEnabled.value ?: return@launch
         mutableCommentsEnabled.value = value
@@ -197,8 +198,8 @@ class SettingsViewModel @Inject constructor(
             .onFailure { mutableCommentsEnabled.value = previous; mutableNotificationError.value = it.message ?: "通知偏好保存失败" }
     }
 
-    fun setTheme(value: String) = viewModelScope.launch { preferences.setTheme(value) }
-    fun generateRecoveryCodes() = viewModelScope.launch {
+    fun setTheme(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setTheme(value) }
+    fun generateRecoveryCodes() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableRecoveryCodesLoading.value) return@launch
         if (auth.restore() == null) { mutablePrivacyError.value = "登录后生成账号恢复码"; return@launch }
         mutableRecoveryCodesLoading.value = true
@@ -212,22 +213,22 @@ class SettingsViewModel @Inject constructor(
         }
     }
     fun clearRecoveryCodes() { mutableRecoveryCodes.value = emptyList() }
-    fun setPageTransition(value: String) = viewModelScope.launch { preferences.setPageTransition(value) }
-    fun setFontChoice(value: String) = viewModelScope.launch { preferences.setFontChoice(value) }
-    fun setFeedLayout(value: String) = viewModelScope.launch { preferences.setFeedLayout(value) }
-    fun setReadingMode(value: String) = viewModelScope.launch { preferences.setReadingMode(value) }
-    fun setBodyTextSize(value: String) = viewModelScope.launch { preferences.setBodyTextSize(value) }
-    fun setTitleTextSize(value: String) = viewModelScope.launch { preferences.setTitleTextSize(value) }
-    fun setCacheCapacity(value: Int) = viewModelScope.launch { imageCache.resize(value) }
-    fun refreshCacheUsage() = viewModelScope.launch { mutableCacheBytes.value = imageCache.sizeBytes() }
-    fun clearImageCache() = viewModelScope.launch {
+    fun setPageTransition(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setPageTransition(value) }
+    fun setFontChoice(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setFontChoice(value) }
+    fun setFeedLayout(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setFeedLayout(value) }
+    fun setReadingMode(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setReadingMode(value) }
+    fun setBodyTextSize(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setBodyTextSize(value) }
+    fun setTitleTextSize(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setTitleTextSize(value) }
+    fun setCacheCapacity(value: Int) = viewModelScope.launch(HeikaCoroutineGuard) { imageCache.resize(value) }
+    fun refreshCacheUsage() = viewModelScope.launch(HeikaCoroutineGuard) { mutableCacheBytes.value = imageCache.sizeBytes() }
+    fun clearImageCache() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableCacheClearing.value) return@launch
         mutableCacheClearing.value = true
         try { imageCache.clear(); mutableCacheBytes.value = imageCache.sizeBytes(); mutableMessage.value = "已清理可重新下载的图片缓存" }
         catch (error: Exception) { mutableMessage.value = error.message ?: "缓存清理失败" }
         finally { mutableCacheClearing.value = false }
     }
-    fun signOut(onDone: () -> Unit) = viewModelScope.launch {
+    fun signOut(onDone: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         runCatching { auth.signOut() }
         cachedAdminAccess = null
         onDone()

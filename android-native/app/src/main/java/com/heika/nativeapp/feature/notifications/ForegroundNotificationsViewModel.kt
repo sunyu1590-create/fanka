@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.notifications
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.data.HeikaNotification
@@ -76,6 +77,6 @@ class ForegroundNotificationsViewModel @Inject constructor(
 
     fun markReadAndDismiss(id: String) {
         dismiss(id)
-        viewModelScope.launch { runCatching { repository.markNotification(id = id) } }
+        viewModelScope.launch(HeikaCoroutineGuard) { runCatching { repository.markNotification(id = id) } }
     }
 }

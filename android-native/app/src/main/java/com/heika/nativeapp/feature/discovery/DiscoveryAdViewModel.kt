@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.discovery
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.data.HeikaPost
@@ -35,7 +36,7 @@ class DiscoveryAdViewModel @Inject constructor(
     fun refresh() {
         val requestId = ++requestGeneration
         mutableState.update { it.copy(unavailable = false) }
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             val result = runCatching {
                 repository.explorationAd()?.takeIf { it.optBoolean("enabled") }?.let { value ->
                     val postId = value.optString("post_id")

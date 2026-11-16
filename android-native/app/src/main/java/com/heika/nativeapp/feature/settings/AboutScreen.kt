@@ -42,6 +42,11 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(54, "2026.11.17", listOf(
+        "修复弱网、请求超时与登录态过期造成的闪退：接口异常只记录日志，不再终止进程。",
+        "全应用 161 处协程调用统一加上异常处理，翻卡、私信、设置、详情都覆盖。",
+        "上一版的公告启动崩溃同步修好，打开即可正常进入。",
+    )),
     NativeRelease(53, "2026.11.17", listOf(
         "修复弱网、超时或登录态过期时闪退：网络异常不再把整个 App 一起带崩溃。",
         "协程异常增加统一兜底，异常只记录日志，页面回到可重试状态。",

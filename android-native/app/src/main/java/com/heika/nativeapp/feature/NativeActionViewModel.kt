@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -20,7 +21,7 @@ class NativeActionViewModel @Inject constructor(private val repository: HeikaRep
     private val mutableState = MutableStateFlow(NativeActionState())
     val state = mutableState.asStateFlow()
 
-    fun loadMembership() = viewModelScope.launch {
+    fun loadMembership() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (runCatching { auth.current() }.getOrNull() == null) {
             mutableState.update { it.copy(loading = false, error = "登录后查看当前会员等级") }
             return@launch
@@ -77,7 +78,7 @@ class NativeActionViewModel @Inject constructor(private val repository: HeikaRep
         }
     }
 
-    fun previewMembershipCode(code: String) = viewModelScope.launch {
+    fun previewMembershipCode(code: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (runCatching { auth.current() }.getOrNull() == null) { mutableState.update { it.copy(error = "请先登录后兑换会员激活码") }; return@launch }
         mutableState.update { it.copy(sending = true, error = null, notice = null, redeemPreview = null, redeemResult = null) }
         runCatching { repository.redeemMembership("preview", code.trim().uppercase()) }.onSuccess { data ->
@@ -95,7 +96,7 @@ class NativeActionViewModel @Inject constructor(private val repository: HeikaRep
         }.onFailure { error -> mutableState.update { it.copy(sending = false, error = error.message ?: "激活码验证失败") } }
     }
 
-    fun confirmMembershipCode(code: String) = viewModelScope.launch {
+    fun confirmMembershipCode(code: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val previewToken = mutableState.value.redeemPreview?.optString("previewToken").orEmpty()
         if (previewToken.isBlank()) { mutableState.update { it.copy(error = "请先重新验证激活码") }; return@launch }
         mutableState.update { it.copy(sending = true, error = null, notice = null) }
@@ -119,7 +120,7 @@ class NativeActionViewModel @Inject constructor(private val repository: HeikaRep
 
     fun clearMembershipRedemption() = mutableState.update { it.copy(redeemPreview = null, redeemResult = null, error = null) }
 
-    fun submitFeedback(category: String, message: String) = viewModelScope.launch {
+    fun submitFeedback(category: String, message: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (runCatching { auth.current() }.getOrNull() == null) {
             mutableState.update { it.copy(error = "请先登录后提交意见反馈") }
             return@launch

@@ -36,7 +36,7 @@ class HeikaImageCache @Inject constructor(
     val loader = mutableLoader.asStateFlow()
 
     fun initialize() {
-        scope.launch { resize(preferences.imageCacheMb.first()) }
+        scope.launch(HeikaCoroutineGuard) { resize(preferences.imageCacheMb.first()) }
     }
 
     suspend fun resize(mb: Int) {
@@ -45,7 +45,7 @@ class HeikaImageCache @Inject constructor(
         val old = mutableLoader.value
         mutableLoader.value = create(capacity)
         retiredLoaders += old
-        scope.launch {
+        scope.launch(HeikaCoroutineGuard) {
             delay(30_000)
             if (retiredLoaders.remove(old)) old.shutdown()
         }

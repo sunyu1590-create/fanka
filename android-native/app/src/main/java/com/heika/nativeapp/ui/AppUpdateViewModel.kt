@@ -48,7 +48,7 @@ class AppUpdateViewModel @Inject constructor(
             mutableChecking.value = true
             mutableManualMessage.value = null
         }
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             val payload = runCatching { repository.appVersion() }.getOrNull()
             if (force) mutableChecking.value = false
             if (payload == null) {
@@ -87,6 +87,6 @@ class AppUpdateViewModel @Inject constructor(
     fun snooze() {
         val current = mutableUpdate.value ?: return
         mutableUpdate.value = null
-        viewModelScope.launch { runCatching { preferences.markUpdateSkipped(current.code) } }
+        viewModelScope.launch(HeikaCoroutineGuard) { runCatching { preferences.markUpdateSkipped(current.code) } }
     }
 }

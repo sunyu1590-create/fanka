@@ -247,6 +247,7 @@ drawable ic_ip_vip
 drawable ic_ip_warning
 drawable ic_lucide_arrow_left
 drawable ic_lucide_arrow_up_right
+drawable ic_lucide_bag
 drawable ic_lucide_ban
 drawable ic_lucide_bell
 drawable ic_lucide_blocks
@@ -263,6 +264,7 @@ drawable ic_lucide_compass
 drawable ic_lucide_copy
 drawable ic_lucide_crown
 drawable ic_lucide_database
+drawable ic_lucide_download
 drawable ic_lucide_ellipsis
 drawable ic_lucide_external_link
 drawable ic_lucide_file_text

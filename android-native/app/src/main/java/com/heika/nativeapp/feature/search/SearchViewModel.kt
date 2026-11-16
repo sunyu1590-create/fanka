@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.search
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.data.HeikaPost
@@ -62,7 +63,7 @@ class SearchViewModel @Inject constructor(
     private var generation = 0
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             preferences.searchHistory.collect { history -> mutableState.update { it.copy(recentSearches = history) } }
         }
         loadHotTopics()
@@ -101,14 +102,14 @@ class SearchViewModel @Inject constructor(
     }
 
     fun clearRecentSearches() {
-        viewModelScope.launch { preferences.clearRecentSearches() }
+        viewModelScope.launch(HeikaCoroutineGuard) { preferences.clearRecentSearches() }
     }
 
     fun loadHotTopics() {
         if (mutableState.value.loadingHotTopics) return
         hotTopicsJob?.cancel()
         mutableState.update { it.copy(loadingHotTopics = true, hotTopicsError = null) }
-        hotTopicsJob = viewModelScope.launch {
+        hotTopicsJob = viewModelScope.launch(HeikaCoroutineGuard) {
             try {
                 val topics = repository.searchTopics(featured = true).toTopicList()
                 mutableState.update { it.copy(hotTopics = topics, loadingHotTopics = false) }
@@ -133,7 +134,7 @@ class SearchViewModel @Inject constructor(
                 loading = true, loadingMore = false, hasMore = false, page = 1, contentCursor = null, error = null,
             )
         }
-        searchJob = viewModelScope.launch {
+        searchJob = viewModelScope.launch(HeikaCoroutineGuard) {
             try {
                 preferences.addRecentSearch(query)
                 val result = when (kind) {
@@ -188,7 +189,7 @@ class SearchViewModel @Inject constructor(
         val requestGeneration = generation
         val nextPage = current.page + 1
         mutableState.update { it.copy(loadingMore = true, error = null) }
-        searchJob = viewModelScope.launch {
+        searchJob = viewModelScope.launch(HeikaCoroutineGuard) {
             try {
                 val payload = when (kind) {
                     "content" -> repository.search(query, "content", nextPage, current.contentCursor)

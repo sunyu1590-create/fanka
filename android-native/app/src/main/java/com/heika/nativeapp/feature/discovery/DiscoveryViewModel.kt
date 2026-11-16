@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.discovery
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -86,7 +87,7 @@ class DiscoveryViewModel @Inject constructor(private val repository: HeikaReposi
     fun selectSort(sort: String) = updateFilter { it.copy(sort = sort) }
 
     fun refreshCatalog() {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             mutableState.update { it.copy(catalogLoading = true, catalogError = null) }
             runCatching {
                 val values = listOf(
@@ -165,7 +166,7 @@ class AiResourceCatalogViewModel @Inject constructor(private val repository: Hei
 
     init { load() }
 
-    fun load() = viewModelScope.launch {
+    fun load() = viewModelScope.launch(HeikaCoroutineGuard) {
         mutableState.update { it.copy(loading = true, error = null) }
         runCatching { repository.loadAiResourceTypes() }
             .onSuccess { items -> mutableState.value = AiResourceCatalogState(items = items, loading = false) }

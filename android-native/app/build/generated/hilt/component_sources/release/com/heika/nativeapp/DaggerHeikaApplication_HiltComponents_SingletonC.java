@@ -820,6 +820,7 @@ public final class DaggerHeikaApplication_HiltComponents_SingletonC {
     private HeikaApplication injectHeikaApplication2(HeikaApplication instance) {
       HeikaApplication_MembersInjector.injectAuthRepository(instance, authRepositoryProvider.get());
       HeikaApplication_MembersInjector.injectImageCache(instance, heikaImageCacheProvider.get());
+      HeikaApplication_MembersInjector.injectAnnouncementRepository(instance, heikaRepositoryProvider.get());
       return instance;
     }
 

@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.profile
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -82,7 +83,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
     private var profileLoadRequestKey: String? = null
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 val current = mutableState.value
                 if (requestedOwnProfile && loadedFor != session?.userId) {
@@ -100,7 +101,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         if (!force && profileLoadJob?.isActive == true && profileLoadRequestKey == requestKey) return profileLoadJob!!
         profileLoadRequestKey = requestKey
         val generation = ++loadGeneration
-        val job = viewModelScope.launch {
+        val job = viewModelScope.launch(HeikaCoroutineGuard) {
         requestedOwnProfile = requestedId == null
         val session = runCatching { auth.current() }.getOrNull()
         if (requestedId == null && session == null) {
@@ -214,7 +215,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         return job
     }
 
-    fun loadMore(kind: String) = viewModelScope.launch {
+    fun loadMore(kind: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val before = mutableState.value
         if (!before.own || before.loadingMore != null || kind !in setOf("own", "bookmarks", "liked")) return@launch
         val hasMore = when (kind) { "own" -> before.hasMoreWorks; "bookmarks" -> before.hasMoreBookmarks; else -> before.hasMoreLiked }
@@ -254,7 +255,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
             .onFailure { error -> mutableState.update { it.copy(loadingMore = null, error = error.message ?: "更多内容加载失败") } }
     }
 
-    fun deleteOwnPost(post: HeikaPost) = viewModelScope.launch {
+    fun deleteOwnPost(post: HeikaPost) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!mutableState.value.own) return@launch
         mutableState.update { it.copy(saving = true, error = null, notice = null) }
         runCatching { repository.deleteMyPost(post.id) }
@@ -274,7 +275,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
             .onFailure { error -> mutableState.update { it.copy(saving = false, error = error.message ?: "删除作品失败") } }
     }
 
-    fun updateProfile(nickname: String, bio: String, details: JSONArray) = viewModelScope.launch {
+    fun updateProfile(nickname: String, bio: String, details: JSONArray) = viewModelScope.launch(HeikaCoroutineGuard) {
         val previous = mutableState.value.profile ?: return@launch
         val name = nickname.trim()
         val description = bio.trim()
@@ -291,7 +292,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         }.onFailure { error -> mutableState.update { it.copy(saving = false, error = error.message ?: "资料保存失败") } }
     }
 
-    fun updateAvatar(fileName: String, mimeType: String, bytes: ByteArray) = viewModelScope.launch {
+    fun updateAvatar(fileName: String, mimeType: String, bytes: ByteArray) = viewModelScope.launch(HeikaCoroutineGuard) {
         val previous = mutableState.value.profile ?: return@launch
         mutableState.update { it.copy(saving = true, error = null, notice = null) }
         runCatching { repository.uploadMyAvatar(fileName, mimeType, bytes) }.onSuccess { result ->
@@ -307,7 +308,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
 
     fun reportError(message: String) { mutableState.update { it.copy(error = message) } }
 
-    fun refreshExplorationSummary() = viewModelScope.launch {
+    fun refreshExplorationSummary() = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val userId = current.profile?.id ?: return@launch
         if (!current.own || runCatching { auth.current()?.userId }.getOrNull() != userId) return@launch
@@ -339,7 +340,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         }
     }
 
-    fun toggleFollow() = viewModelScope.launch {
+    fun toggleFollow() = viewModelScope.launch(HeikaCoroutineGuard) {
         val profile = mutableState.value.profile ?: return@launch
         if (runCatching { auth.current() }.getOrNull() == null) {
             mutableState.update { it.copy(error = "登录后可以关注创作者") }

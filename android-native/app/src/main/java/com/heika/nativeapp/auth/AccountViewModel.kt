@@ -1,5 +1,6 @@
 package com.heika.nativeapp.auth
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.data.HeikaRepository
@@ -32,7 +33,7 @@ class AccountViewModel @Inject constructor(
     val state = mutableState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             mutableState.value = AccountUiState(session = auth.restore(), loading = false)
             auth.session.collect { session -> mutableState.value = mutableState.value.copy(session = session, loading = false) }
         }
@@ -42,13 +43,13 @@ class AccountViewModel @Inject constructor(
         it.copy(flow = flow, error = null, message = null, verificationId = null, verificationEmail = null)
     }
 
-    fun signIn(email: String, password: String) = viewModelScope.launch {
+    fun signIn(email: String, password: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         perform({ auth.signIn(email, password) }) { session ->
             mutableState.value = AccountUiState(session = session, loading = false, message = "登录成功")
         }
     }
 
-    fun signUp(email: String, password: String, confirm: String, nickname: String) = viewModelScope.launch {
+    fun signUp(email: String, password: String, confirm: String, nickname: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (password != confirm) return@launch showError("两次输入的密码不一致")
         if (password.length < 8) return@launch showError("密码至少需要 8 位")
         if (nickname.trim().length < 2) return@launch showError("昵称至少需要 2 个字")
@@ -58,7 +59,7 @@ class AccountViewModel @Inject constructor(
         }
     }
 
-    fun requestSignUpCode(email: String) = viewModelScope.launch {
+    fun requestSignUpCode(email: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         mutableState.update { it.copy(busy = true, error = null, message = null) }
         try {
             val id = auth.requestSignUpCode(email)
@@ -75,7 +76,7 @@ class AccountViewModel @Inject constructor(
         }
     }
 
-    fun signUpWithCode(email: String, password: String, confirm: String, nickname: String, code: String) = viewModelScope.launch {
+    fun signUpWithCode(email: String, password: String, confirm: String, nickname: String, code: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (password != confirm) return@launch showError("两次输入的密码不一致")
         if (code.isBlank()) return@launch showError("请输入邮箱验证码。")
         val current = mutableState.value
@@ -87,14 +88,14 @@ class AccountViewModel @Inject constructor(
         }
     }
 
-    fun recoverWithCode(email: String, code: String, password: String, confirm: String) = viewModelScope.launch {
+    fun recoverWithCode(email: String, code: String, password: String, confirm: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (password != confirm) return@launch showError("两次输入的密码不一致")
         perform({ auth.recoverWithCode(email, code, password) }) {
             mutableState.value = AccountUiState(session = null, loading = false, flow = AccountFlow.LOGIN, message = "密码已更新，请使用新密码登录。")
         }
     }
 
-    fun signOut(onDone: () -> Unit) = viewModelScope.launch {
+    fun signOut(onDone: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         val userId = auth.current()?.userId
         runCatching { auth.signOut() }
         if (userId != null) runCatching { repository.clearUserCache(userId) }

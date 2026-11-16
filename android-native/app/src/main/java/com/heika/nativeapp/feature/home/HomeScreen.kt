@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.home
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import com.heika.nativeapp.ui.HeikaIcons
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
@@ -380,7 +381,7 @@ private fun FlipPreviewOverlay(
     fun requestDismiss() {
         if (opening || revealing || dismissing) return
         dismissing = true
-        scope.launch {
+        scope.launch(HeikaCoroutineGuard) {
             if (reduceMotion) progress.snapTo(0f)
             else progress.animateTo(0f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))
             onDismiss()
@@ -445,7 +446,7 @@ private fun FlipPreviewOverlay(
                             if (!opening && !confirmSubmitted && !revealing && canConfirm) {
                                 confirmSubmitted = true
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                if (!reduceMotion) scope.launch {
+                                if (!reduceMotion) scope.launch(HeikaCoroutineGuard) {
                                     touchScale.snapTo(.985f)
                                     touchScale.animateTo(1f, tween(150, easing = FastOutSlowInEasing))
                                 }

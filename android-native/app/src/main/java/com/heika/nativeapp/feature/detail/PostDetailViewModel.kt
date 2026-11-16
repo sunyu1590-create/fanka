@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.detail
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -101,7 +102,7 @@ class PostDetailViewModel @Inject constructor(
 
     init {
         // 管理员可以在任意作品上执行删除；普通账号隐藏该入口。
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             val allowed = runCatching { repository.isStaff() }.getOrDefault(false)
             if (allowed) mutableState.update { it.copy(canAdminDelete = true) }
         }
@@ -116,7 +117,7 @@ class PostDetailViewModel @Inject constructor(
         aiVersionRequest++
         mutableState.value = PostDetailState(post = post, likeCount = post.likeCount, loading = false, refreshing = true)
         if (post.channel == "ai") loadAiVersions(post)
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             runCatching { repository.postDetail(post) }
                 .onSuccess { detail ->
                     if (version != requestVersion) return@onSuccess
@@ -135,7 +136,7 @@ class PostDetailViewModel @Inject constructor(
         val version = ++requestVersion
         aiVersionRequest++
         mutableState.value = PostDetailState(loading = true)
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             runCatching { repository.cachedPostDetail(key) }.getOrNull()?.let { cached ->
                 if (version == requestVersion) {
                     mutableState.update { it.copy(post = cached, likeCount = cached.likeCount, loading = false, refreshing = true, error = null) }
@@ -165,7 +166,7 @@ class PostDetailViewModel @Inject constructor(
         if (!force && requestedVersionsFor == requestedPostId) return
         requestedVersionsFor = requestedPostId
         val requestId = ++aiVersionRequest
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
         if (resource.channel != "ai" || !isUuid(resource.cloudId)) return@launch
         val resourceKey = resource.cloudId.ifBlank { resource.id.toString() }
         val cached = runCatching { repository.cachedAiResourceVersions(resource.cloudId) }.getOrNull()
@@ -181,7 +182,7 @@ class PostDetailViewModel @Inject constructor(
         }
     }
 
-    fun submitAiFeedback(kind: String, details: String) = viewModelScope.launch {
+    fun submitAiFeedback(kind: String, details: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
         if (post.channel != "ai") return@launch
@@ -196,7 +197,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { error -> if (version == requestVersion) mutableState.update { it.copy(aiFeedbackSending = false, error = error.message ?: "反馈提交失败") } }
     }
 
-    private fun loadComments(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch {
+    private fun loadComments(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!isUuid(post.cloudId)) return@launch
         val sort = mutableState.value.commentSort
         val commentsVersion = ++commentsRequestVersion
@@ -223,7 +224,7 @@ class PostDetailViewModel @Inject constructor(
         else current.post?.let { loadComments(it) }
     }
 
-    fun toggleCommentLike(commentId: String) = viewModelScope.launch {
+    fun toggleCommentLike(commentId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val before = mutableState.value
         val comment = before.comments.firstOrNull { it.id == commentId } ?: return@launch
         val version = requestVersion
@@ -243,7 +244,7 @@ class PostDetailViewModel @Inject constructor(
             .onSuccess { if (version == requestVersion && mutableState.value.post?.cloudId == postId) mutableState.update { it.copy(commentLikesSending = it.commentLikesSending - commentId) } }
     }
 
-    fun loadMoreComments() = viewModelScope.launch {
+    fun loadMoreComments() = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
         val commentsVersion = commentsRequestVersion
@@ -259,7 +260,7 @@ class PostDetailViewModel @Inject constructor(
         }.onFailure { if (version == requestVersion && commentsVersion == commentsRequestVersion) mutableState.update { it.copy(loadingMoreComments = false, commentsError = "更多评论加载失败，请重试") } }
     }
 
-    private fun loadInteractions(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch {
+    private fun loadInteractions(post: HeikaPost, version: Int = requestVersion) = viewModelScope.launch(HeikaCoroutineGuard) {
         val currentUserId = runCatching { auth.current()?.userId }.getOrNull()
         val signedIn = currentUserId != null
         val state = runCatching { repository.interactionState(post.id) }.getOrDefault(JSONObject())
@@ -275,7 +276,7 @@ class PostDetailViewModel @Inject constructor(
     fun toggleLike() = toggleInteraction("like")
     fun toggleSaved() = toggleInteraction("bookmark")
 
-    private fun toggleInteraction(action: String) = viewModelScope.launch {
+    private fun toggleInteraction(action: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
         if (mutableState.value.interactionSending) return@launch
@@ -301,7 +302,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(liked = old.liked, likeCount = old.likeCount, saved = old.saved, interactionSending = false, notice = if (action == "like") "点赞失败，请重试" else "收藏失败，请重试") } }
     }
 
-    fun rate(value: Int) = viewModelScope.launch {
+    fun rate(value: Int) = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val old = mutableState.value
         val version = requestVersion
@@ -337,7 +338,7 @@ class PostDetailViewModel @Inject constructor(
         }.onFailure { if (version == requestVersion) mutableState.update { it.copy(rating = old.rating, ratingSending = false, ratingError = "评分失败，请重试") } }
     }
 
-    fun toggleFollow() = viewModelScope.launch {
+    fun toggleFollow() = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val id = post.authorId ?: return@launch
         val version = requestVersion
@@ -353,7 +354,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(followSending = false, notice = "关注失败，请重试") } }
     }
 
-    fun reportComment(commentId: String, reason: String, note: String = "") = viewModelScope.launch {
+    fun reportComment(commentId: String, reason: String, note: String = "") = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.operationSending) return@launch
         val version = requestVersion
         mutableState.update { it.copy(operationSending = true, notice = null) }
@@ -362,7 +363,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "举报失败，请重试") } }
     }
 
-    fun deleteComment(commentId: String) = viewModelScope.launch {
+    fun deleteComment(commentId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.operationSending) return@launch
         val version = requestVersion
         val old = mutableState.value.comments
@@ -373,7 +374,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, comments = old, notice = "删除失败，请重试") } }
     }
 
-    fun deletePost(onDeleted: () -> Unit) = viewModelScope.launch {
+    fun deletePost(onDeleted: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         if (mutableState.value.operationSending || post.authorId != mutableState.value.currentUserId) return@launch
         val version = requestVersion
@@ -383,7 +384,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "删除失败，请重试") } }
     }
 
-    fun muteAuthor() = viewModelScope.launch {
+    fun muteAuthor() = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val authorId = post.authorId ?: run { mutableState.update { it.copy(notice = "作者信息暂不可用") }; return@launch }
         if (mutableState.value.operationSending) return@launch
@@ -394,7 +395,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "操作失败，请重试") } }
     }
 
-    fun muteTopic(topic: String) = viewModelScope.launch {
+    fun muteTopic(topic: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.operationSending) return@launch
         val version = requestVersion
         mutableState.update { it.copy(operationSending = true, notice = null) }
@@ -403,7 +404,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "操作失败，请重试") } }
     }
 
-    fun blockAuthor() = viewModelScope.launch {
+    fun blockAuthor() = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val authorId = post.authorId ?: run { mutableState.update { it.copy(notice = "作者信息暂不可用") }; return@launch }
         if (mutableState.value.operationSending) return@launch
@@ -417,7 +418,7 @@ class PostDetailViewModel @Inject constructor(
     fun showNotice(message: String) { mutableState.update { it.copy(notice = message) } }
     fun clearNotice() { mutableState.update { it.copy(notice = null) } }
 
-    fun submitContentFeedback(category: String, message: String) = viewModelScope.launch {
+    fun submitContentFeedback(category: String, message: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.operationSending) return@launch
         val version = requestVersion
         mutableState.update { it.copy(operationSending = true, notice = null) }
@@ -426,7 +427,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "反馈提交失败，请重试") } }
     }
 
-    fun comment(body: String, parentId: String? = null) = viewModelScope.launch {
+    fun comment(body: String, parentId: String? = null) = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
         if (mutableState.value.sending) return@launch
@@ -455,7 +456,7 @@ class PostDetailViewModel @Inject constructor(
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(sending = false, error = "评论发送失败，请重试") } }
     }
 
-    fun report(reason: String, note: String) = viewModelScope.launch {
+    fun report(reason: String, note: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
         if (!isUuid(post.cloudId)) {

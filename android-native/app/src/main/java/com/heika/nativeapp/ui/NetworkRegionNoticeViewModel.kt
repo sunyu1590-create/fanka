@@ -32,7 +32,7 @@ class NetworkRegionNoticeViewModel @Inject constructor(
     fun checkNetworkRegion() {
         if (started) return
         started = true
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             // The serving cellular network is local evidence and avoids waiting
             // for an app backend when the device is already on a mainland carrier.
             val networkCountry = runCatching {
@@ -63,7 +63,7 @@ class NetworkRegionNoticeViewModel @Inject constructor(
     }
 
     fun continueIntoApp() {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             runCatching { preferences.markNetworkNoticeSeen(BuildConfig.VERSION_NAME) }
             mutableWarning.value = null
         }

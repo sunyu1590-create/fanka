@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.notifications
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -43,7 +44,7 @@ class NotificationsViewModel @Inject constructor(
         val requestedAccountId = auth.session.value?.userId
         if (!force && loadJob?.isActive == true && loadAccountId == requestedAccountId) return loadJob!!
         val generation = ++requestGeneration
-        val job = viewModelScope.launch {
+        val job = viewModelScope.launch(HeikaCoroutineGuard) {
             val session = auth.restore()
             if (session == null) {
                 mutableState.value = NotificationsUiState(loading = false, signedIn = false)
@@ -83,7 +84,7 @@ class NotificationsViewModel @Inject constructor(
         return job
     }
 
-    fun markAllRead() = viewModelScope.launch {
+    fun markAllRead() = viewModelScope.launch(HeikaCoroutineGuard) {
         val previous = mutableState.value
         mutableState.update { it.copy(unread = 0, items = it.items.map { row -> row.copy(readAt = row.readAt ?: "pending") }) }
         runCatching { repository.markNotification(all = true) }
@@ -91,7 +92,7 @@ class NotificationsViewModel @Inject constructor(
             .onSuccess { load(force = true) }
     }
 
-    fun markRead(id: String) = viewModelScope.launch {
+    fun markRead(id: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val previous = mutableState.value
         mutableState.update {
             it.copy(

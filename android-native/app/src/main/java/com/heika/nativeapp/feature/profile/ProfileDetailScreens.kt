@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.profile
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import com.heika.nativeapp.ui.HeikaAlertDialog
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,7 +84,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
     val scope = rememberCoroutineScope()
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            scope.launch {
+            scope.launch(HeikaCoroutineGuard) {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         val mime = context.contentResolver.getType(uri) ?: "image/jpeg"

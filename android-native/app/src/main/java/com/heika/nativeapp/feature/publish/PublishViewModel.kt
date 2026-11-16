@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.publish
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -88,7 +89,7 @@ class PublishViewModel @Inject constructor(
     private var needsServerSync = false
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             auth.session.collect { session ->
                 val owner = mutableState.value.accountId
                 if (owner != null && owner != session?.userId) {
@@ -102,7 +103,7 @@ class PublishViewModel @Inject constructor(
                 }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.launch(HeikaCoroutineGuard) {
             val session = runCatching { auth.current() }.getOrNull()
             if (session == null) {
                 mutableState.update { it.copy(loading = false, error = "登录后可以发布内容") }
@@ -129,7 +130,7 @@ class PublishViewModel @Inject constructor(
         ) }
     }
 
-    fun switchChannel(channel: String) = viewModelScope.launch {
+    fun switchChannel(channel: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val target = if (channel == "ai") "ai" else "community"
         val current = mutableState.value
         if (current.channel == target || current.publishing || current.images.any(PendingImage::progress)) return@launch
@@ -142,7 +143,7 @@ class PublishViewModel @Inject constructor(
         resumeDraft()
     }
 
-    fun resumeDraft(requestedId: Int? = null) = viewModelScope.launch {
+    fun resumeDraft(requestedId: Int? = null) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (draftLoaded) return@launch
         draftLoaded = true
         val session = runCatching { auth.current() }.getOrNull() ?: run {
@@ -293,7 +294,7 @@ class PublishViewModel @Inject constructor(
         val current = mutableState.value
         if (current.title.isBlank() && current.body.isBlank() && current.images.isEmpty()) return
         saveJob?.cancel()
-        saveJob = viewModelScope.launch {
+        saveJob = viewModelScope.launch(HeikaCoroutineGuard) {
             delay(900)
             saveDraftInternal()
         }
@@ -301,7 +302,7 @@ class PublishViewModel @Inject constructor(
 
     private fun scheduleSnapshot() {
         snapshotJob?.cancel()
-        snapshotJob = viewModelScope.launch {
+        snapshotJob = viewModelScope.launch(HeikaCoroutineGuard) {
             delay(120)
             persistLocalSnapshot()
         }
@@ -386,14 +387,14 @@ class PublishViewModel @Inject constructor(
         // Upload the selected image immediately as an unlinked staging object.
         // This surfaces API/storage failures in the editor instead of waiting
         // until the user presses Publish, while the local draft remains intact.
-        uploadJobs[key] = viewModelScope.launch { uploadPendingImage(key) }
+        uploadJobs[key] = viewModelScope.launch(HeikaCoroutineGuard) { uploadPendingImage(key) }
     }
 
     fun retryUpload(key: String) {
         val image = mutableState.value.images.firstOrNull { it.key == key } ?: return
         if (image.progress || image.path != null || image.localFilePath == null || image.uploadId == null || image.mime == null) return
         uploadJobs[key]?.cancel()
-        uploadJobs[key] = viewModelScope.launch { uploadPendingImage(key) }
+        uploadJobs[key] = viewModelScope.launch(HeikaCoroutineGuard) { uploadPendingImage(key) }
     }
 
     private suspend fun uploadPendingImage(key: String) {
@@ -434,7 +435,7 @@ class PublishViewModel @Inject constructor(
         }
     }
 
-    fun removeImage(key: String) = viewModelScope.launch {
+    fun removeImage(key: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val removed = current.images.firstOrNull { it.key == key }
         val uploadJob = uploadJobs[key]
@@ -495,7 +496,7 @@ class PublishViewModel @Inject constructor(
         scheduleSnapshot()
     }
 
-    fun saveDraft(onDone: (() -> Unit)? = null) = viewModelScope.launch {
+    fun saveDraft(onDone: (() -> Unit)? = null) = viewModelScope.launch(HeikaCoroutineGuard) {
         saveJob?.cancel()
         val saved = saveDraftInternal(announce = true)
         if (saved) onDone?.invoke() else mutableState.update {
@@ -503,7 +504,7 @@ class PublishViewModel @Inject constructor(
         }
     }
 
-    fun deleteLocalDraft() = viewModelScope.launch {
+    fun deleteLocalDraft() = viewModelScope.launch(HeikaCoroutineGuard) {
         saveJob?.cancel()
         snapshotJob?.cancel()
         uploadJobs.values.forEach(Job::cancel)
@@ -533,7 +534,7 @@ class PublishViewModel @Inject constructor(
 
     fun continueEditing() = mutableState.update { it.copy(showLeaveDialog = false) }
 
-    fun leaveWithLocalCopy(onLeave: () -> Unit) = viewModelScope.launch {
+    fun leaveWithLocalCopy(onLeave: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!persistLocalSnapshot()) return@launch
         mutableState.update { it.copy(showLeaveDialog = false) }
         onLeave()
@@ -606,9 +607,9 @@ class PublishViewModel @Inject constructor(
         persistLocalSnapshot()
     }
 
-    fun retryRemovedImageCleanup() = viewModelScope.launch { retryPendingDeletes() }
+    fun retryRemovedImageCleanup() = viewModelScope.launch(HeikaCoroutineGuard) { retryPendingDeletes() }
 
-    fun publish() = viewModelScope.launch {
+    fun publish() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!publishMutex.tryLock()) return@launch
         try {
             val current = mutableState.value

@@ -1,5 +1,6 @@
 package com.heika.nativeapp.feature.publish
 
+import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import com.heika.nativeapp.ui.HeikaAlertDialog
 
 import android.content.Context
@@ -101,7 +102,7 @@ fun PublishScreen(
         if (uri != null) HeikaNoticeBus.show("已选择视频", HeikaNoticeKind.SUCCESS)
     }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia((9 - state.images.size).coerceAtLeast(1))) { uris ->
-        scope.launch {
+        scope.launch(HeikaCoroutineGuard) {
             for (uri in uris) {
                 runCatching { prepareImage(context, uri) }
                     .onSuccess { (name, mime, bytes) -> viewModel.addImage(name, mime, bytes) }

@@ -1,1286 +1,1294 @@
 [
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_music.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_music.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_user_round.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_user_round.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_play.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_play.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_file_text.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_file_text.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_comments.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_comments.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_left_down.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_left_down.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_avatar.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_avatar.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_video.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_video.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_more.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_more.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_afferent_four.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_afferent_four.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_more.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_more.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_admin.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_admin.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_notification.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_notification.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_down.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_down.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_full_screen_play.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_full_screen_play.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_file_add.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_file_add.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_heika_legacy.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_heika_legacy.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/mipmap-mdpi_ic_heika.png.flat",
-        "source": "com.heika.nativeapp-main-76:/mipmap-mdpi/ic_heika.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_retry.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_retry.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_crown.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_crown.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/mipmap-xhdpi_ic_heika.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/mipmap-xhdpi/ic_heika.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_notebook.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_notebook.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_external_link.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_external_link.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_retry.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_retry.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_discovery.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_discovery.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_close_wifi.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_close_wifi.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_message_search.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_message_search.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_time.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_time.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/mipmap-mdpi_ic_heika.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/mipmap-mdpi/ic_heika.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_calendar.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_calendar.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_draft.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_draft.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_circle_double_up.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_circle_double_up.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_brain_circuit.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_brain_circuit.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_draft.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_draft.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_carousel.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_carousel.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_move_in_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_move_in_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_award.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_award.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add_pic.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add_pic.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_music.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_music.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_list.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_list.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_comment.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_comment.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_heart.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_heart.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_arrow_left.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_arrow_left.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add_four.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add_four.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_nav_profile.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_nav_profile.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_play.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_play.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_unread.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_unread.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/mipmap-xhdpi_ic_heika.png.flat",
-        "source": "com.heika.nativeapp-main-76:/mipmap-xhdpi/ic_heika.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_list_bottom.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_list_bottom.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add_picture.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add_picture.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_list_filter.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_list_filter.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_down.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_down.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_git_branch.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_git_branch.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_caution.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_caution.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add_text_two.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add_text_two.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_share_2.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_share_2.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_settings.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_settings.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_warning.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_warning.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_camera.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_camera.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_topic.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_topic.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_people_add.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_people_add.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_award.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_award.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_down.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_down.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_share.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_share.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_close_wifi.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_close_wifi.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_check.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_check.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_search.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_search.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_globe.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_globe.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_success.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_success.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_star.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_star.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_gavel.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_gavel.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_support.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_support.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_picture_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_picture_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_right_up.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_right_up.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_move_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_move_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_delete_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_delete_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/raw_oppo_sans_4_0_license.txt.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/raw/oppo_sans_4_0_license.txt"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_next.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_next.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_comment_add.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_comment_add.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/raw_iconpark_license.txt.flat",
-        "source": "com.heika.nativeapp-main-76:/raw/iconpark_license.txt"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_heart_outline.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_heart_outline.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_bookmark.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_bookmark.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_like_fill.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_like_fill.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_shield.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_shield.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_wrench.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_wrench.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_success_picture.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_success_picture.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_bot.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_bot.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_send.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_send.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_upload_logs.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_upload_logs.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_layout_dashboard.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_layout_dashboard.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_announcement.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_announcement.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_bookmark_fill.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_bookmark_fill.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_check.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_check.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_comment.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_comment.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_topic.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_topic.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_hamburger_button.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_hamburger_button.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_file_addition_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_file_addition_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_add.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_add.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_blocks.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_blocks.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_send_email.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_send_email.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable-nodpi_ic_heika.png.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable-nodpi/ic_heika.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_share_2.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_share_2.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_video.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_video.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_shield.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_shield.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_upload_picture.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_upload_picture.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_like_filled.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_like_filled.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_comment.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_comment.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_switch_button.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_switch_button.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_right_down.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_right_down.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_check.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_check.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_help.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_help.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_right_down.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_right_down.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_help.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_help.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_right.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_right.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_back_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_back_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_clipboard.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_clipboard.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_forward.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_forward.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_video_camera.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_video_camera.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_copy.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_copy.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_broadcast.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_broadcast.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_album.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_album.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_album.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_album.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_comment_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_comment_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_level.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_level.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_database.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_database.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_next.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_next.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_failed.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_failed.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_x.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_x.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_tag_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_tag_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/raw_iconpark_license.txt.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/raw/iconpark_license.txt"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_gavel.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_gavel.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_caution.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_caution.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_success.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_success.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_font_size_two.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_font_size_two.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_topic_discussion.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_topic_discussion.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_tag.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_tag.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_video_play.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_video_play.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_star_badge.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_star_badge.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_picture_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_picture_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_people_top.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_people_top.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/raw_lucide_license.txt.flat",
-        "source": "com.heika.nativeapp-main-76:/raw/lucide_license.txt"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_avatar.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_avatar.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_images.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_images.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_medal.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_medal.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_picture.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_picture.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_type.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_type.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_camera.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_camera.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_forbid.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_forbid.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_shield.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_shield.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_crown.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_crown.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_identity.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_identity.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_home.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_home.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_sent.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_sent.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_report_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_report_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_share_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_share_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_messages.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_messages.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_emoji.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_emoji.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_list_middle.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_list_middle.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_left.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_left.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_terminal.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_terminal.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_file_success.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_file_success.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_star.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_star.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_right_up.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_right_up.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_video_file.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_video_file.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_calendar.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_calendar.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_admin.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_admin.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_file_display.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_file_display.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/font_oppo_sans_4_0.ttf.flat",
-        "source": "com.heika.nativeapp-main-76:/font/oppo_sans_4_0.ttf"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_privacy.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_privacy.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_book_open.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_book_open.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_minus_the_top.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_minus_the_top.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_log_out.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_log_out.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_report.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_report.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_text.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_text.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_feedback.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_feedback.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_profile_edit.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_profile_edit.xml"
+        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_bag.xml.flat",
+        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_bag.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_images.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_images.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_video.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_video.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_policy.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_policy.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_images.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_images.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_settings.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_settings.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_compass.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_compass.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_people_search.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_people_search.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_people_remove.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_people_remove.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_file_success.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_file_success.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_time.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_time.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_sort.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_sort.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_file_add.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_file_add.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_clear.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_clear.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_download.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_download.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_compass.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_compass.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_share.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_share.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_afferent_four.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_afferent_four.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/anim_heika_dialog_exit.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/anim/heika_dialog_exit.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_heart_outline.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_heart_outline.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_ad.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_ad.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_list_alphabet.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_list_alphabet.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_help.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_help.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_auto_width.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_auto_width.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_policy.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_policy.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_search.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_search.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_eye.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_eye.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_chat_security.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_chat_security.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_copy_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_copy_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/mipmap-xxxhdpi_ic_heika.png.flat",
-        "source": "com.heika.nativeapp-main-76:/mipmap-xxxhdpi/ic_heika.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_check_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_check_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_list_filter.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_list_filter.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_star_outline.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_star_outline.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_people_add.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_people_add.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_share.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_share.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_carousel.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_carousel.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_arrow_up_right.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_arrow_up_right.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_settings.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_settings.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_send.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_send.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_collapse_text_input.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_collapse_text_input.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_right.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_right.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_medal.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_medal.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_sent.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_sent.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_safe_people.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_safe_people.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_bookmark_fill.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_bookmark_fill.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_plus.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_plus.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_log_out.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_log_out.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_security.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_security.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_check_small.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_check_small.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_pic.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_pic.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_privacy.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_privacy.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_ban.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_ban.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_read_book.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_read_book.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_audit.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_audit.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_support.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_support.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_user_round.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_user_round.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_nav_messages.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_nav_messages.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_up.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_up.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_tag_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_tag_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_eye.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_eye.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_logout.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_logout.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_bitcoin.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_bitcoin.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_up.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_up.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_add.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_add.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_rss.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_rss.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_thumbs_up.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_thumbs_up.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_list_middle.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_list_middle.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_switch_button.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_switch_button.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_shield.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_shield.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_palette.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_palette.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_settings.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_settings.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_x.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_x.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_image_add.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_image_add.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_clipboard.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_clipboard.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_search.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_search.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_lock_keyhole.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_lock_keyhole.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/font_oppo_sans_4_0.ttf.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/font/oppo_sans_4_0.ttf"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_check_small.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_check_small.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_nav_add.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_nav_add.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_gavel.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_gavel.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_like.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_like.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_business_user.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_business_user.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_pencil.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_pencil.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_discovery.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_discovery.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_dislike_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_dislike_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_logout.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_logout.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_info.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_info.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_nav_home.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_nav_home.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_user_round_search.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_user_round_search.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/anim_heika_dialog_enter.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/anim/heika_dialog_enter.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_calendar_days.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_calendar_days.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_data.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_data.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_info.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_info.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_avatar.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_avatar.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_notification.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_notification.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/mipmap-anydpi-v26_ic_heika.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/mipmap-anydpi-v26/ic_heika.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_bug.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_bug.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_user_round_search.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_user_round_search.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_message_circle.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_message_circle.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_robot.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_robot.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_comments.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_comments.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_like_fill.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_like_fill.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add_pic.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add_pic.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_group.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_group.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_more.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_more.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_nav_profile.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_nav_profile.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_bookmark.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_bookmark.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_refresh_cw.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_refresh_cw.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_star_filled.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_star_filled.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_copy.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_copy.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/raw_lucide_license.txt.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/raw/lucide_license.txt"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_refresh.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_refresh.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_vip.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_vip.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_house.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_house.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_paint.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_paint.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_list_success.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_list_success.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_upload.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_upload.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_mosaic.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_mosaic.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_globe.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_globe.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_approve.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_approve.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_link_two.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_link_two.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_topic.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_topic.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_alarm.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_alarm.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_user_round_cog.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_user_round_cog.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_left_down.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_left_down.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_send.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_send.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_document.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_document.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_globe.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_globe.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_refresh.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_refresh.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_thumbs_down.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_thumbs_down.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_plus.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_plus.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_share_sys.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_share_sys.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable-nodpi_ic_heika_original.jpg.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable-nodpi/ic_heika_original.jpg"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_video_file.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_video_file.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_heart.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_heart.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_bell.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_bell.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_camera.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_camera.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_text.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_text.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_newlybuild.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_newlybuild.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_audit.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_audit.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_favorite.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_favorite.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_refresh_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_refresh_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_report.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_report.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_security.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_security.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_left.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_left.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_left.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_left.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_video_camera.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_video_camera.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_magic.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_magic.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_click_to_fold.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_click_to_fold.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_plus.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_plus.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_magic.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_magic.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_copy.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_copy.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_folder_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_folder_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_lock_keyhole.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_lock_keyhole.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_link_two.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_link_two.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_notes.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_notes.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_upload_logs.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_upload_logs.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_correct.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_correct.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_emoji.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_emoji.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_plus.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_plus.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_calendar_days.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_calendar_days.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_failed.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_failed.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_inbox.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_inbox.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_notifications.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_notifications.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_move_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_move_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/mipmap-xxhdpi_ic_heika.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/mipmap-xxhdpi/ic_heika.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_copy_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_copy_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_collapse_text_input.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_collapse_text_input.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_trash.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_trash.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_folder_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_folder_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_file_display.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_file_display.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_list_view.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_list_view.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_setting_two.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_setting_two.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_data.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_data.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_upload.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_upload.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_blocks.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_blocks.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_up.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_up.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_copy.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_copy.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add_computer.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add_computer.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_list_numbers.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_list_numbers.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_refresh_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_refresh_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_copy_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_copy_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_user_round_cog.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_user_round_cog.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_lightning.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_lightning.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_dislike.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_dislike.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_magic.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_magic.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_wrench.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_wrench.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_bitcoin.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_bitcoin.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_font_size_two.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_font_size_two.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_back_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_back_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_edit_name.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_edit_name.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_delete_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_delete_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_flag.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_flag.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_business_user.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_business_user.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_upload.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_upload.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_close.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_close.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/raw_oppo_sans_4_0_license.txt.flat",
-        "source": "com.heika.nativeapp-main-76:/raw/oppo_sans_4_0_license.txt"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_layout_dashboard.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_layout_dashboard.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_globe.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_globe.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_sort.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_sort.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_list_fail.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_list_fail.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_ellipsis.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_ellipsis.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_rss.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_rss.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_ban.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_ban.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_quality.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_quality.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_heart.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_heart.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_vip.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_vip.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_close_small.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_close_small.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_account.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_account.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_hamburger_button.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_hamburger_button.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_left.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_left.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_save_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_save_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_edit.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_edit.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_shield.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_shield.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_agreement.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_agreement.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_bookmark.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_bookmark.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_type.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_type.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_group.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_group.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_save_filled.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_save_filled.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_report.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_report.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_communication.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_communication.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_clear.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_clear.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_privacy.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_privacy.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_content.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_content.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_protect.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_protect.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/anim_heika_dialog_enter.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/anim/heika_dialog_enter.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_search.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_search.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_picture.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_picture.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_font.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_font.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_identity.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_identity.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_pencil.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_pencil.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_account.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_account.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_file_text.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_file_text.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_save_filled.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_save_filled.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_search.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_search.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_file_remove.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_file_remove.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_announcement.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_announcement.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_home.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_home.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_ellipsis.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_ellipsis.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_unlike.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_unlike.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_send_email.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_send_email.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_nav_discovery.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_nav_discovery.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_arrow_up_right.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_arrow_up_right.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_list_fail.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_list_fail.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_message_search.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_message_search.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/mipmap-xxxhdpi_ic_heika.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/mipmap-xxxhdpi/ic_heika.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_report.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_report.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable-nodpi_ic_heika_original.jpg.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable-nodpi/ic_heika_original.jpg"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_close.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_close.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_notebook.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_notebook.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_profile.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_profile.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_star.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_star.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_left_up.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_left_up.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_circle_question_mark.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_circle_question_mark.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_ad.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_ad.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_block.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_block.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_users_round.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_users_round.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/mipmap-hdpi_ic_heika.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/mipmap-hdpi/ic_heika.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_report_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_report_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_tag.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_tag.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_dislike_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_dislike_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_topic_discussion.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_topic_discussion.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_circle_question_mark.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_circle_question_mark.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_search.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_search.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_external_link.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_external_link.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_move_in_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_move_in_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_chevron_right.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_chevron_right.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_book.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_book.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_book.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_book.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_chat_security.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_chat_security.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_bot.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_bot.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_vip.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_vip.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_bookmark.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_bookmark.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_play.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_play.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_people.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_people.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_upload_picture.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_upload_picture.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_home.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_home.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_up.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_up.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_nav_messages.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_nav_messages.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add_picture.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add_picture.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_storage.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_storage.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_left_up.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_left_up.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_check.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_check.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_list_success.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_list_success.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_up.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_up.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_medal.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_medal.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_file_remove.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_file_remove.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_play.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_play.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_level.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_level.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_messages.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_messages.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_unlike.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_unlike.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_dislike.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_dislike.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_lightning.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_lightning.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_search.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_search.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_git_branch.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_git_branch.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_bookmark_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_bookmark_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/mipmap-nodpi_ic_heika.png.flat",
-        "source": "com.heika.nativeapp-main-76:/mipmap-nodpi/ic_heika.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add_four.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add_four.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_like_filled.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_like_filled.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_down_picture.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_down_picture.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add_text_two.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add_text_two.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_refresh_cw.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_refresh_cw.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable-nodpi_ic_heika_foreground.png.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable-nodpi/ic_heika_foreground.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_zip.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_zip.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_home.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_home.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_circle_double_down.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_circle_double_down.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_add_user.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_add_user.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_nav_home.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_nav_home.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_back.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_back.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_storage.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_storage.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_down.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_down.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_message_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_message_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_thumbs_down.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_thumbs_down.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_newlybuild.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_newlybuild.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_info.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_info.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_star.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_star.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_video.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_video.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_gavel.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_gavel.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_save_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_save_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_back.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_back.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_nav_add.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_nav_add.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_forward.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_forward.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_unread.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_unread.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_thumbs_up.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_thumbs_up.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_correct.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_correct.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_success_picture.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_success_picture.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_star_outline.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_star_outline.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_people.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_people.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_rows_3.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_rows_3.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_heart.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_heart.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_tag.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_tag.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_terminal.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_terminal.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_broadcast.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_broadcast.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_auto_width.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_auto_width.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_heika_legacy.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_heika_legacy.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_megaphone.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_megaphone.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_filter_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_filter_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_quality.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_quality.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_info.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_info.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_trash.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_trash.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_notes.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_notes.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_camera_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_camera_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_full_screen_play.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_full_screen_play.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_database.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_database.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_people_remove.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_people_remove.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_circle_double_up.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_circle_double_up.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_brain_circuit.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_brain_circuit.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_inbox.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_inbox.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_like.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_like.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_alarm.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_alarm.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_list_numbers.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_list_numbers.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable-nodpi_ic_heika.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable-nodpi/ic_heika.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_list_bottom.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_list_bottom.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_communication.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_communication.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_megaphone.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_megaphone.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_list.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_list.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_content.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_content.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_mosaic.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_mosaic.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_medal.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_medal.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable-nodpi_ic_heika_foreground.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable-nodpi/ic_heika_foreground.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/mipmap-hdpi_ic_heika.png.flat",
-        "source": "com.heika.nativeapp-main-76:/mipmap-hdpi/ic_heika.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_help.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_help.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_zip.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_zip.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_users_round.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_users_round.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_tag.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_tag.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_info.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_info.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_right.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_right.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_font.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_font.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_share_sys.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_share_sys.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_more.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_more.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_afferent_three.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_afferent_three.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_down.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_down.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_upload_picture.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_upload_picture.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_click_to_fold.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_click_to_fold.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_copy_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_copy_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_house.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_house.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/anim_heika_dialog_exit.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/anim/heika_dialog_exit.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_panels_top_left.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_panels_top_left.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_like.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_like.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_up.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_up.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_delete.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_delete.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_share_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_share_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_message_circle.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_message_circle.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_edit.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_edit.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_notifications.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_notifications.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_profile.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_profile.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_vip.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_vip.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/mipmap-nodpi_ic_heika.png.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/mipmap-nodpi/ic_heika.png"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_down_picture.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_down_picture.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_chevron_right.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_chevron_right.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_bug.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_bug.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_filter_alt.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_filter_alt.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_block.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_block.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add_user.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add_user.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_star_badge.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_star_badge.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_warning.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_warning.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/mipmap-xxhdpi_ic_heika.png.flat",
-        "source": "com.heika.nativeapp-main-76:/mipmap-xxhdpi/ic_heika.png"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_setting_two.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_setting_two.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_paint.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_paint.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_terminal.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_terminal.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_feedback.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_feedback.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_rows_3.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_rows_3.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_arrow_left.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_arrow_left.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_comment_one.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_comment_one.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_people_top.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_people_top.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_refresh.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_refresh.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_filter.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_filter.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_camera.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_camera.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_comment_add.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_comment_add.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_upload.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_upload.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_circle_double_down.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_circle_double_down.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_add_computer.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_add_computer.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_check_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_check_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/mipmap-anydpi-v26_ic_heika.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/mipmap-anydpi-v26/ic_heika.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_close_small.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_close_small.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_document.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_document.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_magic.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_magic.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_pic.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_pic.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_nav_discovery.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_nav_discovery.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_edit_name.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_edit_name.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_comment.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_comment.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_minus_the_top.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_minus_the_top.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_filter.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_filter.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_list_view.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_list_view.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_palette.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_palette.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_down.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_down.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_delete.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_delete.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_terminal.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_terminal.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_favorite.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_favorite.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_panels_top_left.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_panels_top_left.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_images.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_images.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_send.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_send.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_protect.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_protect.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_image_add.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_image_add.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_topic.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_topic.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_star_filled.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_star_filled.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_flag.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_flag.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_forbid.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_forbid.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_upload_picture.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_upload_picture.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_share.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_share.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_avatar.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_avatar.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_bookmark_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_bookmark_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_robot.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_robot.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_file_addition_one.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_file_addition_one.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_list_alphabet.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_list_alphabet.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_info.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_info.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_agreement.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_agreement.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_search.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_search.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_profile_edit.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_profile_edit.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_ip_camera_alt.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_ip_camera_alt.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_approve.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_approve.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_read_book.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_read_book.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_safe_people.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_safe_people.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_bell.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_bell.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_like.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_like.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_arrow_circle_right.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_arrow_circle_right.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_refresh.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_refresh.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_lucide_shield.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_lucide_shield.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_lucide_book_open.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_lucide_book_open.xml"
     },
     {
-        "merged": "com.heika.nativeapp-release-75:/drawable_ic_pack_message_privacy.xml.flat",
-        "source": "com.heika.nativeapp-main-76:/drawable/ic_pack_message_privacy.xml"
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_pack_afferent_three.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_pack_afferent_three.xml"
+    },
+    {
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_people_search.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_people_search.xml"
+    },
+    {
+        "merged": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-release-75:/drawable_ic_ip_video_play.xml.flat",
+        "source": "/home/ubuntu/.gradle/daemon/8.11.1/com.heika.nativeapp-main-76:/drawable/ic_ip_video_play.xml"
     }
 ]
