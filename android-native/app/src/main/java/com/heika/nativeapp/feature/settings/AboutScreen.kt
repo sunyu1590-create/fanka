@@ -42,6 +42,10 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(53, "2026.11.17", listOf(
+        "修复弱网、超时或登录态过期时闪退：网络异常不再把整个 App 一起带崩溃。",
+        "协程异常增加统一兜底，异常只记录日志，页面回到可重试状态。",
+    )),
     NativeRelease(52, "2026.11.17", listOf(
         "修复 2.5.0/2.6.0 一打开就闪退：公告的依赖没在构建时生成完整，启动即报错退出。",
         "公告改为不经过依赖注入的独立加载，单个组件出问题不再连带整个 App 起不来。",
