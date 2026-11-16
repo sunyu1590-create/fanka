@@ -38,6 +38,7 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(45, "2026.11.16", listOf("新增启动时检查更新：服务端发布新版本后会提示，点击直达下载页。", "安装包改由 moonclean.shop 直接分发，支持断点续传，不再依赖第三方网盘。")),
     NativeRelease(44, "2026.11.16", listOf("全部服务端接口迁移到 moonclean.shop 与新的 Supabase 项目，登录、注册、找回密码、私信、翻卡、评论、评分、收藏、关注、每日任务、会员与后台管理逐项核对通过。", "补齐管理员方案配置、卡密批次明细、广告图片上传接口；批次统计改为按真实卡密记录汇总。", "清理指向已下线数据库的旧头像地址，图片与封面地址统一由新存储签名返回。")),
     NativeRelease(43, "2026.11.16", listOf("首个原生构建：界面改为 Jetpack Compose 原生实现，不再内嵌网页。", "账号改为邮箱密码直连服务端登录，支持令牌自动刷新与本地会话恢复。")),
     NativeRelease(40, "2026.11.15", listOf("原生账号登录、令牌刷新、私信和探索日历改为通过 CloudBase 网关与 HEIKA API 访问。", "密码找回统一使用 CloudBase 账号服务已支持的恢复码流程。")),

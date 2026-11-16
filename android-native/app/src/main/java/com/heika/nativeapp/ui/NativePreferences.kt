@@ -28,6 +28,7 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val titleTextSizeKey = stringPreferencesKey("title_text_size")
     private val searchHistoryKey = stringPreferencesKey("search_history")
     private val networkNoticeVersionKey = stringPreferencesKey("network_notice_seen_version")
+    private val skippedUpdateCodeKey = intPreferencesKey("skipped_update_code")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
@@ -78,6 +79,12 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
         dataStore.data.map { it[networkNoticeVersionKey] == version }.first()
     suspend fun markNetworkNoticeSeen(version: String) {
         dataStore.edit { it[networkNoticeVersionKey] = version }
+    }
+
+    /** 用户点过「稍后」的版本号，避免同一版本反复提示。 */
+    suspend fun skippedUpdateCode(): Int = dataStore.data.map { it[skippedUpdateCodeKey] ?: 0 }.first()
+    suspend fun markUpdateSkipped(code: Int) {
+        dataStore.edit { it[skippedUpdateCodeKey] = code }
     }
 
 }

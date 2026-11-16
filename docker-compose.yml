@@ -6,6 +6,9 @@ services:
     env_file: .env
     expose:
       - "3000"
+    volumes:
+      # 只读挂载安装包清单，下载页在服务端直接读取版本信息
+      - /home/ubuntu/downloads:/srv/dl:ro
     networks:
       - web
 
@@ -19,6 +22,8 @@ services:
       - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 安装包目录：只读挂载，由 Caddy 直接对外提供下载
+      - /home/ubuntu/downloads:/srv/dl:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

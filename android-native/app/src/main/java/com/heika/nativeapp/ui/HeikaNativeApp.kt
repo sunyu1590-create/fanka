@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.heika.nativeapp.BuildConfig
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -94,6 +95,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
         val context = LocalContext.current
         val networkRegionNoticeViewModel: NetworkRegionNoticeViewModel = hiltViewModel()
         val networkRegionWarning by networkRegionNoticeViewModel.warning.collectAsState()
+        val appUpdateViewModel: AppUpdateViewModel = hiltViewModel()
+        val appUpdate by appUpdateViewModel.update.collectAsState()
         val nav = rememberNavController()
         val hazeState = rememberHazeState()
         val backStack by nav.currentBackStackEntryAsState()
@@ -112,6 +115,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
         var mainTabSwitchActive by remember { mutableStateOf(false) }
         var networkNoticeCountdown by remember { mutableIntStateOf(2) }
         LaunchedEffect(networkRegionNoticeViewModel) { networkRegionNoticeViewModel.checkNetworkRegion() }
+        LaunchedEffect(appUpdateViewModel) { appUpdateViewModel.checkForUpdate() }
         LaunchedEffect(networkRegionWarning) {
             if (networkRegionWarning != null) {
                 networkNoticeCountdown = 2
@@ -613,6 +617,27 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         ) {
                             Text(if (networkNoticeCountdown > 0) "继续访问（$networkNoticeCountdown）" else "继续访问")
                         }
+                    },
+                )
+            }
+            appUpdate?.let { update ->
+                HeikaAlertDialog(
+                    onDismissRequest = appUpdateViewModel::snooze,
+                    title = { Text("发现新版本 ${update.version}") },
+                    text = {
+                        Text(buildString {
+                            append("当前版本 ${BuildConfig.VERSION_NAME}，服务器已发布 ${update.version}。")
+                            if (update.notes.isNotEmpty()) {
+                                append("\n\n")
+                                append(update.notes.joinToString("\n") { "· $it" })
+                            }
+                        })
+                    },
+                    confirmButton = {
+                        TextButton(onClick = appUpdateViewModel::openDownloadPage) { Text("立即更新") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = appUpdateViewModel::snooze) { Text("稍后") }
                     },
                 )
             }

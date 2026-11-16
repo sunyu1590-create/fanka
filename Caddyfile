@@ -1,5 +1,20 @@
 moonclean.shop {
 	encode gzip
+
+	# 安装包由 Caddy 直接托管，不经过 Next 容器：
+	# 支持 Range 断点续传，也不占用应用内存。
+	handle_path /dl/* {
+		root * /srv/dl
+		@apk path *.apk
+		header @apk Content-Type "application/vnd.android.package-archive"
+		header @apk Content-Disposition "attachment"
+		@json path *.json
+		header @json Cache-Control "public, max-age=60"
+		header @apk Cache-Control "public, max-age=600"
+		header X-Content-Type-Options "nosniff"
+		file_server
+	}
+
 	reverse_proxy app:3000
 }
 

@@ -926,6 +926,10 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/progression", method = "POST", body = JSONObject().put("level", level).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun appVersion(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/app-version", includeSession = false) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun dailyMissions(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/daily-missions", authenticated = true) as? JSONObject ?: JSONObject()
     }
