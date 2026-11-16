@@ -1,1 +1,0 @@
--keep,allowobfuscation,allowshrinking class com.heika.nativeapp.feature.home.HomeViewModel

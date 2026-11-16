@@ -13,3 +13,8 @@ playwright-report/
 test-results/
 
 supabase/.temp/
+
+# Android build outputs
+android-native/app/build/
+android-native/build/
+android-native/.gradle/
