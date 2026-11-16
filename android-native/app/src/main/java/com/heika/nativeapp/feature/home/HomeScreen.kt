@@ -9,6 +9,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
@@ -56,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
+import kotlin.math.sin
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -348,7 +350,7 @@ private fun FlipPreviewOverlay(
             // Reveal starts only after the server confirms the selected card.
             revealing = true
             if (reduceMotion) flipProgress.snapTo(1f)
-            else flipProgress.animateTo(1f, tween(640, easing = FastOutSlowInEasing))
+            else flipProgress.animateTo(1f, tween(680, easing = CubicBezierEasing(0.22f, 0.86f, 0.24f, 1f)))
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             revealing = false
             rarityPhase = true
@@ -413,13 +415,15 @@ private fun FlipPreviewOverlay(
                     }
                     val sourceScaleX = source?.let { (it.width / targetWidthPx).coerceAtLeast(0.05f) } ?: 0.94f
                     val sourceScaleY = source?.let { (it.height / targetHeightPx).coerceAtLeast(0.05f) } ?: 0.94f
-                    scaleX = (sourceScaleX + (1f - sourceScaleX) * p) * touchScale.value
-                    scaleY = (sourceScaleY + (1f - sourceScaleY) * p) * touchScale.value
+                    // 翻面中段轻微抬起，落定时回到原尺寸：有实体卡片的重量感，不喧宾夺主。
+                    val lift = sin(Math.PI * flipProgress.value).toFloat()
+                    scaleX = (sourceScaleX + (1f - sourceScaleX) * p) * touchScale.value * (1f + 0.028f * lift)
+                    scaleY = (sourceScaleY + (1f - sourceScaleY) * p) * touchScale.value * (1f + 0.028f * lift)
                     rotationY = 180f * flipProgress.value
                     cameraDistance = 26f * density.density
                     translationX = source?.let { ((it.left + it.right) / 2f - centerX) * (1f - p) } ?: 0f
                     translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
-                    shadowElevation = with(density) { (4.dp + 16.dp * p).toPx() }
+                    shadowElevation = with(density) { (4.dp + 16.dp * p + 14.dp * lift).toPx() }
                     shape = RoundedCornerShape(HeikaRadii.dailyCard)
                     clip = true
                 }

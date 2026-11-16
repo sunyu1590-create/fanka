@@ -34,16 +34,33 @@ class AppUpdateViewModel @Inject constructor(
 ) : ViewModel() {
     private val mutableUpdate = MutableStateFlow<AppUpdate?>(null)
     val update = mutableUpdate.asStateFlow()
+    private val mutableChecking = MutableStateFlow(false)
+    val checking = mutableChecking.asStateFlow()
+    private val mutableManualMessage = MutableStateFlow<String?>(null)
+    val manualMessage = mutableManualMessage.asStateFlow()
     private var started = false
 
-    fun checkForUpdate() {
-        if (started) return
+    /** force 为 true 时由「关于」页手动触发：忽略「稍后提醒」记录，并回报已是最新的结果。 */
+    fun checkForUpdate(force: Boolean = false) {
+        if (!force && started) return
         started = true
+        if (force) {
+            mutableChecking.value = true
+            mutableManualMessage.value = null
+        }
         viewModelScope.launch {
-            val payload = runCatching { repository.appVersion() }.getOrNull() ?: return@launch
+            val payload = runCatching { repository.appVersion() }.getOrNull()
+            if (force) mutableChecking.value = false
+            if (payload == null) {
+                if (force) mutableManualMessage.value = "检查更新失败，请检查网络后重试"
+                return@launch
+            }
             val code = payload.optInt("code")
-            if (code <= BuildConfig.VERSION_CODE) return@launch
-            if (runCatching { preferences.skippedUpdateCode() }.getOrDefault(0) == code) return@launch
+            if (code <= BuildConfig.VERSION_CODE) {
+                if (force) mutableManualMessage.value = "已是最新版本"
+                return@launch
+            }
+            if (!force && runCatching { preferences.skippedUpdateCode() }.getOrDefault(0) == code) return@launch
             val notes = payload.optJSONArray("notes")?.let { array ->
                 (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf(String::isNotBlank) }
             } ?: emptyList()
@@ -56,6 +73,8 @@ class AppUpdateViewModel @Inject constructor(
             )
         }
     }
+
+    fun consumeManualMessage() { mutableManualMessage.value = null }
 
     fun openDownloadPage() {
         val target = mutableUpdate.value?.pageUrl ?: "https://moonclean.shop/download"

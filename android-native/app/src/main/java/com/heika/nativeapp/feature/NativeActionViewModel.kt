@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class NativeActionState(val loading: Boolean = false, val sending: Boolean = false, val membershipLoaded: Boolean = false, val tier: String = "free", val experience: Int = 0, val membershipData: JSONObject? = null, val redeemPreview: JSONObject? = null, val redeemResult: JSONObject? = null, val error: String? = null, val notice: String? = null)
@@ -25,9 +26,55 @@ class NativeActionViewModel @Inject constructor(private val repository: HeikaRep
             return@launch
         }
         mutableState.update { it.copy(loading = true, error = null) }
+        // 经验值单独存放在进度接口，会员接口只返回权益快照，两者需要一起拉取。
+        val progression = runCatching { repository.progression() }.getOrDefault(JSONObject())
         runCatching { repository.membershipState() }.onSuccess { data ->
-            mutableState.update { it.copy(loading = false, membershipLoaded = true, tier = data.optString("tier", "free"), experience = data.optInt("experience"), membershipData = data, error = null) }
+            val snapshot = normalizeMembership(data, progression.optInt("total"))
+            mutableState.update {
+                it.copy(
+                    loading = false,
+                    membershipLoaded = true,
+                    tier = snapshot.optString("tier", "free"),
+                    experience = snapshot.optInt("experience"),
+                    membershipData = snapshot,
+                    error = null,
+                )
+            }
         }.onFailure { error -> mutableState.update { it.copy(loading = false, membershipLoaded = false, error = error.message ?: "会员信息加载失败") } }
+    }
+
+    /**
+     * 会员接口把快照放在 membership 子对象里，套餐字段用 snake_case，界面按扁平字段渲染。
+     * 这里统一成界面需要的形状，避免逐处兜底判断。
+     */
+    private fun normalizeMembership(raw: JSONObject, experience: Int): JSONObject {
+        val membership = raw.optJSONObject("membership") ?: JSONObject()
+        val allowance = membership.optInt("dailyFlipAllowance", raw.optInt("dailyFlipAllowance", 5))
+        val used = membership.optInt("dailyFlipsUsed", raw.optInt("dailyFlipsUsed"))
+        val expiry = membership.optString("expiresAt").takeIf { it.isNotBlank() && it != "null" }
+        val plans = JSONArray()
+        val rows = raw.optJSONArray("plans") ?: JSONArray()
+        for (index in 0 until rows.length()) {
+            val row = rows.optJSONObject(index) ?: continue
+            val tier = row.optString("tier")
+            if (tier.isBlank()) continue
+            plans.put(JSONObject().apply {
+                put("tier", tier)
+                put("display_name", row.optString("name", tier.uppercase()))
+                put("daily_flips", row.optInt("daily_flip_allowance", row.optInt("dailyFlips", 5)))
+                put("support_price_cents", row.optInt("price_cents", row.optInt("priceCents")))
+                put("duration_days", row.optInt("duration_days", row.optInt("durationDays", 30)))
+                put("benefits", row.optJSONArray("benefits") ?: JSONArray())
+            })
+        }
+        return JSONObject().apply {
+            put("tier", membership.optString("tier", raw.optString("tier", "free")).ifBlank { "free" })
+            put("experience", experience)
+            put("dailyAllowance", allowance)
+            put("remaining", (allowance - used).coerceAtLeast(0))
+            put("expiresAt", expiry ?: JSONObject.NULL)
+            put("plans", plans)
+        }
     }
 
     fun previewMembershipCode(code: String) = viewModelScope.launch {

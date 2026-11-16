@@ -32,12 +32,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.heika.nativeapp.BuildConfig
 import com.heika.nativeapp.R
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.heika.nativeapp.ui.AppUpdateViewModel
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaAlertDialog
+import com.heika.nativeapp.ui.HeikaGlassDialog
 import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(46, "2026.11.16", listOf("修复删除作品失败：翻卡记录不再阻塞作品删除，删除后相关记录同步清理。", "修复会员中心读不到等级、每日额度与经验值的问题，方案价格与次数同步显示真实配置。", "关于页新增手动检查更新；设置中心一级到三级统一为同一套列表样式，图标、间距与字号全面对齐。", "翻卡翻转改用更顺滑的缓动曲线，加入轻微的抬起与阴影层次。")),
     NativeRelease(45, "2026.11.16", listOf("新增启动时检查更新：服务端发布新版本后会提示，点击直达下载页。", "安装包改由 moonclean.shop 直接分发，支持断点续传，不再依赖第三方网盘。")),
     NativeRelease(44, "2026.11.16", listOf("全部服务端接口迁移到 moonclean.shop 与新的 Supabase 项目，登录、注册、找回密码、私信、翻卡、评论、评分、收藏、关注、每日任务、会员与后台管理逐项核对通过。", "补齐管理员方案配置、卡密批次明细、广告图片上传接口；批次统计改为按真实卡密记录汇总。", "清理指向已下线数据库的旧头像地址，图片与封面地址统一由新存储签名返回。")),
     NativeRelease(43, "2026.11.16", listOf("首个原生构建：界面改为 Jetpack Compose 原生实现，不再内嵌网页。", "账号改为邮箱密码直连服务端登录，支持令牌自动刷新与本地会话恢复。")),
@@ -59,6 +64,10 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
     var historyExpanded by remember { mutableStateOf(false) }
     var licensesOpen by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    val updateViewModel: AppUpdateViewModel = hiltViewModel()
+    val pendingUpdate by updateViewModel.update.collectAsStateWithLifecycle()
+    val checkingUpdate by updateViewModel.checking.collectAsStateWithLifecycle()
+    val updateMessage by updateViewModel.manualMessage.collectAsStateWithLifecycle()
     val licenses = remember(context) {
         listOf("OPPO Sans 4.0 字体许可" to R.raw.oppo_sans_4_0_license,
             "Lucide 图标许可" to R.raw.lucide_license,
@@ -105,6 +114,22 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                     TextButton(onClick = { storyExpanded = !storyExpanded }) { Text(if (storyExpanded) "收起" else "阅读更多") }
                 }
             }
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(enabled = !checkingUpdate) { updateViewModel.checkForUpdate(force = true) }.padding(horizontal = 13.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(11.dp),
+                    ) {
+                        Icon(HeikaIcons.Retry, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(if (checkingUpdate) "正在检查更新…" else "检查更新", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(updateMessage ?: "当前 ${version.first} · 构建 ${version.second}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        }
+                        Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                    }
+                }
+            }
             item { ReleaseSection(version.second, historyExpanded) { historyExpanded = !historyExpanded } }
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) {
@@ -126,6 +151,19 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
         confirmButton = { TextButton(onClick = { licensesOpen = false }) { Text("完成") } },
     )
     notice?.let { message -> HeikaAlertDialog(onDismissRequest = { notice = null }, title = { Text("无法打开链接") }, text = { Text(message) }, confirmButton = { TextButton(onClick = { notice = null }) { Text("知道了") } }) }
+    pendingUpdate?.let { release ->
+        HeikaGlassDialog(
+            title = "发现新版本 ${release.version}",
+            message = buildString {
+                append("当前 ${version.first}，服务器已发布 ${release.version}。")
+                release.notes.take(3).forEach { append("\n· ").append(it) }
+            },
+            confirmText = "立即更新",
+            cancelText = "稍后",
+            onConfirm = { updateViewModel.openDownloadPage(); updateViewModel.consumeManualMessage() },
+            onCancel = { updateViewModel.snooze(); updateViewModel.consumeManualMessage() },
+        )
+    }
 }
 
 @Composable private fun SectionTitle(title: String) { Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) }
@@ -162,7 +200,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
 
 @Composable private fun ReleaseRow(release: NativeRelease, current: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("2.3.6 · ${release.build}", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium); if (current) Text("当前", Modifier.padding(start = 7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 7.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 9.sp); Spacer(Modifier.weight(1f)); Text(release.date, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text("构建 ${release.build}", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium); if (current) Text("当前", Modifier.padding(start = 7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 7.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 9.sp); Spacer(Modifier.weight(1f)); Text(release.date, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
         Text(release.notes.firstOrNull().orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
