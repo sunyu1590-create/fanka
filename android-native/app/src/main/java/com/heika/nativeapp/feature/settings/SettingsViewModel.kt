@@ -24,7 +24,7 @@ class SettingsViewModel @Inject constructor(
     val imageCacheMb = preferences.imageCacheMb.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 256)
     val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
-    val pageTransition = preferences.pageTransition.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "crossfade")
+    val pageTransition = preferences.pageTransition.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "shared")
     val fontChoice = preferences.fontChoice.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "oppo_sans")
     val bodyTextSize = preferences.bodyTextSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
     val titleTextSize = preferences.titleTextSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")

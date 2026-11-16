@@ -110,6 +110,7 @@ import com.heika.nativeapp.ui.HeikaGlassSurface
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
+import com.heika.nativeapp.ui.heikaSharedPostTitle
 import com.heika.nativeapp.ui.sharedImageKey
 import dev.chrisbanes.haze.HazeState
 
@@ -301,8 +302,9 @@ fun PostDetailScreen(
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp).then(sharedImageModifier),
                             )
                         }
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp).detailContentReveal(sharedElementsEnabled), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        // 标题参与共享转场，必须待在淡入层之外；其余内容等封面落位后再出现。
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth().detailContentReveal(sharedElementsEnabled, delayMillis = 30), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             Text(item.tag, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                             Icon(HeikaIcons.StarOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
                             if (item.hasRating) Text(String.format(java.util.Locale.US, "%.1f", item.ratingAverage), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
@@ -310,7 +312,14 @@ fun PostDetailScreen(
                             Spacer(Modifier.weight(1f))
                             Text("${item.viewCount} 阅读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
-                        Text(item.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp * titleTextScale, lineHeight = 31.sp * titleTextScale, fontWeight = FontWeight.SemiBold)
+                        val titleSharedModifier = if (sharedElementsEnabled) with(sharedTransitionScope) {
+                            Modifier.heikaSharedPostTitle(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), enabled = true)
+                        } else {
+                            // 非共享模式下标题仍是普通内容，保留原来的淡入，避免变成硬切。
+                            Modifier.detailContentReveal(enabled = true, delayMillis = 40)
+                        }
+                        Text(item.title, titleSharedModifier, color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp * titleTextScale, lineHeight = 31.sp * titleTextScale, fontWeight = FontWeight.SemiBold)
+                        Column(Modifier.fillMaxWidth().detailContentReveal(sharedElementsEnabled, delayMillis = 170), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth().clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             HeikaAvatar(item.authorAvatar, item.author, 38.dp, contentDescription = "${item.author}头像")
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -377,6 +386,7 @@ fun PostDetailScreen(
                                 Text(message, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                                 if (message.contains("登录")) TextButton(onClick = onLogin) { Text("登录") }
                             }
+                        }
                         }
                         }
                     }

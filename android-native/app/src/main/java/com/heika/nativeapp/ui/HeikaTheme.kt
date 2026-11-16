@@ -100,6 +100,8 @@ object HeikaMotion {
     const val control = 220
     const val transition = 280
     const val spatial = 380
+    /** 卡片 -> 详情的共享元素迁移时长。比页面淡入长，飞行过程才是主体。 */
+    const val morph = 420
     const val rating = 320
     val standard = FastOutSlowInEasing
     val spatialEasing = CubicBezierEasing(0.22f, 0.78f, 0.18f, 1f)
@@ -120,7 +122,9 @@ object HeikaFontCatalog {
 
 object HeikaPageTransitions {
     val choices = setOf("lift", "crossfade", "shared")
-    fun normalize(value: String): String = value.takeIf { it in choices } ?: "crossfade"
+
+    /** 默认走连续转场：卡片点开就是同一张图长成详情页，不是换一页。 */
+    fun normalize(value: String): String = value.takeIf { it in choices } ?: "shared"
 }
 
 object HeikaReadingSizes {

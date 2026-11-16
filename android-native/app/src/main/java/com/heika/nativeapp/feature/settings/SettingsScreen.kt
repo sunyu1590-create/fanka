@@ -312,7 +312,8 @@ fun SettingsDetailScreen(
                 "reading" -> item { ChoiceList(SettingIconKey.READING, listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
                 "transition" -> {
                     item { SettingsGroupTitle("选择页面切换方式") }
-                    item { ChoiceList(SettingIconKey.TRANSITION, listOf("lift" to "上下浮", "crossfade" to "叠化", "shared" to "连续开关"), pageTransition, viewModel::setPageTransition) }
+                    item { ChoiceList(SettingIconKey.TRANSITION, listOf("shared" to "卡片连贯", "crossfade" to "叠化", "lift" to "上下浮"), pageTransition, viewModel::setPageTransition) }
+                    item { SettingsHint("卡片连贯：封面与标题从卡片原位长成详情页，不是整页淡入淡出。") }
                 }
                 "font" -> {
                     item { SettingsGroupTitle("字体") }
@@ -582,7 +583,7 @@ private fun ChoiceList(iconKey: SettingIconKey, options: List<Pair<String, Strin
 
 private fun transitionLabel(value: String) = when (value) {
     "crossfade" -> "叠化"
-    "shared" -> "连续开关"
+    "shared" -> "卡片连贯"
     else -> "上下浮"
 }
 private fun themeLabel(value: String) = when (value) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" }

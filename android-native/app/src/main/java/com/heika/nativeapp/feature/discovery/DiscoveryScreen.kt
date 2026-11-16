@@ -92,6 +92,7 @@ import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
+import com.heika.nativeapp.ui.heikaSharedPostTitle
 import com.heika.nativeapp.ui.sharedImageKey
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -548,6 +549,11 @@ internal fun FeedCard(
 ) {
     val image = post.thumbnail
     val titleScale = LocalHeikaTitleTextScale.current
+    val sharedTitleModifier = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.heikaSharedPostTitle(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), enabled = true)
+        }
+    } else Modifier
     Column(modifier.fillMaxWidth()) {
         if (image != null) {
             var imageFailed by remember(image, post.cloudId) { mutableStateOf(false) }
@@ -609,7 +615,7 @@ internal fun FeedCard(
                     Text(post.tag, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface)
-                Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), color = Color.White, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp).then(sharedTitleModifier), color = Color.White, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         } else {
             val sharedCardModifier = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
@@ -635,7 +641,7 @@ internal fun FeedCard(
                     Spacer(Modifier.weight(1f))
                     RatingTag(post, hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface)
                 }
-                Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text(post.title, sharedTitleModifier, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
                 Text(post.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
             }
         }

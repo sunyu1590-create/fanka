@@ -42,6 +42,12 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(51, "2026.11.16", listOf(
+        "卡片点开改为真正的连续转场：封面图与标题从卡片原位长成详情页，不再整页淡入淡出。",
+        "翻开的卡片在转场中保持可见，圆角、位置与尺寸一路插值，不再出现闪白或跳变。",
+        "详情页正文、评分与评论等封面落位后再出现，进入过程不再所有元素一起浮上来。",
+        "「页面切换动画」默认改为连续转场，仍可在设置中切回叠化或上下浮。",
+    )),
     NativeRelease(50, "2026.11.16", listOf(
         "发现频道新增「商城」入口，商品与下单链路稍后接入。",
         "新增公告弹窗：管理员发布后，打开 App 即可看到最新公告。",

@@ -30,7 +30,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             val theme by preferences.theme.collectAsState(initial = "system")
-            val pageTransition by preferences.pageTransition.collectAsState(initial = "crossfade")
+            val pageTransition by preferences.pageTransition.collectAsState(initial = "shared")
             val fontChoice by preferences.fontChoice.collectAsState(initial = "oppo_sans")
             val bodyTextSize by preferences.bodyTextSize.collectAsState(initial = "standard")
             val titleTextSize by preferences.titleTextSize.collectAsState(initial = "standard")

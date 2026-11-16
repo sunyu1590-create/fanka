@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
@@ -91,7 +93,7 @@ import dev.chrisbanes.haze.rememberHazeState
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade") {
+fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") {
     CompositionLocalProvider(LocalHeikaImageLoader provides imageLoader) {
         val context = LocalContext.current
         val networkRegionNoticeViewModel: NetworkRegionNoticeViewModel = hiltViewModel()
@@ -178,7 +180,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
                         } else if (pageTransition == "shared" && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
-                            fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
+                            // 目标页背景先落位，剩下的连续感交给共享元素；快速淡入避免和飞行抢注意力。
+                            fadeIn(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
                             "crossfade" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
                             "shared" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
@@ -193,7 +196,13 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else if (pageTransition == "shared" && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
-                            fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                            // 列表后退一层并淡出，和封面飞出的方向配合，而不是原地消失。
+                            fadeOut(tween(HeikaMotion.spatial, easing = HeikaMotion.standard)) +
+                                scaleOut(
+                                    animationSpec = tween(HeikaMotion.spatial, easing = HeikaMotion.standard),
+                                    targetScale = 0.965f,
+                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.32f),
+                                )
                         } else when (pageTransition) {
                             "crossfade" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                             "shared" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
@@ -208,7 +217,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else if (pageTransition == "shared" && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
-                            fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
+                            fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
+                                scaleIn(
+                                    animationSpec = tween(HeikaMotion.control, easing = HeikaMotion.standard),
+                                    initialScale = 0.965f,
+                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.32f),
+                                )
                         } else when (pageTransition) {
                             "crossfade" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                             "shared" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +

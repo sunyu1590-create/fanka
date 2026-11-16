@@ -1,9 +1,15 @@
 package com.heika.nativeapp.ui
 
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.SharedTransitionScope.ResizeMode.Companion.RemeasureToBounds
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
@@ -12,15 +18,20 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.dp
 import com.heika.nativeapp.data.HeikaPost
 
 /** Canonical key shared by every card source and its post detail destination. */
 fun HeikaPost.sharedImageKey(): String = cloudId.ifBlank { "client-$id" }.lowercase()
 
-/** Shared image bounds plus an overlay clip whose corner radius tracks the animated width. */
+/**
+ * 卡片封面 -> 详情头图。
+ *
+ * sharedElement 本身没有淡入淡出参数，内容在整个飞行过程中始终可见；
+ * 只要两端用同一个 key 注册，图片就是"长成"详情页头图而不是换一张图。
+ */
 @OptIn(ExperimentalSharedTransitionApi::class)
-@androidx.compose.runtime.Composable
+@Composable
 fun Modifier.heikaSharedPostImage(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -37,9 +48,40 @@ fun Modifier.heikaSharedPostImage(
             animatedVisibilityScope = animatedVisibilityScope,
             boundsTransform = { initial, target ->
                 clip.record(initial, target)
-                tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing)
+                tween(HeikaMotion.morph, easing = HeikaMotion.spatialEasing)
             },
             clipInOverlayDuringTransition = clip,
+        )
+    }
+}
+
+/**
+ * 卡片标题 -> 详情标题。
+ *
+ * 用 sharedBounds 而不是 sharedElement：两端字号(15/16sp -> 22sp)、行数、可用宽度都不同，
+ * 等比缩放会把字拉变形。RemeasureToBounds 让文字按目标宽度重新排版，
+ * 位置连续、字号一次性落到目标值，读起来才像"标题被展开"。
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun Modifier.heikaSharedPostTitle(
+    sharedTransitionScope: SharedTransitionScope,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    postKey: String,
+    enabled: Boolean,
+): Modifier {
+    if (!enabled) return this
+    return with(sharedTransitionScope) {
+        this@heikaSharedPostTitle.sharedBounds(
+            sharedContentState = rememberSharedContentState("post-title-${postKey.lowercase()}"),
+            animatedVisibilityScope = animatedVisibilityScope,
+            enter = EnterTransition.None,
+            exit = ExitTransition.None,
+            boundsTransform = { _, _ -> tween(HeikaMotion.morph, easing = HeikaMotion.spatialEasing) },
+            resizeMode = RemeasureToBounds,
+            placeHolderSize = SharedTransitionScope.PlaceHolderSize.animatedSize,
+            clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(0.dp)),
+            zIndexInOverlay = 1f,
         )
     }
 }

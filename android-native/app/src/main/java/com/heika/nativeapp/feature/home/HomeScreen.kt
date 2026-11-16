@@ -92,6 +92,7 @@ import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.heikaSharedPostImage
+import com.heika.nativeapp.ui.heikaSharedPostTitle
 import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.heikaGaussianBlur
 import com.heika.nativeapp.ui.HeikaLiquidBadgeSurface
@@ -419,7 +420,10 @@ private fun FlipPreviewOverlay(
                     val lift = sin(Math.PI * flipProgress.value).toFloat()
                     scaleX = (sourceScaleX + (1f - sourceScaleX) * p) * touchScale.value * (1f + 0.028f * lift)
                     scaleY = (sourceScaleY + (1f - sourceScaleY) * p) * touchScale.value * (1f + 0.028f * lift)
-                    rotationY = 180f * flipProgress.value
+                    // 翻面结束后把两层 3D 旋转一起归零：180+180 与 0+0 的最终画面完全一致，
+                    // 但共享元素取到的坐标不再是镜像的。否则"确认查看"时封面会朝反方向飞出去。
+                    val settled = flipProgress.value >= 0.999f
+                    rotationY = if (settled) 0f else 180f * flipProgress.value
                     cameraDistance = 26f * density.density
                     translationX = source?.let { ((it.left + it.right) / 2f - centerX) * (1f - p) } ?: 0f
                     translationY = source?.let { ((it.top + it.bottom) / 2f - centerY) * (1f - p) } ?: 0f
@@ -451,7 +455,7 @@ private fun FlipPreviewOverlay(
                     )
             } else {
                 Box(Modifier.fillMaxSize().graphicsLayer {
-                    rotationY = 180f
+                    rotationY = if (flipProgress.value >= 0.999f) 0f else 180f
                     cameraDistance = 26f * density.density
                 }) {
                     PreviewCardFront(
@@ -595,6 +599,11 @@ private fun PreviewCardFront(
     modifier: Modifier = Modifier,
 ) {
     val titleScale = LocalHeikaTitleTextScale.current
+    val sharedTitleModifier = if (post != null && sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.heikaSharedPostTitle(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), enabled = true)
+        }
+    } else Modifier
     Box(modifier.fillMaxSize().alpha(alpha).background(MaterialTheme.colorScheme.surface)) {
       Column(Modifier.fillMaxSize()) {
         val image = post?.thumbnail
@@ -632,6 +641,7 @@ private fun PreviewCardFront(
             }
             Text(
                 post?.title ?: "正在恢复卡片内容",
+                modifier = sharedTitleModifier,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 17.sp * titleScale,
                 lineHeight = 22.sp * titleScale,
@@ -708,6 +718,11 @@ private fun CardFront(
             Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), isDetail = false, enabled = true)
         }
     } else Modifier
+    val sharedTitleModifier = if (post != null && sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.heikaSharedPostTitle(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), enabled = true)
+        }
+    } else Modifier
     Box(modifier.fillMaxSize().then(if (image == null) sharedModifier else Modifier).background(MaterialTheme.colorScheme.surfaceVariant)) {
         if (image != null) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).then(sharedModifier).hazeSource(hazeState)) {
@@ -727,7 +742,7 @@ private fun CardFront(
         if (imageFailed) Text("图片暂不可用", Modifier.align(Alignment.Center).clip(RoundedCornerShape(9.dp)).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 10.dp, vertical = 7.dp), color = Color.White.copy(alpha = .9f), fontSize = 10.sp)
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(post?.tag ?: "黑卡内容", color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
-            Text(post?.title ?: "已翻开的卡片", color = Color.White, fontSize = 16.sp * titleScale, lineHeight = 22.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(post?.title ?: "已翻开的卡片", sharedTitleModifier, color = Color.White, fontSize = 16.sp * titleScale, lineHeight = 22.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (post?.hasRating == true) HeikaLiquidBadgeSurface(
                 hazeState = hazeState,
                 modifier = Modifier.align(Alignment.Start),
