@@ -323,6 +323,21 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/overview", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    /** 管理权限只判定一次，避免每个页面都打一次后台接口。 */
+    @Volatile private var staffCache: Boolean? = null
+    suspend fun isStaff(force: Boolean = false): Boolean {
+        if (!force) staffCache?.let { return it }
+        val allowed = runCatching { adminOverview(); true }.getOrDefault(false)
+        staffCache = allowed
+        return allowed
+    }
+    fun clearStaffCache() { staffCache = null }
+
+    /** 当前生效的公告；未开启时返回 null。 */
+    suspend fun announcement(): JSONObject? = withContext(Dispatchers.IO) {
+        request("/api/v1/announcement") as? JSONObject
+    }
+
     suspend fun adminMembershipData(): JSONObject = withContext(Dispatchers.IO) {
         val raw = request("/api/v1/admin/membership", authenticated = true) as? JSONObject ?: JSONObject()
         val stats = raw.optJSONObject("stats") ?: JSONObject()
@@ -1072,6 +1087,7 @@ class HeikaRepository @Inject constructor(
         cacheDao.clearDailyForUser(userId)
         cacheDao.clearFeedForUser(userId)
         recommendationCache.remove(userId)
+        staffCache = null
     }
 
     suspend fun localPublishSnapshot(userId: String, channel: String = "community"): JSONObject? = withContext(Dispatchers.IO) {

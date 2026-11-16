@@ -105,6 +105,7 @@ fun DiscoveryScreen(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
     onAiResources: () -> Unit,
+    onOpenMall: () -> Unit,
     onPost: (HeikaPost) -> Unit,
     hazeState: HazeState,
     sharedTransitionScope: SharedTransitionScope,
@@ -203,6 +204,7 @@ fun DiscoveryScreen(
                     viewModel.selectChannel("ai")
                     HeikaNoticeBus.showSelection("已切换到 AI")
                 }
+                ChannelOption("商城", false) { onOpenMall() }
             }
             Spacer(Modifier.weight(1f))
             Text(

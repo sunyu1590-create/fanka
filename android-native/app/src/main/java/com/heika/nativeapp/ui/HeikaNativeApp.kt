@@ -59,6 +59,7 @@ import com.heika.nativeapp.feature.discovery.DiscoveryScreen
 import com.heika.nativeapp.feature.discovery.AiResourceCenterScreen
 import com.heika.nativeapp.feature.discovery.AiResourceResultsScreen
 import com.heika.nativeapp.feature.home.HomeScreen
+import com.heika.nativeapp.feature.mall.MallScreen
 import com.heika.nativeapp.feature.messages.MessagesScreen
 import com.heika.nativeapp.feature.notifications.NotificationsScreen
 import com.heika.nativeapp.feature.notifications.ForegroundNoticeHost
@@ -97,6 +98,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
         val networkRegionWarning by networkRegionNoticeViewModel.warning.collectAsState()
         val appUpdateViewModel: AppUpdateViewModel = hiltViewModel()
         val appUpdate by appUpdateViewModel.update.collectAsState()
+        val announcementViewModel: AnnouncementViewModel = hiltViewModel()
+        val announcement by announcementViewModel.state.collectAsState()
+        LaunchedEffect(Unit) { announcementViewModel.load() }
+        announcement?.let { AnnouncementDialog(it, announcementViewModel::dismiss) }
         val nav = rememberNavController()
         val hazeState = rememberHazeState()
         val backStack by nav.currentBackStackEntryAsState()
@@ -244,6 +249,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         onSearch = { openDestination(HeikaDestination.Search) },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onAiResources = { nav.navigate("ai-resources") },
+                        onOpenMall = { nav.navigate("mall") },
                         onPost = openPost,
                         hazeState = hazeState,
                         sharedTransitionScope = sharedTransitionScope,
@@ -307,6 +313,9 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "crossfade
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
                     )
+                }
+                composable("mall") {
+                    MallScreen(onBack = { nav.popBackStack() })
                 }
                 composable("ai-resources") {
                     AiResourceCenterScreen(

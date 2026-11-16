@@ -79,6 +79,7 @@ data class PostDetailState(
     val aiFeedbackSending: Boolean = false,
     val aiFeedbackSubmitted: Boolean = false,
     val operationSending: Boolean = false,
+    val canAdminDelete: Boolean = false,
 )
 
 @HiltViewModel
@@ -97,6 +98,14 @@ class PostDetailViewModel @Inject constructor(
     private var commentPage = 0
     private var commentsRequestVersion = 0
     private var requestedKey: String? = null
+
+    init {
+        // 管理员可以在任意作品上执行删除；普通账号隐藏该入口。
+        viewModelScope.launch {
+            val allowed = runCatching { repository.isStaff() }.getOrDefault(false)
+            if (allowed) mutableState.update { it.copy(canAdminDelete = true) }
+        }
+    }
 
     fun load(post: HeikaPost, force: Boolean = false) {
         val key = post.cloudId.ifBlank { post.id.toString() }

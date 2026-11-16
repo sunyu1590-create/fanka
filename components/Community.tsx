@@ -40,8 +40,10 @@ import {
   List,
   Smartphone,
   Megaphone,
+  ShoppingBag,
 } from "lucide-react";
 import dynamic from "next/dynamic";
+import AnnouncementAdmin from "./AnnouncementAdmin";
 import ProgressiveImage from "./ProgressiveImage";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp, promptInApp } from "@/lib/in-app-dialog";
@@ -437,11 +439,11 @@ export default function Community() {
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
-  const discoverScrollPositions = useRef<Record<"community" | "ai", number>>({ community: 0, ai: 0 });
+  const discoverScrollPositions = useRef<Record<"community" | "ai" | "mall", number>>({ community: 0, ai: 0, mall: 0 });
   const discoverChannelBusy = useRef(false);
-  const queuedDiscoverChannel = useRef<"community" | "ai" | null>(null);
+  const queuedDiscoverChannel = useRef<"community" | "ai" | "mall" | null>(null);
   const discoverChannelTimer = useRef<number | null>(null);
-  const switchDiscoverChannelRef = useRef<(next: "community" | "ai") => void>(() => {});
+  const switchDiscoverChannelRef = useRef<(next: "community" | "ai" | "mall") => void>(() => {});
   const sharedPostHandled = useRef<string | null>(null);
   const sharedProfileHandled = useRef<string | null>(null);
   const searchCursorRef = useRef<string | null>(null);
@@ -486,6 +488,29 @@ export default function Community() {
   const [topicEvents, setTopicEvents] = useState<TopicEvent[]>([]);
   const [explorationAd, setExplorationAd] = useState<PublicExplorationAd | null>(null);
   const [appDownloadUrl, setAppDownloadUrl] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState<{ title: string; body: string; version: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/v1/announcement", { cache: "no-store" });
+        const payload = await response.json();
+        const data = payload?.data;
+        if (!data || typeof data.version !== "number") return;
+        let seen: string | null = null;
+        try { seen = localStorage.getItem("heika-announcement-version"); } catch { /* 隐私模式下忽略 */ }
+        if (String(data.version) === seen) return;
+        if (!cancelled) setAnnouncement({ title: String(data.title || "黑卡公告"), body: String(data.body || ""), version: data.version });
+      } catch { /* 公告拉取失败不影响主流程 */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  const dismissAnnouncement = () => {
+    if (announcement) {
+      try { localStorage.setItem("heika-announcement-version", String(announcement.version)); } catch { /* 忽略 */ }
+    }
+    setAnnouncement(null);
+  };
   const explorationAdLoadedAt = useRef(0);
   const [settingsPersonalOpen, setSettingsPersonalOpen] = useState(false);
   const [recentPreview, setRecentPreview] = useState<{ post: Post; source: "today" | "discover" } | null>(null);
@@ -565,8 +590,8 @@ export default function Community() {
     >(null),
     [justFlippedId, setJustFlippedId] = useState<number | null>(null),
     [category, setCategory] = useState("全部"),
-    [discoverChannel, setDiscoverChannel] = useState<"community" | "ai">("community"),
-    [outgoingDiscoverChannel, setOutgoingDiscoverChannel] = useState<"community" | "ai" | null>(null),
+    [discoverChannel, setDiscoverChannel] = useState<"community" | "ai" | "mall">("community"),
+    [outgoingDiscoverChannel, setOutgoingDiscoverChannel] = useState<"community" | "ai" | "mall" | null>(null),
     [discoverChannelPhase, setDiscoverChannelPhase] = useState<"primed" | "running" | null>(null),
     [searchDraft, setSearchDraft] = useState(""),
     [searchTerm, setSearchTerm] = useState(""),
@@ -3004,7 +3029,7 @@ export default function Community() {
       setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
     }
   };
-  const switchDiscoverChannel = (next: "community" | "ai") => {
+  const switchDiscoverChannel = (next: "community" | "ai" | "mall") => {
     if (discoverChannelBusy.current) {
       queuedDiscoverChannel.current = next;
       return;
@@ -4041,7 +4066,7 @@ export default function Community() {
           <button type="button" className="topline-action" aria-label="搜索内容或用户" onClick={() => { setSearchReturnTab("today"); setSearchDraft(searchTerm); setTab("search"); }}><Search size={19} strokeWidth={1.8}/></button>
           <button type="button" className="topline-action" aria-label="打开通知" onClick={() => openNotifications("today")}><Bell size={19} strokeWidth={1.8}/></button>
         </div> : tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : null}
-        {!secondaryTitle && tab !== "discover" && appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="app-download-link" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" aria-label="下载黑卡 Android App"><Smartphone size={16}/><span>下载 App</span></a>}
+        {!secondaryTitle && tab === "today" && appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="app-download-link" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" aria-label="下载黑卡 Android App"><Smartphone size={16}/><span>下载 App</span></a>}
         </div>
       </header>
       {tab === "today" && (
@@ -4178,6 +4203,7 @@ export default function Community() {
           <div className="discover-channel-tabs" role="tablist" aria-label="发现频道">
             <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>社区</span></button>
             <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected ai-channel-active" : ""} onClick={() => switchDiscoverChannel("ai")}><span>AI 空间</span></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "mall"} className={discoverChannel === "mall" ? "selected" : ""} onClick={() => switchDiscoverChannel("mall")}><span>商城</span></button>
           </div>
           {discoverSearchOpen && <form className="discover-inline-search" role="search" onSubmit={(event) => { event.preventDefault(); setSearchReturnTab("discover"); submitSearch(searchDraft); setDiscoverSearchOpen(false); setTab("search"); }}>
             <Search size={17} aria-hidden="true" />
@@ -4241,6 +4267,14 @@ export default function Community() {
           </div>
           <div className={`discover-ai-channel discover-channel-panel${discoverChannel === "ai" ? " is-active" : ""}${outgoingDiscoverChannel === "ai" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "ai" && outgoingDiscoverChannel !== "ai"}>
             <AISpace accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
+          </div>
+          <div className={`discover-mall-channel discover-channel-panel${discoverChannel === "mall" ? " is-active" : ""}${outgoingDiscoverChannel === "mall" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "mall" && outgoingDiscoverChannel !== "mall"}>
+            <div className="mall-shell">
+              <span className="mall-shell-icon"><ShoppingBag size={26} strokeWidth={1.6}/></span>
+              <strong>商城</strong>
+              <p>限定卡面、实体周边与会员礼盒正在准备中。</p>
+              <span className="mall-shell-status">正在开发 · 敬请期待</span>
+            </div>
           </div>
           </div>
         </section>
@@ -4313,7 +4347,7 @@ export default function Community() {
       {tab === "settings" && settingsDetail !== null && (
         <section key={settingsDetail} className={`page settings-page settings-detail-page${settingsDetail === "membership" ? " membership-settings-page" : ""}`}>
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
-          {settingsDetail !== "membership" && <><div className="eyebrow">HEIKA / SETTINGS</div><h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
+          {settingsDetail !== "membership" && <><div className="eyebrow">HEIKA / SETTINGS</div><h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理",announcement:"公告管理"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
@@ -4339,6 +4373,7 @@ export default function Community() {
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
           {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
+          {settingsDetail === "announcement" && <AnnouncementAdmin onNotice={toast}/>}
           {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} /> }
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>兴趣保存在此设备，并按账号分别存储。</span></div>
@@ -4477,6 +4512,7 @@ export default function Community() {
             {mineSection === "works" && (
               <div className="mine-tab-content">
                 <div className="mine-works-heading"><div><span>共 {state.own.filter((post) => post.status === "published" || !post.status).length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
+                {appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="mine-download-card" href={appDownloadUrl} target="_blank" rel="noopener noreferrer"><span className="mine-download-icon"><Smartphone size={17}/></span><span className="mine-download-copy"><strong>下载黑卡 App</strong><small>安卓客户端 · 原生体验，支持消息推送</small></span><span className="mine-download-go">去下载<ChevronRight size={14}/></span></a>}
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
                 {visibleOwnPosts.length ? <div className="masonry mine-works-masonry">{visibleOwnPosts.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
@@ -5281,6 +5317,14 @@ export default function Community() {
         </div>
       )}
       {notice && <NoticeBanner key={notice.id} notice={notice} leaving={noticeLeaving} expanded={noticeExpanded} onExpand={expandNotice} onDismiss={dismissNotice} />}
+      {announcement && <div className="announcement-backdrop" role="dialog" aria-modal="true" aria-labelledby="announcement-title" onClick={dismissAnnouncement}>
+        <div className="announcement-card" onClick={(event) => event.stopPropagation()}>
+          <span className="announcement-kicker"><Megaphone size={14}/> 公告</span>
+          <h2 id="announcement-title">{announcement.title}</h2>
+          <p>{announcement.body}</p>
+          <button type="button" className="primary-button full" onClick={dismissAnnouncement}>我知道了</button>
+        </div>
+      </div>}
     </main>
   );
 }

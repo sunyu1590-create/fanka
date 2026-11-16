@@ -276,13 +276,6 @@ fun ProfileScreen(
                         Text("作品管理", Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onManageWorks).padding(horizontal = 10.dp, vertical = 7.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                     }
                 }
-                if (state.own && selected == "works") item(span = StaggeredGridItemSpan.FullLine) {
-                    DownloadAppCard {
-                        runCatching {
-                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("${com.heika.nativeapp.BuildConfig.API_BASE_URL}/download")))
-                        }.onFailure { HeikaNoticeBus.show("当前设备没有可打开链接的浏览器") }
-                    }
-                }
                 if (posts.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
                     Text(when (selected) { "works" -> "还没有公开作品。"; "bookmarks" -> "还没有可见收藏。"; else -> "还没有点赞内容。" }, Modifier.fillMaxWidth().padding(vertical = 28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 }
@@ -375,36 +368,4 @@ private fun SkeletonBlock(width: androidx.compose.ui.unit.Dp, shape: androidx.co
 @Composable
 private fun SkeletonBlock(modifier: Modifier, height: androidx.compose.ui.unit.Dp, shape: androidx.compose.ui.graphics.Shape) {
     Box(modifier.height(height).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)))
-}
-
-/** 我的作品顶部常驻的下载入口，克制的一条卡片，不抢内容。 */
-@Composable
-private fun DownloadAppCard(onOpen: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(HeikaIcons.Download, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("下载黑卡 App", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text("安卓原生版 · 阅读与私信更流畅", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-        }
-        Text(
-            "去下载",
-            Modifier.clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 11.dp, vertical = 6.dp),
-            color = MaterialTheme.colorScheme.primary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-        )
-    }
 }

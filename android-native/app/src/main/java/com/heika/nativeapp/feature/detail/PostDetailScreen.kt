@@ -6,6 +6,7 @@ import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -229,9 +230,9 @@ fun PostDetailScreen(
                             DropdownMenuItem(text = { Column { Text("不感兴趣"); Text("减少此作者推荐", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.muteAuthor() })
                             DropdownMenuItem(text = { Text("屏蔽作者") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.blockAuthor() })
                         }
-                        if (state.currentUserId != null && state.currentUserId == current.authorId) {
+                        if (state.currentUserId != null && (state.currentUserId == current.authorId || state.canAdminDelete)) {
                             androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
-                            Text("危险操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.error.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            Text(if (state.currentUserId != current.authorId) "管理员操作" else "危险操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.error.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
                             DropdownMenuItem(text = { Text("删除内容", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(HeikaIcons.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { moreOpen = false; postDeleteConfirm = true })
                         }
                     }
@@ -300,7 +301,7 @@ fun PostDetailScreen(
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp).then(sharedImageModifier),
                             )
                         }
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp).detailContentReveal(sharedElementsEnabled), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             Text(item.tag, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                             Icon(HeikaIcons.StarOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
@@ -677,5 +678,25 @@ private fun RatingStar(
             modifier = Modifier.graphicsLayer { scaleX = scale.value * pressScale; scaleY = scale.value * pressScale }.size(22.dp),
             tint = tint,
         )
+    }
+}
+
+
+/** 图片共享元素进入后，让标签、评分与标题跟着淡入上浮，而不是同帧闪现。 */
+@Composable
+private fun Modifier.detailContentReveal(enabled: Boolean, delayMillis: Int = 90): Modifier {
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(delayMillis.toLong())
+        started = true
+    }
+    val progress by animateFloatAsState(
+        targetValue = if (!enabled || started) 1f else 0f,
+        animationSpec = tween(360, easing = FastOutSlowInEasing),
+        label = "detail-content-reveal",
+    )
+    return this.graphicsLayer {
+        alpha = progress
+        translationY = (1f - progress) * 12.dp.toPx()
     }
 }

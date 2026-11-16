@@ -243,9 +243,8 @@ fun ManageWorksScreen(
                         Text(post.title.ifBlank { "未命名内容" }, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 2)
                         Text(when (status) { "draft" -> "草稿"; "pending_review" -> "审核中"; else -> "已发布" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
                     }
-                    if (status == "draft" || status == "pending_review") {
-                        TextButton(onClick = { onEdit(post) }, enabled = !state.saving) { Text("编辑") }
-                    }
+                    // 已发布作品也可编辑：编辑器会进入“修改作品”模式，提交后按站点规则送审。
+                    TextButton(onClick = { onEdit(post) }, enabled = !state.saving) { Text("编辑") }
                     TextButton(onClick = { deleteTarget = post }, enabled = !state.saving) { Text("删除", color = MaterialTheme.colorScheme.error) }
                 }
             }

@@ -6208,3 +6208,69 @@ img, video, canvas, iframe { max-width:100%; }
 
 /* 已有二级顶栏时，隐藏页面内的返回行，避免出现两条“返回设置” */
 .has-secondary-header .about-page > .settings-back { display: none; }
+
+/* 我的作品区：下载卡片（与 App 端同款位置） */
+.mine-download-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--action) 24%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--action) 7%, var(--surface));
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+.mine-download-card:hover { border-color: color-mix(in srgb, var(--action) 46%, var(--line)); background: color-mix(in srgb, var(--action) 11%, var(--surface)); }
+.mine-download-icon { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 11px; background: color-mix(in srgb, var(--action) 16%, transparent); color: var(--action); }
+.mine-download-copy { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.mine-download-copy strong { font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+.mine-download-copy small { overflow: hidden; color: var(--muted); font-size: 10px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.mine-download-go { flex: none; display: inline-flex; align-items: center; gap: 1px; color: var(--action); font-size: 11px; }
+
+/* 商城频道壳 */
+.mall-shell { min-height: 52vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; padding: 40px 24px; text-align: center; }
+.mall-shell-icon { width: 62px; height: 62px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--metal) 42%, var(--line)); border-radius: 20px; background: color-mix(in srgb, var(--metal) 12%, var(--surface)); color: var(--metal); }
+.mall-shell strong { font-size: 20px; font-weight: 620; letter-spacing: .02em; }
+.mall-shell p { max-width: 260px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.mall-shell-status { padding: 6px 12px; border: 1px solid color-mix(in srgb, var(--metal) 34%, var(--line)); border-radius: 999px; color: var(--metal); font-size: 10px; letter-spacing: .14em; }
+
+/* 公告弹窗 */
+.announcement-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 24px; background: #08090acc; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.announcement-card { width: min(380px, 100%); display: grid; gap: 12px; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: 0 26px 70px #0007; animation: announcement-in 220ms ease; }
+@keyframes announcement-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+.announcement-kicker { display: inline-flex; align-items: center; gap: 6px; color: var(--action); font-size: 10px; font-weight: 600; letter-spacing: .16em; }
+.announcement-card h2 { margin: 0; font-size: 18px; font-weight: 620; letter-spacing: .01em; line-height: 1.4; }
+.announcement-card p { max-height: 46vh; margin: 0; overflow: auto; color: var(--muted); font-size: 13px; line-height: 1.85; white-space: pre-wrap; }
+
+/* 公告管理 */
+.announcement-admin { display: grid; gap: 16px; }
+.announcement-admin-status { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-size: 12px; }
+.announcement-admin-status svg { color: var(--action); }
+.announcement-admin-status small { margin-left: auto; color: var(--muted); font-size: 10px; }
+.announcement-admin-field { display: grid; gap: 8px; }
+.announcement-admin-field > span { font-size: 12px; font-weight: 600; }
+.announcement-admin-field input, .announcement-admin-field textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; line-height: 1.7; outline: 0; resize: vertical; }
+.announcement-admin-field input:focus, .announcement-admin-field textarea:focus { border-color: color-mix(in srgb, var(--action) 55%, var(--line)); }
+.announcement-admin-field small { justify-self: end; color: var(--muted); font-size: 10px; }
+.announcement-admin-switch { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 12px; }
+.announcement-admin-switch input { width: 18px; height: 18px; accent-color: var(--action); }
+.announcement-admin-actions { display: flex; gap: 10px; }
+.announcement-admin-actions .primary-button { min-width: 120px; }
+.announcement-admin-actions .soft-button { display: inline-flex; align-items: center; gap: 6px; }
+
+/* 发现频道标签：三个频道下选中态统一为轻底色块，避免只剩文字变色 */
+.discover-channel-tabs>button.selected {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink);
+}
+.discover-channel-tabs>button.selected::after { content: none; }
+
+/* 三频道下取消两档滑动指示器，改为每个标签独立选中底 */
+.discover-channel-tabs::before { display: none !important; }
+.discover-channel-tabs>button.selected {
+  background: color-mix(in srgb, var(--ink) 10%, transparent) !important;
+  color: var(--ink) !important;
+}

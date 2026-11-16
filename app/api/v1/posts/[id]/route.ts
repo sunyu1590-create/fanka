@@ -4,4 +4,11 @@ import {libraryFields,presentMany,type LibraryRow} from '@/lib/server/library';
 type Params={params:Promise<{id:string}>};
 export async function GET(req:NextRequest,{params}:Params){return respond(async()=>{const {db}=await context(req,false);const id=uuid((await params).id);const fields=libraryFields.replace('profiles!posts_author_id_fkey(nickname)','profiles!posts_author_id_fkey(nickname,avatar_url)');const {data,error}=await db.from('posts').select(`${fields},updated_at`).eq('id',id).single();dbError(error);if(!data)throw new ApiError(404,'内容不存在');const [presented]=await presentMany(db,[data as unknown as LibraryRow]);return {...presented,...(data as unknown as Record<string,unknown>),images:presented.images}})}
 export async function PATCH(req:NextRequest,{params}:Params){return respond(async()=>{const {db,user}=await context(req);const id=uuid((await params).id),body=await jsonBody(req);const {data:existing,error:existingError}=await db.from('posts').select('status').eq('id',id).eq('author_id',user!.id).single();dbError(existingError);if(!existing)throw new ApiError(404,'内容不存在');const values:Record<string,unknown>={};if(body.title!==undefined)values.title=textField(body.title,'标题',1,80);if(body.body!==undefined)values.body=textField(body.body,'正文',1,5000);if(body.tag_id!==undefined){const tag=Number(body.tag_id);if(!Number.isInteger(tag)||tag<1)throw new ApiError(400,'分类无效');values.tag_id=tag}if(!Object.keys(values).length)throw new ApiError(400,'没有修改内容');if(existing.status!=='draft')values.status='pending_review';values.updated_at=new Date().toISOString();const {data,error}=await db.from('posts').update(values).eq('id',id).eq('author_id',user!.id).select().single();dbError(error);return data})}
-export async function DELETE(req:NextRequest,{params}:Params){return respond(async()=>{const {db,user}=await context(req);const id=uuid((await params).id);const {data,error}=await db.from('posts').delete().eq('id',id).eq('author_id',user!.id).select('id').single();dbError(error);return data})}
+export async function DELETE(req:NextRequest,{params}:Params){return respond(async()=>{
+  const {db}=await context(req);
+  const id=uuid((await params).id);
+  // 作者本人可删自己的作品；管理员与内容管理员可删任意作品（权限在数据库函数内校验）。
+  const {data,error}=await db.rpc('delete_post',{p_post_id:id});
+  dbError(error);
+  return data;
+})}

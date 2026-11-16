@@ -7,6 +7,16 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.42.0",
+    date: "2026.11.16",
+    notes: [
+      { category: "新功能", text: "发现频道新增「商城」入口，先用占位页说明限定卡面与周边正在准备中。" },
+      { category: "新功能", text: "新增公告弹窗：打开网页或 App 时展示管理员发布的最新公告，同一版本只提示一次。" },
+      { category: "体验优化", text: "私信与个人页顶栏不再放下载按钮，下载入口统一收进「我的作品」，与 App 端位置一致。" },
+      { category: "问题修复", text: "修正发现频道三个标签的选中背景不显示，切换后能清楚看到当前所在频道。" },
+    ],
+  },
+  {
     version: "2.41.0",
     date: "2026.11.16",
     notes: [

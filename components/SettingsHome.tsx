@@ -4,7 +4,7 @@ import { memo } from "react";
 import { ChevronRight } from "lucide-react";
 import { APP_VERSION } from "@/lib/version";
 
-export type SettingsDetail = "theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | "cache" | "feedback";
+export type SettingsDetail = "theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | "cache" | "feedback" | "announcement";
 type Props = {
   theme: "dark" | "light" | "system";
   fontChoice: "oppo" | "system";
@@ -54,6 +54,7 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
       { label: "缓存管理", action: () => onOpenDetail("cache") },
       { label: "意见反馈", action: () => onOpenDetail("feedback") },
       { label: "关于黑卡", value: `版本 ${APP_VERSION}`, action: onOpenAbout },
+      ...(isStaff ? [{ label: "公告管理", value: "客户端启动弹窗", action: () => onOpenDetail("announcement") }] : []),
       ...(isStaff ? [{ label: "管理后台", action: onOpenModeration }] : []),
       ...(isStaff ? [{ label: "反馈管理", action: onOpenFeedbackAdmin }] : []),
     ] },
