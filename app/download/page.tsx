@@ -105,7 +105,7 @@ export default async function DownloadPage() {
     <main className={styles.page}>
       <div className={styles.wrap}>
         <div className={styles.top}>
-          <Link href="/" className={styles.brand}>HEIKA<span>黑卡</span></Link>
+          <Link href="/" className={styles.brand}>黑卡<span>HEIKA</span></Link>
           <Link href="/" className={styles.back}>返回首页</Link>
         </div>
 

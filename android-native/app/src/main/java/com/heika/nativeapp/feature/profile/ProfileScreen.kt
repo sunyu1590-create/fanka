@@ -63,6 +63,8 @@ import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.feature.exploration.ExplorationLogic
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaRadii
+import com.heika.nativeapp.ui.HeikaSpacing
+import com.heika.nativeapp.ui.HeikaType
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
@@ -340,12 +342,20 @@ private fun ProfileTabBar(selected: String, modifier: Modifier = Modifier, compa
 
 @Composable
 private fun ProfileBrandHeader(onSettings: () -> Unit, onMembership: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-        Text("HEIKA", Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, letterSpacing = 2.sp)
-        Spacer(Modifier.weight(1f))
-        Text("会员中心", Modifier.clickable(onClick = onMembership).padding(horizontal = 8.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-        Icon(HeikaIcons.Settings, "设置", Modifier.size(38.dp).clip(CircleShape).clickable(onClick = onSettings).padding(9.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    Box(Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal)) {
+        // 与 BrandHeader 同一锁定：中英文基线对齐、同一字号与间距。
+        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+            Text("黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.brand, fontWeight = FontWeight.SemiBold, letterSpacing = 1.1.sp, modifier = Modifier.alignByBaseline())
+            Text("HEIKA", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = HeikaType.brandLatin, letterSpacing = 1.6.sp, modifier = Modifier.padding(start = 7.dp).alignByBaseline())
+        }
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.height(36.dp).clip(CircleShape).clickable(onClick = onMembership).padding(horizontal = 11.dp), contentAlignment = Alignment.Center) {
+                Text("会员中心", color = MaterialTheme.colorScheme.primary, fontSize = 11.5.sp)
+            }
+            Box(Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onSettings), contentAlignment = Alignment.Center) {
+                Icon(HeikaIcons.Settings, "设置", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+            }
+        }
     }
 }
 

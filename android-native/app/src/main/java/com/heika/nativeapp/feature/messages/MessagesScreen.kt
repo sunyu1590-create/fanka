@@ -52,6 +52,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaSpacing
+import com.heika.nativeapp.ui.HeikaType
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaGlassSurface
 import com.heika.nativeapp.ui.HeikaLiquidGlassSurface
@@ -96,14 +98,14 @@ fun MessagesScreen(
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (state.activeId == null) {
-            Row(Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("消息", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text("消息", color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.sectionTitle, fontWeight = FontWeight.SemiBold, letterSpacing = .2.sp)
                     val unreadCount = state.conversations.sumOf { it.unread }
-                    Text("$unreadCount 条未读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text("$unreadCount 条未读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 }
-                IconButton(onClick = onNotifications) { Icon(HeikaIcons.Notifications, "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                IconButton(onClick = { viewModel.load() }) { Icon(HeikaIcons.Retry, "刷新消息", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                IconButton(onClick = onNotifications, modifier = Modifier.size(36.dp)) { Icon(HeikaIcons.Notifications, "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp)) }
+                IconButton(onClick = { viewModel.load() }, modifier = Modifier.size(36.dp)) { Icon(HeikaIcons.Retry, "刷新消息", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp)) }
             }
             if (state.error?.contains("登录") == true) {
                 Column(Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -54,17 +54,34 @@ fun BrandHeader(
     trailing: @Composable (() -> Unit)? = null,
     hazeState: HazeState? = null,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 22.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Box(
+        modifier = Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal),
     ) {
-        Text("黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 25.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.3.sp)
-        Spacer(Modifier.width(10.dp))
-        Text("HEIKA", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, letterSpacing = 2.2.sp)
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onSearch) { Icon(HeikaIcons.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (trailing != null) trailing() else IconButton(onClick = onNotifications) {
-            Icon(HeikaIcons.Notifications, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 品牌为整体锁定：中文与英文按基线对齐，不各自垂直居中，避免小字上浮。
+        Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "黑卡",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = HeikaType.brand,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.1.sp,
+                modifier = Modifier.alignByBaseline(),
+            )
+            Text(
+                "HEIKA",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = HeikaType.brandLatin,
+                letterSpacing = 1.6.sp,
+                modifier = Modifier.padding(start = 7.dp).alignByBaseline(),
+            )
+        }
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onSearch, modifier = Modifier.size(40.dp)) {
+                Icon(HeikaIcons.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+            }
+            if (trailing != null) trailing() else IconButton(onClick = onNotifications, modifier = Modifier.size(40.dp)) {
+                Icon(HeikaIcons.Notifications, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+            }
         }
     }
 }
@@ -74,13 +91,13 @@ fun BackHeader(
     title: String,
     onBack: () -> Unit,
     centeredTitle: Boolean = false,
-    centeredTitleSize: TextUnit = HeikaType.pageTitle,
+    centeredTitleSize: TextUnit = HeikaType.headerTitle,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     if (centeredTitle) {
-        Box(Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = 8.dp)) {
+        Box(Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = 12.dp)) {
             IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).size(44.dp)) {
-                Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+                Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
             }
             Text(
                 title,
@@ -99,14 +116,14 @@ fun BackHeader(
         return
     }
     Row(
-        modifier = Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = 12.dp),
+        modifier = Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-            Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground)
+            Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
         }
-        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.pageTitle, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.headerTitle, fontWeight = FontWeight.SemiBold, letterSpacing = .2.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         trailing?.invoke()
     }
 }

@@ -186,7 +186,7 @@ fun PostDetailScreen(
     val visiblePost = if (post != null && state.post?.sharedImageKey() != post.sharedImageKey()) post else state.post ?: post
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, centeredTitleSize = 18.sp, trailing = {
+        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, trailing = {
             Box {
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
                 BackHandler(enabled = moreOpen) { moreOpen = false }

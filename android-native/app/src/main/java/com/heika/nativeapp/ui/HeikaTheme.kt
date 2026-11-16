@@ -60,6 +60,11 @@ object HeikaSpacing {
 }
 
 object HeikaType {
+    /** 顶栏品牌字级，与网页端 19px / 9px 对应。 */
+    val brand = 19.sp
+    val brandLatin = 9.sp
+    /** 二级页标题：比品牌小一档，保证顶栏只有一个视觉重心。 */
+    val headerTitle = 16.sp
     val pageTitle = 22.sp
     val sectionTitle = 18.sp
     val body = 14.sp

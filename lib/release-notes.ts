@@ -7,6 +7,15 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.41.0",
+    date: "2026.11.16",
+    notes: [
+      { category: "体验优化", text: "统一全站顶栏：首页、发现、我的与设置等二级页改为同一套高度与左右边距，切换标签时品牌不再上下跳动。" },
+      { category: "体验优化", text: "品牌标识改为中英文基线对齐，HEIKA 的字号、字距与字重同步收敛；右侧图标按钮统一为同一命中区与间距。" },
+      { category: "问题修复", text: "修正发现页顶栏比首页矮 8px、左右边距少 4px 造成的错位，以及我的页会员中心按钮与设置、下载按钮不等高的问题。" },
+    ],
+  },
+  {
     version: "2.40.8",
     date: "2026.11.14",
     notes: [
