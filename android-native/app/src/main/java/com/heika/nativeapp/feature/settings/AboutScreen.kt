@@ -120,13 +120,14 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) {
                     AboutAction(
-                        HeikaIcons.Retry,
-                        if (checkingUpdate) "正在检查更新…" else "检查更新",
-                        updateMessage ?: "当前 ${version.first} · 构建 ${version.second}",
+                        icon = HeikaIcons.Retry,
+                        title = if (checkingUpdate) "正在检查更新…" else "检查更新",
+                        subtitle = updateMessage ?: "当前 ${version.first} · 构建 ${version.second}",
                         enabled = !checkingUpdate,
-                    ) { updateViewModel.checkForUpdate(force = true) }
+                        onClick = { updateViewModel.checkForUpdate(force = true) },
+                    )
                     FeatureDivider()
-                    AboutAction(HeikaIcons.Download, "下载黑卡 App", "打开网页下载页，获取安卓安装包", onClick = { updateViewModel.openDownloadPage() })
+                    AboutAction(icon = HeikaIcons.Download, title = "下载黑卡 App", subtitle = "打开网页下载页，获取安卓安装包", onClick = { updateViewModel.openDownloadPage() })
                 }
             }
             item { ReleaseSection(version.second, historyExpanded) { historyExpanded = !historyExpanded } }
@@ -176,7 +177,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
 
 @Composable private fun FeatureDivider() { HorizontalDivider(Modifier.padding(horizontal = 13.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f)) }
 
-@Composable private fun AboutAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, enabled: Boolean = true, onClick: () -> Unit) {
+@Composable private fun AboutAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit, enabled: Boolean = true) {
     Row(Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
         Icon(icon, null, tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .45f), modifier = Modifier.size(19.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium); Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
