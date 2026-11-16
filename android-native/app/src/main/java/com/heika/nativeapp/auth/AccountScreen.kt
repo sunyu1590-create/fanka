@@ -39,7 +39,24 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
     var confirmation by remember { mutableStateOf("") }
     var nickname by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     val flow = state.flow
+    // 退出登录后停留在本页时，必须清空上一个账号的邮箱和密码，
+    // 否则密码框的掩码会让新输入拼在旧密码后面，导致校验失败。
+    LaunchedEffect(state.session?.userId) {
+        if (state.session == null) {
+            email = ""
+            password = ""
+            confirmation = ""
+            nickname = ""
+            code = ""
+            passwordVisible = false
+        }
+    }
+    // 登录失败后清空密码，避免反复叠加；注册/找回时保留，省得重输两遍。
+    LaunchedEffect(state.error, flow) {
+        if (state.error != null && flow == AccountFlow.LOGIN) password = ""
+    }
     LaunchedEffect(state.session?.userId, state.message) {
         if (state.session != null && (state.message == "登录成功" || state.message == "账号已创建，欢迎来到黑卡。")) onSignedIn()
     }
@@ -90,14 +107,27 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                         onValueChange = { password = it.take(128) },
                         label = { Text(if (flow == AccountFlow.LOGIN) "密码" else "新密码（至少 8 位）") },
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            Text(
+                                if (passwordVisible) "隐藏" else "显示",
+                                Modifier.clickable { passwordVisible = !passwordVisible }.padding(10.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 12.sp,
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 if (flow in setOf(AccountFlow.SIGN_UP, AccountFlow.RECOVERY_CODE)) {
                     OutlinedTextField(value = confirmation, onValueChange = { confirmation = it.take(128) }, label = { Text("确认密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                 }
-                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                state.error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    if (flow == AccountFlow.LOGIN) {
+                        Text("请确认邮箱是否正确，密码区分大小写。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    }
+                }
                 state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, lineHeight = 18.sp) }
                 Button(
                     enabled = !state.busy && when (flow) {

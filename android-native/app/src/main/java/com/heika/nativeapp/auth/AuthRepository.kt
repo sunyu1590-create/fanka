@@ -71,7 +71,7 @@ class AuthRepository @Inject constructor(
     suspend fun signIn(email: String, password: String) = withContext(Dispatchers.IO) {
         require(email.isNotBlank() && password.isNotEmpty()) { "请输入邮箱和密码" }
         val config = requireConfig()
-        val body = JSONObject().put("email", email.trim().lowercase()).put("password", password)
+        val body = JSONObject().put("email", normalizeEmail(email)).put("password", password)
         val json = authPost(config, "/auth/v1/token?grant_type=password", body, "邮箱或密码不正确")
         save(bootstrap(sessionFromAuth(json)))
     }
@@ -98,7 +98,7 @@ class AuthRepository @Inject constructor(
     suspend fun signUpWithPasswordFallback(email: String, password: String, nickname: String) = withContext(Dispatchers.IO) {
         require(email.isNotBlank()) { "请输入邮箱" }
         require(password.length >= 8) { "密码至少需要 8 位" }
-        val target = email.trim().lowercase()
+        val target = normalizeEmail(email)
         val display = nickname.trim().ifBlank { target.substringBefore('@') }
         apiRequest(
             "/api/v1/auth/register",
@@ -112,7 +112,7 @@ class AuthRepository @Inject constructor(
         require(password.length >= 8) { "新密码至少需要 8 位" }
         apiRequest(
             "/api/v1/auth/recover",
-            body = JSONObject().put("email", email.trim()).put("code", code.trim()).put("password", password),
+            body = JSONObject().put("email", normalizeEmail(email)).put("code", code.trim()).put("password", password),
         )
         clearSession()
     }
@@ -207,9 +207,7 @@ class AuthRepository @Inject constructor(
         val value = parseValue(raw)
         if (!response.isSuccessful) {
             val error = value as? JSONObject ?: JSONObject()
-            val message = sequenceOf("error_description", "msg", "message", "error")
-                .map { error.optString(it) }.firstOrNull { it.isNotBlank() }
-            throw AuthHttpException(response.code, message ?: fallback)
+            throw AuthHttpException(response.code, localizedAuthError(error, fallback))
         }
         return value
     }
@@ -244,6 +242,31 @@ class AuthRepository @Inject constructor(
     }
 
     private fun parseJson(raw: String) = (parseValue(raw) as? JSONObject) ?: JSONObject()
+
+    /** 去掉首尾空白、全角空格与零宽字符，避免复制粘贴带进来的隐藏字符导致校验失败。 */
+    private fun normalizeEmail(raw: String): String =
+        raw.trim().lowercase().replace(Regex("[\\s\\u200B\\u200C\\u200D\\uFEFF]"), "")
+
+    /** 把 GoTrue 的英文错误码/文案翻成用户能看懂的中文。 */
+    private fun localizedAuthError(error: JSONObject, fallback: String): String {
+        val code = error.optString("error_code").ifBlank { error.optString("code") }
+        AUTH_ERRORS[code]?.let { return it }
+        val raw = sequenceOf("error_description", "msg", "message", "error")
+            .map { error.optString(it) }
+            .firstOrNull { it.isNotBlank() }
+            ?: return fallback
+        return when {
+            raw.contains("Invalid login credentials", ignoreCase = true) -> "邮箱或密码不正确"
+            raw.contains("Email not confirmed", ignoreCase = true) -> "邮箱尚未验证，请先完成验证"
+            raw.contains("User already registered", ignoreCase = true) -> "该邮箱已注册，请直接登录"
+            raw.contains("Password should be", ignoreCase = true) -> "密码长度不足，至少需要 8 位"
+            raw.contains("For security purposes", ignoreCase = true) -> "操作过于频繁，请稍后再试"
+            raw.contains("Email rate limit", ignoreCase = true) -> "邮件发送过于频繁，请稍后再试"
+            raw.contains("invalid_grant", ignoreCase = true) ||
+                raw.contains("Invalid Refresh Token", ignoreCase = true) -> "登录状态已失效，请重新登录"
+            else -> raw
+        }
+    }
     private fun parseValue(raw: String): Any? = if (raw.isBlank()) JSONObject() else runCatching {
         org.json.JSONTokener(raw).nextValue()
     }.getOrElse { JSONObject() }
@@ -255,6 +278,17 @@ class AuthRepository @Inject constructor(
 
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaType()
-        val REVOKED_HINTS = listOf("refresh_token", "invalid_grant", "refresh token")
+        val REVOKED_HINTS = listOf("refresh_token", "invalid_grant", "refresh token", "重新登录")
+        val AUTH_ERRORS = mapOf(
+            "invalid_credentials" to "邮箱或密码不正确",
+            "email_not_confirmed" to "邮箱尚未验证，请先完成验证",
+            "user_already_exists" to "该邮箱已注册，请直接登录",
+            "weak_password" to "密码强度不足，至少需要 8 位",
+            "over_request_rate_limit" to "操作过于频繁，请稍后再试",
+            "over_email_send_rate_limit" to "邮件发送过于频繁，请稍后再试",
+            "invalid_grant" to "登录状态已失效，请重新登录",
+            "refresh_token_not_found" to "登录状态已失效，请重新登录",
+            "session_not_found" to "登录状态已失效，请重新登录",
+        )
     }
 }

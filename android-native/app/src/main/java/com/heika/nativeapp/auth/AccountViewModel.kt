@@ -97,7 +97,7 @@ class AccountViewModel @Inject constructor(
     fun signOut(onDone: () -> Unit) = viewModelScope.launch {
         val userId = auth.current()?.userId
         runCatching { auth.signOut() }
-        if (userId != null) repository.clearUserCache(userId)
+        if (userId != null) runCatching { repository.clearUserCache(userId) }
         mutableState.value = AccountUiState(session = null, loading = false)
         onDone()
     }
