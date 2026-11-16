@@ -1,0 +1,8 @@
+moonclean.shop {
+	encode gzip
+	reverse_proxy app:3000
+}
+
+www.moonclean.shop {
+	redir https://moonclean.shop{uri} permanent
+}
