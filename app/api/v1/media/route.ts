@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       if (variant && variant !== "feed") throw new ApiError(400, "图片尺寸无效");
       const media = await findMedia(db, path, variant === "feed");
       if (!media) throw new ApiError(404, "媒体不存在");
-      const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 3600);
+      const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 604800);
       dbError(error);
       if (!data?.signedUrl) throw new ApiError(404, "媒体不存在");
       if (variant === "feed") {
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     const path = req.nextUrl.searchParams.get("path") || "";
     const media = await findMedia(db, path);
     if (!media) throw new ApiError(404, "媒体不存在");
-    const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 3600);
+    const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 604800);
     dbError(error);
     return { url: data?.signedUrl, expires_in: 3600 };
   });

@@ -125,8 +125,8 @@ export async function presentMany(db: SupabaseClient, rows: LibraryRow[]) {
     item.retina_thumbnail_path || mediaVariantPath(item.storage_path, 960),
   ].filter((path): path is string => Boolean(path))))];
   const [originals, variants] = await Promise.all([
-    signPostMedia(db, originalPaths, 3600),
-    signPostMedia(db, variantPaths, 3600),
+    signPostMedia(db, originalPaths, 604800),
+    signPostMedia(db, variantPaths, 604800),
   ]);
   // Media is optional content. A storage signing error must not turn an
   // otherwise readable post into a 500; `present` will emit the same
@@ -147,8 +147,8 @@ export async function presentFeedMany(db: SupabaseClient, rows: LibraryRow[]) {
     item.retina_thumbnail_path || mediaVariantPath(item.storage_path, 960),
   ].filter((path): path is string => Boolean(path))))];
   const [originals, variants] = await Promise.all([
-    signPostMedia(db, originalPaths, 3600),
-    signPostMedia(db, variantPaths, 3600),
+    signPostMedia(db, originalPaths, 604800),
+    signPostMedia(db, variantPaths, 604800),
   ]);
   const urls = new Map([
     ...(originals.data || []),
