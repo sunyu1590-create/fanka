@@ -68,16 +68,17 @@
 
 .heroText { flex: 1; min-width: 0; }
 
-.eyebrow {
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 11px;
-  letter-spacing: .2em;
-  text-transform: uppercase;
+.appIcon {
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  margin-bottom: 14px;
 }
 
 .hero h1 {
-  margin: 10px 0 8px;
+  margin: 0 0 8px;
   font-size: clamp(30px, 7vw, 38px);
   font-weight: 620;
   letter-spacing: -.045em;

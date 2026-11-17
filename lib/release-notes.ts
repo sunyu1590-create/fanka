@@ -7,6 +7,16 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.44.0",
+    date: "2026.11.17",
+    notes: [
+      { category: "新功能", text: "全新品牌图标上线：浏览器标签页、添加到主屏幕、应用内关于页与下载页统一换成发光圆角方框的标识。" },
+      { category: "体验优化", text: "下载页标题上方的英文小标去掉，改为展示应用图标，页面开头的层级更清楚。" },
+      { category: "体验优化", text: "下载页加入大陆网络提示：说明安装包存放在海外服务器，以及进度卡住时可以先连境外网络再续传。" },
+      { category: "体验优化", text: "关于页的开发者信息改为署名 SunYu。" },
+    ],
+  },
+  {
     version: "2.43.0",
     date: "2026.11.17",
     notes: [

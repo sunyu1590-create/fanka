@@ -111,7 +111,8 @@ export default async function DownloadPage() {
 
         <div className={styles.hero}>
           <div className={styles.heroText}>
-            <div className={styles.eyebrow}>Android Client</div>
+            {/* 品牌图标 + 标题，去掉原先标题上方的英文小标 */}
+            <img className={styles.appIcon} src="/icons/heika-192.png" alt="黑卡应用图标" width={56} height={56} />
             <h1>下载黑卡</h1>
             <p>翻开未知，遇见新的想法。原生客户端更顺滑，支持离线缓存与消息推送。</p>
           </div>
@@ -133,6 +134,13 @@ export default async function DownloadPage() {
           <div className={styles.notice}>
             <AlertTriangle size={16} />
             <span><strong>当前是 iPhone / iPad。</strong>iOS 无法安装安卓安装包，直接<Link href="/" style={{ color: 'inherit', textDecoration: 'underline' }}>用网页版</Link>即可，功能一致。</span>
+          </div>
+        ) : null}
+
+        {!onIOS ? (
+          <div className={styles.notice}>
+            <Info size={16} />
+            <span><strong>大陆网络提示。</strong>安装包存放在海外服务器，大陆部分地区直连下载会比较慢，有时还会中途断开。如果进度长时间没有前进，可以先连上境外网络（例如开启 VPN）再重新点击下载，速度通常会快很多；已经下载的部分会继续续传，不必从头再来。</span>
           </div>
         ) : null}
 
