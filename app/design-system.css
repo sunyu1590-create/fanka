@@ -5086,7 +5086,6 @@ img, video, canvas, iframe { max-width:100%; }
 .heika-discovery-card:active { transform: scale(.988); }
 .discovery-cover {
   position: relative;
-  aspect-ratio: 4 / 5;
   overflow: hidden;
   border-radius: 9px;
   background: var(--surface);
@@ -5194,7 +5193,7 @@ img, video, canvas, iframe { max-width:100%; }
   color:var(--ink);
   font-size:10px;
 }
-.discovery-cover.is-text-only { min-height: 0; background: var(--surface); }
+.discovery-cover.is-text-only { min-height: 0; aspect-ratio: auto; background: var(--surface); }
 .discovery-text-cover {
   min-height: clamp(196px,58vw,260px);
   display: flex;
