@@ -1,8 +1,16 @@
 package com.heika.nativeapp.feature.messages
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -44,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -52,6 +61,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaAlertDialog
 import com.heika.nativeapp.ui.HeikaSpacing
 import com.heika.nativeapp.ui.HeikaType
 import com.heika.nativeapp.ui.HeikaAvatar
@@ -60,6 +70,7 @@ import com.heika.nativeapp.ui.HeikaLiquidGlassSurface
 import dev.chrisbanes.haze.HazeState
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun MessagesScreen(
     initialConversationId: String? = null,
     initialPeerId: String? = null,
@@ -215,6 +226,8 @@ fun MessagesScreen(
             }
         } else {
             val peer = state.activePeer
+            val context = LocalContext.current
+            var actionTarget by remember(state.activeId) { mutableStateOf<NativeMessage?>(null) }
             var didInitialScroll by remember(state.activeId) { mutableStateOf(false) }
             LaunchedEffect(state.activeId, state.messages.lastOrNull()?.id) {
                 if (state.activeId != null && state.messages.isNotEmpty()) {
@@ -266,9 +279,24 @@ fun MessagesScreen(
                                 ) {
                                     Text(messageTime(message.createdAt), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp))
                                     val bubbleShape = RoundedCornerShape(18.dp)
+                                    // 按下时轻微收缩，抬手回弹：长按动作有物理反馈，
+                                    // 用户才知道"按住了"，而不是怀疑没点上。
+                                    val bubbleInteraction = remember { MutableInteractionSource() }
+                                    val bubblePressed by bubbleInteraction.collectIsPressedAsState()
+                                    val bubbleScale by animateFloatAsState(if (bubblePressed) .975f else 1f, tween(90), label = "bubble-press")
                                     Text(
                                         message.body,
-                                        Modifier.clip(bubbleShape)
+                                        Modifier.graphicsLayer { scaleX = bubbleScale; scaleY = bubbleScale }
+                                            .clip(bubbleShape)
+                                            // 长按弹操作面板；只在自己的消息上开放删除。
+                                            .combinedClickable(
+                                                interactionSource = bubbleInteraction,
+                                                indication = LocalIndication.current,
+                                                onClick = {},
+                                                onLongClick = {
+                                                    if (mine && message.id.isNotBlank()) actionTarget = message
+                                                },
+                                            )
                                             .background(if (mine) MaterialTheme.colorScheme.primary.copy(alpha = .20f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .92f))
                                             .padding(horizontal = 13.dp, vertical = 10.dp),
                                         color = MaterialTheme.colorScheme.onSurface,
@@ -287,6 +315,34 @@ fun MessagesScreen(
                     }
                 }
                 if (state.messages.isEmpty() && !state.loading) item { Text("发送第一条消息，开始交流。", Modifier.fillMaxWidth().padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
+            }
+            actionTarget?.let { target ->
+                HeikaAlertDialog(
+                    onDismissRequest = { actionTarget = null },
+                    title = { Text("消息操作") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Text("删除后你和对方都会看不到这条消息。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+                            Text(target.body, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        }
+                    },
+                    confirmButton = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("消息", target.body))
+                                actionTarget = null
+                            }) { Text("复制") }
+                            TextButton(onClick = {
+                                viewModel.deleteMessage(target.id)
+                                actionTarget = null
+                            }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { actionTarget = null }) { Text("取消") }
+                    },
+                )
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 HeikaGlassSurface(

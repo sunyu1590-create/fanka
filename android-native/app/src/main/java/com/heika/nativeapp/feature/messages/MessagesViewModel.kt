@@ -300,6 +300,28 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         sendWithNonce(item.conversationId, item.body, item.nonce)
     }
 
+    /**
+     * 删除自己发出的消息。服务端是物理删除，对方刷新后同样消失。
+     * 先本地移除让气泡立刻消失，失败再整段回滚，避免长按后没有任何反馈。
+     */
+    fun deleteMessage(messageId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        val current = mutableState.value
+        val conversationId = current.activeId ?: return@launch
+        val target = current.messages.firstOrNull { it.id == messageId } ?: return@launch
+        if (current.userId != null && target.senderId != current.userId) {
+            mutableState.update { it.copy(error = "只能删除自己发送的消息") }
+            return@launch
+        }
+        val snapshot = current.messages
+        mutableState.update { it.copy(messages = it.messages.filterNot { m -> m.id == messageId }, error = null) }
+        runCatching { repository.deleteMessage(conversationId, messageId) }
+            .onFailure { error ->
+                mutableState.update {
+                    if (it.activeId == conversationId) it.copy(messages = snapshot, error = error.message ?: "删除失败，请重试") else it
+                }
+            }
+    }
+
     private suspend fun sendWithNonce(id: String, text: String, nonce: String) = sendMutex.withLock {
         val owner = mutableState.value.userId ?: return@withLock
         mutableState.update { it.copy(sending = true, error = null, pendingMessages = (it.pendingMessages.filterNot { p -> p.nonce == nonce } + PendingMessage(nonce, id, text))) }

@@ -637,6 +637,21 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/exploration-ad", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    /** 管理员读取公告配置，包含未启用状态。 */
+    suspend fun adminAnnouncement(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/announcement", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** 保存公告。服务端每次保存都会把版本号加一，客户端据此重新弹出。 */
+    suspend fun saveAdminAnnouncement(title: String, body: String, active: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        request(
+            "/api/v1/admin/announcement",
+            method = "POST",
+            body = JSONObject().put("title", title).put("body", body).put("active", active).toString(),
+            authenticated = true,
+        ) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun adminExplorationAdPosts(query: String): JSONObject = withContext(Dispatchers.IO) {
         require(query.trim().length in 2..60)
         request("/api/v1/admin/exploration-ad/posts?q=${encode(query.trim())}", authenticated = true) as? JSONObject ?: JSONObject()
@@ -892,6 +907,11 @@ class HeikaRepository @Inject constructor(
 
     suspend fun sendMessage(conversationId: String, content: String, nonce: String): JSONObject = withContext(Dispatchers.IO) {
         request(NativeMessagesApi.PATH, method = "POST", body = JSONObject().put("action", "send").put("conversation", conversationId).put("content", content).put("nonce", nonce).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** 删除自己发出的消息。服务端物理删除，对方刷新后也会消失。 */
+    suspend fun deleteMessage(conversationId: String, messageId: String): JSONObject = withContext(Dispatchers.IO) {
+        request(NativeMessagesApi.PATH, method = "POST", body = JSONObject().put("action", "delete").put("conversation", conversationId).put("message", messageId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun createOrUpdateDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String> = emptyList(), mediaPaths: List<String> = emptyList()): JSONObject = withContext(Dispatchers.IO) {

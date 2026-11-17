@@ -4,16 +4,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -29,7 +33,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
@@ -38,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.HeikaAlertDialog
 
 @Composable
 fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: AccountViewModel = hiltViewModel()) {
@@ -73,8 +82,11 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
         }
     }
     // 登录失败保留密码：自动清空既让用户以为输入被吞，也无法对照修改。
-    LaunchedEffect(state.session?.userId, state.message) {
-        if (state.session != null && (state.message == "登录成功" || state.message == "账号已创建，欢迎来到黑卡。")) onSignedIn()
+    // 新注册的恢复码还没确认保存时不能放行，否则用户会直接跳过这一步。
+    LaunchedEffect(state.session?.userId, state.message, state.pendingRecoveryCodes.size) {
+        if (state.session != null && state.pendingRecoveryCodes.isEmpty() &&
+            (state.message == "登录成功" || state.message == "账号已创建，欢迎来到黑卡。")
+        ) onSignedIn()
     }
     // 提交前先收起键盘，等两帧再读输入值。
     // 密码最后一个字符若还停在输入法的组合状态里，直接读 value 会拿到缺一位的密码，
@@ -206,4 +218,67 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
             }
         }
     }
+    if (state.pendingRecoveryCodes.isNotEmpty()) {
+        NewAccountRecoveryPanel(codes = state.pendingRecoveryCodes, onConfirm = viewModel::acknowledgeRecoveryCodes)
+    }
+}
+
+/**
+ * 注册成功后的强制一步：展示恢复码并要求确认已保存。
+ *
+ * 找回密码目前只支持恢复码，用户如果在这里跳过，等忘记密码时账号就真的回不来了。
+ * 所以这个面板不可点外部关闭、没有"稍后再说"，必须勾选后才能进入。
+ */
+@Composable
+private fun NewAccountRecoveryPanel(codes: List<String>, onConfirm: () -> Unit) {
+    val context = LocalContext.current
+    var saved by remember { mutableStateOf(false) }
+    HeikaAlertDialog(
+        onDismissRequest = { },
+        title = { Text("保存你的恢复码") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(11.dp),
+            ) {
+                Text(
+                    "这是目前唯一能找回密码的方式。忘记密码时只有它能救回账号，我们无法代为重置。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                )
+                Column(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    codes.forEach { code ->
+                        Text(code, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.2.sp)
+                    }
+                }
+                Text(
+                    "每个码只能使用一次。建议截图，或复制到密码管理器。关闭后无法再次查看。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                )
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { saved = !saved }.padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Checkbox(checked = saved, onCheckedChange = { saved = it })
+                    Text("我已妥善保存，知道丢失后无法找回", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = {
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("HEIKA 账号恢复码", codes.joinToString("\n")))
+                }) { Text("复制全部") }
+                TextButton(enabled = saved, onClick = onConfirm) { Text("进入黑卡") }
+            }
+        },
+    )
 }

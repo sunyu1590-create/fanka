@@ -63,6 +63,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -111,6 +112,7 @@ import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
 import com.heika.nativeapp.ui.heikaSharedPostMeta
+import com.heika.nativeapp.ui.HeikaImageRatioCache
 import com.heika.nativeapp.ui.sharedAuthorKey
 import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.sharedRatingKey
@@ -196,12 +198,19 @@ fun PostDetailScreen(
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
                 BackHandler(enabled = moreOpen) { moreOpen = false }
                 val current = state.post
-                if (moreOpen && current != null) Popup(
+                // 菜单淡入并轻微放大，收起时反向播放。Popup 在退出动画结束后才移除，
+                // 否则关闭的一瞬间会整块消失，观感是"闪了一下"。
+                var menuMounted by remember { mutableStateOf(false) }
+                LaunchedEffect(moreOpen) {
+                    if (moreOpen) menuMounted = true else { kotlinx.coroutines.delay(150); menuMounted = false }
+                }
+                if (menuMounted && current != null) Popup(
                     alignment = Alignment.TopEnd,
                     offset = IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
                     onDismissRequest = { moreOpen = false },
-                    properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
+                    properties = PopupProperties(focusable = moreOpen, dismissOnBackPress = true, dismissOnClickOutside = true),
                 ) {
+                    HeikaDropdownFade(visible = moreOpen) {
                     val menuShape = RoundedCornerShape(24.dp)
                     HeikaGlassSurface(
                         hazeState = hazeState,
@@ -239,6 +248,7 @@ fun PostDetailScreen(
                             Text(if (state.currentUserId != current.authorId) "管理员操作" else "危险操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.error.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
                             DropdownMenuItem(text = { Text("删除内容", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(HeikaIcons.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { moreOpen = false; postDeleteConfirm = true })
                         }
+                    }
                     }
                     }
                 }
@@ -282,8 +292,11 @@ fun PostDetailScreen(
                                         val sharedImageModifier = if (page == 0 && sharedElementsEnabled) with(sharedTransitionScope) {
                                             Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), isDetail = true, enabled = true)
                                         } else Modifier
-                                        RetryableDetailImage(
-                                            url = item.images[page], postId = item.cloudId, variant = "detail-full-$page",
+                                        DetailImage(
+                                            url = item.images[page],
+                                            thumbUrl = item.thumbnail,
+                                            postId = item.cloudId,
+                                            index = page,
                                             contentDescription = "${item.title}，第 ${page + 1} 张",
                                             imageLoader = imageLoader,
                                             contentScale = ContentScale.Fit,
@@ -297,12 +310,16 @@ fun PostDetailScreen(
                             val sharedImageModifier = if (index == 0 && sharedElementsEnabled) with(sharedTransitionScope) {
                                 Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), isDetail = true, enabled = true)
                             } else Modifier
-                            RetryableDetailImage(
-                                url = image, postId = item.cloudId, variant = "detail-full-$index",
+                            DetailImage(
+                                url = image,
+                                thumbUrl = item.thumbnail,
+                                postId = item.cloudId,
+                                index = index,
                                 contentDescription = item.title,
                                 imageLoader = imageLoader,
                                 contentScale = ContentScale.FillWidth,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp).then(sharedImageModifier),
+                                lockRatio = true,
+                                modifier = Modifier.fillMaxWidth().then(sharedImageModifier),
                             )
                         }
                         // 标题参与共享转场，必须待在淡入层之外；其余内容等封面落位后再出现。
@@ -635,33 +652,110 @@ private fun CommentRow(
     }
 }
 
+/**
+ * 详情页图片。
+ *
+ * 两件事同时解决：
+ * 1. 高度抖动——容器比例在进入页面的第一帧就定好，之后不再变化。
+ *    比例来自 [HeikaImageRatioCache]（列表卡片解码时写入），未命中时退回 4:5，
+ *    原图就绪后只更新缓存、不改已经排好的高度。
+ * 2. 图片切换生硬——底层常驻同一张缩略图当占位，原图就绪后 260ms 叠化浮现，
+ *    缩略图同步淡出。缩略图在列表里刚解码过，内存缓存命中，占位是零延迟的。
+ */
 @Composable
-private fun RetryableDetailImage(
+private fun DetailImage(
     url: String,
+    thumbUrl: String?,
     postId: String,
-    variant: String,
+    index: Int,
     contentDescription: String,
     imageLoader: coil3.ImageLoader,
     contentScale: ContentScale,
     modifier: Modifier = Modifier,
+    lockRatio: Boolean = false,
 ) {
     val context = LocalContext.current
-    var attempt by remember(url, postId, variant) { mutableStateOf(0) }
-    var failed by remember(url, postId, variant) { mutableStateOf(false) }
-    val request = remember(context, url, postId, variant, attempt) {
-        ImageRequest.Builder(context).data(url)
-            .memoryCacheKey(imageCacheKey(postId, url, variant))
-            .diskCacheKey(imageCacheKey(postId, url, variant))
-            .crossfade(150).build()
+    var attempt by remember(url, postId, index) { mutableStateOf(0) }
+    var failed by remember(url, postId, index) { mutableStateOf(false) }
+    var fullReady by remember(url, postId, index) { mutableStateOf(false) }
+
+    // 比例只取一次。取到之后哪怕原图解码出不同数值也不覆盖，避免容器第二次改高度。
+    val ratioState = remember(postId, url) {
+        mutableFloatStateOf(HeikaImageRatioCache.get(postId) ?: 0f)
     }
-    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant)) {
+    val resolvedRatio = ratioState.floatValue.takeIf { it > 0f }?.coerceIn(0.62f, 1.78f) ?: 0.8f
+
+    val fullKey = imageCacheKey(postId, url, "detail-full-$index")
+    val fullRequest = remember(context, url, postId, index, attempt) {
+        ImageRequest.Builder(context).data(url)
+            .memoryCacheKey(fullKey).diskCacheKey(fullKey)
+            // 叠化由这里接管：coil 自带的 crossfade 在内存命中时不会触发，观感是硬切。
+            .crossfade(false)
+            .build()
+    }
+    val thumbRequest = remember(context, thumbUrl, postId) {
+        thumbUrl?.takeIf { it.isNotBlank() }?.let { thumb ->
+            val key = imageCacheKey(postId, thumb, "feed-thumb")
+            ImageRequest.Builder(context).data(thumb)
+                .memoryCacheKey(key).diskCacheKey(key)
+                .crossfade(false)
+                .build()
+        }
+    }
+
+    val fullAlpha by animateFloatAsState(
+        targetValue = if (fullReady) 1f else 0f,
+        animationSpec = tween(260, easing = FastOutSlowInEasing),
+        label = "detail-image-full-$index",
+    )
+    val thumbAlpha by animateFloatAsState(
+        targetValue = if (fullReady) 0f else 1f,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "detail-image-thumb-$index",
+    )
+
+    Box(
+        modifier
+            .then(if (lockRatio) Modifier.aspectRatio(resolvedRatio) else Modifier)
+            .graphicsLayer { clip = true }
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        if (thumbRequest != null) {
+            AsyncImage(
+                model = thumbRequest,
+                contentDescription = null,
+                imageLoader = imageLoader,
+                contentScale = contentScale,
+                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = thumbAlpha },
+            )
+        }
         AsyncImage(
-            model = request,
+            model = fullRequest,
             contentDescription = contentDescription,
             imageLoader = imageLoader,
             contentScale = contentScale,
-            modifier = Modifier.fillMaxSize(),
-            onState = { failed = it is coil3.compose.AsyncImagePainter.State.Error },
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = fullAlpha },
+            onState = { state ->
+                when (state) {
+                    is coil3.compose.AsyncImagePainter.State.Success -> {
+                        fullReady = true
+                        failed = false
+                        if (ratioState.floatValue <= 0f) {
+                            val size = state.painter.intrinsicSize
+                            if (size.width > 0f && size.height > 0f) {
+                                val ratio = size.width / size.height
+                                ratioState.floatValue = ratio
+                                HeikaImageRatioCache.put(postId, ratio)
+                            }
+                        }
+                    }
+                    is coil3.compose.AsyncImagePainter.State.Error -> {
+                        failed = true
+                        fullReady = false
+                    }
+                    else -> Unit
+                }
+            },
         )
         if (failed) {
             Text(
@@ -740,4 +834,19 @@ private fun Modifier.detailContentReveal(enabled: Boolean, delayMillis: Int = 90
         alpha = progress
         translationY = (1f - progress) * 12.dp.toPx()
     }
+}
+
+/**
+ * 下拉菜单的进出场：淡入并轻微放大，收起时反向播放，锚点在右上角。
+ *
+ * 单独抽成函数是有原因的：AnimatedVisibility 在 Column/Row 作用域里有同名的带 receiver 扩展，
+ * 直接在 Popup 的 lambda 里调用会被解析成扩展版本并编译失败。这里没有 receiver，才会选到顶层函数。
+ */
+@Composable
+private fun HeikaDropdownFade(visible: Boolean, content: @Composable () -> Unit) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(130)) + scaleIn(initialScale = .94f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f)),
+        exit = fadeOut(tween(110)) + scaleOut(targetScale = .96f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f)),
+    ) { content() }
 }

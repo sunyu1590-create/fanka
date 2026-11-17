@@ -42,6 +42,14 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(56, "2026.11.17", listOf(
+        "实测反馈修复：长按自己的私信可以删除，删除后对方也会看到它消失。",
+        "注册成功后必须先保存恢复码：这是目前唯一能找回密码的方式。",
+        "详情页大图改为先用同比例缩略图占位，高清图加载完成时叠化浮现，页面不再上下跳。",
+        "卡片标题不再压一层底部渐变，改用文字阴影，画面不再被压暗。",
+        "管理员中心新增公告管理，可以直接在 App 里编辑并发布公告。",
+        "「更多」菜单、消息长按等交互补上淡入淡出与按压反馈。",
+    )),
     NativeRelease(55, "2026.11.17", listOf(
         "标签、评分与作者名也参与卡片到详情的连续转场，和封面图一起移动。",
         "撤掉标题的跨页动画：两端字号差距大，回退为随正文淡入，不再出现字号跳变。",

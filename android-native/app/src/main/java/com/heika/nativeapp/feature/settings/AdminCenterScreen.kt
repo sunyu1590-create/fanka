@@ -195,6 +195,7 @@ private val adminModuleGroups = listOf(
     AdminModuleGroup("运营配置", listOf(
         AdminModuleSpec("recommendation-settings", "推荐配置", "设置每日内容来源配比", com.heika.nativeapp.ui.HeikaIconRes.Settings),
         AdminModuleSpec("exploration-ad", "发现页广告位", "管理精选信息流顶部的图文推广入口", com.heika.nativeapp.ui.HeikaIconRes.Image),
+        AdminModuleSpec("announcement", "公告管理", "编辑并发布打开 App 时弹出的公告", com.heika.nativeapp.ui.HeikaIconRes.Report),
     )),
 )
 
@@ -202,7 +203,7 @@ private val adminSectionNames = mapOf(
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
-    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助", "announcement" to "公告管理",
 )
 private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
 
@@ -316,7 +317,7 @@ private fun AdminModuleRow(module: AdminModuleSpec, overview: JSONObject?, onCli
     }
 }
 
-private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad")
+private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "announcement")
 
 @Composable
 private fun AdminMembershipPanel(state: AdminCenterState, viewModel: AdminCenterViewModel, onDisableCode: (JSONObject) -> Unit) {
@@ -541,6 +542,9 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
     var aiKey by remember { mutableStateOf("") }
     val meta = state.metadata ?: JSONObject()
     val topics = meta.optJSONArray("topics")
+    var announcementTitle by remember(meta) { mutableStateOf(meta.optString("title")) }
+    var announcementBody by remember(meta) { mutableStateOf(meta.optString("body")) }
+    var announcementActive by remember(meta) { mutableStateOf(meta.optBoolean("active", false)) }
     var adEnabled by remember(meta) { mutableStateOf(meta.optBoolean("enabled", false)) }
     var adKind by remember(meta) { mutableStateOf(meta.optString("kind", "text")) }
     var adTitle by remember(meta) { mutableStateOf(meta.optString("title")) }
@@ -611,6 +615,50 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
             "ai-resource-types" -> item {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("资源类型编号固定，用于历史内容与外部链接。停用只隐藏新入口，不删除既有资源。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+            }
+            "announcement" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("发布后，用户下次打开 App 会看到一次。修改内容会生成新版本，只提醒一次，不会反复打扰。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+                    OutlinedTextField(
+                        value = announcementTitle,
+                        onValueChange = { announcementTitle = it.take(40) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("公告标题") },
+                        singleLine = true,
+                        supportingText = { Text("${announcementTitle.length}/40", fontSize = 10.sp) },
+                    )
+                    OutlinedTextField(
+                        value = announcementBody,
+                        onValueChange = { announcementBody = it.take(600) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("公告内容") },
+                        minLines = 5,
+                        supportingText = { Text("${announcementBody.length}/600", fontSize = 10.sp) },
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(11.dp)).padding(horizontal = 13.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("启用公告", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(if (announcementActive) "保存后立即对用户生效" else "保存后不弹出，仅留存草稿", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        }
+                        androidx.compose.material3.Switch(checked = announcementActive, enabled = state.saving == null, onCheckedChange = { announcementActive = it })
+                    }
+                    Button(
+                        enabled = state.saving == null && announcementTitle.isNotBlank() && announcementBody.isNotBlank(),
+                        onClick = {
+                            viewModel.saveAnnouncement(announcementTitle, announcementBody, announcementActive) {
+                                // 清掉本机已读版本，方便自己立刻预览本次公告。
+                                context.getSharedPreferences("heika-announcement", android.content.Context.MODE_PRIVATE)
+                                    .edit().remove("seen_version").apply()
+                            }
+                        },
+                    ) { Text(if (state.saving == "announcement") "保存中…" else if (announcementActive) "保存并发布" else "保存草稿") }
+                    (meta.opt("version") as? Number)?.toInt()?.takeIf { it > 0 }?.let { version ->
+                        Text("当前版本：第 $version 版", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    }
                 }
             }
             "exploration-ad" -> item {
@@ -799,7 +847,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var adPostsGeneration = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "membership-support") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "announcement", "membership-support") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
     fun refresh() = viewModelScope.launch(HeikaCoroutineGuard) {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, membershipLoading = mutableState.value.section == "membership-support", error = null, notice = null, membershipError = if (mutableState.value.section == "membership-support") null else mutableState.value.membershipError)
@@ -828,7 +876,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
                 "dm-reports" -> repository.adminMessageReports(); "appeals" -> repository.adminAppeals(); "users" -> repository.adminUsers()
                 "user-feedback" -> repository.adminUserFeedback(); "keywords" -> repository.adminKeywordRules(); "audit" -> repository.adminAudit()
                 "categories" -> repository.adminCategories(); "topic-events" -> repository.adminTopicEvents(); "ai-resource-types" -> repository.adminAiResourceTypes()
-                "recommendation-settings" -> repository.adminRecommendationSettings(); "ai-settings" -> repository.adminAiSettings(); "exploration-ad" -> repository.adminExplorationAd()
+                "recommendation-settings" -> repository.adminRecommendationSettings(); "ai-settings" -> repository.adminAiSettings(); "exploration-ad" -> repository.adminExplorationAd(); "announcement" -> repository.adminAnnouncement()
                 else -> repository.adminReports()
             }
             if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), metadata = result, loading = false)
@@ -1038,6 +1086,27 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
             refresh()
         } catch (_: Exception) {
             mutableState.value = mutableState.value.copy(saving = null, error = "广告位保存失败，请检查作品编号和管理员权限")
+        }
+    }
+
+    fun saveAnnouncement(title: String, body: String, active: Boolean, onSaved: () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        if (title.trim().isEmpty() || body.trim().isEmpty()) {
+            mutableState.value = mutableState.value.copy(error = "公告标题和内容都不能为空")
+            return@launch
+        }
+        mutableState.value = mutableState.value.copy(saving = "announcement", error = null, notice = null)
+        try {
+            val result = repository.saveAdminAnnouncement(title.trim(), body.trim(), active)
+            val version = result.optInt("version", 0)
+            mutableState.value = mutableState.value.copy(
+                saving = null,
+                notice = if (active) "公告已发布，第 $version 版，用户下次打开会看到" else "公告已保存并关闭，用户不再看到",
+            )
+            onSaved()
+            refresh()
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "公告保存失败，请检查管理员权限")
         }
     }
 

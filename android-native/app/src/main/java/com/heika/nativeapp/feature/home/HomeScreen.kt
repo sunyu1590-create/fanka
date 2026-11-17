@@ -100,6 +100,8 @@ import com.heika.nativeapp.ui.sharedRatingKey
 import com.heika.nativeapp.ui.sharedTagKey
 import com.heika.nativeapp.ui.heikaGaussianBlur
 import com.heika.nativeapp.ui.HeikaLiquidBadgeSurface
+import com.heika.nativeapp.ui.HeikaImageRatioCache
+import com.heika.nativeapp.ui.heikaPhotoTextShadow
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -725,6 +727,7 @@ private fun CardFront(
     val titleScale = LocalHeikaTitleTextScale.current
     val image = post?.thumbnail
     var imageFailed by remember(image, post?.cloudId) { mutableStateOf(false) }
+    val photoShadow = heikaPhotoTextShadow()
     val sharedModifier = if (post != null && sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), isDetail = false, enabled = true)
@@ -739,17 +742,22 @@ private fun CardFront(
                     imageLoader = LocalHeikaImageLoader.current,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    onState = { state -> imageFailed = state is AsyncImagePainter.State.Error },
+                    onState = { state ->
+                        imageFailed = state is AsyncImagePainter.State.Error
+                        if (state is AsyncImagePainter.State.Success) {
+                            val size = state.painter.intrinsicSize
+                            HeikaImageRatioCache.remember(post.cloudId, size.width, size.height)
+                        }
+                    },
                 )
             }
         } else {
             Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF55594F), Color(0xFF292B29), Color(0xFF171A1D)))))
         }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .06f), Color.Black.copy(alpha = .86f)))))
         if (imageFailed) Text("图片暂不可用", Modifier.align(Alignment.Center).clip(RoundedCornerShape(9.dp)).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 10.dp, vertical = 7.dp), color = Color.White.copy(alpha = .9f), fontSize = 10.sp)
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(post?.tag ?: "黑卡内容", color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
-            Text(post?.title ?: "已翻开的卡片", color = Color.White, fontSize = 16.sp * titleScale, lineHeight = 22.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(post?.tag ?: "黑卡内容", style = androidx.compose.ui.text.TextStyle(shadow = photoShadow), color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
+            Text(post?.title ?: "已翻开的卡片", style = androidx.compose.ui.text.TextStyle(shadow = photoShadow), color = Color.White, fontSize = 16.sp * titleScale, lineHeight = 22.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (post?.hasRating == true) HeikaLiquidBadgeSurface(
                 hazeState = hazeState,
                 modifier = Modifier.align(Alignment.Start),

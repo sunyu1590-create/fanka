@@ -22,6 +22,8 @@ data class AccountUiState(
     val flow: AccountFlow = AccountFlow.LOGIN,
     val verificationId: String? = null,
     val verificationEmail: String? = null,
+    /** 新注册后生成的一次性恢复码。非空时页面必须先展示它，不能直接进入主界面。 */
+    val pendingRecoveryCodes: List<String> = emptyList(),
 )
 
 @HiltViewModel
@@ -59,8 +61,22 @@ class AccountViewModel @Inject constructor(
         if (nickname.trim().length < 2) return@launch showError("昵称至少需要 2 个字")
         // 当前后端注册不需要邮箱验证码，直接建号并登录。
         perform({ auth.signUpWithPasswordFallback(email, password, nickname) }) { session ->
-            mutableState.value = AccountUiState(session = session, loading = false, message = "账号已创建，欢迎来到黑卡。")
+            // 注册成功立刻生成恢复码：目前找回密码只有这一种方式，
+            // 让用户"稍后去设置里生成"等于大概率永远不会生成。
+            val codes = runCatching { repository.generateRecoveryCodes() }.getOrDefault(emptyList())
+            mutableState.value = AccountUiState(
+                session = session,
+                loading = false,
+                message = if (codes.isEmpty()) "账号已创建，欢迎来到黑卡。" else null,
+                pendingRecoveryCodes = codes,
+            )
         }
+    }
+
+    /** 用户确认已保存恢复码后，放行进入主界面。 */
+    fun acknowledgeRecoveryCodes() = mutableState.update {
+        if (it.pendingRecoveryCodes.isEmpty()) it
+        else it.copy(pendingRecoveryCodes = emptyList(), message = "账号已创建，欢迎来到黑卡。")
     }
 
     fun requestSignUpCode(email: String) = viewModelScope.launch(HeikaCoroutineGuard) {
@@ -88,7 +104,13 @@ class AccountViewModel @Inject constructor(
             ?.takeIf { current.verificationEmail.equals(email.trim(), ignoreCase = true) }
             ?: return@launch showError("请先获取邮箱验证码。")
         perform({ auth.signUpWithCode(email, password, nickname, code, verificationId) }) { session ->
-            mutableState.value = AccountUiState(session = session, loading = false, message = "账号已创建，欢迎来到黑卡。")
+            val codes = runCatching { repository.generateRecoveryCodes() }.getOrDefault(emptyList())
+            mutableState.value = AccountUiState(
+                session = session,
+                loading = false,
+                message = if (codes.isEmpty()) "账号已创建，欢迎来到黑卡。" else null,
+                pendingRecoveryCodes = codes,
+            )
         }
     }
 

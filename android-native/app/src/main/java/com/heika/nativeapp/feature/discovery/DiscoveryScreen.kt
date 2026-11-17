@@ -97,6 +97,8 @@ import com.heika.nativeapp.ui.sharedAuthorKey
 import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.sharedRatingKey
 import com.heika.nativeapp.ui.sharedTagKey
+import com.heika.nativeapp.ui.HeikaImageRatioCache
+import com.heika.nativeapp.ui.heikaPhotoTextShadow
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
@@ -552,6 +554,7 @@ internal fun FeedCard(
 ) {
     val image = post.thumbnail
     val titleScale = LocalHeikaTitleTextScale.current
+    val photoShadow = heikaPhotoTextShadow()
     // 标题共享已撤掉（卡面 15sp 与详情 22sp 差距太大，中途字号会跳），
     // 改由标签、评分、作者名做等比共享。
     val metaSharedReady = sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null
@@ -602,7 +605,13 @@ internal fun FeedCard(
                         imageLoader = LocalHeikaImageLoader.current,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
-                        onState = { state -> imageFailed = state is AsyncImagePainter.State.Error },
+                        onState = { state ->
+                            imageFailed = state is AsyncImagePainter.State.Error
+                            if (state is AsyncImagePainter.State.Success) {
+                                val size = state.painter.intrinsicSize
+                                HeikaImageRatioCache.remember(post.cloudId, size.width, size.height)
+                            }
+                        },
                     )
                     if (imageFailed) {
                         Text(
@@ -615,7 +624,6 @@ internal fun FeedCard(
                         )
                     }
                 }
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .27f), Color.Transparent, Color.Black.copy(alpha = .7f)))))
                 HeikaLiquidBadgeSurface(
                     hazeState = hazeState,
                     modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
@@ -625,7 +633,7 @@ internal fun FeedCard(
                     Text(post.tag, tagSharedModifier, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface, contentModifier = ratingSharedModifier)
-                Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), color = Color.White, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), style = androidx.compose.ui.text.TextStyle(shadow = photoShadow), color = Color.White, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         } else {
             val sharedCardModifier = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
