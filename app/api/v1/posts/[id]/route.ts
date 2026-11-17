@@ -1,5 +1,7 @@
 import {NextRequest} from 'next/server';
 import {context,jsonBody,textField,uuid,dbError,respond,ApiError} from '@/lib/server/api';
+import {detachExplorationAd} from '@/lib/server/detach-ad';
+import {removePostAttachments} from '@/lib/server/attachment-cleanup';
 import {libraryFields,presentMany,type LibraryRow} from '@/lib/server/library';
 type Params={params:Promise<{id:string}>};
 export async function GET(req:NextRequest,{params}:Params){return respond(async()=>{const {db}=await context(req,false);const id=uuid((await params).id);const fields=libraryFields.replace('profiles!posts_author_id_fkey(nickname)','profiles!posts_author_id_fkey(nickname,avatar_url)');const {data,error}=await db.from('posts').select(`${fields},updated_at`).eq('id',id).single();dbError(error);if(!data)throw new ApiError(404,'内容不存在');const [presented]=await presentMany(db,[data as unknown as LibraryRow]);return {...presented,...(data as unknown as Record<string,unknown>),images:presented.images}})}
@@ -7,6 +9,9 @@ export async function PATCH(req:NextRequest,{params}:Params){return respond(asyn
 export async function DELETE(req:NextRequest,{params}:Params){return respond(async()=>{
   const {db}=await context(req);
   const id=uuid((await params).id);
+  // 广告位引用会让外键置空撞上检查约束，先解绑再删。
+  await removePostAttachments(db, id);
+  await detachExplorationAd(db, id);
   // 作者本人可删自己的作品；管理员与内容管理员可删任意作品（权限在数据库函数内校验）。
   const {data,error}=await db.rpc('delete_post',{p_post_id:id});
   dbError(error);

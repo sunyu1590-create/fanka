@@ -7,6 +7,19 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.45.0",
+    date: "2026.11.17",
+    notes: [
+      { category: "问题修复", text: "修复无法删除已发布内容：正被探索页广告位引用的作品，删除时会被数据库约束挡住。现在删除前会自动解除引用。" },
+      { category: "体验优化", text: "私信「删除」改为「撤回」：双方同时消失，只允许 3 分钟内撤回，面板上带倒计时。" },
+      { category: "新功能", text: "发布页全新改版：标题、正文、素材、附件分区更清楚，正文支持写作与预览双态切换，格式工具常驻在正文上方。" },
+      { category: "新功能", text: "正文全面支持 Markdown，粘贴链接会自动转成可点击的链接文本。" },
+      { category: "体验优化", text: "站外链接先经过风险提示页：显示目标域名、说明风险，确认后才继续访问。" },
+      { category: "新功能", text: "AI 内容可以挂附件：安装包、压缩包、PDF 等，最多 3 个，单个 30 MB、合计 50 MB，全服每天 20 个名额。" },
+      { category: "体验优化", text: "视频上传入口保留并标注 Beta，内测期间点击会提示暂未开放。" },
+    ],
+  },
+  {
     version: "2.44.0",
     date: "2026.11.17",
     notes: [

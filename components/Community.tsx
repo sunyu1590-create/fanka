@@ -71,7 +71,8 @@ const ExplorationRecap = dynamic(() => import("./ExplorationFeatures").then((mod
 import type { User } from "@supabase/supabase-js";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { browserDb, browserDbConfig } from "@/lib/browser-db";
-import { ComposerSheet, ComposerTextEditor, ComposerMediaStrip } from "./ComposerPanels";
+import { ComposerSheet, ComposerTextEditor, ComposerMediaStrip, ComposerAttachments } from "./ComposerPanels";
+import { MAX_ATTACHMENT_FILES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES, readAttachments, type PostAttachment } from "@/lib/attachments";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
 import { validateComposerFiles } from "@/lib/composer-validation";
 import { compressUploadImage } from "@/lib/image-compression";
@@ -651,6 +652,10 @@ export default function Community() {
     [creatingTopic, setCreatingTopic] = useState(false),
     [composerImages, setComposerImages] = useState<ComposerImage[]>([]),
     [composerVideo, setComposerVideo] = useState<ComposerVideo | null>(null),
+    [composerAttachments, setComposerAttachments] = useState<PostAttachment[]>([]),
+    [attachmentQuota, setAttachmentQuota] = useState<{ used: number; limit: number; remaining: number } | null>(null),
+    [attachmentBusy, setAttachmentBusy] = useState(false),
+    [attachmentError, setAttachmentError] = useState(""),
     [composerValidation, setComposerValidation] = useState<"" | "title" | "body">(""),
     [uploadingImages, setUploadingImages] = useState(false),
     [coverIndex, setCoverIndex] = useState(0),
@@ -2516,8 +2521,9 @@ export default function Community() {
     try {
       const old = state.own.find((p) => p.id === editing);
       const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
+      const attachmentPayload = writeChannel === "ai" ? composerAttachments : [];
       const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai"
-        ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
+        ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, attachments: attachmentPayload, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
         : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
       const cover = composerImages[coverIndex];
@@ -2551,7 +2557,7 @@ export default function Community() {
       setUploadingImages(false);
       const mediaPaths = [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])];
       const item = writeChannel === "ai"
-        ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData, mediaPaths, coverUrl: cover?.external ? cover.url : null })
+        ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData, attachments: attachmentPayload, mediaPaths, coverUrl: cover?.external ? cover.url : null })
         : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null });
       if (!item) return;
       update((s) => ({
@@ -2578,6 +2584,8 @@ export default function Community() {
       setWriteChannel("community");
       setWriteContentType("knowledge_article");
       setAiResourceFields({});
+      setComposerAttachments([]);
+      setAttachmentError("");
       setComposerValidation("");
       const owner = accountId || "guest";
       if (writeChannel === "community") localStorage.removeItem(`heika-compose-${owner}`);
@@ -2602,6 +2610,66 @@ export default function Community() {
   const composerMediaUrl = async (path:string) => {
     try { const db=await browserDb();const result=await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path,3600);return result.data?.signedUrl || ""; } catch { return ""; }
   };
+  const refreshAttachmentQuota = async () => {
+    try {
+      const quota = await cloudRequest("/api/v1/attachments") as { used: number; limit: number; remaining: number } | null;
+      if (quota) setAttachmentQuota(quota);
+    } catch { /* 名额查询失败不阻塞写作 */ }
+  };
+
+  useEffect(() => {
+    if (modal !== "write" || writeChannel !== "ai") return;
+    void refreshAttachmentQuota();
+  }, [modal, writeChannel]);
+
+  const addComposerAttachments = async (files: FileList | null) => {
+    if (!files?.length || attachmentBusy) return;
+    setAttachmentError("");
+    const incoming = [...files];
+    if (composerAttachments.length + incoming.length > MAX_ATTACHMENT_FILES) {
+      setAttachmentError(`最多上传 ${MAX_ATTACHMENT_FILES} 个附件`);
+      return;
+    }
+    const total = composerAttachments.reduce((sum, item) => sum + item.size, 0);
+    for (const file of incoming) {
+      if (file.size > MAX_ATTACHMENT_BYTES) { setAttachmentError(`「${file.name}」超过单个 30 MB 的限制`); return; }
+    }
+    if (total + incoming.reduce((sum, file) => sum + file.size, 0) > MAX_ATTACHMENT_TOTAL_BYTES) {
+      setAttachmentError("附件合计不能超过 50 MB");
+      return;
+    }
+    setAttachmentBusy(true);
+    try {
+      for (const file of incoming) {
+        const form = new FormData();
+        form.set("file", file);
+        const response = await cloudFetch("/api/v1/attachments", { method: "POST", body: form });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.data) throw new Error(payload?.error || "附件上传失败，请稍后重试");
+        setComposerAttachments((current) => [...current, payload.data as PostAttachment]);
+        if (typeof payload.data.remaining === "number") setAttachmentQuota((current) => current ? { ...current, remaining: payload.data.remaining, used: current.limit - payload.data.remaining } : current);
+      }
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
+    } finally {
+      setAttachmentBusy(false);
+      void refreshAttachmentQuota();
+    }
+  };
+
+  const removeComposerAttachment = async (path: string) => {
+    const previous = composerAttachments;
+    setComposerAttachments((current) => current.filter((item) => item.path !== path));
+    try {
+      await cloudRequest(`/api/v1/attachments?path=${encodeURIComponent(path)}`, undefined, "DELETE");
+    } catch {
+      setComposerAttachments(previous);
+      setAttachmentError("移除失败，请稍后重试");
+    } finally {
+      void refreshAttachmentQuota();
+    }
+  };
+
   const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community") => {
     composerImages.forEach(image=>{if(image.url.startsWith("blob:"))URL.revokeObjectURL(image.url);});
     composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false);
@@ -2618,7 +2686,10 @@ export default function Community() {
     const initialResourceData = revisionPayload?.resourceData || initialPost?.resourceData || {};
     setWriteChannel(channel);
     setWriteContentType(channel === "ai" && initialPost?.contentType && initialPost.contentType !== "community_post" ? initialPost.contentType : "knowledge_article");
-    setAiResourceFields(Object.fromEntries(Object.entries(initialResourceData).map(([key, value]) => [key, Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : ""]).filter(([, value]) => Boolean(value))));
+    const initialAttachments = readAttachments(initialResourceData);
+    setComposerAttachments(initialAttachments);
+    setAttachmentError("");
+    setAiResourceFields(Object.fromEntries(Object.entries(initialResourceData).filter(([key]) => key !== "attachments").map(([key, value]) => [key, Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : ""]).filter(([, value]) => Boolean(value))));
     setEditing(initialPost?.id ?? null);
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
     setComposerRevisionMode(Boolean(post && (post.status === "published" || post.pendingRevision)));
@@ -5236,7 +5307,6 @@ export default function Community() {
                 {!composerEditingPublished && <section className="composer-channel-picker" role="group" aria-label="发布内容类型"><strong>发布到</strong><div>{([["community", "社区作品"], ["ai", "AI 空间"]] as const).map(([value, label]) => <button type="button" key={value} className={writeChannel === value ? "selected" : ""} aria-pressed={writeChannel === value} onClick={() => void switchComposerChannel(value)}>{label}</button>)}</div></section>}
                 {writeChannel === "ai" && <section className="composer-ai-type"><label>AI 内容类型<ChoiceSelect label="AI 内容类型" value={writeContentType} onChange={(value) => setWriteContentType(value as AiContentType)} options={([["knowledge_article", "AI 知识文章"], ["agent", "Agent 智能体"], ["skill", "Skills 技能"], ["prompt", "Prompt 提示词"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"]] as const).map(([value,label]) => ({value,label}))}/></label><small>{writeContentType === "knowledge_article" ? "使用标准图文文章格式，支持 Markdown。" : "按类型填写结构化字段；发布后由管理员审核，并保留已发布版本。"}</small></section>}
                 <ComposerTextEditor title={title} body={body} error={composerValidation} onTitle={changeComposerTitle} onBody={changeComposerBody}/>
-                {writeChannel === "ai" && AI_EDITOR_FIELDS[writeContentType].length > 0 && <section className="composer-ai-resource-fields" aria-label="AI 资源信息"><div className="composer-section-heading"><span><strong>资源信息</strong><small>代码、安装命令和 Prompt 仅展示与复制，不会在服务器执行</small></span><span>{AI_EDITOR_FIELDS[writeContentType].filter((field) => field.required).length} 项必填</span></div>{AI_EDITOR_FIELDS[writeContentType].map((field) => <label key={field.key}>{field.label}{field.required && <i>必填</i>}{field.multiline ? <textarea value={aiResourceFields[field.key] || ""} maxLength={12000} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint} rows={field.key === "prompt" || field.key === "installation" || field.key === "steps" ? 6 : 3}/> : <input type={field.key.endsWith("_url") ? "url" : "text"} value={aiResourceFields[field.key] || ""} maxLength={1200} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint}/>}</label>)}</section>}
                 <section className="composer-media-picker" aria-label="选择图片或视频">
                   <div className="composer-media-choices" role="group" aria-label="媒体类型">
                     <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerVideo || composerImages.length >= 9 ? " disabled" : ""}`}>
@@ -5245,14 +5315,18 @@ export default function Community() {
                       <span className="composer-media-choice-copy"><strong>图片</strong><small>{composerImages.length >= 9 ? "已达最多 9 张" : composerImages.length ? `已选 ${composerImages.length}/9 张 · 点此继续添加` : "JPG、PNG、WebP · 最多 9 张"}</small></span>
                       <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
                     </label>
-                    {VIDEO_UPLOAD_BETA_ENABLED && <label className={`composer-media-choice video${composerVideo ? " selected" : ""}${composerImages.length ? " disabled" : ""}`}>
+                    {VIDEO_UPLOAD_BETA_ENABLED ? <label className={`composer-media-choice video${composerVideo ? " selected" : ""}${composerImages.length ? " disabled" : ""}`}>
                       <input type="file" accept="video/mp4,video/webm" disabled={Boolean(composerImages.length)} onChange={(event) => { chooseComposerVideo(event.target.files?.[0] || null); event.currentTarget.value = ""; }}/>
                       <span className="composer-media-choice-icon"><VideoIcon size={20}/></span>
                       <span className="composer-media-choice-copy"><strong>视频 <i>Beta</i></strong><small>MP4、WebM · 最大 50 MB</small></span>
                       <span className="composer-media-choice-mark">{composerVideo ? "已选" : "选择"}</span>
-                    </label>}
+                    </label> : <button type="button" className="composer-media-choice video is-locked" disabled={Boolean(composerImages.length)} onClick={() => toast("视频上传正在内测，暂未开放；图片和正文可以先发")}>
+                      <span className="composer-media-choice-icon"><VideoIcon size={20}/></span>
+                      <span className="composer-media-choice-copy"><strong>视频 <i>Beta</i></strong><small>内测中 · 暂未开放上传</small></span>
+                      <span className="composer-media-choice-mark">敬请期待</span>
+                    </button>}
                   </div>
-                  <p className="composer-media-hint">{VIDEO_UPLOAD_BETA_ENABLED ? "图片与视频可选其一 · 视频 Beta 最大 50 MB" : "最多 9 张图片 · 自动优化上传"}</p>
+                  <p className="composer-media-hint">{VIDEO_UPLOAD_BETA_ENABLED ? "图片与视频可选其一 · 视频 Beta 最大 50 MB" : "最多 9 张图片 · 自动优化上传 · 视频内测中"}</p>
                   {composerVideo && <section className="composer-video-section" aria-label="视频 Beta" aria-busy={composerVideo.status === "compressing" || composerVideo.status === "uploading"}>
                     <div className="composer-video-card">
                       <video src={composerVideo.url || undefined} controls playsInline preload="metadata" aria-label="视频预览" />
@@ -5263,6 +5337,8 @@ export default function Community() {
                   </section>}
                 </section>
                 {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
+                {writeChannel === "ai" && <ComposerAttachments items={composerAttachments} quota={attachmentQuota} busy={attachmentBusy} error={attachmentError} onAdd={(files) => void addComposerAttachments(files)} onRemove={(path) => void removeComposerAttachment(path)}/>}
+                {writeChannel === "ai" && AI_EDITOR_FIELDS[writeContentType].length > 0 && <section className="composer-ai-resource-fields" aria-label="AI 资源信息"><div className="composer-section-heading"><span><strong>资源信息</strong><small>代码、安装命令和 Prompt 仅展示与复制，不会在服务器执行</small></span><span>{AI_EDITOR_FIELDS[writeContentType].filter((field) => field.required).length} 项必填</span></div>{AI_EDITOR_FIELDS[writeContentType].map((field) => <label key={field.key}>{field.label}{field.required && <i>必填</i>}{field.multiline ? <textarea value={aiResourceFields[field.key] || ""} maxLength={12000} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint} rows={field.key === "prompt" || field.key === "installation" || field.key === "steps" ? 6 : 3}/> : <input type={field.key.endsWith("_url") ? "url" : "text"} value={aiResourceFields[field.key] || ""} maxLength={1200} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint}/>}</label>)}</section>}
                 <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("topics")}><span># 话题</span><small>{writeTopics.length ? writeTopics.map(topic=>`#${topic}`).join(" ") : "添加话题"}</small><ChevronRight size={16}/></button>
                 <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("settings")}><span>更多发布设置</span><small>{writeTag}{writeSeriesId ? " · 已选系列" : ""}{pollQuestion.trim() ? " · 已加投票" : ""}</small><ChevronRight size={16}/></button>
                 {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
@@ -5309,7 +5385,7 @@ export default function Community() {
                 </section>
                   </div>
                 </div>
-</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
+</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={{ ...aiResourceFields, attachments: composerAttachments }} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button className="primary-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}

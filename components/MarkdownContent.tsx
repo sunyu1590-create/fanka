@@ -1,5 +1,11 @@
 import type { ElementType, ReactNode } from "react";
 
+/** 站外链接一律先过风险提示页，用户确认后再跳转。 */
+export function guardedHref(href: string) {
+  if (!/^https?:/i.test(href)) return href;
+  return `/link-warning?u=${encodeURIComponent(href)}`;
+}
+
 function safeHref(value: string) {
   const trimmed = value.trim();
   if (/[\u0000-\u001f\\]/.test(trimmed)) return null;
@@ -31,7 +37,7 @@ function inline(text: string): ReactNode[] {
     else {
       const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       const href = link && safeHref(link[2]);
-      nodes.push(href ? <a key={index} href={href} target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer noopener" : undefined}>{link?.[1]}</a> : link?.[1] || token);
+      nodes.push(href ? <a key={index} href={guardedHref(href)} rel={href.startsWith("http") ? "nofollow noopener noreferrer" : undefined}>{link?.[1]}</a> : link?.[1] || token);
     }
     cursor = index + token.length;
   }

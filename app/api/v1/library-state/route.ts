@@ -8,6 +8,8 @@ import {
   textField,
 } from "@/lib/server/api";
 import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
+import { detachExplorationAd } from "@/lib/server/detach-ad";
+import { removePostAttachments } from "@/lib/server/attachment-cleanup";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateTopicNames } from "@/lib/topic-validation";
 import { cardRarityTier } from "@/lib/progression";
@@ -501,6 +503,10 @@ export async function POST(req: NextRequest) {
       }
       const removed = await Promise.all([...grouped].map(([bucket, bucketPaths]) => db.storage.from(bucket).remove(bucketPaths)));
       dbError(removed.find((result) => result.error)?.error ?? null);
+      // 探索页广告位引用了这篇内容时，外键置空会撞上"广告开启必须有内容"的约束，
+      // 导致整条删除回滚。先解除引用再删。
+      await detachExplorationAd(db, post!.id);
+      await removePostAttachments(db, post!.id);
       const { error } = await db
         .from("posts")
         .delete()

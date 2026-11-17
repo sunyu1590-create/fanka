@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { ATTACHMENT_BUCKET, normalizeAttachments, readAttachments } from "@/lib/attachments";
+import { adminClient } from "@/lib/server/admin-client";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
 import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
 import { AI_CONTENT_TYPES, validateAiResourceData, safeResourceLink, type AiContentType } from "@/lib/ai-resources";
@@ -125,6 +127,21 @@ export async function POST(req: NextRequest) {
     if (!category.data) throw new ApiError(400, "AI 分类已停用，请重新选择");
     const resourceResult = action === "submit" ? validateAiResourceData(contentType, body.resourceData) : (body.resourceData && typeof body.resourceData === "object" && !Array.isArray(body.resourceData) ? body.resourceData as Record<string, unknown> : {});
     if ("error" in resourceResult && typeof resourceResult.error === "string") throw new ApiError(400, resourceResult.error);
+    // 附件：最多 3 个、单文件 30 MB、合计 50 MB。未显式提交时沿用已保存的附件。
+    let resourceData: Record<string, unknown> = { ...resourceResult };
+    if (body.attachments !== undefined) {
+      const parsed = normalizeAttachments(body.attachments, user!.id);
+      if ("error" in parsed) throw new ApiError(400, parsed.error);
+      if (action === "submit" && parsed.items.length) {
+        // 确认文件真的落盘了，避免把不存在的附件写进已发布内容。
+        // 附件桶没有对普通用户开 RLS，必须用 service role 查询。
+        const admin = adminClient();
+        const { data: stored } = await admin.storage.from(ATTACHMENT_BUCKET).list(parsed.items[0].path.split("/")[0], { limit: 1000 });
+        const names = new Set((stored || []).map((item) => `${parsed.items[0].path.split("/")[0]}/${item.name}`));
+        if (parsed.items.some((item) => !names.has(item.path))) throw new ApiError(409, "附件尚未上传完成，请稍后重试");
+      }
+      resourceData = { ...resourceData, attachments: parsed.items };
+    }
     if (Array.isArray(body.mediaPaths) && body.mediaPaths.some((path) => typeof path !== "string")) throw new ApiError(400, "媒体列表格式无效");
     const mediaPaths = Array.isArray(body.mediaPaths) ? [...new Set(body.mediaPaths.filter((path): path is string => typeof path === "string"))] : [];
     const split = splitPostMediaPaths(mediaPaths);
@@ -141,20 +158,24 @@ export async function POST(req: NextRequest) {
       dbError(topicRows.error);
       if ((topicRows.data || []).length !== topicNames.length) throw new ApiError(400, "AI 标签无效或尚未通过审核");
     }
-    let current: { id: string; status: string } | null = null;
+    let current: { id: string; status: string; resource_data?: unknown } | null = null;
     if (body.id) {
       const id = uuid(body.id);
-      const result = await db.from("posts").select("id,status").eq("id", id).eq("author_id", user!.id).eq("channel", "ai").maybeSingle();
+      const result = await db.from("posts").select("id,status,resource_data").eq("id", id).eq("author_id", user!.id).eq("channel", "ai").maybeSingle();
       dbError(result.error);
       current = result.data;
       if (!current) throw new ApiError(404, "AI 内容不存在");
+    }
+    if (body.attachments === undefined && current) {
+      const kept = readAttachments(current.resource_data);
+      if (kept.length) resourceData = { ...resourceData, attachments: kept };
     }
     if (current?.status === "published") {
       if (action !== "submit") throw new ApiError(409, "已发布内容的修改需要提交审核");
       const oldMedia = Array.isArray(body.mediaPaths) ? mediaPaths : await db.from("post_media").select("storage_path").eq("post_id", current.id).order("sort_order").then((result) => {
         dbError(result.error); return (result.data || []).map((item) => item.storage_path);
       });
-      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: null, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData: resourceResult, usageScenarios };
+      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: null, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData, usageScenarios };
       const revision = await db.from("post_revisions").upsert({ post_id: current.id, author_id: user!.id, payload, status: "pending", review_note: null, reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString() }, { onConflict: "post_id" }).select("status,review_note").single();
       dbError(revision.error);
       if (!revision.data) throw new ApiError(500, "修改已提交但审核记录读取失败，请刷新后重试");
@@ -164,7 +185,7 @@ export async function POST(req: NextRequest) {
       return { ...post, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload } };
     }
     if (current && current.status !== "draft" && current.status !== "pending_review") throw new ApiError(409, "此 AI 內容目前不可編輯");
-    const values = { channel: "ai", content_type: contentType, resource_data: resourceResult, usage_scenarios: usageScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString() };
+    const values = { channel: "ai", content_type: contentType, resource_data: resourceData, usage_scenarios: usageScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString() };
     const saved = current
       ? await db.from("posts").update(values).eq("id", current.id).eq("author_id", user!.id).select(libraryFields).single()
       : await db.from("posts").insert({ ...values, author_id: user!.id, is_demo: false }).select(libraryFields).single();

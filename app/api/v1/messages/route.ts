@@ -4,6 +4,10 @@ import { ApiError, context, jsonBody, respond, uuid } from "@/lib/server/api";
 
 type Conversation = { id: string; user_a: string; user_b: string; created_at: string };
 
+/** 撤回窗口：3 分钟。多给 5 秒容差，抵掉网络往返与客户端倒计时误差。 */
+const RECALL_WINDOW_MS = 180_000;
+const RECALL_GRACE_MS = 5_000;
+
 function orderedPair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];
 }
@@ -165,23 +169,29 @@ export async function POST(req: NextRequest) {
       return row;
     }
 
-    if (action === "delete") {
+    // 撤回：双方同时消失，物理删除。只允许 3 分钟内的自己消息。
+    // `delete` 保留为别名，旧版客户端不改也能继续用，但同样受时间窗约束。
+    if (action === "recall" || action === "delete") {
       const messageId = uuid(body.message, "消息");
       const { data: message } = await db
         .from("dm_messages")
-        .select("id,conversation_id,sender_id")
+        .select("id,conversation_id,sender_id,created_at")
         .eq("id", messageId)
         .maybeSingle();
       if (!message || message.conversation_id !== conversationId) {
         throw new ApiError(404, "消息不存在");
       }
       if (message.sender_id !== me) {
-        throw new ApiError(403, "只能删除自己发送的消息");
+        throw new ApiError(403, "只能撤回自己发送的消息");
       }
-      // 双方同时删除：本来就没有"仅删除本地"的语义，直接物理删除。
+      // 以服务端记录的发送时间为准，客户端时间不可信。
+      const age = Date.now() - new Date(message.created_at as string).getTime();
+      if (age > RECALL_WINDOW_MS + RECALL_GRACE_MS) {
+        throw new ApiError(403, "超过 3 分钟，这条消息已经无法撤回");
+      }
       const { error } = await db.from("dm_messages").delete().eq("id", messageId);
-      if (error) throw new ApiError(503, "消息删除失败，请稍后重试");
-      return { deleted: messageId };
+      if (error) throw new ApiError(503, "撤回失败，请稍后重试");
+      return { recalled: messageId, deleted: messageId, window_seconds: RECALL_WINDOW_MS / 1000 };
     }
 
     if (action === "read") {

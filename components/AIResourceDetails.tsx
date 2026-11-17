@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, ExternalLink, Flag, History, Link2 } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, Flag, History, Link2 } from "lucide-react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { safeResourceLink } from "@/lib/ai-resources";
+import { formatAttachmentSize, readAttachments } from "@/lib/attachments";
 import ChoiceSelect from "./ChoiceSelect";
 
 type Version = { id: string; version_label: string; changelog: string; created_at: string };
@@ -23,6 +24,7 @@ export default function AIResourceDetails({ preview = false, postId, contentType
   const [feedback, setFeedback] = useState("");
   const [sending, setSending] = useState(false);
   const [copiedKey, setCopiedKey] = useState("");
+  const attachments = useMemo(() => readAttachments(resourceData), [resourceData]);
   const fields = useMemo(() => Object.entries(resourceData || {}).filter(([, value]) => (typeof value === "string" && value.trim()) || (Array.isArray(value) && value.length)), [resourceData]);
 
   useEffect(() => {
@@ -49,9 +51,26 @@ export default function AIResourceDetails({ preview = false, postId, contentType
     finally { setSending(false); }
   };
 
-  if (contentType === "knowledge_article" && fields.length === 0) return null;
+  const downloadAttachment = async (path: string, name: string) => {
+    try {
+      const result = await cloudRequest(`/api/v1/attachments?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`) as { url?: string } | null;
+      if (!result?.url) throw new Error();
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch { onNotice("附件下载链接获取失败，请稍后重试"); }
+  };
+
+  if (contentType === "knowledge_article" && fields.length === 0 && attachments.length === 0) return null;
   return <section className="ai-resource-detail" aria-label="AI 资源信息">
     <div className="ai-resource-detail-heading"><div><small>HEIKA / AI RESOURCE</small><h2>资源信息</h2></div><span>{contentType.replaceAll("_", " ")}</span></div>
+    {!!attachments.length && <div className="ai-resource-attachments">
+      <div className="ai-resource-attachments-head"><strong>附件</strong><span>{attachments.length} 个 · 由作者上传</span></div>
+      <ul>{attachments.map((item) => <li key={item.path}>
+        <span className="ai-resource-attachment-icon" aria-hidden="true">{item.name.split(".").pop()?.toUpperCase().slice(0, 4)}</span>
+        <span className="ai-resource-attachment-copy"><strong title={item.name}>{item.name}</strong><small>{formatAttachmentSize(item.size)}</small></span>
+        <button type="button" onClick={() => void downloadAttachment(item.path, item.name)}><Download size={14}/> 下载</button>
+      </li>)}</ul>
+      <p className="ai-resource-attachment-note">附件由作者上传，下载与使用请自行判断安全性，黑卡不对附件内容负责。</p>
+    </div>}
     <dl className="ai-resource-detail-fields">{fields.map(([key, raw]) => {
       const values = Array.isArray(raw) ? raw.filter((value): value is string => typeof value === "string") : [String(raw)];
       const text = values.join("\n");

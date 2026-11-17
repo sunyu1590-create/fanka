@@ -11,6 +11,9 @@ import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
 type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
+/** 撤回窗口（秒），与服务端 180 秒保持一致。 */
+const RECALL_SECONDS = 180;
+
 type Message = {
   id: string;
   conversation_id: string;
@@ -80,12 +83,19 @@ export default function Messages({
     onConversationChange?.(room !== null);
   }, [onConversationChange]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const mediaRequests = useRef(new Set<string>());
   const refreshing = useRef(false);
   const refreshQueued = useRef(false);
   const [media, setMedia] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!selectedMessage) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [selectedMessage]);
   useEffect(() => {
     if (authView !== "forgot" && authView !== "verify-otp") return;
     const updateCooldown = () => {
@@ -329,7 +339,9 @@ export default function Messages({
     window.addEventListener("online", recover);
     document.addEventListener("visibilitychange", recover);
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState !== "visible") return;
+      void refresh();
+      if (activeRef.current) void load(activeRef.current);
     }, 15000);
     return () => {
       void db.removeChannel(channel);
@@ -719,43 +731,54 @@ export default function Messages({
                   >
                     复制文字
                   </button>
-                  {selectedMessage.sender_id === user.id && (
-                    <button
-                      className={confirmDelete ? "danger-button" : undefined}
-                      onClick={async () => {
-                        if (!confirmDelete) {
-                          setConfirmDelete(true);
-                          return;
-                        }
-                        const target = selectedMessage;
-                        setConfirmDelete(false);
-                        setSelectedMessage(null);
-                        // 先乐观移除，失败再整段刷新回滚。
-                        setMessages((old) => old.filter((m) => m.id !== target.id));
-                        try {
-                          const response = await fetch("/api/v1/messages", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              action: "delete",
-                              conversation: active.id,
-                              message: target.id,
-                            }),
-                          });
-                          if (!response.ok) {
-                            const payload = await response.json().catch(() => null);
-                            setError(payload?.error || "删除失败，请稍后重试");
-                            void refresh();
+                  {selectedMessage.sender_id === user.id && (() => {
+                    const sentAt = new Date(selectedMessage.created_at).getTime();
+                    // 服务端窗口 180 秒，这里留 5 秒余量，避免"显示还剩 1 秒却失败"。
+                    const left = Math.max(0, sentAt + (RECALL_SECONDS - 5) * 1000 - now);
+                    if (left <= 0) {
+                      return <button disabled aria-disabled="true">已超过 3 分钟，无法撤回</button>;
+                    }
+                    const clock = `${String(Math.floor(left / 1000 / 60)).padStart(2, "0")}:${String(Math.floor((left / 1000) % 60)).padStart(2, "0")}`;
+                    return (
+                      <button
+                        className={confirmDelete ? "danger-button" : undefined}
+                        onClick={async () => {
+                          if (!confirmDelete) {
+                            setConfirmDelete(true);
+                            return;
                           }
-                        } catch {
-                          setError("网络异常，消息未删除");
-                          void refresh();
-                        }
-                      }}
-                    >
-                      {confirmDelete ? "确认删除（双方都会消失）" : "删除消息"}
-                    </button>
-                  )}
+                          const target = selectedMessage;
+                          setConfirmDelete(false);
+                          setSelectedMessage(null);
+                          // 先乐观移除，失败再整段刷新回滚。
+                          setMessages((old) => old.filter((m) => m.id !== target.id));
+                          try {
+                            const response = await fetch("/api/v1/messages", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                action: "recall",
+                                conversation: active.id,
+                                message: target.id,
+                              }),
+                            });
+                            if (!response.ok) {
+                              const payload = await response.json().catch(() => null);
+                              setError(payload?.error || "撤回失败，请稍后重试");
+                              void refresh();
+                              if (active) void load(active);
+                            }
+                          } catch {
+                            setError("网络异常，消息未撤回");
+                            void refresh();
+                            if (active) void load(active);
+                          }
+                        }}
+                      >
+                        {confirmDelete ? "确认撤回（对话双方都看不到）" : `撤回消息 · ${clock}`}
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={() => {
                       void report(selectedMessage);

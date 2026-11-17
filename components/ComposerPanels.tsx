@@ -2,7 +2,9 @@
 
 import { memo, useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ImagePlus } from "lucide-react";
+import { ArrowLeft, ImagePlus, Paperclip, X } from "lucide-react";
+import { ATTACHMENT_ACCEPT, MAX_ATTACHMENT_FILES, formatAttachmentSize, type PostAttachment } from "@/lib/attachments";
+import { MarkdownContent } from "./MarkdownContent";
 
 /** Shared sheet keeps the editor mounted, restores focus and traps keyboard navigation. */
 export function ComposerSheet({ title, children, onClose, full = false }: { title: string; children: ReactNode; onClose: () => void; full?: boolean }) {
@@ -31,22 +33,37 @@ export function ComposerSheet({ title, children, onClose, full = false }: { titl
   return createPortal(<div className={`composer-sheet-backdrop${full ? " is-full" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}><div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={label} className="composer-sheet"><header><button type="button" aria-label={`返回编辑，当前：${title}`} onClick={onClose}><ArrowLeft size={19}/></button><h2 id={label}>{title}</h2><button type="button" onClick={onClose}>完成</button></header><div className="composer-sheet-scroll">{children}</div></div></div>, document.body);
 }
 
+const MD_TOOLS: [string, string, string][] = [
+  ["粗体", "**", "**"],
+  ["标题", "\n## ", ""],
+  ["引用", "\n> ", ""],
+  ["列表", "\n- ", ""],
+  ["编号", "\n1. ", ""],
+  ["链接", "[", "](https://)"],
+  ["代码", "`", "`"],
+  ["分割线", "\n\n---\n\n", ""]
+];
+
 export const ComposerTextEditor = memo(function ComposerTextEditor({ title, body, error, onTitle, onBody }: { title: string; body: string; error: "" | "title" | "body"; onTitle: (value: string) => void; onBody: (value: string) => void }) {
   const titleRef = useRef<HTMLTextAreaElement>(null), bodyRef = useRef<HTMLTextAreaElement>(null);
-  const [focused, setFocused] = useState(false);
-  useLayoutEffect(() => { for (const element of [titleRef.current, bodyRef.current]) if (element) { element.style.height = "auto"; element.style.height = `${element.scrollHeight}px`; } }, [title, body]);
+  const [mode, setMode] = useState<"write" | "preview">("write");
+  useLayoutEffect(() => {
+    if (mode !== "write") return;
+    for (const element of [titleRef.current, bodyRef.current]) if (element) { element.style.height = "auto"; element.style.height = `${element.scrollHeight}px`; }
+  }, [title, body, mode]);
   useEffect(() => {
-    let width=0;
+    let width = 0;
     const resize = () => {
-      const nextWidth=titleRef.current?.clientWidth || 0;
-      if(nextWidth===width)return; width=nextWidth;
-      for(const element of [titleRef.current,bodyRef.current]) if(element){element.style.height="auto";element.style.height=`${element.scrollHeight}px`;}
+      const nextWidth = titleRef.current?.clientWidth || 0;
+      if (nextWidth === width) return; width = nextWidth;
+      for (const element of [titleRef.current, bodyRef.current]) if (element) { element.style.height = "auto"; element.style.height = `${element.scrollHeight}px`; }
     };
-    const observer=typeof ResizeObserver!=="undefined"?new ResizeObserver(resize):null;
-    if(titleRef.current)observer?.observe(titleRef.current);
-    window.addEventListener("resize",resize);resize();
-    return()=>{observer?.disconnect();window.removeEventListener("resize",resize);};
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
+    if (titleRef.current) observer?.observe(titleRef.current);
+    window.addEventListener("resize", resize); resize();
+    return () => { observer?.disconnect(); window.removeEventListener("resize", resize); };
   }, []);
+
   const insert = (before: string, after = "") => {
     const input = bodyRef.current;
     if (!input) return;
@@ -55,14 +72,63 @@ export const ComposerTextEditor = memo(function ComposerTextEditor({ title, body
     const next = `${body.slice(0, start)}${before}${selected}${after}${body.slice(end)}`;
     if (next.length > 5000) return;
     onBody(next);
-    requestAnimationFrame(() => { input.focus(); input.setSelectionRange(start + before.length, end + before.length); });
+    requestAnimationFrame(() => { input.focus(); input.setSelectionRange(start + before.length, start + before.length + selected.length); });
   };
+
+  /** 粘贴一个纯链接时自动变成 Markdown 链接，省得手动补括号。 */
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = event.clipboardData.getData("text/plain").trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(text)) return;
+    const input = bodyRef.current;
+    if (!input) return;
+    event.preventDefault();
+    let label = text;
+    try { label = new URL(text).hostname.replace(/^www\./, ""); } catch { /* 保持原始地址 */ }
+    const start = input.selectionStart, end = input.selectionEnd;
+    const token = `[${label}](${text})`;
+    const next = `${body.slice(0, start)}${token}${body.slice(end)}`;
+    if (next.length > 5000) return;
+    onBody(next);
+    requestAnimationFrame(() => { input.focus(); const caret = start + token.length; input.setSelectionRange(caret, caret); });
+  };
+
+  const bodyWords = body.trim().replace(/\s+/g, "").length;
+  const preview = body.trim();
+
   return <section className="composer-writing" aria-label="创作编辑区">
-    <label className="composer-title-field"><span className="sr-only">标题</span><textarea ref={titleRef} value={title} onChange={(event) => onTitle(event.target.value.replace(/\n/g, ""))} maxLength={80} rows={1} placeholder="为内容写一个标题" aria-label="标题" aria-invalid={error === "title"}/><small className="composer-field-count">{title.length}/80</small></label>
+    <label className="composer-title-field">
+      <span className="sr-only">标题</span>
+      <textarea ref={titleRef} value={title} onChange={(event) => onTitle(event.target.value.replace(/\n/g, ""))} maxLength={80} rows={1} placeholder="为内容写一个标题" aria-label="标题" aria-invalid={error === "title"} />
+      <small className="composer-field-count">{title.length}/80</small>
+    </label>
     {error === "title" && <p role="alert" className="composer-field-error">请填写标题。</p>}
-    <label className="composer-body-field"><span className="sr-only">正文</span><textarea ref={bodyRef} value={body} onChange={(event) => onBody(event.target.value)} maxLength={5000} rows={6} placeholder="写下你想分享的内容…" aria-label="正文" aria-invalid={error === "body"} onFocus={() => setFocused(true)} onBlur={(event) => { if (!(event.relatedTarget as HTMLElement | null)?.closest(".composer-markdown-tools")) setFocused(false); }}/><small className="composer-field-count">{body.length}/5000 · Markdown</small></label>
+
+    <div className="composer-body-shell">
+      <div className="composer-body-head">
+        <div className="composer-mode-switch" role="tablist" aria-label="正文编辑模式">
+          <button type="button" role="tab" aria-selected={mode === "write"} className={mode === "write" ? "selected" : ""} onClick={() => setMode("write")}>写作</button>
+          <button type="button" role="tab" aria-selected={mode === "preview"} className={mode === "preview" ? "selected" : ""} onClick={() => setMode("preview")}>预览</button>
+        </div>
+        <span className="composer-body-stat">{bodyWords} 字</span>
+      </div>
+
+      {mode === "write" ? <>
+        <div className="composer-md-toolbar" role="toolbar" aria-label="Markdown 格式工具" onMouseDown={(event) => event.preventDefault()}>
+          {MD_TOOLS.map(([label, before, after]) => <button type="button" key={label} onClick={() => insert(before, after)} tabIndex={-1}>{label}</button>)}
+        </div>
+        <label className="composer-body-field">
+          <span className="sr-only">正文</span>
+          <textarea ref={bodyRef} value={body} onChange={(event) => onBody(event.target.value)} onPaste={handlePaste} maxLength={5000} rows={8} placeholder={"写下你想分享的内容…\n\n支持 Markdown：**加粗**、## 小标题、> 引用、- 列表、[链接](https://)"} aria-label="正文" aria-invalid={error === "body"} />
+        </label>
+      </> : <div className="composer-body-preview">
+        {preview ? <MarkdownContent source={preview} /> : <p className="composer-body-empty">还没有正文，回到「写作」开始输入。</p>}
+      </div>}
+    </div>
     {error === "body" && <p role="alert" className="composer-field-error">请填写正文。</p>}
-    {focused && <div className="composer-markdown-tools" role="toolbar" aria-label="Markdown 工具栏" onMouseDown={(event) => event.preventDefault()}>{[["粗体", "**", "**"], ["标题", "\n## ", ""], ["引用", "\n> ", ""], ["列表", "\n- ", ""], ["链接", "[", "](https://)"]].map(([label,before,after]) => <button type="button" key={label} onClick={() => insert(before,after)}>{label}</button>)}</div>}
+    <p className="composer-body-foot">
+      <span>{body.length}/5000</span>
+      <span>站外链接会先跳到风险提示页</span>
+    </p>
   </section>;
 });
 
@@ -112,4 +178,41 @@ export const ComposerMediaStrip = memo(function ComposerMediaStrip({ images, cov
     </figure>)}
     {images.length<9&&<label className="composer-media-add"><ImagePlus size={23}/><span>添加图片</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={event=>{onAdd(event.target.files);event.currentTarget.value="";}}/></label>}
   </div>;
+});
+
+/** AI 内容的附件区：最多 3 个、单文件 30 MB、合计 50 MB，名额全服每天 20 个。 */
+export const ComposerAttachments = memo(function ComposerAttachments({ items, quota, busy, error, onAdd, onRemove }: {
+  items: PostAttachment[];
+  quota: { used: number; limit: number; remaining: number } | null;
+  busy: boolean;
+  error: string;
+  onAdd: (files: FileList | null) => void;
+  onRemove: (path: string) => void;
+}) {
+  const total = items.reduce((sum, item) => sum + item.size, 0);
+  return <section className="composer-attachments" aria-label="附件">
+    <div className="composer-section-heading">
+      <span><strong>附件</strong><small>安装包、压缩包、PDF、文档 · 最多 {MAX_ATTACHMENT_FILES} 个，单个 30 MB，合计 50 MB</small></span>
+      <span>{quota ? `今日剩余 ${quota.remaining}/${quota.limit}` : "名额查询中"}</span>
+    </div>
+    {items.length > 0 && <ul className="composer-attachment-list">
+      {items.map((item) => <li key={item.path}>
+        <span className="composer-attachment-icon" aria-hidden="true"><Paperclip size={15}/></span>
+        <span className="composer-attachment-copy">
+          <strong title={item.name}>{item.name}</strong>
+          <small>{formatAttachmentSize(item.size)} · {item.name.split(".").pop()?.toUpperCase()}</small>
+        </span>
+        <button type="button" aria-label={`移除 ${item.name}`} disabled={busy} onClick={() => onRemove(item.path)}><X size={15}/></button>
+      </li>)}
+    </ul>}
+    <div className="composer-attachment-foot">
+      {items.length < MAX_ATTACHMENT_FILES ? <label className={`composer-attachment-add${busy ? " is-busy" : ""}`}>
+        <Paperclip size={15}/>
+        <span>{busy ? "上传中…" : "添加附件"}</span>
+        <input type="file" accept={ATTACHMENT_ACCEPT} disabled={busy} onChange={(event) => { onAdd(event.target.files); event.currentTarget.value = ""; }} />
+      </label> : <span className="composer-attachment-limit">已达 {MAX_ATTACHMENT_FILES} 个上限</span>}
+      {items.length > 0 && <span className={`composer-attachment-total${total > 50 * 1024 * 1024 ? " is-over" : ""}`}>{formatAttachmentSize(total)} / 50 MB</span>}
+    </div>
+    {error && <p role="alert" className="composer-field-error">{error}</p>}
+  </section>;
 });
