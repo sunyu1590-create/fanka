@@ -52,6 +52,9 @@ export default function Messages({
     [otp, setOtp] = useState(""),
     [recoveryCode, setRecoveryCode] = useState(""),
     [error, setError] = useState(""),
+    [confirmDelete, setConfirmDelete] = useState(false),
+    [newRecoveryCodes, setNewRecoveryCodes] = useState<string[]>([]),
+    [codesSaved, setCodesSaved] = useState(false),
     [authMessage, setAuthMessage] = useState(""),
     [resendSeconds, setResendSeconds] = useState(0),
     [authPurpose, setAuthPurpose] = useState<"signup" | "recovery">("signup"),
@@ -78,6 +81,7 @@ export default function Messages({
   }, [onConversationChange]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
   const mediaRequests = useRef(new Set<string>());
   const refreshing = useRef(false);
   const refreshQueued = useRef(false);
@@ -349,7 +353,28 @@ export default function Messages({
         });
         if (error) throw error;
         if (!data.session) { setAuthView("confirm"); setAuthMessage("确认邮件已发送。请前往邮箱完成验证，再回来登录。"); }
-        else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
+        else {
+          // 注册成功立刻生成恢复码：找回密码目前只有这一种方式，
+          // 让用户"以后去设置里生成"基本等于永远不会生成。
+          let codes: string[] = [];
+          try {
+            const response = await fetch("/api/v1/auth/recovery-codes", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${data.session.access_token}` },
+            });
+            const payload = await response.json();
+            codes = Array.isArray(payload?.data?.codes) ? payload.data.codes.filter((code: unknown) => typeof code === "string" && code) : [];
+          } catch {
+            codes = [];
+          }
+          setAuthView("login");
+          if (codes.length) {
+            setCodesSaved(false);
+            setNewRecoveryCodes(codes);
+          } else {
+            setAuthMessage("账号已创建，欢迎来到黑卡。");
+          }
+        }
       } else if (authView === "forgot") {
         if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
         const { error } = await db.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: authRedirectUrl("/?auth=reset") } });
@@ -602,6 +627,47 @@ export default function Messages({
         return (inboxFilter !== "unread" || !!unread[room.id]) && (!query.trim() || `${names[peerId]?.nickname || ""} ${preview[room.id]?.body || ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
       }) && <div className="messages-empty compact"><strong>{inboxFilter === "unread" ? "没有未读会话" : "没有匹配的会话"}</strong><span>{inboxFilter === "unread" ? "新消息会出现在这里。" : "试试昵称或最近消息中的关键词。"}</span></div>}
       </div>
+      {newRecoveryCodes.length > 0 && (
+        <div className="modal-backdrop">
+          <div className="modal recovery-codes-modal">
+            <h2>保存你的恢复码</h2>
+            <p className="recovery-codes-hint">
+              这是目前唯一能找回密码的方式。忘记密码时只有它能救回账号，我们无法代为重置。
+            </p>
+            <ol className="recovery-codes-list">
+              {newRecoveryCodes.map((code) => (
+                <li key={code}>{code}</li>
+              ))}
+            </ol>
+            <p className="recovery-codes-hint">每个码只能使用一次。请截图或复制保存，关闭后无法再次查看。</p>
+            <button
+              className="soft-button"
+              onClick={() => void navigator.clipboard.writeText(newRecoveryCodes.join("\n"))}
+            >
+              复制全部
+            </button>
+            <label className="recovery-codes-confirm">
+              <input
+                type="checkbox"
+                checked={codesSaved}
+                onChange={(event) => setCodesSaved(event.target.checked)}
+              />
+              我已妥善保存，知道丢失后无法找回
+            </label>
+            <button
+              className="primary-button"
+              disabled={!codesSaved}
+              onClick={() => {
+                setNewRecoveryCodes([]);
+                setCodesSaved(false);
+                setAuthMessage("账号已创建，欢迎来到黑卡。");
+              }}
+            >
+              进入黑卡
+            </button>
+          </div>
+        </div>
+      )}
       {profile && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -655,20 +721,39 @@ export default function Messages({
                   </button>
                   {selectedMessage.sender_id === user.id && (
                     <button
+                      className={confirmDelete ? "danger-button" : undefined}
                       onClick={async () => {
-                        const { error } = await db!
-                          .from("dm_messages")
-                          .delete()
-                          .eq("id", selectedMessage.id);
-                        if (error) setError(error.message);
-                        else
-                          setMessages((old) =>
-                            old.filter((m) => m.id !== selectedMessage.id),
-                          );
+                        if (!confirmDelete) {
+                          setConfirmDelete(true);
+                          return;
+                        }
+                        const target = selectedMessage;
+                        setConfirmDelete(false);
                         setSelectedMessage(null);
+                        // 先乐观移除，失败再整段刷新回滚。
+                        setMessages((old) => old.filter((m) => m.id !== target.id));
+                        try {
+                          const response = await fetch("/api/v1/messages", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              action: "delete",
+                              conversation: active.id,
+                              message: target.id,
+                            }),
+                          });
+                          if (!response.ok) {
+                            const payload = await response.json().catch(() => null);
+                            setError(payload?.error || "删除失败，请稍后重试");
+                            void refresh();
+                          }
+                        } catch {
+                          setError("网络异常，消息未删除");
+                          void refresh();
+                        }
                       }}
                     >
-                      删除自己的消息
+                      {confirmDelete ? "确认删除（双方都会消失）" : "删除消息"}
                     </button>
                   )}
                   <button
@@ -679,7 +764,7 @@ export default function Messages({
                   >
                     举报
                   </button>
-                  <button onClick={() => setSelectedMessage(null)}>取消</button>
+                  <button onClick={() => { setConfirmDelete(false); setSelectedMessage(null); }}>取消</button>
                 </div>
               </div>
             </div>
@@ -742,17 +827,34 @@ export default function Messages({
                   <small className="message-time">{new Date(m.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</small>
                   <div
                     className="message-bubble"
-                    onPointerDown={() => {
-                      pressTimer.current = setTimeout(() => setSelectedMessage(m), 550);
+                    onPointerDown={(event) => {
+                      pressOrigin.current = { x: event.clientX, y: event.clientY };
+                      if (pressTimer.current) clearTimeout(pressTimer.current);
+                      pressTimer.current = setTimeout(() => {
+                        pressTimer.current = null;
+                        setSelectedMessage(m);
+                        setConfirmDelete(false);
+                      }, 420);
                     }}
                     onPointerUp={() => {
+                      pressOrigin.current = null;
                       if (pressTimer.current) clearTimeout(pressTimer.current);
+                      pressTimer.current = null;
                     }}
                     onPointerCancel={() => {
+                      pressOrigin.current = null;
                       if (pressTimer.current) clearTimeout(pressTimer.current);
+                      pressTimer.current = null;
                     }}
-                    onPointerMove={() => {
-                      if (pressTimer.current) clearTimeout(pressTimer.current);
+                    onPointerMove={(event) => {
+                      // 手指轻抖不该取消长按：只有位移超过 10px 才算在滚动。
+                      const origin = pressOrigin.current;
+                      if (!origin) return;
+                      if (Math.abs(event.clientX - origin.x) > 10 || Math.abs(event.clientY - origin.y) > 10) {
+                        pressOrigin.current = null;
+                        if (pressTimer.current) clearTimeout(pressTimer.current);
+                        pressTimer.current = null;
+                      }
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();

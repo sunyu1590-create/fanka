@@ -7,6 +7,17 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.43.0",
+    date: "2026.11.17",
+    notes: [
+      { category: "新功能", text: "私信可以删除了：长按自己发出的气泡，确认后双方都会看不到这条消息。" },
+      { category: "新功能", text: "注册成功后强制生成账号恢复码，必须先确认保存才能进入——这是目前唯一能找回密码的方式。" },
+      { category: "体验优化", text: "探索页卡片的标签与稀有度角标不再对背景做实时模糊，顶栏和底栏保留一层基础毛玻璃，滚动明显更跟手。" },
+      { category: "体验优化", text: "卡片封面比例改为渲染前就确定，图片加载完成后瀑布流不再整体重排，翻页时画面不再跳动。" },
+      { category: "问题修复", text: "修正移动端长按消息几乎触发不了的问题：轻微手抖不再取消长按，并且删除增加二次确认与失败提示。" },
+    ],
+  },
+  {
     version: "2.42.0",
     date: "2026.11.16",
     notes: [

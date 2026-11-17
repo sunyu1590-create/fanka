@@ -165,6 +165,25 @@ export async function POST(req: NextRequest) {
       return row;
     }
 
+    if (action === "delete") {
+      const messageId = uuid(body.message, "消息");
+      const { data: message } = await db
+        .from("dm_messages")
+        .select("id,conversation_id,sender_id")
+        .eq("id", messageId)
+        .maybeSingle();
+      if (!message || message.conversation_id !== conversationId) {
+        throw new ApiError(404, "消息不存在");
+      }
+      if (message.sender_id !== me) {
+        throw new ApiError(403, "只能删除自己发送的消息");
+      }
+      // 双方同时删除：本来就没有"仅删除本地"的语义，直接物理删除。
+      const { error } = await db.from("dm_messages").delete().eq("id", messageId);
+      if (error) throw new ApiError(503, "消息删除失败，请稍后重试");
+      return { deleted: messageId };
+    }
+
     if (action === "read") {
       await db
         .from("dm_reads")

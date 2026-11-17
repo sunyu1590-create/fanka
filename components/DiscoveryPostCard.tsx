@@ -28,8 +28,18 @@ export default function DiscoveryPostCard({
 }: DiscoveryPostCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [imageRatio, setImageRatio] = useState<string | null>(null);
   const coverVideo = post.video || post.videos?.[0];
+  // 封面比例在渲染前就定好，取三档错落值，由 id 稳定散列决定。
+  // 之前是等图片 onLoad 再写 aspectRatio，瀑布流会在每张图加载完成时整体重排一次，
+  // 这正是探索页滚动时"跳一下"和掉帧的来源。
+  const coverRatio = (() => {
+    const key = String(post.id);
+    let seed = 0;
+    for (let index = 0; index < key.length; index += 1) {
+      seed = (seed * 31 + key.charCodeAt(index)) % 9973;
+    }
+    return [0.78, 0.88, 1.02][seed % 3];
+  })();
   const source = feedImageSource(post.thumbnailImages?.[0] || post.image || post.images?.[0]);
   const retrySource = source
     ? source.startsWith("data:")
@@ -39,7 +49,10 @@ export default function DiscoveryPostCard({
 
   return (
     <article className="post-card editorial-post discover-content-card heika-discovery-card" data-discover-id={post.id}>
-      <div className={`discovery-cover${source && imageFailed ? " is-failed" : ""}${!source && !coverVideo ? " is-text-only" : ""}`} style={imageRatio ? { aspectRatio: imageRatio } : undefined}>
+      <div
+        className={`discovery-cover${source && imageFailed ? " is-failed" : ""}${!source && !coverVideo ? " is-text-only" : ""}`}
+        style={source || coverVideo ? { aspectRatio: String(coverRatio) } : undefined}
+      >
         <button
           type="button"
           className={`discovery-cover-open${!source ? " discovery-text-cover" : ""}`}
@@ -55,11 +68,7 @@ export default function DiscoveryPostCard({
               loading="lazy"
               decoding="async"
               fetchPriority="low"
-              onLoad={(event) => {
-                const image = event.currentTarget;
-                if (image.naturalWidth > 0 && image.naturalHeight > 0) setImageRatio(`${image.naturalWidth} / ${image.naturalHeight}`);
-                setImageFailed(false);
-              }}
+              onLoad={() => setImageFailed(false)}
               onError={() => setImageFailed(true)}
             />
           )}
