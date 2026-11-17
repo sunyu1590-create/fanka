@@ -44,8 +44,12 @@ class AccountViewModel @Inject constructor(
     }
 
     fun signIn(email: String, password: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        // 连点两次会并发发出两个登录请求：第一个成功、第二个用同一口令拿到 400，
+        // 后到的失败把界面改成"密码不正确"，用户看到的就是"明明对了却报错"。
+        if (mutableState.value.busy) return@launch
+        if (email.isBlank() || password.isEmpty()) return@launch showError("请输入邮箱和密码")
         perform({ auth.signIn(email, password) }) { session ->
-            mutableState.value = AccountUiState(session = session, loading = false, message = "登录成功")
+            mutableState.update { it.copy(session = session, loading = false, busy = false, error = null, message = "登录成功") }
         }
     }
 
@@ -109,7 +113,12 @@ class AccountViewModel @Inject constructor(
             onSuccess(action())
             mutableState.update { it.copy(busy = false) }
         } catch (error: Exception) {
-            mutableState.update { it.copy(busy = false, error = error.message ?: "操作失败，请重试") }
+            val message = error.message?.takeIf { it.isNotBlank() } ?: when (error) {
+                is java.net.SocketTimeoutException -> "网络超时，请稍后重试"
+                is java.io.IOException -> "网络不稳定，请检查网络后重试"
+                else -> "操作失败，请重试"
+            }
+            mutableState.update { it.copy(busy = false, error = message) }
         }
     }
 

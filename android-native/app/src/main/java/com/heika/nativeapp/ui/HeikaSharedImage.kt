@@ -1,13 +1,9 @@
 package com.heika.nativeapp.ui
 
 import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.SharedTransitionScope.ResizeMode.Companion.RemeasureToBounds
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -56,35 +52,40 @@ fun Modifier.heikaSharedPostImage(
 }
 
 /**
- * 卡片标题 -> 详情标题。
+ * 卡片上的标签 / 评分 / 作者名 -> 详情页对应文字。
  *
- * 用 sharedBounds 而不是 sharedElement：两端字号(15/16sp -> 22sp)、行数、可用宽度都不同，
- * 等比缩放会把字拉变形。RemeasureToBounds 让文字按目标宽度重新排版，
- * 位置连续、字号一次性落到目标值，读起来才像"标题被展开"。
+ * 这几类元素两端**字号几乎一致**（9–13sp），内容也完全相同，所以用 sharedElement 做等比位移即可，
+ * 不需要 sharedBounds 重新排版——标题那种 15sp 长到 22sp 的重排会在中途出现字号跳变，
+ * 这也是标题共享被撤掉的原因。
+ *
+ * enter/exit 固定为 None：默认的 fadeIn/fadeOut 会让文字在飞行途中淡出淡入，看起来像"换了一处文字"。
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun Modifier.heikaSharedPostTitle(
+fun Modifier.heikaSharedPostMeta(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
-    postKey: String,
-    enabled: Boolean,
+    sharedKey: String,
+    enabled: Boolean = true,
 ): Modifier {
     if (!enabled) return this
     return with(sharedTransitionScope) {
-        this@heikaSharedPostTitle.sharedBounds(
-            sharedContentState = rememberSharedContentState("post-title-${postKey.lowercase()}"),
+        this@heikaSharedPostMeta.sharedElement(
+            sharedContentState = rememberSharedContentState(sharedKey),
             animatedVisibilityScope = animatedVisibilityScope,
-            enter = EnterTransition.None,
-            exit = ExitTransition.None,
             boundsTransform = { _, _ -> tween(HeikaMotion.morph, easing = HeikaMotion.spatialEasing) },
-            resizeMode = RemeasureToBounds,
-            placeHolderSize = SharedTransitionScope.PlaceHolderSize.animatedSize,
-            clipInOverlayDuringTransition = OverlayClip(RoundedCornerShape(0.dp)),
-            zIndexInOverlay = 1f,
+            // 压在封面图之上，避免文字飞到一半被图片盖住。
+            zIndexInOverlay = 0.5f,
         )
     }
 }
+
+/** 标签、评分、作者名各自独立的共享 key，同一张卡片上互不干扰。 */
+fun HeikaPost.sharedTagKey(): String = "post-tag-${sharedImageKey()}"
+
+fun HeikaPost.sharedRatingKey(): String = "post-rating-${sharedImageKey()}"
+
+fun HeikaPost.sharedAuthorKey(): String = "post-author-${sharedImageKey()}"
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 private class MorphingCardClip(

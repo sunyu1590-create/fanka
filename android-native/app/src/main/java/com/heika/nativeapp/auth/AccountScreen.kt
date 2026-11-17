@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,9 +24,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -34,31 +42,60 @@ import com.heika.nativeapp.ui.BackHeader
 @Composable
 fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: AccountViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf("") }
-    var nickname by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
+    // rememberSaveable：页面因为加载态或键盘收起而重组时，已经输入的内容不会被重置。
+    var email by rememberSaveable { mutableStateOf("") }
+    // 密码框用 TextFieldValue 而不是 String：String 重载会丢掉输入法的组合态，
+    // 中文/符号键盘下正在组合的最后一个字符会在收起键盘时被回滚，
+    // 于是提交出去的是"少一位的密码"，服务端只能回 invalid_credentials。
+    var passwordField by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    val password = passwordField.text
+    var confirmation by rememberSaveable { mutableStateOf("") }
+    var nickname by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
     val flow = state.flow
-    // 退出登录后停留在本页时，必须清空上一个账号的邮箱和密码，
-    // 否则密码框的掩码会让新输入拼在旧密码后面，导致校验失败。
+    val focusManager = LocalFocusManager.current
+    // 只有"从已登录变成未登录"（用户主动退出）才清空表单。
+    // 之前只要 session 为空就清空，会在登录失败、页面重组等时机把刚输入的密码抹掉，
+    // 看起来像"点登录的一瞬间密码自己清空了"。
+    var hadSession by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.session?.userId) {
-        if (state.session == null) {
+        if (state.session != null) {
+            hadSession = true
+        } else if (hadSession) {
             email = ""
-            password = ""
+            passwordField = TextFieldValue("")
             confirmation = ""
             nickname = ""
             code = ""
             passwordVisible = false
+            hadSession = false
         }
     }
-    // 登录失败后清空密码，避免反复叠加；注册/找回时保留，省得重输两遍。
-    LaunchedEffect(state.error, flow) {
-        if (state.error != null && flow == AccountFlow.LOGIN) password = ""
-    }
+    // 登录失败保留密码：自动清空既让用户以为输入被吞，也无法对照修改。
     LaunchedEffect(state.session?.userId, state.message) {
         if (state.session != null && (state.message == "登录成功" || state.message == "账号已创建，欢迎来到黑卡。")) onSignedIn()
+    }
+    // 提交前先收起键盘，等两帧再读输入值。
+    // 密码最后一个字符若还停在输入法的组合状态里，直接读 value 会拿到缺一位的密码，
+    // 服务端于是回 invalid_credentials —— 表现为"明明输对了却说密码不正确，且时好时坏"。
+    var pendingSubmit by remember { mutableStateOf(false) }
+    val latestEmail by rememberUpdatedState(email)
+    val latestPassword by rememberUpdatedState(password)
+    val latestConfirmation by rememberUpdatedState(confirmation)
+    val latestNickname by rememberUpdatedState(nickname)
+    val latestCode by rememberUpdatedState(code)
+    val latestFlow by rememberUpdatedState(flow)
+    LaunchedEffect(pendingSubmit) {
+        if (!pendingSubmit) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
+        pendingSubmit = false
+        when (latestFlow) {
+            AccountFlow.LOGIN -> viewModel.signIn(latestEmail, latestPassword)
+            AccountFlow.SIGN_UP -> viewModel.signUp(latestEmail, latestPassword, latestConfirmation, latestNickname)
+            AccountFlow.RECOVERY_CODE -> viewModel.recoverWithCode(latestEmail, latestCode, latestPassword, latestConfirmation)
+        }
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("黑卡账号", onBack)
@@ -103,11 +140,17 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                 }
                 if (flow in setOf(AccountFlow.LOGIN, AccountFlow.SIGN_UP, AccountFlow.RECOVERY_CODE)) {
                     OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it.take(128) },
+                        value = passwordField,
+                        onValueChange = { value -> if (value.text.length <= 128) passwordField = value },
                         label = { Text(if (flow == AccountFlow.LOGIN) "密码" else "新密码（至少 8 位）") },
                         singleLine = true,
                         visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            // 键盘上直接按"完成"就等于提交，省掉"先收起键盘再点按钮"这一步，
+                            // 少了这一步就少一次组合态被回滚的机会。
+                            if (!state.busy) pendingSubmit = true
+                        }),
                         trailingIcon = {
                             Text(
                                 if (passwordVisible) "隐藏" else "显示",
@@ -136,10 +179,10 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                         AccountFlow.RECOVERY_CODE -> email.isNotBlank() && code.isNotBlank() && password.length >= 8 && confirmation.isNotEmpty()
                     },
                     onClick = {
-                        when (flow) {
-                            AccountFlow.LOGIN -> viewModel.signIn(email, password)
-                            AccountFlow.SIGN_UP -> viewModel.signUp(email, password, confirmation, nickname)
-                            AccountFlow.RECOVERY_CODE -> viewModel.recoverWithCode(email, code, password, confirmation)
+                        // busy 里再点一次会并发发出两个登录请求，后到的失败结果会把界面打回错误态。
+                        if (!state.busy) {
+                            focusManager.clearFocus(force = true)
+                            pendingSubmit = true
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),

@@ -92,8 +92,11 @@ import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
-import com.heika.nativeapp.ui.heikaSharedPostTitle
+import com.heika.nativeapp.ui.heikaSharedPostMeta
+import com.heika.nativeapp.ui.sharedAuthorKey
 import com.heika.nativeapp.ui.sharedImageKey
+import com.heika.nativeapp.ui.sharedRatingKey
+import com.heika.nativeapp.ui.sharedTagKey
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
@@ -549,10 +552,17 @@ internal fun FeedCard(
 ) {
     val image = post.thumbnail
     val titleScale = LocalHeikaTitleTextScale.current
-    val sharedTitleModifier = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            Modifier.heikaSharedPostTitle(sharedTransitionScope, animatedVisibilityScope, post.sharedImageKey(), enabled = true)
-        }
+    // 标题共享已撤掉（卡面 15sp 与详情 22sp 差距太大，中途字号会跳），
+    // 改由标签、评分、作者名做等比共享。
+    val metaSharedReady = sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null
+    val tagSharedModifier = if (metaSharedReady) with(sharedTransitionScope!!) {
+        Modifier.heikaSharedPostMeta(this, animatedVisibilityScope!!, post.sharedTagKey())
+    } else Modifier
+    val ratingSharedModifier = if (metaSharedReady) with(sharedTransitionScope!!) {
+        Modifier.heikaSharedPostMeta(this, animatedVisibilityScope!!, post.sharedRatingKey())
+    } else Modifier
+    val authorSharedModifier = if (metaSharedReady) with(sharedTransitionScope!!) {
+        Modifier.heikaSharedPostMeta(this, animatedVisibilityScope!!, post.sharedAuthorKey())
     } else Modifier
     Column(modifier.fillMaxWidth()) {
         if (image != null) {
@@ -612,10 +622,10 @@ internal fun FeedCard(
                     shape = RoundedCornerShape(HeikaRadii.categoryTag),
                     contentPadding = PaddingValues(horizontal = 7.dp, vertical = 3.dp),
                 ) {
-                    Text(post.tag, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(post.tag, tagSharedModifier, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface)
-                Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp).then(sharedTitleModifier), color = Color.White, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface, contentModifier = ratingSharedModifier)
+                Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), color = Color.White, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         } else {
             val sharedCardModifier = if (sharedElementsEnabled && sharedTransitionScope != null && animatedVisibilityScope != null) {
@@ -637,16 +647,16 @@ internal fun FeedCard(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(post.tag, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                    Text(post.tag, tagSharedModifier, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.weight(1f))
-                    RatingTag(post, hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface)
+                    RatingTag(post, hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface, contentModifier = ratingSharedModifier)
                 }
-                Text(post.title, sharedTitleModifier, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
                 Text(post.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(post.author, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(post.author, Modifier.weight(1f).then(authorSharedModifier), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Icon(HeikaIcons.LikeOutline, contentDescription = "赞", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
             Text(" ${post.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
             Icon(HeikaIcons.OpenInNew, contentDescription = "打开内容详情", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 5.dp).size(12.dp).alpha(.62f))
@@ -655,16 +665,22 @@ internal fun FeedCard(
 }
 
 @Composable
-private fun RatingTag(post: HeikaPost, modifier: Modifier = Modifier, hazeState: HazeState? = null, contentColor: Color = Color.White) {
+private fun RatingTag(
+    post: HeikaPost,
+    modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
+    contentColor: Color = Color.White,
+    contentModifier: Modifier = Modifier,
+) {
     HeikaLiquidBadgeSurface(
         hazeState = hazeState,
         modifier = modifier,
         shape = RoundedCornerShape(HeikaRadii.ratingTag),
         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(contentModifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(HeikaIcons.StarOutline, contentDescription = null, tint = HeikaGold, modifier = Modifier.size(12.dp))
-            Text(if (post.hasRating) String.format(Locale.US, "%.1f", post.ratingAverage) else "待评", color = contentColor, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+            Text(if (post.hasRating) String.format(Locale.US, "%.1f", post.ratingAverage) else "待评级", color = contentColor, fontSize = 9.sp, fontWeight = FontWeight.Medium)
         }
     }
 }

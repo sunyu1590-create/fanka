@@ -110,8 +110,11 @@ import com.heika.nativeapp.ui.HeikaGlassSurface
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
-import com.heika.nativeapp.ui.heikaSharedPostTitle
+import com.heika.nativeapp.ui.heikaSharedPostMeta
+import com.heika.nativeapp.ui.sharedAuthorKey
 import com.heika.nativeapp.ui.sharedImageKey
+import com.heika.nativeapp.ui.sharedRatingKey
+import com.heika.nativeapp.ui.sharedTagKey
 import dev.chrisbanes.haze.HazeState
 
 @Composable
@@ -304,26 +307,54 @@ fun PostDetailScreen(
                         }
                         // 标题参与共享转场，必须待在淡入层之外；其余内容等封面落位后再出现。
                         Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(Modifier.fillMaxWidth().detailContentReveal(sharedElementsEnabled, delayMillis = 30), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                            Text(item.tag, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                            Icon(HeikaIcons.StarOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                            if (item.hasRating) Text(String.format(java.util.Locale.US, "%.1f", item.ratingAverage), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                            else Text("待评级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        // 标签与评分参与共享转场，必须待在淡入层之外，否则飞行途中会被父级 alpha 抹掉。
+                        // 阅读数是详情页独有信息，卡片上没有对应物，仍然走淡入。
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Text(
+                                item.tag,
+                                if (sharedElementsEnabled) with(sharedTransitionScope) {
+                                    Modifier.heikaSharedPostMeta(sharedTransitionScope, animatedVisibilityScope, item.sharedTagKey())
+                                } else Modifier.detailContentReveal(enabled = true, delayMillis = 20),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 11.sp,
+                            )
+                            Row(
+                                if (sharedElementsEnabled) with(sharedTransitionScope) {
+                                    Modifier.heikaSharedPostMeta(sharedTransitionScope, animatedVisibilityScope, item.sharedRatingKey())
+                                } else Modifier.detailContentReveal(enabled = true, delayMillis = 20),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(HeikaIcons.StarOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                if (item.hasRating) Text(String.format(java.util.Locale.US, "%.1f", item.ratingAverage), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                                else Text("待评级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                            }
                             Spacer(Modifier.weight(1f))
-                            Text("${item.viewCount} 阅读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            Text("${item.viewCount} 阅读", Modifier.detailContentReveal(sharedElementsEnabled, delayMillis = 30), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
-                        val titleSharedModifier = if (sharedElementsEnabled) with(sharedTransitionScope) {
-                            Modifier.heikaSharedPostTitle(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), enabled = true)
-                        } else {
-                            // 非共享模式下标题仍是普通内容，保留原来的淡入，避免变成硬切。
-                            Modifier.detailContentReveal(enabled = true, delayMillis = 40)
-                        }
-                        Text(item.title, titleSharedModifier, color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp * titleTextScale, lineHeight = 31.sp * titleTextScale, fontWeight = FontWeight.SemiBold)
+                        // 标题不再做跨页共享：15sp 卡面标题与 22sp 详情标题字号差距太大，
+                        // 共享过程里字号会出现跳变，不如让它随正文一起淡入。
+                        Text(
+                            item.title,
+                            Modifier.detailContentReveal(enabled = true, delayMillis = 45),
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontSize = 22.sp * titleTextScale,
+                            lineHeight = 31.sp * titleTextScale,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         Column(Modifier.fillMaxWidth().detailContentReveal(sharedElementsEnabled, delayMillis = 170), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth().clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             HeikaAvatar(item.authorAvatar, item.author, 38.dp, contentDescription = "${item.author}头像")
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                Text(item.author, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    item.author,
+                                    if (sharedElementsEnabled) with(sharedTransitionScope) {
+                                        Modifier.heikaSharedPostMeta(sharedTransitionScope, animatedVisibilityScope, item.sharedAuthorKey())
+                                    } else Modifier,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
                                 Text(item.date, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 10.sp)
                             }
                             if (item.authorId != null) androidx.compose.material3.OutlinedButton(onClick = viewModel::toggleFollow, enabled = !state.followSending, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {

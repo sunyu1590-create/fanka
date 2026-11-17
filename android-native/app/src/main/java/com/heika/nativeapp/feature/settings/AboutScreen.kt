@@ -42,6 +42,12 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(55, "2026.11.17", listOf(
+        "标签、评分与作者名也参与卡片到详情的连续转场，和封面图一起移动。",
+        "撤掉标题的跨页动画：两端字号差距大，回退为随正文淡入，不再出现字号跳变。",
+        "修复登录时密码被清空、随后提示密码不正确的问题。",
+        "密码框保留输入法的组合状态，末尾字符不再丢失；登录失败也不再清空已经输入的内容。",
+    )),
     NativeRelease(54, "2026.11.17", listOf(
         "修复弱网、请求超时与登录态过期造成的闪退：接口异常只记录日志，不再终止进程。",
         "全应用 161 处协程调用统一加上异常处理，翻卡、私信、设置、详情都覆盖。",
