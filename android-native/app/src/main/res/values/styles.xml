@@ -15,7 +15,7 @@
     </style>
     <style name="Theme.Heika.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#0D0F13</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_heika</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_heika_splash</item>
         <item name="postSplashScreenTheme">@style/Theme.Heika</item>
     </style>
 </resources>

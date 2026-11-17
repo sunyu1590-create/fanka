@@ -42,6 +42,12 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(57, "2026.11.17", listOf(
+        "启用全新黑卡品牌图标：白色发光圆角方框，桌面图标、启动页与关于页统一替换。",
+        "自适应图标改为透明前景加纯黑底色，各品牌桌面圆角与圆形裁切下都不再露出边角。",
+        "关于页图标改为圆角方形展示，深色与浅色主题下都不再出现生硬的黑色方块。",
+        "关于开发者改为署名 SunYu。",
+    )),
     NativeRelease(56, "2026.11.17", listOf(
         "实测反馈修复：长按自己的私信可以删除，删除后对方也会看到它消失。",
         "注册成功后必须先保存恢复码：这是目前唯一能找回密码的方式。",
@@ -123,7 +129,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
         LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             item {
                 Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Image(painterResource(R.drawable.ic_heika_original), contentDescription = "黑卡应用图标", modifier = Modifier.size(72.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit)
+                    Image(painterResource(R.drawable.ic_heika_original), contentDescription = "黑卡应用图标", modifier = Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
                     Text("黑卡 HEIKA", color = MaterialTheme.colorScheme.onBackground, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
                     Text("翻开未知，遇见新的想法。", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
                     Text("Android ${version.first}  ·  构建 ${version.second}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -149,7 +155,10 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("关于开发者", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text("个人开发者", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("SunYu", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("个人开发者", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                    }
                     Text("黑卡始于一个简单的想法：能不能让发现内容这件事，变得更有趣一些？", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
                     Text("从翻开第一张卡片，到逐渐形成一个可以阅读、分享与交流的社区，黑卡仍在不断成长。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
                     AnimatedVisibility(storyExpanded, enter = fadeIn(tween(220)) + expandVertically(tween(220)), exit = fadeOut(tween(180)) + shrinkVertically(tween(180))) {
