@@ -1,6 +1,9 @@
 package com.heika.nativeapp.feature.detail
 
 import com.heika.nativeapp.ui.HeikaAlertDialog
+import android.content.Intent
+import android.net.Uri
+import com.heika.nativeapp.ui.HeikaMarkdown
 import com.heika.nativeapp.ui.HeikaGlassDialog
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
@@ -157,6 +160,7 @@ fun PostDetailScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     var replyTo by remember(post?.cloudId, postKey) { mutableStateOf<String?>(null) }
     var reportOpen by remember(post?.cloudId, postKey) { mutableStateOf(false) }
+    var linkWarning by remember { mutableStateOf<String?>(null) }
     var reportReason by remember { mutableStateOf("垃圾营销或重复内容") }
     var reportNote by remember { mutableStateOf("") }
     var moreOpen by remember { mutableStateOf(false) }
@@ -382,7 +386,12 @@ fun PostDetailScreen(
                         val modeScale = when (readingMode) { "focus" -> 1.14f; "night" -> 1.07f; else -> 1f }
                         val bodyFont = 14.sp * bodyTextScale * modeScale
                         val bodyLine = bodyFont * when (readingMode) { "focus" -> 1.75f; "night" -> 1.8f; else -> 1.72f }
-                        Text(item.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = bodyFont, lineHeight = bodyLine)
+                        HeikaMarkdown(
+                            source = item.body,
+                            baseSize = bodyFont,
+                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onLinkClick = { linkWarning = it },
+                        )
                         if (item.channel == "ai") {
                             AiResourceDetails(
                                 contentType = item.contentType,
@@ -394,6 +403,7 @@ fun PostDetailScreen(
                                 feedbackSubmitted = state.aiFeedbackSubmitted,
                                 onRetryVersions = { viewModel.loadAiVersions(item, force = true) },
                                 onSubmitFeedback = { kind, details -> viewModel.submitAiFeedback(kind, details) },
+                                onOpenAttachment = { path, name -> viewModel.openAttachment(path, name) },
                             )
                         }
                         item.tags.takeIf { it.isNotEmpty() }?.let { tags ->
@@ -592,6 +602,27 @@ fun PostDetailScreen(
             },
             confirmButton = { TextButton(enabled = feedbackText.trim().length >= 10 && !state.operationSending, onClick = { viewModel.submitContentFeedback(feedbackCategory, "内容：${state.post?.title.orEmpty()}\n${feedbackText.trim()}"); feedbackOpen = false }) { Text(if (state.operationSending) "提交中…" else "提交") } },
             dismissButton = { TextButton(onClick = { feedbackOpen = false }) { Text("取消") } },
+        )
+    }
+    LaunchedEffect(state.pendingAttachmentUrl) {
+        val url = state.pendingAttachmentUrl ?: return@LaunchedEffect
+        viewModel.consumeAttachmentUrl()
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { HeikaNoticeBus.show("没有能打开该附件的应用", HeikaNoticeKind.ERROR) }
+    }
+    linkWarning?.let { url ->
+        val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
+        HeikaGlassDialog(
+            title = "即将离开黑卡",
+            message = "目标站点：$host\n\n站外页面不受黑卡管理，可能要求登录、付款或下载文件。请确认来源可信，不要在任何站外页面输入黑卡账号、密码或恢复码。继续访问即表示你自行承担由此产生的风险。",
+            confirmText = "继续访问",
+            onConfirm = {
+                linkWarning = null
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }.onFailure { HeikaNoticeBus.show("没有能打开该链接的应用", HeikaNoticeKind.ERROR) }
+            },
+            onCancel = { linkWarning = null },
         )
     }
 }

@@ -853,6 +853,7 @@ class HeikaRepository @Inject constructor(
         topics: List<String>,
         mediaPaths: List<String>,
         usageScenarios: List<String>,
+        attachments: List<JSONObject> = emptyList(),
     ): JSONObject = withContext(Dispatchers.IO) {
         require(action == "draft" || action == "submit") { "AI 内容操作无效" }
         require(contentType in aiResourceTypes) { "AI 内容类型无效" }
@@ -860,6 +861,7 @@ class HeikaRepository @Inject constructor(
             .put("action", action).put("title", title).put("body", body).put("category", category)
             .put("contentType", contentType).put("resourceData", resourceData)
             .put("usageScenarios", JSONArray(usageScenarios)).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
+            .put("attachments", JSONArray(attachments))
         id?.takeIf(String::isNotBlank)?.let {
             require(isUuid(it)) { "AI 内容编号无效" }
             payload.put("id", it)
@@ -909,9 +911,12 @@ class HeikaRepository @Inject constructor(
         request(NativeMessagesApi.PATH, method = "POST", body = JSONObject().put("action", "send").put("conversation", conversationId).put("content", content).put("nonce", nonce).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    /** 删除自己发出的消息。服务端物理删除，对方刷新后也会消失。 */
-    suspend fun deleteMessage(conversationId: String, messageId: String): JSONObject = withContext(Dispatchers.IO) {
-        request(NativeMessagesApi.PATH, method = "POST", body = JSONObject().put("action", "delete").put("conversation", conversationId).put("message", messageId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    /**
+     * 撤回自己发出的消息：双方同时消失，服务端只允许 3 分钟内撤回。
+     * 时间窗以服务端记录的发送时间为准，客户端时间不可信。
+     */
+    suspend fun recallMessage(conversationId: String, messageId: String): JSONObject = withContext(Dispatchers.IO) {
+        request(NativeMessagesApi.PATH, method = "POST", body = JSONObject().put("action", "recall").put("conversation", conversationId).put("message", messageId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
     suspend fun createOrUpdateDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String> = emptyList(), mediaPaths: List<String> = emptyList()): JSONObject = withContext(Dispatchers.IO) {
@@ -1082,6 +1087,39 @@ class HeikaRepository @Inject constructor(
         val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
         if (!response.isSuccessful || root.has("error")) throw IOException(root.optString("error").ifBlank { "图片上传失败（${response.code()}）" })
         (root.opt("data") as? JSONObject) ?: root
+    }
+
+    /** AI 内容附件：单个 ≤30 MB，最多 3 个，全服每天 20 个名额。 */
+    suspend fun uploadAttachment(fileName: String, mimeType: String, bytes: ByteArray): JSONObject = withContext(Dispatchers.IO) {
+        require(bytes.size in 1..(30 * 1024 * 1024)) { "单个附件不能超过 30 MB" }
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val requestBody = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
+            .build()
+        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/attachments", "Bearer $token", requestBody)
+        val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
+        val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
+        if (!response.isSuccessful || root.has("error")) throw IOException(root.optString("error").ifBlank { "附件上传失败（${response.code()}）" })
+        (root.opt("data") as? JSONObject) ?: throw IOException("附件上传失败")
+    }
+
+    /** 今日剩余的附件名额。 */
+    suspend fun attachmentQuota(): Int = withContext(Dispatchers.IO) {
+        val data = request("/api/v1/attachments", authenticated = true) as? JSONObject ?: return@withContext -1
+        data.optInt("remaining", -1)
+    }
+
+    suspend fun deleteAttachment(path: String) = withContext(Dispatchers.IO) {
+        val token = auth.currentToken() ?: throw IOException("请先登录后继续")
+        val response = api.delete("${BuildConfig.API_BASE_URL}/api/v1/attachments?path=${encode(path)}", "Bearer $token", JSONObject().toString().toRequestBody(JSON))
+        if (!response.isSuccessful) throw IOException("移除失败，请稍后重试")
+    }
+
+    /** 附件下载地址：私有桶需要签名链接。 */
+    suspend fun attachmentUrl(path: String, name: String): String = withContext(Dispatchers.IO) {
+        val data = request("/api/v1/attachments?path=${encode(path)}&name=${encode(name)}", authenticated = true) as? JSONObject
+            ?: throw IOException("附件下载链接获取失败")
+        data.optString("url").takeIf(String::isNotBlank) ?: throw IOException("附件已失效")
     }
 
     suspend fun deleteUploadedImage(postId: String?, path: String) = withContext(Dispatchers.IO) {

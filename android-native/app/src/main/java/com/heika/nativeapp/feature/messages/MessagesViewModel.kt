@@ -301,23 +301,27 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     }
 
     /**
-     * 删除自己发出的消息。服务端是物理删除，对方刷新后同样消失。
+     * 撤回自己发出的消息：双方同时消失，只允许发送后 3 分钟内操作。
      * 先本地移除让气泡立刻消失，失败再整段回滚，避免长按后没有任何反馈。
      */
-    fun deleteMessage(messageId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+    fun recallMessage(messageId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val current = mutableState.value
         val conversationId = current.activeId ?: return@launch
         val target = current.messages.firstOrNull { it.id == messageId } ?: return@launch
         if (current.userId != null && target.senderId != current.userId) {
-            mutableState.update { it.copy(error = "只能删除自己发送的消息") }
+            mutableState.update { it.copy(error = "只能撤回自己发送的消息") }
+            return@launch
+        }
+        if (recallRemainingSeconds(target.createdAt) <= 0) {
+            mutableState.update { it.copy(error = "超过 3 分钟，这条消息已经无法撤回") }
             return@launch
         }
         val snapshot = current.messages
         mutableState.update { it.copy(messages = it.messages.filterNot { m -> m.id == messageId }, error = null) }
-        runCatching { repository.deleteMessage(conversationId, messageId) }
+        runCatching { repository.recallMessage(conversationId, messageId) }
             .onFailure { error ->
                 mutableState.update {
-                    if (it.activeId == conversationId) it.copy(messages = snapshot, error = error.message ?: "删除失败，请重试") else it
+                    if (it.activeId == conversationId) it.copy(messages = snapshot, error = error.message ?: "撤回失败，请重试") else it
                 }
             }
     }
@@ -341,4 +345,10 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         val peer = parsePeer(row.optJSONObject("peer") ?: JSONObject())
         NativeConversation(row.optString("conversation_id"), peer, row.optString("latest_body"), row.optInt("unread"), row.optString("created_at"))
     }.filter { it.id.isNotBlank() }.distinctBy { it.id }
+}
+
+/** 撤回窗口：180 秒，和服务端一致。返回剩余秒数，<=0 表示已超时。 */
+internal fun recallRemainingSeconds(createdAt: String, nowMillis: Long = System.currentTimeMillis()): Long {
+    val sentAt = runCatching { java.time.Instant.parse(createdAt).toEpochMilli() }.getOrNull() ?: return 0
+    return ((sentAt + 180_000L) - nowMillis) / 1000L
 }

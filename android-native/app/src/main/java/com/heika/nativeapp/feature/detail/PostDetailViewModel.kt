@@ -66,6 +66,7 @@ data class PostDetailState(
     val rating: Int? = null,
     val ratingSending: Boolean = false,
     val ratingError: String? = null,
+    val pendingAttachmentUrl: String? = null,
     val ratingAnimationKey: Int = 0,
     val ratingAnimationScore: Int = 0,
     val average: Double? = null,
@@ -414,6 +415,15 @@ class PostDetailViewModel @Inject constructor(
             .onSuccess { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "已屏蔽作者") } }
             .onFailure { if (version == requestVersion) mutableState.update { it.copy(operationSending = false, notice = "屏蔽失败，请重试") } }
     }
+
+    /** 附件在私有桶里，需要签名链接；拿到后交给界面用系统浏览器打开。 */
+    fun openAttachment(path: String, name: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        runCatching { repository.attachmentUrl(path, name) }
+            .onSuccess { url -> mutableState.update { it.copy(pendingAttachmentUrl = url) } }
+            .onFailure { error -> mutableState.update { it.copy(notice = error.message ?: "附件下载失败") } }
+    }
+
+    fun consumeAttachmentUrl() { mutableState.update { it.copy(pendingAttachmentUrl = null) } }
 
     fun showNotice(message: String) { mutableState.update { it.copy(notice = message) } }
     fun clearNotice() { mutableState.update { it.copy(notice = null) } }

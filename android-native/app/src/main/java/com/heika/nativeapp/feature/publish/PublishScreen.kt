@@ -37,6 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.HeikaMarkdown
 import com.heika.nativeapp.ui.FilterChip
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.HeikaNoticeBus
@@ -84,6 +86,7 @@ fun PublishScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showVideoBeta by remember { mutableStateOf(false) }
     var selectedVideo by remember { mutableStateOf<Uri?>(null) }
+    var bodyPreview by remember { mutableStateOf(false) }
     val publishListState = rememberLazyListState()
     LaunchedEffect(draftId, channel) { viewModel.configureChannel(channel); viewModel.resumeDraft(draftId) }
     LaunchedEffect(state.notice) {
@@ -101,6 +104,17 @@ fun PublishScreen(
         selectedVideo = uri
         if (uri != null) HeikaNoticeBus.show("已选择视频", HeikaNoticeKind.SUCCESS)
     }
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
+        scope.launch(HeikaCoroutineGuard) {
+            for (uri in uris.take(3)) {
+                runCatching { readAttachment(context, uri) }
+                    .onSuccess { (name, mime, bytes) -> viewModel.addAttachment(name, mime, bytes) }
+                    .onFailure { HeikaNoticeBus.show(it.message ?: "无法读取所选文件", HeikaNoticeKind.ERROR) }
+            }
+        }
+    }
+    LaunchedEffect(state.channel) { if (state.channel == "ai") viewModel.refreshAttachmentQuota() }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia((9 - state.images.size).coerceAtLeast(1))) { uris ->
         scope.launch(HeikaCoroutineGuard) {
             for (uri in uris) {
@@ -173,18 +187,93 @@ fun PublishScreen(
                 }
                 item {
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
-                        Text("正文", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                        BasicTextField(
-                            value = state.body,
-                            onValueChange = { viewModel.edit(body = it) },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 176.dp, max = 300.dp).padding(top = 12.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, lineHeight = 23.sp),
-                            decorationBox = { inner ->
-                                if (state.body.isEmpty()) Text("分享内容、观点或使用体验…", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 13.sp)
-                                inner()
-                            },
-                        )
-                        Text("${state.body.length}/5000", Modifier.align(Alignment.End), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("正文", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                            FilterChip("写作", !bodyPreview, { bodyPreview = false })
+                            Spacer(Modifier.size(6.dp))
+                            FilterChip("预览", bodyPreview, { bodyPreview = true })
+                        }
+                        if (bodyPreview) {
+                            if (state.body.isBlank()) {
+                                Text("还没有正文，切回「写作」开始输入。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp))
+                            } else {
+                                HeikaMarkdown(
+                                    source = state.body,
+                                    baseSize = 14.sp,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                )
+                            }
+                        } else {
+                            // 格式工具常驻在正文上方：手机上不必先把光标停在正文才出现。
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(
+                                    "粗体" to "**", "小标题" to "\n## ", "引用" to "\n> ",
+                                    "列表" to "\n- ", "链接" to "[链接](https://)", "代码" to "`", "分割线" to "\n\n---\n\n",
+                                ).forEach { (label, token) ->
+                                    Text(
+                                        label,
+                                        Modifier
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(MaterialTheme.colorScheme.background)
+                                            .clickable {
+                                                val separator = if (state.body.isEmpty() || state.body.endsWith("\n")) "" else "\n"
+                                                viewModel.edit(body = (state.body + separator + token).take(5000))
+                                            }
+                                            .padding(horizontal = 11.dp, vertical = 6.dp),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                            BasicTextField(
+                                value = state.body,
+                                onValueChange = { viewModel.edit(body = it) },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 176.dp, max = 300.dp).padding(top = 12.dp),
+                                textStyle = androidx.compose.ui.text.TextStyle(color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, lineHeight = 23.sp),
+                                decorationBox = { inner ->
+                                    if (state.body.isEmpty()) Text("支持 Markdown：**加粗**、## 小标题、> 引用、- 列表、[链接](https://)", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 13.sp, lineHeight = 20.sp)
+                                    inner()
+                                },
+                            )
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("站外链接会先跳到风险提示页", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 9.sp, modifier = Modifier.weight(1f))
+                            Text("${state.body.length}/5000", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                        }
+                    }
+                }
+                if (state.channel == "ai") item {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("附件", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("安装包、压缩包、PDF · 最多 3 个，单个 30 MB，合计 50 MB", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+                            }
+                            Text(
+                                state.attachmentQuota?.let { "今日剩余 $it/20" } ?: "名额查询中",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp,
+                            )
+                        }
+                        state.attachments.forEach { item ->
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.background).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.name, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    Text(friendlySize(item.size), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                                }
+                                TextButton(onClick = { viewModel.removeAttachment(item.path) }) { Text("移除", color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                            }
+                        }
+                        if (state.attachments.size < 3) {
+                            OutlinedButton(
+                                onClick = { attachmentPicker.launch(arrayOf("*/*")) },
+                                enabled = !state.attachmentBusy,
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            ) { Text(if (state.attachmentBusy) "上传中…" else "添加附件", fontSize = 12.sp) }
+                        }
+                        state.attachmentError?.let { message ->
+                            Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                        }
                     }
                 }
                 item {
@@ -447,4 +536,29 @@ private suspend fun prepareImage(context: Context, uri: Uri): Triple<String, Str
     } finally { bitmap.recycle() }
     require(result.size <= 4 * 1024 * 1024) { "图片压缩后仍超过 4 MB，请选择较小的图片" }
     Triple(name.substringBeforeLast('.') + ".jpg", "image/jpeg", result)
+}
+
+/** 读取用户选中的附件：显示名、MIME 与实际字节。 */
+private fun readAttachment(context: Context, uri: Uri): Triple<String, String, ByteArray> {
+    val resolver = context.contentResolver
+    var name = "附件"
+    var size = 0L
+    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            name = cursor.getString(0) ?: name
+            size = if (cursor.isNull(1)) 0L else cursor.getLong(1)
+        }
+    }
+    if (size > 30L * 1024 * 1024) throw IllegalStateException("「$name」超过单个 30 MB 的限制")
+    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("无法读取该文件")
+    if (bytes.isEmpty()) throw IllegalStateException("该文件是空的")
+    if (bytes.size > 30 * 1024 * 1024) throw IllegalStateException("「$name」超过单个 30 MB 的限制")
+    val mime = resolver.getType(uri) ?: "application/octet-stream"
+    return Triple(name, mime, bytes)
+}
+
+private fun friendlySize(bytes: Long): String = when {
+    bytes >= 1024L * 1024 -> String.format("%.1f MB", bytes / 1024.0 / 1024.0)
+    bytes >= 1024 -> "${bytes / 1024} KB"
+    else -> "$bytes B"
 }

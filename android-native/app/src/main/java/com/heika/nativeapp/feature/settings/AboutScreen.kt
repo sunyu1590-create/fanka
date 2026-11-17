@@ -42,6 +42,15 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(58, "2026.11.17", listOf(
+        "修复无法删除已发布内容：被探索页广告位引用的作品现在会先解除引用再删除",
+        "私信「删除」改为「撤回」：双方同时消失，只允许 3 分钟内撤回，面板带倒计时",
+        "发布页焕新：写作与预览双态切换，格式工具常驻正文上方",
+        "正文支持 Markdown：标题、列表、引用、代码、加粗，链接高亮可点",
+        "点开站外链接先弹风险提示，确认后才离开黑卡",
+        "AI 内容可以挂附件：最多 3 个，单个 30 MB，全服每天 20 个名额",
+        "视频发布 Beta 保留入口，内测期间暂未开放上传",
+    )),
     NativeRelease(57, "2026.11.17", listOf(
         "启用全新黑卡品牌图标：白色发光圆角方框，桌面图标、启动页与关于页统一替换。",
         "自适应图标改为透明前景加纯黑底色，各品牌桌面圆角与圆形裁切下都不再露出边角。",

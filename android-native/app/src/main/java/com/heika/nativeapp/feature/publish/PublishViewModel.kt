@@ -52,6 +52,8 @@ data class PublishState(
     val usageScenarios: List<String> = emptyList(),
     val aiResourceTypes: List<AiResourceType> = emptyList(),
     val category: String = "", val images: List<PendingImage> = emptyList(), val mediaPaths: List<String> = emptyList(),
+    val attachments: List<AttachmentDraft> = emptyList(), val attachmentBusy: Boolean = false,
+    val attachmentQuota: Int? = null, val attachmentError: String? = null,
     val pendingDeletePaths: List<String> = emptyList(),
     val draftId: Int? = null, val draftCloudId: String? = null, val accountId: String? = null, val revisionMode: Boolean = false,
     val serverStatus: String = "draft",
@@ -59,6 +61,23 @@ data class PublishState(
     val error: String? = null, val notice: String? = null, val showLeaveDialog: Boolean = false,
     val publishedPost: JSONObject? = null,
 )
+
+/** 已上传到服务端的附件：name 只用于展示，path 是唯一凭据。 */
+data class AttachmentDraft(val path: String, val name: String, val size: Long, val mime: String) {
+    fun toJson(): JSONObject = JSONObject().put("path", path).put("name", name).put("size", size).put("mime", mime)
+}
+
+private fun attachmentsOf(json: JSONObject?): List<AttachmentDraft> {
+    val array = json?.optJSONArray("attachments") ?: return emptyList()
+    return buildList {
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val path = item.optString("path")
+            if (path.isBlank()) continue
+            add(AttachmentDraft(path, item.optString("name").ifBlank { "附件" }, item.optLong("size"), item.optString("mime")))
+        }
+    }
+}
 
 private val AI_ARRAY_FIELDS = setOf("platforms", "environments", "use_cases", "variables")
 
@@ -196,6 +215,7 @@ class PublishViewModel @Inject constructor(
                 title = source.optString("title"), body = source.optString("body"),
                 contentType = source.optString("contentType").ifBlank { current.contentType },
                 resourceData = source.optJSONObject("resourceData")?.let(::stringFields).orEmpty().ifEmpty { current.resourceData },
+                attachments = attachmentsOf(source.optJSONObject("resourceData")),
                 usageScenarios = source.stringList("usageScenarios").ifEmpty { source.stringList("usage_scenarios") },
                 category = source.optString("tag").ifBlank { current.category },
                 topicText = source.optJSONArray("topics")?.let { arr -> buildList { for (i in 0 until arr.length()) add(arr.optString(i)) }.joinToString(" ") } ?: "",
@@ -560,6 +580,7 @@ class PublishViewModel @Inject constructor(
                 usageScenarios = current.usageScenarios,
                 topics = topics,
                 mediaPaths = current.mediaPaths,
+                attachments = current.attachments.map { it.toJson() },
             )
         } else {
             repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths)
@@ -608,6 +629,61 @@ class PublishViewModel @Inject constructor(
     }
 
     fun retryRemovedImageCleanup() = viewModelScope.launch(HeikaCoroutineGuard) { retryPendingDeletes() }
+
+    /** 上传一个附件到服务端，成功后进入草稿列表。 */
+    suspend fun addAttachment(name: String, mime: String, bytes: ByteArray) {
+        val current = mutableState.value
+        if (current.attachments.size >= 3) {
+            mutableState.update { it.copy(attachmentError = "最多上传 3 个附件") }
+            return
+        }
+        if (bytes.size > 30 * 1024 * 1024) {
+            mutableState.update { it.copy(attachmentError = "单个附件不能超过 30 MB") }
+            return
+        }
+        if (current.attachments.sumOf { it.size } + bytes.size > 50L * 1024 * 1024) {
+            mutableState.update { it.copy(attachmentError = "附件合计不能超过 50 MB") }
+            return
+        }
+        mutableState.update { it.copy(attachmentBusy = true, attachmentError = null) }
+        runCatching { repository.uploadAttachment(name, mime, bytes) }
+            .onSuccess { data ->
+                val path = data.optString("path")
+                val remaining = data.optInt("remaining", -1)
+                mutableState.update { state ->
+                    state.copy(
+                        attachmentBusy = false,
+                        attachments = state.attachments + AttachmentDraft(
+                            path = path,
+                            name = data.optString("name").ifBlank { name },
+                            size = data.optLong("size", bytes.size.toLong()),
+                            mime = data.optString("mime").ifBlank { mime },
+                        ),
+                        attachmentQuota = if (remaining >= 0) remaining else state.attachmentQuota,
+                    )
+                }
+            }
+            .onFailure { error ->
+                mutableState.update { it.copy(attachmentBusy = false, attachmentError = error.message ?: "附件上传失败") }
+            }
+    }
+
+    fun removeAttachment(path: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        val previous = mutableState.value.attachments
+        mutableState.update { it.copy(attachments = it.attachments.filterNot { item -> item.path == path }) }
+        runCatching { repository.deleteAttachment(path) }
+            .onFailure {
+                mutableState.update { state -> state.copy(attachments = previous, attachmentError = "移除失败，请稍后重试") }
+            }
+        refreshAttachmentQuota()
+    }
+
+    fun refreshAttachmentQuota() = viewModelScope.launch(HeikaCoroutineGuard) {
+        val remaining = runCatching { repository.attachmentQuota() }.getOrDefault(-1)
+        if (remaining >= 0) mutableState.update { it.copy(attachmentQuota = remaining) }
+    }
+
+    fun clearAttachmentError() = mutableState.update { it.copy(attachmentError = null) }
 
     fun publish() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!publishMutex.tryLock()) return@launch

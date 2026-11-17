@@ -8,6 +8,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +60,7 @@ fun AiResourceDetails(
     feedbackSubmitted: Boolean,
     onRetryVersions: () -> Unit,
     onSubmitFeedback: (String, String) -> Unit,
+    onOpenAttachment: (String, String) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     var versionsExpanded by remember { mutableStateOf(false) }
@@ -67,7 +70,7 @@ fun AiResourceDetails(
     var expandedVersion by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(feedbackSubmitted) { if (feedbackSubmitted) { feedbackOpen = false; details = "" } }
     val entries = remember(resourceData.toString()) {
-        resourceData.keys().asSequence().mapNotNull { key ->
+        resourceData.keys().asSequence().filter { it != "attachments" }.mapNotNull { key ->
             val value = resourceData.opt(key)
             val text = when (value) {
                 is JSONArray -> buildList { for (index in 0 until value.length()) add(value.optString(index)) }.filter(String::isNotBlank).joinToString("\n")
@@ -86,6 +89,34 @@ fun AiResourceDetails(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("$typeLabel · 结构化资源", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        val attachments = remember(resourceData.toString()) {
+            buildList {
+                val array = resourceData.optJSONArray("attachments") ?: return@buildList
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val path = item.optString("path")
+                    if (path.isNotBlank()) add(Triple(path, item.optString("name").ifBlank { "附件" }, item.optLong("size")))
+                }
+            }
+        }
+        if (attachments.isNotEmpty()) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("附件 · ${attachments.size}", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                attachments.forEach { (path, name, size) ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(name, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(friendlyAttachmentSize(size), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                        }
+                        TextButton(onClick = { onOpenAttachment(path, name) }) { Text("下载", fontSize = 12.sp) }
+                    }
+                }
+                Text("附件由作者上传，下载与使用请自行判断安全性，黑卡不对附件内容负责。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp)
+            }
+        }
         entries.forEach { (key, value) ->
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).padding(vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(aiFieldLabels[key] ?: key.replace('_', ' '), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -171,3 +202,9 @@ private fun safeExternalUrl(raw: String): String? = runCatching {
     if (uri.port !in setOf(-1, 443)) return null
     uri.toString()
 }.getOrNull()
+
+private fun friendlyAttachmentSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024 -> String.format("%.1f MB", bytes / 1024.0 / 1024.0)
+    bytes >= 1024 -> "${bytes / 1024} KB"
+    else -> "$bytes B"
+}

@@ -39,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -317,12 +318,31 @@ fun MessagesScreen(
                 if (state.messages.isEmpty() && !state.loading) item { Text("发送第一条消息，开始交流。", Modifier.fillMaxWidth().padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) }
             }
             actionTarget?.let { target ->
+                val mine = state.userId != null && target.senderId == state.userId
+                // 剩余时间随时间递减；归零后停在"已无法撤回"，不再继续计数。
+                var remaining by remember(target.id) {
+                    mutableStateOf(if (mine) recallRemainingSeconds(target.createdAt) else 0L)
+                }
+                LaunchedEffect(target.id) {
+                    while (mine && remaining > 0) {
+                        delay(1_000)
+                        remaining = recallRemainingSeconds(target.createdAt)
+                    }
+                }
                 HeikaAlertDialog(
                     onDismissRequest = { actionTarget = null },
                     title = { Text("消息操作") },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                            Text("删除后你和对方都会看不到这条消息。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+                            Text(
+                                if (mine) {
+                                    if (remaining > 0) "撤回后你和对方都会看不到这条消息，超过 3 分钟就无法撤回。"
+                                    else "这条消息已超过 3 分钟，无法撤回。"
+                                } else "对方发送的消息只能复制或举报。",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                            )
                             Text(target.body, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
                         }
                     },
@@ -333,10 +353,18 @@ fun MessagesScreen(
                                 clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("消息", target.body))
                                 actionTarget = null
                             }) { Text("复制") }
-                            TextButton(onClick = {
-                                viewModel.deleteMessage(target.id)
-                                actionTarget = null
-                            }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                            if (mine) {
+                                TextButton(
+                                    enabled = remaining > 0,
+                                    onClick = {
+                                        viewModel.recallMessage(target.id)
+                                        actionTarget = null
+                                    },
+                                ) {
+                                    val clock = String.format("%02d:%02d", remaining / 60, remaining % 60)
+                                    Text(if (remaining > 0) "撤回 · $clock" else "已无法撤回", color = if (remaining > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                         }
                     },
                     dismissButton = {
