@@ -7,6 +7,21 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.47.0",
+    date: "2026.11.18",
+    notes: [
+      { category: "新功能", text: "正文排版能力全面升级：代码块带语言标识与一键复制，支持表格、任务列表与 Mermaid 流程图。" },
+      { category: "新功能", text: "账号快捷更换：本机登录过的账号会保留在设置里，切换不需要重新输入密码。" },
+      { category: "新功能", text: "管理后台的账号管理改为紧凑列表，并支持删除账号（作品、私信与限制记录一并清理）。" },
+      { category: "问题修复", text: "修复他人作品里的附件无法下载：此前只校验上传者本人，读者点开会返回 403；现在已公开作品的附件可正常下载。" },
+      { category: "体验优化", text: "详情页、设置页、我的、个人主页与私聊页的顶栏加上毛玻璃效果，内容滚动时从顶栏下方穿过。" },
+      { category: "体验优化", text: "探索任务、等级徽章与成长记录统一放进圆角卡片，与关于黑卡页面的分组方式一致。" },
+      { category: "体验优化", text: "App 的 AI 资源详情页把版本记录与纠错反馈收进「更多」，正文区域更干净。" },
+      { category: "体验优化", text: "App 打开站外链接改为整页风险提示，与网页端保持一致，不再弹出对话框。" },
+      { category: "问题修复", text: "App 点赞与收藏的加载状态相互独立，点爱心时收藏按钮不再跟着转圈。" },
+    ],
+  },
+  {
     version: "2.46.0",
     date: "2026.11.18",
     notes: [

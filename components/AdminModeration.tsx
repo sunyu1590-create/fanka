@@ -294,6 +294,22 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setSaving(null); }
   };
 
+  const deleteAccount = async (account: AdminUser) => {
+    const ok = await confirmInApp(
+      `删除「${account.nickname || "探索者"}」的账号？该账号的作品、私信记录会一并删除，且无法恢复。`,
+      { title: "删除账号", confirmLabel: "确认删除" },
+    );
+    if (!ok) return;
+    setSaving(account.id); setError(""); setNotice("");
+    try {
+      await cloudRequest(`/api/v1/admin/users/${account.id}`, undefined, "DELETE");
+      setUsers((current) => current.filter((item) => item.id !== account.id));
+      setUserTotal((total) => Math.max(0, total - 1));
+      setNotice(`${account.nickname || "账号"}已删除。`);
+    } catch (e) { setError(userMessage(e, "账号删除失败")); }
+    finally { setSaving(null); }
+  };
+
   const changeCommunityRestriction = async (account: AdminUser, active: boolean) => {
     if (active && restrictionReason.trim().length < 3) { setError("请填写至少 3 个字的限制原因"); return; }
     const durations: Record<Exclude<typeof restrictionDuration, "permanent">, number> = { "1h": 60 * 60_000, "24h": 24 * 60 * 60_000, "7d": 7 * 24 * 60 * 60_000, "30d": 30 * 24 * 60 * 60_000 };
@@ -505,10 +521,13 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         const restrictionActive = Boolean(restriction?.active && (!restriction.restricted_until || Date.parse(restriction.restricted_until) > Date.now()));
         return <article className="admin-user-row" key={account.id}>
           <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
-          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{(["admin", "content_manager", "reviewer"].includes(account.role) && <span className="admin-role-badge">{account.role === "admin" ? "超级管理员" : account.role === "content_manager" ? "内容管理员" : "审核员"}</span>)}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><small>{account.bio || "还没有填写个人简介"}</small><time>加入于 {new Date(account.created_at).toLocaleDateString("zh-CN")}{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
+          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{(["admin", "content_manager", "reviewer"].includes(account.role) && <span className="admin-role-badge">{account.role === "admin" ? "超级管理员" : account.role === "content_manager" ? "内容管理员" : "审核员"}</span>)}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><time>{new Date(account.created_at).toLocaleDateString("zh-CN")} 加入{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
           <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{value:"free",label:"普通"},{value:"plus",label:"Plus"},{value:"pro",label:"Pro"}]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])}/></div>
           <div className="admin-user-role-select"><span>权限角色</span><ChoiceSelect label={`${account.nickname || "探索者"}的管理角色`} value={account.role} disabled={saving === account.id} options={[{value:"member",label:"普通用户"},{value:"reviewer",label:"审核员"},{value:"content_manager",label:"内容管理员"},{value:"admin",label:"超级管理员"}]} onChange={(role) => void changeUserRole(account, role as AdminUser["role"])}/></div>
-          {!(["admin", "content_manager", "reviewer"].includes(account.role)) && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
+          <div className="admin-user-actions">
+            {!(["admin", "content_manager", "reviewer"].includes(account.role)) && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
+            {account.role !== "admin" && <button className="admin-user-delete" disabled={saving === account.id} onClick={() => void deleteAccount(account)} aria-label={`删除${account.nickname || "该"}账号`}>删除</button>}
+          </div>
           {restrictionTarget === account.id && !(["admin", "content_manager", "reviewer"].includes(account.role)) && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<ChoiceSelect label="限制时长" value={restrictionDuration} onChange={(value) => setRestrictionDuration(value as typeof restrictionDuration)} options={[{value:"1h",label:"1 小时"},{value:"24h",label:"24 小时"},{value:"7d",label:"7 天"},{value:"30d",label:"30 天"},{value:"permanent",label:"永久"}]}/></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
         </article>;
       })}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}

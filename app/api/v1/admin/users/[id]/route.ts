@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { ApiError, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
 import { recordModerationAudit } from "@/lib/server/moderation-audit";
 import { requireAdmin } from "@/lib/server/require-admin";
+import { adminClient } from "@/lib/server/admin-client";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return respond(async () => {
@@ -76,5 +77,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       resultProfile = profile.data;
     }
     return { ...resultProfile, ...(hasRestriction ? { community_restriction: restriction } : {}) };
+  });
+}
+
+/** 删除账号：清理私信、限制记录与其作品后移除 auth 用户。 */
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return respond(async () => {
+    const { db, user } = await requireAdmin(req);
+    const id = uuid((await params).id);
+    if (id === user.id) throw new ApiError(400, "不能删除自己的账号");
+    const target = await db.from("profiles").select("nickname,role").eq("id", id).maybeSingle();
+    if (!target.data) throw new ApiError(404, "账号不存在或已被删除");
+    if (target.data.role === "admin") throw new ApiError(400, "不能删除管理员账号，请先转移其管理身份");
+
+    const admin = adminClient();
+    const { data: result, error } = await admin.rpc("admin_delete_user", { p_user: id, p_actor: user.id });
+    if (error) {
+      const message = error.message.includes("付费订单") ? "该账号存在付费订单，需先处理财务记录" : error.message;
+      throw new ApiError(409, message);
+    }
+    await recordModerationAudit(db, {
+      actorId: user.id,
+      action: "user_account_deleted",
+      targetType: "user",
+      targetId: id,
+      reason: `删除账号 ${target.data.nickname || id}`,
+      details: result && typeof result === "object" ? (result as Record<string, unknown>) : {},
+    });
+    return result ?? { id };
   });
 }

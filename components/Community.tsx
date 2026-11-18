@@ -92,6 +92,8 @@ import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExte
 import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
+import AccountSwitcher from "./AccountSwitcher";
+import { rememberSession } from "@/lib/saved-accounts";
 import MembershipCenter from "./MembershipCenter";
 import { baseDailyFlipAllowance } from "@/lib/membership-plans";
 const AboutHeika = dynamic(() => import("./AboutHeika"));
@@ -3959,6 +3961,8 @@ export default function Community() {
           hydrationTimer = setTimeout(() => { void hydrate(user, version); }, 0);
         };
         const { data } = db.auth.onAuthStateChange((event, session) => {
+          // 记住本机登录过的账号，供「隐私与安全」里一键切换。
+          if (session?.user) rememberSession(session);
           scheduleHydration(event, session?.user || null);
         });
         cleanup = () => {
@@ -4473,7 +4477,7 @@ export default function Community() {
             </div>;
           })()}
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
-          {settingsDetail === "security" && <><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
+          {settingsDetail === "security" && <><AccountSwitcher accountId={accountId} onNotice={toast}/><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
           {settingsDetail === "announcement" && <AnnouncementAdmin onNotice={toast}/>}
           {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} /> }
           {settingsDetail === "interests" && <div className="account-interests-page">

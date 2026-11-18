@@ -9,6 +9,7 @@ import {
   MAX_ATTACHMENT_FILES,
   MAX_ATTACHMENT_TOTAL_BYTES,
   attachmentExtension,
+  attachmentOwner,
 } from "@/lib/attachments";
 
 export const runtime = "nodejs";
@@ -41,6 +42,19 @@ function safeDisplayName(name: string) {
   return name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").slice(0, 120) || "附件";
 }
 
+/**
+ * 附件归属判断：作者本人随时可下；其余人只有在附件已被某篇「已公开」作品引用时才可下载。
+ * 早前只校验"路径属主"，导致读者点开别人的作品附件一律 403。
+ */
+async function canRead(db: AdminDb, path: string, userId: string) {
+  const { data } = await db
+    .from("posts")
+    .select("id,status,author_id")
+    .filter("resource_data->attachments", "cs", JSON.stringify([{ path }]));
+  const rows = data ?? [];
+  return rows.some((row) => row.author_id === userId || row.status === "published");
+}
+
 /** 今日剩余名额。 */
 export async function GET(req: NextRequest) {
   return respond(async () => {
@@ -49,8 +63,7 @@ export async function GET(req: NextRequest) {
     const path = req.nextUrl.searchParams.get("path");
     if (path) {
       // 私有桶不给直链，签发 7 天有效的下载链接。
-      const owner = (path.split("/").pop() || "").split("__")[0];
-      if (owner !== user.id) throw new ApiError(403, "附件不存在");
+      if (attachmentOwner(path) !== user.id && !(await canRead(db, path, user.id))) throw new ApiError(403, "附件不存在");
       const download = req.nextUrl.searchParams.get("name") || undefined;
       const { data, error } = await db.storage.from(ATTACHMENT_BUCKET).createSignedUrl(path, 604800, download ? { download } : undefined);
       if (error || !data?.signedUrl) throw new ApiError(404, "附件不存在或已过期");

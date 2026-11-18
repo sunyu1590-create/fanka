@@ -6370,3 +6370,68 @@ img, video, canvas, iframe { max-width:100%; }
 @media (max-width: 560px) {
   .recovery-codes-page .recovery-codes-list { grid-template-columns: 1fr; gap: 9px; }
 }
+
+/* 账号管理：紧凑行 + 删除动作（与后台其他列表密度一致） */
+.admin-user-row { gap: 9px; padding: 9px 0; }
+.admin-user-avatar { width: 30px; height: 30px; font-size: 12px; }
+.admin-user-copy { gap: 2px; }
+.admin-user-copy strong { gap: 5px; font-size: 12.5px; }
+.admin-user-copy time { font-size: 9.5px; }
+.admin-user-membership { min-width: 66px; }
+.admin-user-membership .choice-select-trigger,
+.admin-user-role-select .choice-select-trigger { min-height: 30px; padding-inline: 7px; border-radius: 9px; font-size: 10.5px; }
+.admin-user-actions { display: flex; flex: none; align-items: center; gap: 5px; }
+.admin-role-action { min-height: 30px; padding: 0 8px; font-size: 9.5px; }
+.admin-user-delete { min-height: 30px; padding: 0 9px; border: 1px solid color-mix(in srgb, #bd6868 38%, var(--line)); border-radius: var(--radius-control); background: transparent; color: #b85f5f; font-size: 9.5px; }
+.admin-user-delete:disabled { opacity: .45; }
+@media (max-width: 520px) {
+  .admin-user-membership > span, .admin-user-role-select > span { display: none; }
+  .admin-user-row { flex-wrap: wrap; }
+  .admin-user-actions { margin-left: auto; }
+}
+
+/* 账号快捷更换：本机账号列表 */
+.account-switcher { display: grid; gap: 11px; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius-card, 16px); background: var(--card); }
+.account-switcher-head { display: grid; gap: 4px; }
+.account-switcher-head strong { color: var(--ink); font-size: 13px; }
+.account-switcher-head span { color: var(--muted); font-size: 10.5px; line-height: 1.6; }
+.account-switcher ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.account-switcher li { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.account-switcher li.is-current { border-color: color-mix(in srgb, var(--action) 38%, var(--line)); }
+.account-switcher-avatar { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--action) 13%, var(--surface)); color: var(--action); font-size: 12px; font-weight: 650; }
+.account-switcher-copy { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.account-switcher-copy strong { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12.5px; font-weight: 600; }
+.account-switcher-copy strong em { padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--action) 12%, transparent); color: var(--action); font-size: 9px; font-style: normal; }
+.account-switcher-copy small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.account-switcher-switch, .account-switcher-remove { display: inline-flex; align-items: center; gap: 5px; flex: none; min-height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--ink); font-size: 10.5px; }
+.account-switcher-switch { border-color: color-mix(in srgb, var(--action) 42%, var(--line)); color: var(--action); }
+.account-switcher-remove { padding: 0 8px; color: var(--muted); }
+.account-switcher-empty, .account-switcher-note { margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.65; }
+.account-switcher-error { margin: 0; color: #b85f5f; font-size: 10.5px; }
+.account-switcher button:disabled { opacity: .55; }
+
+/* Markdown：代码块 / 表格 / 任务列表 / 流程图 */
+.markdown-content .md-code { display: grid; margin: 14px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--surface) 92%, var(--ink) 8%); }
+.markdown-content .md-code-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 11px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.markdown-content .md-code-head span { color: var(--muted); font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; text-transform: lowercase; }
+.markdown-content .md-code-head button { padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--muted); font-size: 10px; }
+.markdown-content .md-code pre { margin: 0; padding: 12px 13px; overflow-x: auto; }
+.markdown-content .md-code code { padding: 0; background: none; color: var(--ink); font: 12.5px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+.markdown-content .md-table-wrap { margin: 14px 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+.markdown-content .md-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.markdown-content .md-table th,
+.markdown-content .md-table td { padding: 9px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.markdown-content .md-table th { background: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); font-weight: 600; white-space: nowrap; }
+.markdown-content .md-table tr:last-child td { border-bottom: 0; }
+.markdown-content .md-task-list { list-style: none; padding-left: 2px; }
+.markdown-content .md-task { display: flex; align-items: flex-start; gap: 8px; }
+.markdown-content .md-task input { margin-top: 5px; width: 13px; height: 13px; accent-color: var(--action); }
+.markdown-content .md-mermaid { display: grid; justify-items: center; margin: 14px 0; padding: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.markdown-content .md-mermaid svg { max-width: 100%; height: auto; }
+.markdown-content .md-mermaid.is-pending { justify-items: stretch; padding: 0; }
+.markdown-content .md-mermaid-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 11px; border-bottom: 1px solid var(--line); }
+.markdown-content .md-mermaid-head span { color: var(--muted); font-size: 10px; }
+.markdown-content .md-mermaid-head small { color: var(--muted); font-size: 9.5px; }
+.markdown-content .md-mermaid pre { margin: 0; padding: 12px; overflow-x: auto; }
+.markdown-content .md-mermaid { justify-items: start; }
+.markdown-content .md-mermaid svg { max-width: none; height: auto; }
