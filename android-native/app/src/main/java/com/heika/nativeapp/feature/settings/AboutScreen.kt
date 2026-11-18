@@ -42,6 +42,14 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(61, "2026.11.18", listOf(
+        "取消详情页、设置页、我的、个人主页与私聊页的顶栏模糊：滚动时不再出现闪烁和错位。",
+        "封面左上角的标签与右上角的评分压缩高度，卡片上留给内容的区域更多。",
+        "首页翻卡退场时背景从第一帧就开始褪去模糊，不再等卡片落回原位才变清晰。",
+        "页面切换统一改为叠化：去掉上下位移与缩放，封面到详情的连贯飞行仍然保留。",
+        "账号页常驻「本机账号」，新增「登录其他账号」入口，切换不再藏起来。",
+        "外部链接提示收进圆角卡片，风险说明与按钮都在框内。",
+    )),
     NativeRelease(60, "2026.11.18", listOf(
         "正文排版升级：代码块带语言与一键复制，支持表格、任务列表和 Mermaid 流程图。",
         "账号页可以快捷更换本机登录过的账号，切换无需重新输入密码。",

@@ -54,7 +54,6 @@ fun BrandHeader(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
     trailing: @Composable (() -> Unit)? = null,
-    hazeState: HazeState? = null,
 ) {
     Box(
         modifier = Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal),
@@ -95,32 +94,10 @@ fun BackHeader(
     centeredTitle: Boolean = false,
     centeredTitleSize: TextUnit = HeikaType.headerTitle,
     modifier: Modifier = Modifier,
-    hazeState: HazeState? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
-    val hairline = MaterialTheme.colorScheme.outline.copy(alpha = .22f)
-    // 顶栏玻璃：内容从下方穿过时是一层模糊，静止时接近纯色，不会持续消耗 GPU。
-    val bar = if (hazeState != null) {
-        modifier.fillMaxWidth().hazeEffect(
-            state = hazeState,
-            style = HazeStyle(
-                backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = .62f),
-                tint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .28f)),
-                blurRadius = 22.dp,
-                noiseFactor = .015f,
-                fallbackTint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .94f)),
-            ),
-        ).drawBehind {
-            drawLine(
-                hairline,
-                Offset(0f, size.height - .5.dp.toPx()),
-                Offset(size.width, size.height - .5.dp.toPx()),
-                .5.dp.toPx(),
-            )
-        }
-    } else modifier
     if (centeredTitle) {
-        Box(bar.height(HeikaSpacing.headerHeight).padding(horizontal = 12.dp)) {
+        Box(modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = 12.dp)) {
             IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).size(44.dp)) {
                 Icon(HeikaIcons.Back, contentDescription = "返回", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
             }
@@ -141,7 +118,7 @@ fun BackHeader(
         return
     }
     Row(
-        modifier = bar.height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal),
+        modifier = modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

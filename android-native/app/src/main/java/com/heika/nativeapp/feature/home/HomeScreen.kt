@@ -127,14 +127,24 @@ fun HomeScreen(
     var preview by remember { mutableStateOf<DailyCardPreview?>(null) }
     var closeRequest by remember { mutableIntStateOf(0) }
     var containerOrigin by remember { mutableStateOf(Offset.Zero) }
+    // 背景模糊不跟着 preview 是否存在走：preview 要等退场动画播完才置空，
+    // 那样模糊会慢半拍。改用独立的开关，手指/返回键一触发退场就先开始散去。
+    var backdropBlurOn by remember { mutableStateOf(false) }
     val backdropBlurRadius by animateDpAsState(
-        targetValue = if (preview != null) 16.dp else 0.dp,
-        animationSpec = tween(260, easing = FastOutSlowInEasing),
+        targetValue = if (backdropBlurOn) 16.dp else 0.dp,
+        // 打开时略快，退场时和卡片落回原位同长，视觉上"卡落定 = 背景清晰"。
+        animationSpec = tween(
+            if (backdropBlurOn) 240 else HeikaMotion.spatial,
+            easing = if (backdropBlurOn) FastOutSlowInEasing else HeikaMotion.spatialEasing,
+        ),
         label = "flip-preview-backdrop-blur",
     )
     val gridState = rememberLazyGridState()
     val previewHaze = rememberHazeState()
-    LaunchedEffect(preview?.id) { onPreviewActive(preview != null) }
+    LaunchedEffect(preview?.id) {
+        onPreviewActive(preview != null)
+        if (preview != null) backdropBlurOn = true
+    }
     androidx.compose.runtime.DisposableEffect(Unit) {
         onDispose { onPreviewActive(false) }
     }
@@ -149,7 +159,7 @@ fun HomeScreen(
                 .heikaGaussianBlur(backdropBlurRadius, enabled = backdropBlurRadius.value > .1f)
                 .hazeSource(previewHaze),
         ) {
-            BrandHeader(onSearch = onSearch, onNotifications = onNotifications, hazeState = previewHaze)
+            BrandHeader(onSearch = onSearch, onNotifications = onNotifications)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 state = gridState,
@@ -238,6 +248,8 @@ fun HomeScreen(
                 closeRequest = closeRequest,
                 onConfirm = { viewModel.flip(selected.id) },
                 onOpenDetails = { state.posts[selected.id]?.let(onPost) },
+                // 退场动画开始时立刻撤掉背景模糊，不再等 onDismiss。
+                onDismissStart = { backdropBlurOn = false },
                 onDismiss = { preview = null },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
@@ -319,6 +331,7 @@ private fun FlipPreviewOverlay(
     closeRequest: Int,
     onConfirm: () -> Unit,
     onOpenDetails: () -> Unit,
+    onDismissStart: () -> Unit,
     onDismiss: () -> Unit,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
@@ -379,6 +392,7 @@ private fun FlipPreviewOverlay(
             if (!opening && !revealing && !dismissing) {
                 handledCloseRequest = closeRequest
                 dismissing = true
+                onDismissStart()
                 if (reduceMotion) progress.snapTo(0f)
                 else progress.animateTo(0f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))
                 onDismiss()
@@ -389,6 +403,7 @@ private fun FlipPreviewOverlay(
     fun requestDismiss() {
         if (opening || revealing || dismissing) return
         dismissing = true
+        onDismissStart()
         scope.launch(HeikaCoroutineGuard) {
             if (reduceMotion) progress.snapTo(0f)
             else progress.animateTo(0f, tween(HeikaMotion.spatial, easing = HeikaMotion.spatialEasing))

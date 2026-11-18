@@ -67,6 +67,8 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
     var nickname by rememberSaveable { mutableStateOf("") }
     var code by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    // 已登录时点"登录其他账号"进入的登录表单：会话还在，只是暂时盖住账号列表。
+    var addingAccount by rememberSaveable { mutableStateOf(false) }
     val flow = state.flow
     // 恢复码是注册后的独立一步：整页展示，不再用弹窗盖住表单。
     // 用户必须先确认保存，才会回到正常登录/已登录界面。
@@ -83,6 +85,7 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
         if (state.session != null) {
             hadSession = true
         } else if (hadSession) {
+            addingAccount = false
             email = ""
             passwordField = TextFieldValue("")
             confirmation = ""
@@ -124,7 +127,7 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
         BackHeader("黑卡账号", onBack)
         if (state.loading) {
             HeikaPulsePage(cards = 3, cardHeight = 74.dp)
-        } else if (state.session != null && flow == AccountFlow.LOGIN) {
+        } else if (state.session != null && flow == AccountFlow.LOGIN && !addingAccount) {
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -133,10 +136,14 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                 Text(state.session?.email ?: state.session?.userId.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 Button(onClick = { viewModel.signOut(onBack) }, modifier = Modifier.fillMaxWidth()) { Text("退出登录") }
 
-                if (state.accounts.size > 1) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("本机账号", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text("切换后无需重新输入密码，最多保留 5 个账号。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("本机账号", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (state.accounts.size > 1) "切换后无需重新输入密码，最多保留 5 个账号。"
+                    else "登录过的账号会记在这里，下次一键切换，最多 5 个。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp,
+                )
+                run {
                     state.accounts.forEach { account ->
                         val current = account.userId == state.session?.userId
                         Row(
@@ -171,6 +178,11 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                         }
                     }
                 }
+                androidx.compose.material3.OutlinedButton(
+                    enabled = !state.busy,
+                    onClick = { addingAccount = true; email = ""; passwordField = TextFieldValue("") },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("登录其他账号") }
                 state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
             }
@@ -183,11 +195,17 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                     when (flow) {
                         AccountFlow.SIGN_UP -> "加入黑卡。"
                         AccountFlow.RECOVERY_CODE -> "找回密码。"
-                        else -> "欢迎回来。"
+                        else -> if (addingAccount) "登录其他账号。" else "欢迎回来。"
                     },
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 25.sp,
                 )
+                if (addingAccount) {
+                    Text(
+                        "当前账号会保留在本机账号里，登录成功后自动切换过去。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp,
+                    )
+                }
                 Text(
                     when (flow) {
                         AccountFlow.SIGN_UP -> "用邮箱和密码创建账号，无需邮箱验证码。"
@@ -268,6 +286,14 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                     }
                     AccountFlow.SIGN_UP -> Text("已有账号，返回登录", Modifier.clickable { viewModel.setFlow(AccountFlow.LOGIN) }.padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                     AccountFlow.RECOVERY_CODE -> Text("返回登录", Modifier.clickable { viewModel.setFlow(AccountFlow.LOGIN) }.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                }
+                if (addingAccount) {
+                    // 已登录状态下打开的表单：给一条不留痕迹的退路。
+                    Text(
+                        "返回当前账号",
+                        Modifier.clickable { addingAccount = false; email = ""; passwordField = TextFieldValue("") }.padding(8.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp,
+                    )
                 }
                 Spacer(Modifier.height(24.dp))
             }

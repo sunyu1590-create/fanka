@@ -155,29 +155,3 @@ fun HeikaLiquidGlassSurface(
         content = content,
     )
 }
-
-/**
- * 顶栏玻璃容器：给自定义顶栏（品牌头、私信标题行等）套一层模糊底。
- * 与 BackHeader 的 hazeState 参数共用同一套视觉参数。
- */
-@Composable
-fun HeikaGlassBar(
-    hazeState: HazeState?,
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit,
-) {
-    val base = modifier.fillMaxWidth()
-    Box(
-        if (hazeState != null) base.hazeEffect(
-            state = hazeState,
-            style = HazeStyle(
-                backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = .62f),
-                tint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .28f)),
-                blurRadius = 22.dp,
-                noiseFactor = .015f,
-                fallbackTint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .94f)),
-            ),
-        ) else base,
-        content = content,
-    )
-}

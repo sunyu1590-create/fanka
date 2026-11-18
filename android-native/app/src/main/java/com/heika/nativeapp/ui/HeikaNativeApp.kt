@@ -7,8 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
@@ -181,8 +179,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                             fadeIn(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
                             "crossfade" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
-                            "shared" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
-                                slideInVertically(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) { it / 72 }
+                            "shared" -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
                             else -> fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) +
                                 slideInVertically(tween(HeikaMotion.transition, easing = HeikaMotion.standard)) { it / 36 }
                         }
@@ -193,17 +190,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else if (pageTransition == "shared" && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
-                            // 列表后退一层并淡出，和封面飞出的方向配合，而不是原地消失。
-                            fadeOut(tween(HeikaMotion.spatial, easing = HeikaMotion.standard)) +
-                                scaleOut(
-                                    animationSpec = tween(HeikaMotion.spatial, easing = HeikaMotion.standard),
-                                    targetScale = 0.965f,
-                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.32f),
-                                )
+                            // 源页只做淡出，连"轻微后退"的缩放也去掉：连贯感交给共享元素，
+                            // 背景层任何位移都会和飞行的封面打架，看起来像两套动画。
+                            fadeOut(tween(HeikaMotion.spatial, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
                             "crossfade" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
-                            "shared" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
-                                slideOutVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 96 }
+                            "shared" -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                             else -> fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
                                 slideOutVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
                         }
@@ -214,16 +206,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else if (pageTransition == "shared" && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
-                            fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
-                                scaleIn(
-                                    animationSpec = tween(HeikaMotion.control, easing = HeikaMotion.standard),
-                                    initialScale = 0.965f,
-                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.32f),
-                                )
+                            fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
                             "crossfade" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
-                            "shared" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
-                                slideInVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 96 }
+                            "shared" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                             else -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard)) +
                                 slideInVertically(tween(HeikaMotion.control, easing = HeikaMotion.standard)) { -it / 48 }
                         }
@@ -237,8 +223,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                             fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
                             "crossfade" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
-                            "shared" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) +
-                                slideOutVertically(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) { it / 72 }
+                            "shared" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
                             else -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) +
                                 slideOutVertically(tween(HeikaMotion.quick, easing = HeikaMotion.standard)) { it / 36 }
                         }
@@ -377,7 +362,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onAuthor = { id -> openDestination(HeikaDestination.UserProfile(id)) },
                         onLogin = { nav.navigate("account") },
                         onShare = { post -> shareNativePost(context, post) },
-                        hazeState = hazeState,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",

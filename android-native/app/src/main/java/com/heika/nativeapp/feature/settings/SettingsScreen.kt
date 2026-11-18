@@ -21,8 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.hazeSource
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -267,13 +265,11 @@ fun SettingsDetailScreen(
         "cache-capacity" -> "缓存容量"
         else -> "设置"
     }
-    // 顶栏玻璃：列表上移一个顶栏高度，滚动时内容从玻璃下方穿过。
-    val headerHaze = rememberHazeState()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader(title, onBack, hazeState = headerHaze, modifier = Modifier.zIndex(1f))
+        BackHeader(title, onBack)
         LazyColumn(
-            modifier = Modifier.weight(1f).offset(y = -56.dp).hazeSource(headerHaze),
-            contentPadding = PaddingValues(start = 20.dp, top = 58.dp, end = 20.dp, bottom = 110.dp),
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp),
         ) {
             when (section) {
                 "account" -> {

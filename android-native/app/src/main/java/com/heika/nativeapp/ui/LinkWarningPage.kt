@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.sp
  *
  * 与网页端 /link-warning 一致：整页说明风险，而不是弹一个对话框。
  * 整页能放下的信息更多，也不会出现"点错就跳走"的误触。
+ * 内容统一收在一张圆角卡片里，和站内的设置分组、弹窗是同一套视觉语言。
  */
 @Composable
 fun LinkWarningPage(
@@ -55,6 +57,7 @@ fun LinkWarningPage(
         runCatching { Uri.decode(raw) }.getOrDefault(raw).take(80)
     }
     val valid = target != null && (target.scheme == "http" || target.scheme == "https") && host.isNotBlank()
+    val shape = RoundedCornerShape(HeikaRadii.dialog)
 
     BackHandler(enabled = true) { onDismiss() }
 
@@ -71,86 +74,95 @@ fun LinkWarningPage(
             Text("外部链接提示", color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(26.dp))
-            Box(
-                Modifier.size(56.dp).clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)),
-                contentAlignment = Alignment.Center,
+            Column(
+                Modifier.fillMaxWidth()
+                    .clip(shape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .42f), shape)
+                    .padding(horizontal = 18.dp, vertical = 22.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
-            }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                if (valid) "你正在离开黑卡" else "这个链接打不开",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(9.dp))
-            Text(
-                if (valid) "接下来要打开的是站外地址，它不属于黑卡，也不受黑卡管理。"
-                else "这个地址无效，或者不是可以打开的站外链接。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp,
-                lineHeight = 21.sp,
-            )
-            if (valid) {
-                Spacer(Modifier.height(18.dp))
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.dialog))
-                        .background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Text(host, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(path, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Spacer(Modifier.height(18.dp))
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                    listOf(
-                        "站外页面可能要求你登录、付款或下载文件，请先确认来源可信。",
-                        "不要在任何站外页面输入黑卡账号、密码或恢复码。",
-                        "下载可执行文件前请自行确认安全性，尤其是安装包与脚本。",
-                    ).forEach { line ->
-                        Row(Modifier.fillMaxWidth()) {
-                            Text("·", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, modifier = Modifier.width(12.dp))
-                            Text(line, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "继续访问即表示你理解并自行承担由此产生的风险，黑卡不对站外内容负责。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .85f),
-                    fontSize = 11.sp,
-                    lineHeight = 18.sp,
-                )
-            }
-            Spacer(Modifier.height(24.dp))
-            if (valid) {
                 Box(
-                    Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(HeikaRadii.control))
-                        .background(MaterialTheme.colorScheme.primary).clickable {
-                            onDismiss()
-                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, target)) }
-                                .onFailure { HeikaNoticeBus.show("没有能打开该链接的应用", HeikaNoticeKind.ERROR) }
-                        },
+                    Modifier.size(52.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("继续访问", color = MaterialTheme.colorScheme.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    if (valid) "你正在离开黑卡" else "这个链接打不开",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (valid) "接下来要打开的是站外地址，它不属于黑卡，也不受黑卡管理。"
+                    else "这个地址无效，或者不是可以打开的站外链接。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.5.sp,
+                    lineHeight = 20.sp,
+                )
+                if (valid) {
+                    Spacer(Modifier.height(16.dp))
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface))
+                            .background(MaterialTheme.colorScheme.background.copy(alpha = .72f))
+                            .padding(horizontal = 13.dp, vertical = 11.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text(host, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(path, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(
+                            "站外页面可能要求你登录、付款或下载文件，请先确认来源可信。",
+                            "不要在任何站外页面输入黑卡账号、密码或恢复码。",
+                            "下载可执行文件前请自行确认安全性，尤其是安装包与脚本。",
+                        ).forEach { line ->
+                            Row(Modifier.fillMaxWidth()) {
+                                Text("·", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, modifier = Modifier.width(12.dp))
+                                Text(line, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.5.sp, lineHeight = 19.sp, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "继续访问即表示你理解并自行承担由此产生的风险，黑卡不对站外内容负责。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .82f),
+                        fontSize = 10.5.sp,
+                        lineHeight = 17.sp,
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+                if (valid) {
+                    Box(
+                        Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(HeikaRadii.control))
+                            .background(MaterialTheme.colorScheme.primary).clickable {
+                                onDismiss()
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, target)) }
+                                    .onFailure { HeikaNoticeBus.show("没有能打开该链接的应用", HeikaNoticeKind.ERROR) }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("继续访问", color = MaterialTheme.colorScheme.onPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.height(9.dp))
+                }
+                Box(
+                    Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(HeikaRadii.control))
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = .72f)).clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("返回黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
             }
-            Box(
-                Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(HeikaRadii.control))
-                    .background(MaterialTheme.colorScheme.surface).clickable(onClick = onDismiss),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("返回黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            }
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(20.dp))
         }
     }
 }

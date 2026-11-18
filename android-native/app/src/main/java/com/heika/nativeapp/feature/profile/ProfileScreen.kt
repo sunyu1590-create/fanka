@@ -62,9 +62,6 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.feature.exploration.ExplorationLogic
 import com.heika.nativeapp.ui.BackHeader
-import com.heika.nativeapp.ui.HeikaGlassBar
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.hazeSource
 import androidx.compose.ui.zIndex
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaSpacing
@@ -158,17 +155,13 @@ fun ProfileScreen(
 
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; else -> state.posts }
-    // 顶栏玻璃：网格上移一个顶栏高度，头像与作品从玻璃下方穿过。
-    val headerHaze = rememberHazeState()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        HeikaGlassBar(headerHaze, Modifier.zIndex(1f)) {
-            if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack, hazeState = null)
-        }
+        if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
         Box(Modifier.fillMaxSize()) {
             val swipeThreshold = with(LocalDensity.current) { 54.dp.toPx() }
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2), state = gridState,
-                modifier = Modifier.fillMaxSize().offset(y = -56.dp).hazeSource(headerHaze).pointerInput(selected) {
+                modifier = Modifier.fillMaxSize().pointerInput(selected) {
                     var dragDistance = 0f
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, amount -> change.consume(); dragDistance += amount },
@@ -182,7 +175,7 @@ fun ProfileScreen(
                         onDragCancel = { dragDistance = 0f },
                     )
                 },
-                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 58.dp, bottom = 128.dp),
+                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 128.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalItemSpacing = 12.dp,
             ) {
                 item(span = StaggeredGridItemSpan.FullLine) {

@@ -38,7 +38,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import dev.chrisbanes.haze.hazeSource
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
@@ -123,7 +122,6 @@ import com.heika.nativeapp.ui.sharedAuthorKey
 import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.sharedRatingKey
 import com.heika.nativeapp.ui.sharedTagKey
-import dev.chrisbanes.haze.HazeState
 import com.heika.nativeapp.ui.HeikaPulsePage
 
 @Composable
@@ -135,7 +133,6 @@ fun PostDetailScreen(
     onAuthor: (String) -> Unit,
     onLogin: () -> Unit,
     onShare: (HeikaPost) -> Unit,
-    hazeState: HazeState,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedElementsEnabled: Boolean,
@@ -201,7 +198,7 @@ fun PostDetailScreen(
     val visiblePost = if (post != null && state.post?.sharedImageKey() != post.sharedImageKey()) post else state.post ?: post
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, hazeState = hazeState, modifier = Modifier.zIndex(1f), trailing = {
+        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, modifier = Modifier.zIndex(1f), trailing = {
             Box {
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
                 BackHandler(enabled = moreOpen) { moreOpen = false }
@@ -221,7 +218,7 @@ fun PostDetailScreen(
                     HeikaDropdownFade(visible = moreOpen) {
                     val menuShape = RoundedCornerShape(24.dp)
                     HeikaGlassSurface(
-                        hazeState = hazeState,
+                        hazeState = null,
                         modifier = Modifier.widthIn(min = 220.dp, max = 250.dp).heightIn(max = 480.dp)
                             .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .55f), menuShape),
                         shape = menuShape,
@@ -274,9 +271,8 @@ fun PostDetailScreen(
             val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
-                // 上移一个顶栏高度：滚动时正文从顶栏玻璃下方穿过。
-                modifier = Modifier.weight(1f).offset(y = -56.dp).hazeSource(hazeState),
-                contentPadding = PaddingValues(top = 58.dp, bottom = 24.dp),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
             ) {
                 item {
@@ -855,9 +851,9 @@ private fun Modifier.detailContentReveal(enabled: Boolean, delayMillis: Int = 90
         animationSpec = tween(360, easing = FastOutSlowInEasing),
         label = "detail-content-reveal",
     )
+    // 只做叠化：不再带位移，翻页时正文原地淡入，避免"整页往上浮一下"。
     return this.graphicsLayer {
         alpha = progress
-        translationY = (1f - progress) * 12.dp.toPx()
     }
 }
 

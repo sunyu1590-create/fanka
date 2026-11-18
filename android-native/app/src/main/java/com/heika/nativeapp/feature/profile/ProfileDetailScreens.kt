@@ -51,8 +51,6 @@ import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.ui.BackHeader
-import dev.chrisbanes.haze.rememberHazeState
-import dev.chrisbanes.haze.hazeSource
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.offset
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
@@ -118,13 +116,12 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
         }
     }
     LaunchedEffect(Unit) { if (state.profile == null) viewModel.load(null) }
-    val headerHaze = rememberHazeState()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader("编辑资料", onBack, hazeState = headerHaze, modifier = Modifier.zIndex(1f))
+        BackHeader("编辑资料", onBack)
         if (profile == null && state.loading) {
             HeikaPulsePage(cards = 3, cardHeight = 62.dp)
         } else if (profile != null) {
-            LazyColumn(Modifier.fillMaxSize().offset(y = -56.dp).hazeSource(headerHaze), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 66.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         HeikaAvatar(profile.avatar, profile.nickname, 88.dp, contentDescription = "个人头像", modifier = Modifier.clickable { imagePicker.launch("image/*") })
@@ -235,10 +232,10 @@ fun ManageWorksScreen(
     var deleteTarget by remember { mutableStateOf<HeikaPost?>(null) }
     LaunchedEffect(Unit) { if (state.profile == null) viewModel.load(null) }
     val allWorks = state.posts + state.drafts
-    val worksHaze = rememberHazeState()
+
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader("作品管理", onBack, hazeState = worksHaze, modifier = Modifier.zIndex(1f))
-        LazyColumn(Modifier.weight(1f).offset(y = -56.dp).hazeSource(worksHaze), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 64.dp, end = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        BackHeader("作品管理", onBack)
+        LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Text("删除操作会同步移除作品及其关联图片。草稿和审核中的作品可以继续编辑。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 7.dp))
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp)) }

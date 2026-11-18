@@ -192,7 +192,6 @@ fun DiscoveryScreen(
                     Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            hazeState = hazeState,
         )
         Row(
             Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 20.dp),
@@ -624,13 +623,13 @@ internal fun FeedCard(
                 }
                 HeikaLiquidBadgeSurface(
                     hazeState = hazeState,
-                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                     shape = RoundedCornerShape(HeikaRadii.categoryTag),
-                    contentPadding = PaddingValues(horizontal = 7.dp, vertical = 3.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp),
                 ) {
-                    Text(post.tag, tagSharedModifier, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(post.tag, tagSharedModifier, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(8.dp), hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface, contentModifier = ratingSharedModifier)
+                RatingTag(post, Modifier.align(Alignment.TopEnd).padding(6.dp), hazeState = hazeState, contentColor = MaterialTheme.colorScheme.onSurface, contentModifier = ratingSharedModifier)
                 Text(post.title, Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), style = androidx.compose.ui.text.TextStyle(shadow = photoShadow), color = Color.White, fontSize = 15.sp * titleScale, lineHeight = 20.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         } else {
@@ -682,11 +681,11 @@ private fun RatingTag(
         hazeState = hazeState,
         modifier = modifier,
         shape = RoundedCornerShape(HeikaRadii.ratingTag),
-        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp),
+        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 1.dp),
     ) {
-        Row(contentModifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(HeikaIcons.StarOutline, contentDescription = null, tint = HeikaGold, modifier = Modifier.size(12.dp))
-            Text(if (post.hasRating) String.format(Locale.US, "%.1f", post.ratingAverage) else "待评级", color = contentColor, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+        Row(contentModifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Icon(HeikaIcons.StarOutline, contentDescription = null, tint = HeikaGold, modifier = Modifier.size(10.dp))
+            Text(if (post.hasRating) String.format(Locale.US, "%.1f", post.ratingAverage) else "待评级", color = contentColor, fontSize = 9.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
