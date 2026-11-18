@@ -251,7 +251,11 @@ fun ExplorationDailyTasksScreen(onBack: () -> Unit, onCompleteMission: (String) 
             items(state.missions, key = { it.key }) { mission ->
                 val canClaim = ExplorationLogic.canClaim(mission.progress, mission.target, mission.claimed, state.busyMission != null)
                 val complete = mission.target > 0 && mission.progress >= mission.target
-                Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 13.dp, vertical = 11.dp),
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(mission.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -279,7 +283,6 @@ fun ExplorationDailyTasksScreen(onBack: () -> Unit, onCompleteMission: (String) 
                         Text("${mission.progress.coerceAtMost(mission.target)}/${mission.target}", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
                         Text("+${mission.points} EXP", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                     }
-                    HorizontalDivider(Modifier.padding(top = 10.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
                 }
             }
         }
@@ -297,11 +300,15 @@ fun ExplorationRewardsScreen(onBack: () -> Unit, viewModel: ExplorationViewModel
                 androidx.compose.material3.Icon(HeikaIcons.Retry, contentDescription = "刷新等级奖励", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 4.dp, end = 18.dp, bottom = 132.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 4.dp, end = 18.dp, bottom = 132.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(ExplorationLogic.levels, key = { "level-${it.level}" }) { level ->
                 val unlocked = state.experience >= level.threshold
                 val claimed = level.level in state.claimedLevels
-                Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 13.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text("LV.${level.level}", color = if (unlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(48.dp))
                     Column(Modifier.weight(1f)) {
                         Text(level.reward, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -313,7 +320,6 @@ fun ExplorationRewardsScreen(onBack: () -> Unit, viewModel: ExplorationViewModel
                         else -> Text("未解锁", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             }
         }
     }
@@ -330,14 +336,16 @@ fun ExplorationEventsScreen(onBack: () -> Unit, viewModel: ExplorationViewModel 
                 androidx.compose.material3.Icon(HeikaIcons.Retry, contentDescription = "刷新成长记录", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 4.dp, end = 18.dp, bottom = 132.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 4.dp, end = 18.dp, bottom = 132.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             state.error?.let { message -> item { InlineError(message, onRetry = { viewModel.load(force = true) }) } }
             if (state.events.isEmpty() && state.error == null) item {
                 Text(if (state.loading) "正在同步" else "暂无记录", Modifier.fillMaxWidth().padding(vertical = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
             items(state.events) { event ->
-                ExperienceEventRow(event)
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                Box(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surface).padding(horizontal = 13.dp),
+                ) { ExperienceEventRow(event) }
             }
         }
     }

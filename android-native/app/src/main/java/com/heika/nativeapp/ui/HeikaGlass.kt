@@ -3,6 +3,7 @@ package com.heika.nativeapp.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
@@ -151,6 +152,32 @@ fun HeikaLiquidGlassSurface(
                 drawLine(Color.White.copy(alpha = if (dark) .23f else .55f), Offset(14.dp.toPx(), .6.dp.toPx()), Offset(size.width - 14.dp.toPx(), .6.dp.toPx()), .8.dp.toPx())
             } else Modifier)
             .padding(contentPadding),
+        content = content,
+    )
+}
+
+/**
+ * 顶栏玻璃容器：给自定义顶栏（品牌头、私信标题行等）套一层模糊底。
+ * 与 BackHeader 的 hazeState 参数共用同一套视觉参数。
+ */
+@Composable
+fun HeikaGlassBar(
+    hazeState: HazeState?,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val base = modifier.fillMaxWidth()
+    Box(
+        if (hazeState != null) base.hazeEffect(
+            state = hazeState,
+            style = HazeStyle(
+                backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = .62f),
+                tint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .28f)),
+                blurRadius = 22.dp,
+                noiseFactor = .015f,
+                fallbackTint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .94f)),
+            ),
+        ) else base,
         content = content,
     )
 }

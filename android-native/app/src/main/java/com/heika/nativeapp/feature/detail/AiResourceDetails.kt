@@ -64,6 +64,7 @@ fun AiResourceDetails(
 ) {
     val context = LocalContext.current
     var versionsExpanded by remember { mutableStateOf(false) }
+    var moreExpanded by remember { mutableStateOf(false) }
     var feedbackOpen by remember { mutableStateOf(false) }
     var selectedKind by remember { mutableStateOf("broken_link") }
     var details by remember { mutableStateOf("") }
@@ -139,44 +140,58 @@ fun AiResourceDetails(
             }
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("版本记录${versions.takeIf { it.isNotEmpty() }?.let { " · ${it.size}" }.orEmpty()}", Modifier.weight(1f).clickable { versionsExpanded = !versionsExpanded }, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            if (versionsLoading) Text("加载中…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-            else Text(if (versionsExpanded) "收起" else "查看", Modifier.clickable { versionsExpanded = !versionsExpanded }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-        }
-        if (versionsError != null) {
-            Row {
-                Text(versionsError, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
-                Text("重试", Modifier.clickable(onClick = onRetryVersions), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+        // 版本记录与纠错属于低频操作，统一收进「更多」，详情页默认只留资源本身的内容。
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface)
+                .clickable { moreExpanded = !moreExpanded }.padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("更多", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text("版本记录 · 报告资源失效或纠错", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
             }
+            Text(if (moreExpanded) "收起" else "展开", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
         }
-        if (versionsExpanded && versions.isEmpty() && !versionsLoading && versionsError == null) {
-            Text("暂无已发布的版本记录", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-        }
-        if (versionsExpanded) versions.forEach { version ->
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(version.optString("version_label").ifBlank { "未标注版本" }, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text(version.optString("changelog").ifBlank { "资源更新" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
-                Text(version.optString("created_at").take(10), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                val id = version.optString("id")
-                val payload = version.optJSONObject("payload")
-                if (payload != null) {
-                    Text(if (expandedVersion == id) "收起版本内容" else "查看版本内容", Modifier.clickable { expandedVersion = if (expandedVersion == id) null else id }, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                    if (expandedVersion == id) {
-                        payload.optString("title").takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
-                        payload.optString("body").takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 18.sp) }
-                        payload.optJSONObject("resourceData")?.let { data ->
-                            data.keys().asSequence().forEach { key ->
-                                Text("${aiFieldLabels[key] ?: key}: ${data.opt(key)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+        if (moreExpanded) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("版本记录${versions.takeIf { it.isNotEmpty() }?.let { " · ${it.size}" }.orEmpty()}", Modifier.weight(1f).clickable { versionsExpanded = !versionsExpanded }, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                if (versionsLoading) Text("加载中…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                else Text(if (versionsExpanded) "收起" else "查看", Modifier.clickable { versionsExpanded = !versionsExpanded }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+            }
+            if (versionsError != null) {
+                Row {
+                    Text(versionsError, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    Text("重试", Modifier.clickable(onClick = onRetryVersions), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                }
+            }
+            if (versionsExpanded && versions.isEmpty() && !versionsLoading && versionsError == null) {
+                Text("暂无已发布的版本记录", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            }
+            if (versionsExpanded) versions.forEach { version ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(version.optString("version_label").ifBlank { "未标注版本" }, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(version.optString("changelog").ifBlank { "资源更新" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
+                    Text(version.optString("created_at").take(10), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    val id = version.optString("id")
+                    val payload = version.optJSONObject("payload")
+                    if (payload != null) {
+                        Text(if (expandedVersion == id) "收起版本内容" else "查看版本内容", Modifier.clickable { expandedVersion = if (expandedVersion == id) null else id }, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                        if (expandedVersion == id) {
+                            payload.optString("title").takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
+                            payload.optString("body").takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 18.sp) }
+                            payload.optJSONObject("resourceData")?.let { data ->
+                                data.keys().asSequence().forEach { key ->
+                                    Text("${aiFieldLabels[key] ?: key}: ${data.opt(key)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                }
                             }
                         }
                     }
                 }
             }
+            if (!feedbackSubmitted) {
+                TextButton(onClick = { feedbackOpen = true }) { Text("报告资源失效或纠错") }
+            } else Text("反馈已提交", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
         }
-        if (!feedbackSubmitted) {
-            TextButton(onClick = { feedbackOpen = true }) { Text("报告资源失效或纠错") }
-        } else Text("反馈已提交", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
     }
 
     if (feedbackOpen) HeikaAlertDialog(

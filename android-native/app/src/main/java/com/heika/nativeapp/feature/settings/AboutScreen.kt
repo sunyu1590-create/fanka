@@ -42,6 +42,17 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(60, "2026.11.18", listOf(
+        "正文排版升级：代码块带语言与一键复制，支持表格、任务列表和 Mermaid 流程图。",
+        "账号页可以快捷更换本机登录过的账号，切换无需重新输入密码。",
+        "详情页、设置页、我的、个人主页与私聊页的顶栏加上毛玻璃效果。",
+        "探索任务、等级徽章与成长记录统一放进圆角卡片。",
+        "账号管理改为紧凑列表，并支持删除账号。",
+        "AI 资源详情页把版本记录与异议反馈收进「更多」。",
+        "站外链接改为整页风险提示，不再弹窗。",
+        "修复他人作品附件无法下载的问题。",
+        "点赞与收藏的加载状态相互独立，点爱心时收藏按钮不再转圈。",
+    )),
     NativeRelease(59, "2026.11.18", listOf(
         "注册安全升级：同一 IP 每小时最多注册 2 个账号，超出后会提示稍后再试。",
         "注册后的恢复码改为独立页面展示，必须确认已保存才能进入黑卡。",

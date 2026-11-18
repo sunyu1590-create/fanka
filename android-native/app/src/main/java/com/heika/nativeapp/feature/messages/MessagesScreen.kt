@@ -62,6 +62,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaGlassBar
+import dev.chrisbanes.haze.rememberHazeState
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.offset
 import com.heika.nativeapp.ui.HeikaAlertDialog
 import com.heika.nativeapp.ui.HeikaSpacing
 import com.heika.nativeapp.ui.HeikaType
@@ -230,6 +235,7 @@ fun MessagesScreen(
             }
         } else {
             val peer = state.activePeer
+            val chatHaze = rememberHazeState()
             val context = LocalContext.current
             var actionTarget by remember(state.activeId) { mutableStateOf<NativeMessage?>(null) }
             var didInitialScroll by remember(state.activeId) { mutableStateOf(false) }
@@ -245,17 +251,19 @@ fun MessagesScreen(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                IconButton(onClick = { viewModel.closeConversation() }, modifier = Modifier.size(44.dp)) { Icon(HeikaIcons.Back, "返回会话列表", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onBackground) }
-                if (peer != null) HeikaAvatar(peer.avatar, peer.name, 40.dp)
-                Column(Modifier.weight(1f).clickable(enabled = peer != null) { peer?.let { onProfile(it.id) } }) {
-                    Text(peer?.name ?: "私信", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("个人主页", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+            HeikaGlassBar(chatHaze, Modifier.zIndex(1f)) {
+                Row(Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    IconButton(onClick = { viewModel.closeConversation() }, modifier = Modifier.size(44.dp)) { Icon(HeikaIcons.Back, "返回会话列表", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onBackground) }
+                    if (peer != null) HeikaAvatar(peer.avatar, peer.name, 40.dp)
+                    Column(Modifier.weight(1f).clickable(enabled = peer != null) { peer?.let { onProfile(it.id) } }) {
+                        Text(peer?.name ?: "私信", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("个人主页", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    }
+                    IconButton(onClick = { peer?.let { onProfile(it.id) } }, enabled = peer != null) { Icon(HeikaIcons.More, "会话选项", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                IconButton(onClick = { peer?.let { onProfile(it.id) } }, enabled = peer != null) { Icon(HeikaIcons.More, "会话选项", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             state.error?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
-            LazyColumn(state = conversationListState, modifier = Modifier.weight(1f).fillMaxWidth(), reverseLayout = false, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            LazyColumn(state = conversationListState, modifier = Modifier.weight(1f).fillMaxWidth().offset(y = -62.dp).hazeSource(chatHaze), reverseLayout = false, contentPadding = PaddingValues(start = 14.dp, top = 74.dp, end = 14.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 if (state.historyHasMore) item {
                     Text(if (state.loadingHistory) "正在加载…" else "加载更早消息", Modifier.fillMaxWidth().clickable(enabled = !state.loadingHistory) { viewModel.loadOlderMessages() }.padding(9.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }

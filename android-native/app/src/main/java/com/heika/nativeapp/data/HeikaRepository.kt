@@ -524,6 +524,11 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/users/${encode(id)}", method = "PATCH", body = JSONObject().put("membership_tier", tier).toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun deleteAdminUser(id: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(id))
+        request("/api/v1/admin/users/${encode(id)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun setAdminUserRestriction(id: String, active: Boolean, reason: String): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(id) && reason.trim().length in 3..500)
         val restriction = if (active) JSONObject().put("active", true).put("reason", reason.trim()).put("permanent", true) else JSONObject().put("active", false)

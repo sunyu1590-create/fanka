@@ -1,12 +1,19 @@
 package com.heika.nativeapp.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -30,6 +39,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import android.webkit.WebView
 import androidx.compose.ui.unit.sp
 
 /**
@@ -44,10 +54,12 @@ private sealed interface MdBlock {
     data class Quote(val lines: List<String>) : MdBlock
     data class Item(val ordered: Boolean, val index: Int, val text: String) : MdBlock
     data class Code(val language: String, val code: String) : MdBlock
+    data class Table(val header: List<String>, val rows: List<List<String>>) : MdBlock
+    data class Task(val checked: Boolean, val text: String) : MdBlock
     data object Rule : MdBlock
 }
 
-private val blockStart = Regex("^(#{1,6}\\s|>\\s?|[-*+]\\s|\\d+[.)]\\s|```|---+\\s*$)")
+private val blockStart = Regex("^(#{1,6}\\s|>\\s?|[-*+]\\s|\\d+[.)]\\s|```|\\||---+\\s*$)")
 
 private fun parseBlocks(source: String): List<MdBlock> {
     val lines = source.replace("\r\n", "\n").split("\n")
@@ -86,6 +98,25 @@ private fun parseBlocks(source: String): List<MdBlock> {
             continue
         }
 
+        // 表格：当前行含竖线，且下一行是 |---| 分隔行
+        if (line.contains("|") && i + 1 < lines.size && Regex("^\\s*\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)*\\|?\\s*$").matches(lines[i + 1])) {
+            val header = splitTableRow(line)
+            i += 2
+            val rows = mutableListOf<List<String>>()
+            while (i < lines.size && lines[i].contains("|") && lines[i].isNotBlank()) {
+                rows.add(splitTableRow(lines[i])); i++
+            }
+            blocks.add(MdBlock.Table(header, rows))
+            continue
+        }
+
+        val task = Regex("^\\s*[-*+]\\s+\\[([ xX])]\\s+(.+)$").find(line)
+        if (task != null) {
+            blocks.add(MdBlock.Task(task.groupValues[1].lowercase() == "x", task.groupValues[2]))
+            i++
+            continue
+        }
+
         val listItem = Regex("^\\s*([-*+]|\\d+[.)])\\s+(.+)$").find(line)
         if (listItem != null) {
             val ordered = listItem.groupValues[1].first().isDigit()
@@ -106,6 +137,9 @@ private fun parseBlocks(source: String): List<MdBlock> {
     return blocks
 }
 
+
+private fun splitTableRow(line: String): List<String> =
+    line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
 
 /** 裸链接：带协议、带 www、带路径或常见顶级域的域名都会被识别。 */
 private val bareUrlPattern = Regex(
@@ -277,22 +311,182 @@ fun HeikaMarkdown(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                is MdBlock.Code -> Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(codeBackground, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
+                is MdBlock.Code -> if (block.language.equals("mermaid", true)) {
+                    MermaidBlock(block.code, baseSize)
+                } else {
+                    MdCodeBlock(block, baseSize, textColor, codeBackground, linkColor)
+                }
+                is MdBlock.Table -> MdTable(block, baseSize, textColor, linkColor, codeColor, onLinkClick)
+                is MdBlock.Task -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Text(
-                        text = block.code,
-                        color = textColor,
-                        fontSize = baseSize * 0.86f,
-                        lineHeight = (baseSize.value * 1.5f).sp,
-                        fontFamily = FontFamily.Monospace,
+                        text = if (block.checked) "☑" else "☐",
+                        color = if (block.checked) MaterialTheme.colorScheme.primary else muted,
+                        fontSize = baseSize,
+                        modifier = Modifier.width(22.dp),
+                    )
+                    Text(
+                        text = buildInline(block.text, linkColor, codeColor, onLinkClick),
+                        color = if (block.checked) muted else textColor,
+                        fontSize = baseSize,
+                        lineHeight = (baseSize.value * 1.68f).sp,
+                        modifier = Modifier.weight(1f),
                     )
                 }
                 MdBlock.Rule -> HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             }
         }
+    }
+}
+
+/** 代码块：语言标识 + 复制 + 横向滚动，长行不再被硬换行。 */
+@Composable
+private fun MdCodeBlock(
+    block: MdBlock.Code,
+    baseSize: TextUnit,
+    textColor: Color,
+    codeBackground: Color,
+    accent: Color,
+) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(codeBackground),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().background(Color.Black.copy(alpha = .06f)).padding(start = 12.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                block.language.ifBlank { "text" }.lowercase(),
+                modifier = Modifier.weight(1f).padding(vertical = 7.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 9.5.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(
+                "复制",
+                Modifier.clip(RoundedCornerShape(999.dp)).clickable {
+                    clipboard.setText(AnnotatedString(block.code))
+                    HeikaNoticeBus.show("代码已复制", HeikaNoticeKind.SUCCESS)
+                }.padding(horizontal = 9.dp, vertical = 5.dp),
+                color = accent,
+                fontSize = 10.sp,
+            )
+        }
+        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = block.code,
+                color = textColor,
+                fontSize = baseSize * 0.86f,
+                lineHeight = (baseSize.value * 1.55f).sp,
+                fontFamily = FontFamily.Monospace,
+                softWrap = false,
+            )
+        }
+    }
+}
+
+/** 表格：首行表头，行列自适应宽度，单元格内仍可识别链接与话题。 */
+@Composable
+private fun MdTable(
+    block: MdBlock.Table,
+    baseSize: TextUnit,
+    textColor: Color,
+    linkColor: Color,
+    codeColor: Color,
+    onLinkClick: (String) -> Unit,
+) {
+    val border = MaterialTheme.colorScheme.outline.copy(alpha = .35f)
+    val headerBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .border(1.dp, border, RoundedCornerShape(10.dp)),
+    ) {
+        Row(Modifier.fillMaxWidth().background(headerBackground)) {
+            block.header.forEachIndexed { index, cell ->
+                Text(
+                    text = buildInline(cell, linkColor, codeColor, onLinkClick),
+                    modifier = Modifier.weight(1f).padding(horizontal = 9.dp, vertical = 8.dp),
+                    color = textColor,
+                    fontSize = baseSize * 0.88f,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = (baseSize.value * 1.45f).sp,
+                )
+                if (index < block.header.lastIndex) Box(Modifier.width(1.dp).height(IntrinsicSize.Min).background(border))
+            }
+        }
+        block.rows.forEachIndexed { rowIndex, row ->
+            HorizontalDivider(color = border)
+            Row(Modifier.fillMaxWidth()) {
+                block.header.indices.forEach { column ->
+                    Text(
+                        text = buildInline(row.getOrElse(column) { "" }, linkColor, codeColor, onLinkClick),
+                        modifier = Modifier.weight(1f).padding(horizontal = 9.dp, vertical = 8.dp),
+                        color = textColor,
+                        fontSize = baseSize * 0.86f,
+                        lineHeight = (baseSize.value * 1.5f).sp,
+                    )
+                    if (column < block.header.lastIndex) Box(Modifier.width(1.dp).height(IntrinsicSize.Min).background(border))
+                }
+            }
+            if (rowIndex == block.rows.lastIndex) Unit
+        }
+    }
+}
+
+/**
+ * 流程图：用 WebView 渲染 mermaid，脚本按需从 CDN 加载。
+ * 图形本身是 SVG，天然支持缩放与深色主题；渲染失败时退回显示源码。
+ */
+@Composable
+private fun MermaidBlock(code: String, baseSize: TextUnit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dark = isSystemInDarkTheme()
+    val html = remember(code, dark) {
+        val escaped = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        """
+        <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          html,body{margin:0;padding:0;background:transparent;}
+          #out{display:flex;justify-content:center;padding:6px 2px;}
+          #out svg{max-width:100%;height:auto;}
+          #err{color:${if (dark) "#d9c9a8" else "#6b5b45"};font:12px -apple-system,sans-serif;padding:10px;}
+        </style></head>
+        <body><div id="out"></div><div id="err"></div>
+        <pre id="src" style="display:none">$escaped</pre>
+        <script type="module">
+          const src = document.getElementById('src').textContent;
+          try {
+            const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+            mermaid.initialize({ startOnLoad:false, securityLevel:'strict', theme:'${if (dark) "dark" else "neutral"}' });
+            const { svg } = await mermaid.render('heika-mermaid', src);
+            document.getElementById('out').innerHTML = svg;
+            window.HeikaHeight && window.HeikaHeight(document.body.scrollHeight);
+          } catch (e) {
+            document.getElementById('err').textContent = '流程图渲染失败，已按源码显示';
+          }
+        </script></body></html>
+        """.trimIndent()
+    }
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .3f), RoundedCornerShape(10.dp)),
+    ) {
+        androidx.compose.ui.viewinterop.AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    settings.javaScriptEnabled = true
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
+                    loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+                }
+            },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 420.dp).padding(6.dp),
+            update = { view -> if (view.tag != html) { view.tag = html; view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null) } },
+        )
     }
 }

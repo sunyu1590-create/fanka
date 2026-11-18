@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -105,6 +107,7 @@ import coil3.request.crossfade
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BackHeader
+import com.heika.nativeapp.ui.LinkWarningPage
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.FilterChip
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
@@ -198,7 +201,7 @@ fun PostDetailScreen(
     val visiblePost = if (post != null && state.post?.sharedImageKey() != post.sharedImageKey()) post else state.post ?: post
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, trailing = {
+        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, hazeState = hazeState, modifier = Modifier.zIndex(1f), trailing = {
             Box {
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
                 BackHandler(enabled = moreOpen) { moreOpen = false }
@@ -271,8 +274,9 @@ fun PostDetailScreen(
             val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                // 上移一个顶栏高度：滚动时正文从顶栏玻璃下方穿过。
+                modifier = Modifier.weight(1f).offset(y = -56.dp).hazeSource(hazeState),
+                contentPadding = PaddingValues(top = 58.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
             ) {
                 item {
@@ -515,9 +519,9 @@ fun PostDetailScreen(
                         }
                     }
                 }
-                InteractionIconButton(selected = state.liked, sending = state.interactionSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
+                InteractionIconButton(selected = state.liked, sending = state.likeSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
                 Text("${state.likeCount ?: state.post?.likeCount ?: 0}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                InteractionIconButton(selected = state.saved, sending = state.interactionSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
+                InteractionIconButton(selected = state.saved, sending = state.saveSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
             }
         }
     }
@@ -612,19 +616,8 @@ fun PostDetailScreen(
             .onFailure { HeikaNoticeBus.show("没有能打开该附件的应用", HeikaNoticeKind.ERROR) }
     }
     linkWarning?.let { url ->
-        val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
-        HeikaGlassDialog(
-            title = "即将离开黑卡",
-            message = "目标站点：$host\n\n站外页面不受黑卡管理，可能要求登录、付款或下载文件。请确认来源可信，不要在任何站外页面输入黑卡账号、密码或恢复码。继续访问即表示你自行承担由此产生的风险。",
-            confirmText = "继续访问",
-            onConfirm = {
-                linkWarning = null
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                }.onFailure { HeikaNoticeBus.show("没有能打开该链接的应用", HeikaNoticeKind.ERROR) }
-            },
-            onCancel = { linkWarning = null },
-        )
+        // 整页提示，和网页端 /link-warning 保持一致，不再用弹窗。
+        LinkWarningPage(url = url, onDismiss = { linkWarning = null })
     }
 }
 

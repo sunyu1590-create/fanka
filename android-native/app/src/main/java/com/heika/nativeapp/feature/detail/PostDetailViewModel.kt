@@ -60,7 +60,8 @@ data class PostDetailState(
     val liked: Boolean = false,
     val likeCount: Int? = null,
     val saved: Boolean = false,
-    val interactionSending: Boolean = false,
+    val likeSending: Boolean = false,
+    val saveSending: Boolean = false,
     val followSending: Boolean = false,
     val commentLikesSending: Set<String> = emptySet(),
     val rating: Int? = null,
@@ -280,18 +281,24 @@ class PostDetailViewModel @Inject constructor(
     private fun toggleInteraction(action: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val post = mutableState.value.post ?: return@launch
         val version = requestVersion
-        if (mutableState.value.interactionSending) return@launch
+        val alreadySending = if (action == "like") mutableState.value.likeSending else mutableState.value.saveSending
+        if (alreadySending) return@launch
         if (post.id <= 0) {
             android.util.Log.w("PostDetail", "Blocked $action: invalid client post id=${post.id}")
             mutableState.update { it.copy(notice = "内容暂不可用") }
             return@launch
         }
         val old = mutableState.value
-        mutableState.update { it.copy(interactionSending = true) }
+        // 点赞与收藏各自独立：只让被点的那个按钮转圈，另一个不受影响。
+        val mark: (Boolean) -> Unit = { on ->
+            mutableState.update { if (action == "like") it.copy(likeSending = on) else it.copy(saveSending = on) }
+        }
+        mark(true)
         val signedIn = runCatching { auth.current() != null }.getOrDefault(false)
         if (version != requestVersion) return@launch
         if (!signedIn) {
-            mutableState.update { it.copy(interactionSending = false, notice = "请先登录后继续") }
+            mark(false)
+            mutableState.update { it.copy(notice = "请先登录后继续") }
             return@launch
         }
         val liked = if (action == "like") !old.liked else old.liked
@@ -299,8 +306,13 @@ class PostDetailViewModel @Inject constructor(
         val likeCount = if (action == "like") ((old.likeCount ?: post.likeCount) + if (liked) 1 else -1).coerceAtLeast(0) else old.likeCount
         mutableState.update { it.copy(liked = liked, likeCount = likeCount, saved = saved, error = null, notice = null) }
         runCatching { repository.setPostInteraction(post.id, action, if (action == "like") liked else saved) }
-            .onSuccess { if (version == requestVersion) mutableState.update { it.copy(interactionSending = false) } }
-            .onFailure { if (version == requestVersion) mutableState.update { it.copy(liked = old.liked, likeCount = old.likeCount, saved = old.saved, interactionSending = false, notice = if (action == "like") "点赞失败，请重试" else "收藏失败，请重试") } }
+            .onSuccess { if (version == requestVersion) mark(false) }
+            .onFailure {
+                if (version == requestVersion) {
+                    mutableState.update { it.copy(liked = old.liked, likeCount = old.likeCount, saved = old.saved, notice = if (action == "like") "点赞失败，请重试" else "收藏失败，请重试") }
+                    mark(false)
+                }
+            }
     }
 
     fun rate(value: Int) = viewModelScope.launch(HeikaCoroutineGuard) {

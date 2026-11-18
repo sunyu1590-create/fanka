@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -135,6 +137,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
                     onAction = { publish, note -> viewModel.process(item.optString("id"), publish, note) },
                     onUserRole = viewModel::setUserRole,
                     onUserMembership = viewModel::setUserMembership,
+                    onUserDelete = viewModel::deleteUser,
                 )
             }
         }
@@ -778,6 +781,7 @@ private fun AdminQueueItem(
     onAction: (Boolean, String) -> Unit,
     onUserRole: (String, String) -> Unit,
     onUserMembership: (String, String) -> Unit,
+    onUserDelete: (String) -> Unit = {},
 ) {
     var note by remember(item.optString("id")) { mutableStateOf("") }
     var expanded by remember(item.optString("id")) { mutableStateOf(false) }
@@ -785,6 +789,11 @@ private fun AdminQueueItem(
     var membershipMenuOpen by remember { mutableStateOf(false) }
     var pendingUserUpdate by remember { mutableStateOf<Pair<String, String>?>(null) }
     val target = item.optJSONObject("target")
+    // 账号管理条目最多、信息最短，单独走紧凑行；审核类条目仍用大卡片方便看正文。
+    if (section == "users") {
+        CompactUserRow(item, saving, onUserRole, onUserMembership, onUserDelete)
+        return
+    }
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
@@ -1235,6 +1244,18 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         catch (_: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = "角色更新失败，请确认管理员权限") }
     }
 
+    fun deleteUser(id: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = id, error = null)
+        try {
+            repository.deleteAdminUser(id)
+            mutableState.value = mutableState.value.copy(saving = null, notice = "账号已删除")
+            refresh()
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "账号删除失败，请确认管理员权限")
+        }
+    }
+
     fun setUserMembership(id: String, tier: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, error = null)
@@ -1259,4 +1280,78 @@ private fun readAdImage(context: Context, uri: Uri, maximumBytes: Int): Pair<Str
         }
     }
     return mimeType to output.toByteArray()
+}
+
+/** 账号管理专用紧凑行：一行放下昵称、角色与会员，其余操作收进「更多」。 */
+@Composable
+private fun CompactUserRow(
+    item: JSONObject,
+    saving: Boolean,
+    onRole: (String, String) -> Unit,
+    onMembership: (String, String) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    val id = item.optString("id")
+    val nickname = item.optString("nickname").ifBlank { "探索者" }
+    val role = item.optString("role").ifBlank { "member" }
+    val tier = item.optString("membership_tier").ifBlank { "free" }
+    val restricted = item.optJSONObject("community_restriction")?.optBoolean("active") == true
+    var menuOpen by remember(id) { mutableStateOf(false) }
+    var deleteConfirm by remember(id) { mutableStateOf(false) }
+    val roleLabel = when (role) { "admin" -> "管理员"; "content_manager" -> "内容管理员"; "reviewer" -> "审核员"; else -> "普通用户" }
+    val tierLabel = when (tier) { "plus" -> "Plus"; "pro" -> "Pro"; else -> "Free" }
+
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 11.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        Box(
+            Modifier.size(30.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)),
+            contentAlignment = Alignment.Center,
+        ) { Text(nickname.take(1), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(nickname, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "$roleLabel · $tierLabel" + if (restricted) " · 发言受限" else "",
+                color = if (restricted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Box {
+            IconButton(onClick = { menuOpen = true }, enabled = !saving, modifier = Modifier.size(34.dp)) {
+                Icon(HeikaIcons.More, "账号操作", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+            }
+            androidx.compose.material3.DropdownMenu(menuOpen, { menuOpen = false }) {
+                Text("角色", Modifier.padding(start = 13.dp, top = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                listOf("member" to "普通用户", "reviewer" to "审核员", "content_manager" to "内容管理员", "admin" to "管理员").forEach { (value, label) ->
+                    androidx.compose.material3.DropdownMenuItem(text = { Text(if (value == role) "✓ $label" else label) }, onClick = { menuOpen = false; if (value != role) onRole(id, value) })
+                }
+                HorizontalDivider(Modifier.padding(horizontal = 10.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .3f))
+                Text("会员", Modifier.padding(start = 13.dp, top = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                listOf("free" to "Free", "plus" to "Plus", "pro" to "Pro").forEach { (value, label) ->
+                    androidx.compose.material3.DropdownMenuItem(text = { Text(if (value == tier) "✓ $label" else label) }, onClick = { menuOpen = false; if (value != tier) onMembership(id, value) })
+                }
+                if (role != "admin") {
+                    HorizontalDivider(Modifier.padding(horizontal = 10.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .3f))
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("删除账号", color = MaterialTheme.colorScheme.error) },
+                        onClick = { menuOpen = false; deleteConfirm = true },
+                    )
+                }
+            }
+        }
+    }
+    if (deleteConfirm) HeikaGlassDialog(
+        title = "删除 $nickname ？",
+        message = "该账号的作品、私信记录会一并删除，且无法恢复。",
+        confirmText = "删除账号",
+        destructive = true,
+        loading = saving,
+        onConfirm = { onDelete(id); deleteConfirm = false },
+        onCancel = { deleteConfirm = false },
+    )
 }

@@ -1,17 +1,21 @@
 package com.heika.nativeapp.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -41,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -120,10 +125,54 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
         if (state.loading) {
             HeikaPulsePage(cards = 3, cardHeight = 74.dp)
         } else if (state.session != null && flow == AccountFlow.LOGIN) {
-            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text("账号已登录", color = MaterialTheme.colorScheme.onBackground, fontSize = 23.sp)
                 Text(state.session?.email ?: state.session?.userId.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 Button(onClick = { viewModel.signOut(onBack) }, modifier = Modifier.fillMaxWidth()) { Text("退出登录") }
+
+                if (state.accounts.size > 1) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("本机账号", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("切换后无需重新输入密码，最多保留 5 个账号。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp)
+                    state.accounts.forEach { account ->
+                        val current = account.userId == state.session?.userId
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .border(
+                                    if (current) 1.dp else 0.dp,
+                                    if (current) MaterialTheme.colorScheme.primary.copy(alpha = .45f) else androidx.compose.ui.graphics.Color.Transparent,
+                                    RoundedCornerShape(14.dp),
+                                )
+                                .padding(start = 12.dp, end = 6.dp, top = 9.dp, bottom = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                Modifier.size(30.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)),
+                                contentAlignment = Alignment.Center,
+                            ) { Text((account.email ?: "探").take(1).uppercase(), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(
+                                    account.email ?: account.userId.take(8),
+                                    color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp, fontWeight = FontWeight.Medium,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                                if (current) Text("当前登录", color = MaterialTheme.colorScheme.primary, fontSize = 9.5.sp)
+                            }
+                            if (current) {
+                                TextButton(enabled = !state.busy, onClick = { viewModel.forgetAccount(account.userId) }) { Text("移除记录", fontSize = 10.sp) }
+                            } else {
+                                TextButton(enabled = !state.busy, onClick = { viewModel.switchAccount(account.userId) }) { Text(if (state.busy) "切换中…" else "切换", fontSize = 10.5.sp) }
+                            }
+                        }
+                    }
+                }
+                state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) }
+                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
             }
         } else {
             Column(

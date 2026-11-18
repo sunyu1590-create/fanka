@@ -119,6 +119,17 @@ class AuthRepository @Inject constructor(
 
     suspend fun signOut() = withContext(Dispatchers.IO) { clearSession() }
 
+    /** 本机登录过的账号（含当前），供快捷切换使用。 */
+    suspend fun savedAccounts(): List<SecureSessionStore.StoredAccount> = withContext(Dispatchers.IO) { store.accounts() }
+
+    suspend fun switchAccount(userId: String): HeikaSession? = withContext(Dispatchers.IO) {
+        val target = store.accounts().firstOrNull { it.userId == userId } ?: return@withContext null
+        // 直接写回主会话，令牌过期时首屏请求会自动走一次刷新。
+        save(target.session)
+    }
+
+    suspend fun forgetAccount(userId: String) = withContext(Dispatchers.IO) { store.forget(userId) }
+
     suspend fun retryAfterUnauthorized(): String? = mutex.withLock {
         val existing = mutableSession.value ?: store.read() ?: return@withLock null
         refreshLocked(existing, force = true)?.accessToken

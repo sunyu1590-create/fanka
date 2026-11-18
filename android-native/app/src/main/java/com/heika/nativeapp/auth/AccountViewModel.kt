@@ -24,6 +24,8 @@ data class AccountUiState(
     val verificationEmail: String? = null,
     /** 新注册后生成的一次性恢复码。非空时页面必须先展示它，不能直接进入主界面。 */
     val pendingRecoveryCodes: List<String> = emptyList(),
+    /** 本机登录过的账号，用于快捷更换。 */
+    val accounts: List<SecureSessionStore.StoredAccount> = emptyList(),
 )
 
 @HiltViewModel
@@ -37,8 +39,26 @@ class AccountViewModel @Inject constructor(
     init {
         viewModelScope.launch(HeikaCoroutineGuard) {
             mutableState.value = AccountUiState(session = auth.restore(), loading = false)
-            auth.session.collect { session -> mutableState.value = mutableState.value.copy(session = session, loading = false) }
+            mutableState.value = mutableState.value.copy(accounts = auth.savedAccounts())
+            auth.session.collect { session -> mutableState.value = mutableState.value.copy(session = session, loading = false, accounts = auth.savedAccounts()) }
         }
+    }
+
+    fun switchAccount(userId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.busy) return@launch
+        mutableState.update { it.copy(busy = true, error = null) }
+        val session = runCatching { auth.switchAccount(userId) }.getOrNull()
+        val accounts = auth.savedAccounts()
+        mutableState.update {
+            if (session == null) it.copy(busy = false, error = "这个账号的登录已过期，请用密码重新登录")
+            else it.copy(busy = false, session = session, message = "已切换账号", accounts = accounts)
+        }
+    }
+
+    fun forgetAccount(userId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        runCatching { auth.forgetAccount(userId) }
+        val accounts = auth.savedAccounts()
+        mutableState.update { it.copy(accounts = accounts, message = "已从本机移除") }
     }
 
     fun setFlow(flow: AccountFlow) = mutableState.update {
