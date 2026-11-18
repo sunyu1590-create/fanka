@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { ArrowLeft, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Send, Users } from "lucide-react";
+import { ArrowLeft, ArrowUp, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import { authRedirectUrl } from "@/lib/auth-redirect";
 import { promptInApp } from "@/lib/in-app-dialog";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
 import AnimatedNotice from "./AnimatedNotice";
+import RecoveryCodesPage from "./RecoveryCodesPage";
 import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
 type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null };
@@ -22,7 +23,7 @@ type Message = {
   created_at: string;
   media_path?: string;
 };
-type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset";
+type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset" | "codes";
 export default function Messages({
   initialPeer,
   onPeerOpened,
@@ -359,33 +360,49 @@ export default function Messages({
         setAuthPurpose("signup");
         if (password !== confirmPassword) throw new Error("两次输入的密码不一致。");
         if (nickname.trim().length < 2 || nickname.trim().length > 24) throw new Error("昵称请填写 2–24 个字。");
-        const { data, error } = await db.auth.signUp({
-          email: email.trim(), password,
-          options: { data: { nickname: nickname.trim() }, emailRedirectTo: authRedirectUrl() },
+        // 统一走服务端注册入口：这里会按 IP 抢占注册名额（每 IP 每小时 2 个），
+        // 并直接把邮箱标记为已确认，网页端不再依赖确认邮件。
+        const response = await fetch("/api/v1/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), password, nickname: nickname.trim() }),
         });
-        if (error) throw error;
-        if (!data.session) { setAuthView("confirm"); setAuthMessage("确认邮件已发送。请前往邮箱完成验证，再回来登录。"); }
-        else {
-          // 注册成功立刻生成恢复码：找回密码目前只有这一种方式，
-          // 让用户"以后去设置里生成"基本等于永远不会生成。
-          let codes: string[] = [];
-          try {
-            const response = await fetch("/api/v1/auth/recovery-codes", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${data.session.access_token}` },
-            });
-            const payload = await response.json();
-            codes = Array.isArray(payload?.data?.codes) ? payload.data.codes.filter((code: unknown) => typeof code === "string" && code) : [];
-          } catch {
-            codes = [];
-          }
+        const result = (await response.json().catch(() => ({}))) as { error?: string };
+        if (!response.ok) throw new Error(result.error || "注册失败，请稍后重试");
+        const { error: signInError } = await db.auth.signInWithPassword({ email: email.trim(), password });
+        if (signInError) {
           setAuthView("login");
-          if (codes.length) {
-            setCodesSaved(false);
-            setNewRecoveryCodes(codes);
-          } else {
-            setAuthMessage("账号已创建，欢迎来到黑卡。");
-          }
+          setAuthMessage("账号已创建，请使用刚才设置的密码登录。");
+          return;
+        }
+        // 注册成功立刻生成恢复码：找回密码目前只有这一种方式，
+        // 让用户"以后去设置里生成"基本等于永远不会生成。
+        let codes: string[] = [];
+        try {
+          const { data: sessionData } = await db.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (!token) throw new Error("登录状态未就绪");
+          const codeResponse = await fetch("/api/v1/auth/recovery-codes", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const payload = await codeResponse.json();
+          codes = Array.isArray(payload?.data?.codes) ? payload.data.codes.filter((code: unknown) => typeof code === "string" && code) : [];
+        } catch {
+          codes = [];
+        }
+        if (codes.length) {
+          setCodesSaved(false);
+          setNewRecoveryCodes(codes);
+          setAuthView("codes");
+          // 新账号会被引导页接管，顶层需要知道"还有恢复码没确认"。
+          try {
+            window.localStorage.setItem("heika:pending-recovery-codes", JSON.stringify(codes));
+            window.dispatchEvent(new Event("heika:recovery-codes"));
+          } catch {}
+        } else {
+          setAuthView("login");
+          setAuthMessage("账号已创建，欢迎来到黑卡。");
         }
       } else if (authView === "forgot") {
         if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
@@ -535,6 +552,15 @@ export default function Messages({
         <div className="message-loading-placeholder"><i /><i /></div>
       </section>
     );
+  if (authView === "codes" && newRecoveryCodes.length)
+    return <RecoveryCodesPage codes={newRecoveryCodes} onDone={() => {
+      setNewRecoveryCodes([]);
+      setCodesSaved(false);
+      setAuthView("login");
+      setAuthMessage("账号已创建，欢迎来到黑卡。");
+      try { window.localStorage.removeItem("heika:pending-recovery-codes"); } catch {}
+    }} />;
+  if (!user || authView === "reset")
   if (!user || authView === "reset")
     return (
       <section className="page account-page">
@@ -639,47 +665,6 @@ export default function Messages({
         return (inboxFilter !== "unread" || !!unread[room.id]) && (!query.trim() || `${names[peerId]?.nickname || ""} ${preview[room.id]?.body || ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
       }) && <div className="messages-empty compact"><strong>{inboxFilter === "unread" ? "没有未读会话" : "没有匹配的会话"}</strong><span>{inboxFilter === "unread" ? "新消息会出现在这里。" : "试试昵称或最近消息中的关键词。"}</span></div>}
       </div>
-      {newRecoveryCodes.length > 0 && (
-        <div className="modal-backdrop">
-          <div className="modal recovery-codes-modal">
-            <h2>保存你的恢复码</h2>
-            <p className="recovery-codes-hint">
-              这是目前唯一能找回密码的方式。忘记密码时只有它能救回账号，我们无法代为重置。
-            </p>
-            <ol className="recovery-codes-list">
-              {newRecoveryCodes.map((code) => (
-                <li key={code}>{code}</li>
-              ))}
-            </ol>
-            <p className="recovery-codes-hint">每个码只能使用一次。请截图或复制保存，关闭后无法再次查看。</p>
-            <button
-              className="soft-button"
-              onClick={() => void navigator.clipboard.writeText(newRecoveryCodes.join("\n"))}
-            >
-              复制全部
-            </button>
-            <label className="recovery-codes-confirm">
-              <input
-                type="checkbox"
-                checked={codesSaved}
-                onChange={(event) => setCodesSaved(event.target.checked)}
-              />
-              我已妥善保存，知道丢失后无法找回
-            </label>
-            <button
-              className="primary-button"
-              disabled={!codesSaved}
-              onClick={() => {
-                setNewRecoveryCodes([]);
-                setCodesSaved(false);
-                setAuthMessage("账号已创建，欢迎来到黑卡。");
-              }}
-            >
-              进入黑卡
-            </button>
-          </div>
-        </div>
-      )}
       {profile && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -985,7 +970,7 @@ export default function Messages({
               placeholder="写下消息…"
             />
             <button className="chat-send" disabled={busy || !draft.trim()} aria-label="发送消息">
-              <Send size={17}/>
+              <ArrowUp size={18} strokeWidth={2.4}/>
             </button>
           </form>
           <AnimatedNotice message={error} />

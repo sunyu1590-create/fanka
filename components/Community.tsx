@@ -13,6 +13,8 @@ import {
   Heart,
   Star,
   RefreshCw,
+  ArrowUp,
+  ArrowUpRight,
   Send,
   Trash2,
   PenLine,
@@ -56,6 +58,7 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
 import DiscoveryPostCard from "./DiscoveryPostCard";
 const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
+import RecoveryCodesPage from "./RecoveryCodesPage";
 import { FollowedTopicsSettings, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
@@ -375,6 +378,7 @@ export default function Community() {
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
   const [fontReady, setFontReady] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+
   useEffect(() => {
     const saved = localStorage.getItem("heika-theme");
     if (saved === "dark" || saved === "light" || saved === "system") setTheme(saved);
@@ -621,6 +625,7 @@ export default function Community() {
       | "report"
       | null
     >(null),
+    [pendingRecoveryCodes, setPendingRecoveryCodes] = useState<string[]>([]),
     [composerPanel, setComposerPanel] = useState<"topics" | "settings" | "preview" | null>(null),
     [composerMediaId, setComposerMediaId] = useState<string | null>(null),
     [draftSyncError, setDraftSyncError] = useState(""),
@@ -722,6 +727,22 @@ export default function Community() {
       noticeQueue.current[noticeQueue.current.length - 1] = { id: ++noticeSequence.current, title: "更多提醒", body: "还有新的提醒，请前往消息中心查看。", createdAt: Date.now(), kind: "general" };
     }
   }, [presentNotice]);
+  // 注册后的恢复码是强制一步：即使新账号被引导页接管，也要先看到它。
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = window.localStorage.getItem("heika:pending-recovery-codes");
+        const parsed = raw ? JSON.parse(raw) : null;
+        setPendingRecoveryCodes(Array.isArray(parsed) ? parsed.filter((code): code is string => typeof code === "string") : []);
+      } catch {
+        setPendingRecoveryCodes([]);
+      }
+    };
+    read();
+    window.addEventListener("heika:recovery-codes", read);
+    return () => window.removeEventListener("heika:recovery-codes", read);
+  }, []);
+
   useEffect(() => () => {
     if (modalCloseTimer.current !== null) window.clearTimeout(modalCloseTimer.current);
     if (fallbackPageTimer.current !== null) window.clearTimeout(fallbackPageTimer.current);
@@ -4015,6 +4036,15 @@ export default function Community() {
         </div>
       </main>
     );
+  if (pendingRecoveryCodes.length)
+    return <RecoveryCodesPage
+      codes={pendingRecoveryCodes}
+      standalone
+      onDone={() => {
+        try { window.localStorage.removeItem("heika:pending-recovery-codes"); } catch {}
+        setPendingRecoveryCodes([]);
+      }}
+    />;
   if (!state.onboardingDone)
     return (
       <main className="heika-onboarding">
@@ -5007,7 +5037,7 @@ export default function Community() {
                 {reply && <span className="reply-label">回复 @{replyTargetName || state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => { setReply(undefined); setReplyTargetName(undefined); }}><X size={13} /></button></span>}
                 <textarea ref={commentInputRef} value={draft} onFocus={() => setCommentInputExpanded(true)} onBlur={(event) => { if (!draft.trim() && !reply && !event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setCommentInputExpanded(false); }} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={commentInputExpanded || draft ? 3 : 1} maxLength={1000} aria-label="评论内容" />
                 {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
-                {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><Send size={17} /></button>}
+                {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><ArrowUp size={18} strokeWidth={2.4} /></button>}
               </div>
               <button type="button" className={`bar-icon like-action${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
                 if (likeBusy) return;
@@ -5388,7 +5418,7 @@ export default function Community() {
 </> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={{ ...aiResourceFields, attachments: composerAttachments }} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
-            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button className="primary-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}

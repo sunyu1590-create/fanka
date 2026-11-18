@@ -78,17 +78,33 @@ async function ensurePollEditable(db: SupabaseClient, postId: string, value: unk
   const same = question === existing.data.question && options.length === current?.length && options.every((option, index) => option === current?.[index]?.label);
   if (!same) throw new ApiError(409, "投票已经开始，不能再更改选项");
 }
-async function replaceTopics(db: SupabaseClient, postId: string, value: unknown) {
-  const { data: official, error: catalogError } = await db.from("interest_tags").select("name").eq("active", true);
-  dbError(catalogError);
-  const checked = validateTopicNames(value, (official || []).map((topic) => topic.name));
-  if (checked.error) throw new ApiError(400, checked.error);
-  const { data: topics, error } = checked.names.length
-    ? await db.from("interest_tags").select("id,name").in("name", checked.names).eq("active", true)
-    : { data: [], error: null };
+/** 话题即写即用：不存在的话题自动建一条已生效的记录，不再走人工收录。 */
+async function ensureTopicIds(db: SupabaseClient, names: string[], userId: string) {
+  if (!names.length) return [] as number[];
+  const { data: existing, error } = await db.from("interest_tags").select("id,name").in("name", names);
   dbError(error);
-  if ((topics || []).length !== checked.names.length) throw new ApiError(400, "话题无效");
-  const result = await db.rpc("replace_post_topics", { p_post_id: postId, p_topic_ids: (topics || []).map((topic) => topic.id) });
+  const found = new Map((existing || []).map((topic) => [topic.name.toLocaleLowerCase(), topic.id as number]));
+  const missing = names.filter((name) => !found.has(name.toLocaleLowerCase()));
+  for (const name of missing) {
+    // 走服务端函数建话题：它会写 created_by 并直接标为已生效，不需要人工审核。
+    const { error } = await db.rpc("create_custom_topic", { p_name: name });
+    if (error && !/已存在|刚刚被创建/i.test(error.message)) {
+      throw new ApiError(400, error.message || "话题创建失败，请换一个名称");
+    }
+  }
+  if (missing.length) {
+    const { data: again } = await db.from("interest_tags").select("id,name").in("name", missing);
+    (again || []).forEach((topic) => found.set(topic.name.toLocaleLowerCase(), topic.id as number));
+  }
+  return names.map((name) => found.get(name.toLocaleLowerCase())).filter((id): id is number => typeof id === "number");
+}
+
+async function replaceTopics(db: SupabaseClient, postId: string, value: unknown, userId: string) {
+  const checked = validateTopicNames(value);
+  if (checked.error) throw new ApiError(400, checked.error);
+  const ids = await ensureTopicIds(db, checked.names, userId);
+  if (ids.length !== checked.names.length) throw new ApiError(400, "话题创建失败，请稍后重试");
+  const result = await db.rpc("replace_post_topics", { p_post_id: postId, p_topic_ids: ids });
   dbError(result.error);
 }
 export async function GET(req: NextRequest) {
@@ -314,7 +330,7 @@ export async function POST(req: NextRequest) {
       }
       dbError(result.error);
       const postId = (result.data as { id: string }).id;
-      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
+      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics, user!.id);
       await replacePoll(db, postId, b.poll);
       if (Array.isArray(b.mediaPaths)) {
         const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];
@@ -380,9 +396,7 @@ export async function POST(req: NextRequest) {
       if (existingPost?.data?.status === "published") {
         const title = textField(b.title, "标题", 1, 80);
         const body = textField(b.body, "正文", 1, 5000);
-        const { data: officialTopics, error: topicsError } = await db.from("interest_tags").select("name").eq("active", true);
-        dbError(topicsError);
-        const checkedTopics = validateTopicNames(b.topics, (officialTopics || []).map((topic) => topic.name));
+        const checkedTopics = validateTopicNames(b.topics);
         if (checkedTopics.error) throw new ApiError(400, checkedTopics.error);
         const pollInput = b.poll && typeof b.poll === "object" ? b.poll as Record<string, unknown> : null;
         let poll: { question: string; options: string[] } | null = null;
@@ -443,7 +457,7 @@ export async function POST(req: NextRequest) {
         : await q.insert(values).select(libraryFields).single();
       dbError(error);
       const postId = (data as { id: string }).id;
-      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
+      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics, user!.id);
       await replacePoll(db, postId, b.poll);
       if (Array.isArray(b.mediaPaths)) {
         const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];

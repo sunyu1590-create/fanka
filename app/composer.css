@@ -83,3 +83,7 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
   .composer-writing .composer-body-field textarea{min-height:280px}
   .composer-body-preview{min-height:280px}
 }
+
+/* 发布按钮：图标 + 文字，新图标更接近"发送出去"的动作 */
+.composer-publish-button { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding-inline: 17px; }
+.composer-publish-button svg { flex: none; }

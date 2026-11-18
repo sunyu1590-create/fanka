@@ -13,6 +13,70 @@ function safeHref(value: string) {
   return null;
 }
 
+/**
+ * 裸链接识别：用户不必手动加 https:// 或中括号，正文里写到域名就能被识别。
+ *
+ * 只认「带协议 / 带 www / 带路径的域名 / 常见顶级域」，避免把 1.5、文件名之类的
+ * 普通文本误判成链接；结尾的标点会被剔除，保证括号里的链接也能点准。
+ */
+const BARE_URL = /((?:https?:\/\/|www\.)[^\s<>"'`）)，。；！？、]+|(?<![\w@.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|cn|net|org|io|co|me|app|dev|ai|shop|top|xyz|cc|tv|info|biz|live|site|online|store|club|design|art|blog|tech|link|pro|fun|wiki|space|website|today|world|life|news|moe|ink|page|tools|run|build|codes|cloud|dev)(?:\/[^\s<>"'`）)，。；！？、]*)?)/gi;
+
+const TRAILING = /[.,;:!?。，；：！？、)）\]】}>"']+$/;
+
+function trimUrl(value: string) {
+  return value.replace(TRAILING, "");
+}
+
+function normalizeUrl(value: string) {
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value}`;
+}
+
+/** 话题：正文里的 #话题 高亮显示，不参与审核。 */
+const TOPIC_TAG = /(^|[\s（(【[>])(#[\p{L}\p{N}_]{1,24})/gu;
+
+/** 把普通文本切成 文本 / 链接 / 话题 三种节点。 */
+function autoRichText(text: string, keyPrefix: string): ReactNode[] {
+  if (!text) return [];
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let seq = 0;
+  for (const match of text.matchAll(BARE_URL)) {
+    const raw = match[0];
+    const start = match.index ?? 0;
+    if (start > cursor) parts.push(...topicNodes(text.slice(cursor, start), `${keyPrefix}-t${seq++}`));
+    const url = trimUrl(raw);
+    if (!url) { parts.push(...topicNodes(raw, `${keyPrefix}-t${seq++}`)); cursor = start + raw.length; continue; }
+    const href = normalizeUrl(url);
+    parts.push(
+      <a key={`${keyPrefix}-u${seq++}`} className="md-autolink" href={guardedHref(href)} rel="nofollow noopener noreferrer" target="_blank">
+        {url}
+      </a>,
+    );
+    if (url.length < raw.length) parts.push(raw.slice(url.length));
+    cursor = start + raw.length;
+  }
+  if (cursor < text.length) parts.push(...topicNodes(text.slice(cursor), `${keyPrefix}-t${seq++}`));
+  return parts;
+}
+
+function topicNodes(text: string, keyPrefix: string): ReactNode[] {
+  if (!text) return [];
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let seq = 0;
+  for (const match of text.matchAll(TOPIC_TAG)) {
+    const prefix = match[1];
+    const tag = match[2];
+    const start = (match.index ?? 0) + prefix.length;
+    if (start > cursor) parts.push(text.slice(cursor, start));
+    parts.push(<span key={`${keyPrefix}-h${seq++}`} className="md-topic">{tag}</span>);
+    cursor = start + tag.length;
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
+}
+
 export function markdownToText(source: string) {
   return source.replace(/```[\s\S]*?```/g, " ").replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/^\s{0,3}#{1,6}\s+/gm, "").replace(/^\s*>\s?/gm, "").replace(/^\s*[-*+]\s+/gm, "").replace(/^\s*\d+[.)]\s+/gm, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ").trim();
 }
@@ -23,7 +87,7 @@ function inline(text: string): ReactNode[] {
   let cursor = 0;
   for (const match of text.matchAll(pattern)) {
     const index = match.index ?? 0;
-    if (index > cursor) nodes.push(text.slice(cursor, index));
+    if (index > cursor) nodes.push(...autoRichText(text.slice(cursor, index), `pre-${index}`));
     const token = match[0];
     if (token.startsWith("![")) {
       const image = token.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
@@ -41,7 +105,7 @@ function inline(text: string): ReactNode[] {
     }
     cursor = index + token.length;
   }
-  if (cursor < text.length) nodes.push(text.slice(cursor));
+  if (cursor < text.length) nodes.push(...autoRichText(text.slice(cursor), `tail-${cursor}`));
   return nodes;
 }
 

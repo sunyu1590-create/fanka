@@ -334,9 +334,10 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setSaving(null); }
   };
 
-  const processSubmission = async (post: Submission, next: "published" | "hidden") => {
-    const note = notes[post.id]?.trim() || "";
-    if (note.length < 3) { setError("请填写至少 3 个字的审核说明"); return; }
+  const processSubmission = async (post: Submission, next: "published" | "hidden", preset?: string) => {
+    // 预设理由让审核可以一键完成：常见情形不必每次手打说明。
+    const note = (preset ?? notes[post.id] ?? "").trim();
+    if (note.length < 3) { setError("请填写至少 3 个字的审核说明，或选择一个常用理由"); return; }
     setSaving(post.id); setError("");
     try {
       await cloudRequest(`/api/v1/admin/posts/${post.id}`, { status: next, review_note: note }, "PATCH");
@@ -532,7 +533,17 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       <div className="moderation-item-heading"><strong><ShieldCheck size={16} /> 待人工审核</strong><time>{new Date(post.created_at).toLocaleString("zh-CN")}</time></div>
       <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文"/>
       <CollapsibleImages images={post.images} label="查看图片"/><CollapsibleVideos videos={post.videos || []} label="查看视频"/>
-      <label className="moderation-note">审核说明<textarea value={notes[post.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [post.id]: event.target.value }))} placeholder="记录审核依据，至少 3 个字" /></label>
+      <div className="moderation-presets" aria-label="快捷审核">
+        <div className="moderation-preset-row">
+          <span>一键通过</span>
+          {["内容合规，可公开展示", "质量合格，符合收录标准", "优质内容，予以推荐"].map((reason) => <button type="button" key={reason} disabled={saving === post.id} onClick={() => void processSubmission(post, "published", reason)}>{reason.split("，")[0]}</button>)}
+        </div>
+        <div className="moderation-preset-row is-reject">
+          <span>一键驳回</span>
+          {["不符合社区规范", "内容不完整，需要补充", "重复投稿，已有同类内容", "与所选分类不符"].map((reason) => <button type="button" key={reason} disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden", reason)}>{reason.split("，")[0]}</button>)}
+        </div>
+      </div>
+      <label className="moderation-note">审核说明<textarea value={notes[post.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [post.id]: event.target.value }))} placeholder="也可以自己写审核依据，至少 3 个字" /></label>
       <div className="moderation-actions"><button disabled={saving === post.id} onClick={() => void processSubmission(post, "published")}><Check size={15} /> {post.kind === "revision" ? "通过并替换公开版" : "审核通过并公开"}</button><button disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden")}><X size={15} /> {post.kind === "revision" ? "驳回修改，保留原版" : "驳回并保持隐藏"}</button></div>
     </article>)}</div> : <p className="moderation-empty">目前没有待审核的新内容。</p>}
   </section>;

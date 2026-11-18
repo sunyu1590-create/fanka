@@ -7,6 +7,21 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.46.0",
+    date: "2026.11.18",
+    notes: [
+      { category: "新功能", text: "注册安全升级：同一 IP 每小时最多成功注册 2 个账号，名额在服务端原子抢占，失败不占额度。" },
+      { category: "体验优化", text: "注册后的恢复码从弹窗改为独立页面展示，必须确认已保存才能进入，不再遮挡后面的界面。" },
+      { category: "新功能", text: "正文里的链接会自动识别：裸域名、带 www 或带协议的地址都能直接点，并有明显的高亮效果。" },
+      { category: "新功能", text: "正文里的 #话题 自动高亮；发布页可以自定义添加话题，即时生效，不需要审核。" },
+      { category: "体验优化", text: "发布页与私信的提交按钮换成更明确的上行箭头图标，按钮改为圆形或胶囊形。" },
+      { category: "体验优化", text: "管理后台焕新：模块分组、概览数字与审核卡片重新排版；作品审核支持一键通过 / 一键驳回的预设理由，不必逐条填写说明。" },
+      { category: "体验优化", text: "关于页版本更新默认折叠，只展开本次更新，历史版本收进一个入口。" },
+      { category: "体验优化", text: "关于开发者改为双署名：个人开发者 SunYu（孙宇），创意开发者 WangXiangYu（王祥余）。" },
+      { category: "体验优化", text: "个人页的「会员中心」加上柔和底色，昵称旁的等级标记去掉背景，个人信息区更清爽。" },
+    ],
+  },
+  {
     version: "2.45.0",
     date: "2026.11.17",
     notes: [

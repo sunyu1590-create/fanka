@@ -154,9 +154,15 @@ export async function POST(req: NextRequest) {
     if (body.coverUrl && !coverUrl) throw new ApiError(400, "封面链接无效");
     const topicNames = Array.isArray(body.topics) ? [...new Set(body.topics.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 5) : [];
     if (topicNames.length) {
-      const topicRows = await db.from("interest_tags").select("name").in("name", topicNames).eq("channel", "ai").eq("kind", "tag").eq("active", true).eq("moderation_status", "approved");
-      dbError(topicRows.error);
-      if ((topicRows.data || []).length !== topicNames.length) throw new ApiError(400, "AI 标签无效或尚未通过审核");
+      // 话题即写即用：没有收录过的自定义话题在这里自动建好，不需要人工审核。
+      const { data: knownTopics, error: knownError } = await db.from("interest_tags").select("name").in("name", topicNames);
+      dbError(knownError);
+      const known = new Set((knownTopics || []).map((topic) => topic.name));
+      const missing = topicNames.filter((name) => !known.has(name));
+      for (const name of missing) {
+        const { error } = await db.rpc("create_custom_topic", { p_name: name });
+        if (error && !/已存在|刚刚被创建/i.test(error.message)) throw new ApiError(400, error.message || "话题创建失败，请换一个名称");
+      }
     }
     let current: { id: string; status: string; resource_data?: unknown } | null = null;
     if (body.id) {
@@ -198,7 +204,7 @@ export async function POST(req: NextRequest) {
         dbError(inserted.error);
       }
       if (topicNames.length) {
-        const topicRows = await db.from("interest_tags").select("id").in("name", topicNames).eq("channel", "ai").eq("kind", "tag").eq("active", true);
+        const topicRows = await db.from("interest_tags").select("id").in("name", topicNames).eq("active", true);
         dbError(topicRows.error);
         const replaced = await db.rpc("replace_post_topics", { p_post_id: postId, p_topic_ids: (topicRows.data || []).map((item) => item.id) }); dbError(replaced.error);
       }

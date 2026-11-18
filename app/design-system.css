@@ -2670,7 +2670,7 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 
 /* Account shortcuts, reward claim controls, and a real two-column works grid. */
 .mine-heading-actions { display:flex; align-items:center; gap:8px; }
-.mine-membership-button { min-height:38px; padding:0 11px; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid var(--line); background:transparent; color:var(--ink); font:inherit; font-size:12px; }
+.mine-membership-button { min-height:38px; padding:0 13px; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid color-mix(in srgb,var(--action) 24%,var(--line)); border-radius:999px; background:color-mix(in srgb,var(--action) 9%,var(--surface)); color:var(--ink); font:inherit; font-size:12px; }
 .mine-membership-button svg { color:var(--action); }
 .mine-membership-button:active { background:var(--surface); }
 .mine-works-masonry { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important; column-gap:14px; row-gap:18px; columns:unset !important; }
@@ -3617,7 +3617,7 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
 /* Content-first personal profile and exploration tools. */
 .mine-topline { height:58px; padding-inline:16px; }
 .mine-topline-actions { display:flex; align-items:center; gap:8px; }
-.mine-topline .mine-membership-button { min-height:34px; padding:0 9px; border:0; color:var(--ink); font-size:11px; }
+.mine-topline .mine-membership-button { min-height:34px; padding:0 11px; border:1px solid color-mix(in srgb,#c5a94e 30%,var(--line)); border-radius:999px; background:color-mix(in srgb,#c5a94e 11%,transparent); color:var(--ink); font-size:11px; }
 .mine-topline .mine-membership-button svg { color:#c5a94e; }
 .mine-topline .mine-settings-button { width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; background:transparent; color:var(--ink); }
 .mine-page { display:block; max-width:900px; margin-inline:auto; padding:14px 16px 64px; }
@@ -3628,7 +3628,7 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
 .mine-profile-copy { min-width:0; flex:1; }
 .mine-profile-name-row { display:flex; align-items:center; gap:8px; min-width:0; }
 .mine-profile-name-row h2 { min-width:0; overflow:hidden; margin:0; font-size:17px; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
-.mine-profile-name-row .mine-level-tag { flex:none; min-height:22px; padding:0 7px; border:1px solid color-mix(in srgb,#c5a94e 48%,var(--line)); border-radius:999px; background:color-mix(in srgb,#c5a94e 10%,transparent); color:#c5a94e; font-size:10px; font-weight:650; }
+.mine-profile-name-row .mine-level-tag { flex:none; min-height:22px; padding:0 2px; border:0; border-radius:0; background:transparent; color:#c5a94e; font-size:10px; font-weight:650; letter-spacing:.02em; }
 .mine-profile-hero .mine-profile-card p { margin:3px 0 0; overflow:hidden; color:var(--muted); font-size:11px; line-height:1.4; text-overflow:ellipsis; white-space:nowrap; }
 .mine-account-id { display:block; margin-top:4px; color:var(--muted); font-size:9px; letter-spacing:.06em; }
 .mine-profile-hero .mine-profile-card>button { width:32px; height:32px; flex:none; display:grid; place-items:center; border:0; background:transparent; color:var(--muted); }
@@ -6270,11 +6270,14 @@ img, video, canvas, iframe { max-width:100%; }
 
 /* 注册后强制展示恢复码 */
 .recovery-codes-modal { display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.recovery-codes-page { max-width: 620px; }
+.recovery-codes-sheet { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 6px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 4%, transparent); }
 .recovery-codes-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.recovery-codes-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); list-style: none; }
+.recovery-codes-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin: 0; padding: 0; border: 0; background: transparent; list-style: none; }
 .recovery-codes-list li { color: var(--ink); font: 600 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .04em; }
 .recovery-codes-confirm { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; line-height: 1.5; }
 .recovery-codes-confirm input { flex: none; width: 16px; height: 16px; accent-color: var(--action); }
+.recovery-codes-page .primary-button { margin-top: 10px; }
 
 /* ── AI 内容附件 ───────────────────────────────────────────── */
 .ai-resource-attachments{margin:16px 0 20px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
@@ -6290,3 +6293,80 @@ img, video, canvas, iframe { max-width:100%; }
 .ai-resource-attachments li>button{flex:none;display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:0 12px;border:1px solid var(--line);border-radius:7px;background:none;color:var(--ink);font-size:11.5px}
 .ai-resource-attachments li>button:active{background:var(--surface)}
 .ai-resource-attachment-note{margin:10px 0 0;font-size:10.5px;line-height:1.6;color:var(--muted)}
+
+/* ── 正文里的自动链接与话题 ─────────────────────────────── */
+.markdown-content .md-autolink {
+  color: var(--action);
+  font-weight: 560;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--action) 42%, transparent);
+  word-break: break-all;
+}
+.markdown-content .md-autolink:active { opacity: .72; }
+.markdown-content .md-topic {
+  display: inline;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--action) 12%, transparent);
+  color: var(--action);
+  font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* 发送按钮：圆形实心 + 上箭头，动作方向更明确 */
+.chat-send { width: 42px; height: 42px; border-radius: 50%; }
+.chat-send svg { transform: translateY(-.5px); }
+.comment-send { border-radius: 50%; }
+
+/* ── 管理后台 2.0：更清晰的层级与更轻的卡片 ───────────────── */
+.admin-overview-expanded { gap: 10px; }
+.admin-overview-expanded > div {
+  min-height: 84px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--action) 5%, var(--surface)), var(--surface));
+}
+.admin-overview-expanded > div strong { font-size: 23px; letter-spacing: -.02em; }
+.admin-module-groups { display: grid; gap: 24px; }
+.admin-module-heading strong { font-size: 17px; letter-spacing: -.01em; }
+.admin-module-group h2 { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .08em; }
+.admin-module-group h2::before { content: ""; width: 3px; height: 12px; border-radius: 2px; background: var(--action); }
+.admin-module-card { border-radius: 16px; }
+.admin-module-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: color-mix(in srgb, var(--action) 9%, transparent); color: var(--action); }
+
+.moderation-list { gap: 12px; }
+.moderation-item { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.moderation-item h2 { margin: 8px 0 2px; font-size: 15px; }
+.moderation-submission-title { display: block; margin-top: 8px; font-size: 14px; }
+
+.moderation-presets { display: grid; gap: 8px; margin: 12px 0 4px; padding: 12px; border: 1px dashed color-mix(in srgb, var(--action) 30%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--action) 4%, transparent); }
+.moderation-preset-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.moderation-preset-row > span { flex: none; width: 62px; color: var(--muted); font-size: 10.5px; }
+.moderation-preset-row button { padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--action) 26%, var(--line)); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 11.5px; }
+.moderation-preset-row button:active { background: color-mix(in srgb, var(--action) 12%, var(--surface)); }
+.moderation-preset-row button:disabled { opacity: .5; }
+.moderation-preset-row.is-reject button { border-color: color-mix(in srgb, #c0535f 28%, var(--line)); color: #a9474f; }
+@media (max-width: 560px) {
+  .admin-overview-expanded { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .moderation-preset-row > span { width: 100%; }
+}
+
+/* 关于页：开发者双署名与版本折叠 */
+.about-developer-people { display: flex; flex-wrap: wrap; gap: 18px; margin: 4px 0 8px; }
+.about-developer-people > div { min-width: 150px; display: flex; flex-direction: column; gap: 2px; }
+.about-developer-people strong { color: var(--ink); font-size: 14px; font-weight: 620; }
+.about-release-history-block { margin-top: 4px; }
+.about-release-history-block > summary { color: var(--ink); }
+.about-release-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.about-release-row > summary { padding: 2px 0; font-size: 12.5px; color: var(--muted); }
+.about-release-row[open] > summary { color: var(--ink); }
+
+/* 恢复码页：手机单列，码不折行；按钮给出明确的最小宽度 */
+.recovery-codes-page .recovery-codes-list li { font-size: 13.5px; white-space: nowrap; }
+.recovery-codes-page .primary-button { min-width: 168px; justify-content: center; }
+@media (max-width: 560px) {
+  .recovery-codes-page .recovery-codes-list { grid-template-columns: 1fr; gap: 9px; }
+}
