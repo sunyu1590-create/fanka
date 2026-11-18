@@ -67,6 +67,7 @@ import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.NativePreferences
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.launch
+import com.heika.nativeapp.ui.HeikaPulsePage
 
 @Composable
 fun AiResourceCenterScreen(
@@ -81,9 +82,7 @@ fun AiResourceCenterScreen(
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp)) {
             Text("按资源类型探索，找到真正有用的 AI 内容。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             when {
-                state.loading && state.items.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                }
+                state.loading && state.items.isEmpty() -> HeikaPulsePage(Modifier.weight(1f).fillMaxWidth(), cards = 3, cardHeight = 92.dp)
                 state.error != null && state.items.isEmpty() -> Column(Modifier.weight(1f).fillMaxWidth().padding(vertical = 44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Text("资源分类暂时无法加载", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                     Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))

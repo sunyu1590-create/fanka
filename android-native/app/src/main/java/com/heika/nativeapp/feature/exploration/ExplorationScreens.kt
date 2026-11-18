@@ -89,6 +89,10 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.heika.nativeapp.ui.HeikaPulseDot
+import com.heika.nativeapp.ui.HeikaPulsePage
+import com.heika.nativeapp.ui.HeikaPulseRow
+import com.heika.nativeapp.ui.HeikaPulseLines
 
 @Composable
 fun ExplorationCenterScreen(
@@ -220,7 +224,7 @@ fun ExplorationDailyTasksScreen(onBack: () -> Unit, onCompleteMission: (String) 
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp),
                             )
                         }
-                        if (state.refreshing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+                        if (state.refreshing) HeikaPulseDot(size = 17.dp)
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 11.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(
@@ -520,7 +524,7 @@ fun ExplorationCalendarScreen(
                     androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (state.loading && state.records.isEmpty()) item { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+            if (state.loading && state.records.isEmpty()) item { HeikaPulseLines(Modifier.padding(vertical = 10.dp), lines = 3, lineHeight = 12.dp) }
         }
     }
 }
@@ -639,7 +643,7 @@ fun CoExploreScreen(
                         }
                     }
                 }
-                if (state.loading) item { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+                if (state.loading) item { HeikaPulseRow(Modifier.padding(vertical = 8.dp), height = 64.dp) }
             }
         }
     }
@@ -695,7 +699,7 @@ fun StoryChainListScreen(onBack: () -> Unit, onOpen: (String) -> Unit, viewModel
                 }
             }
             item { Text("接龙中的故事", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp)) }
-            if (state.loading && state.items.isEmpty()) item { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+            if (state.loading && state.items.isEmpty()) item { HeikaPulseRow(Modifier.padding(vertical = 8.dp), height = 64.dp) }
             if (!state.loading && state.items.isEmpty()) item { Text("暂无内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(vertical = 20.dp)) }
             items(state.items, key = { it.id }) { chain ->
                 Column(Modifier.fillMaxWidth().animateItem().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).clickable { onOpen(chain.id) }.padding(12.dp)) {
@@ -723,7 +727,7 @@ fun StoryChainDetailScreen(chainId: String, onBack: () -> Unit, onSeedPost: (Str
     LaunchedEffect(viewModel, chainId, state.items.isEmpty()) { if (state.items.none { it.id == chainId }) viewModel.load() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("故事内容", onBack) { androidx.compose.material3.IconButton(onClick = { shareText(context, chain?.title ?: "黑卡故事接龙", "https://moonclean.shop/?chain=$chainId") }) { androidx.compose.material3.Icon(HeikaIcons.Share, "分享接龙") } }
-        if (chain == null && state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        if (chain == null && state.loading) HeikaPulsePage(cards = 2, cardHeight = 110.dp)
         else if (chain == null) Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center) {
             InlineError(state.error ?: "接龙暂时不可用") { viewModel.load(force = true) }
         } else {

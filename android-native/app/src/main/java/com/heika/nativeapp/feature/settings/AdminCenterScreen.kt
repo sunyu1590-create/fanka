@@ -9,7 +9,10 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +71,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import com.heika.nativeapp.ui.HeikaPulsePage
+import com.heika.nativeapp.ui.HeikaPulseRow
+import com.heika.nativeapp.ui.HeikaPulseLines
 
 @Composable
 fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hiltViewModel()) {
@@ -89,7 +96,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
             state.error?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
             state.notice?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
             if (state.section == "membership-support") AdminMembershipPanel(state, viewModel, onDisableCode = { pendingCodeDisable = it })
-            else if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+            else if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) HeikaPulsePage(cards = 4, cardHeight = 84.dp)
             else if (state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text(if (state.error == null) "暂无待处理事项" else "无法读取管理队列", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.error != null) TextButton(onClick = viewModel::refresh) { Text("重试") }
@@ -242,7 +249,7 @@ private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, o
             Text("按工作模块进入审核与管理，待处理事项优先显示。", Modifier.padding(top = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         }
         if (state.loading && overview == null) item {
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+            HeikaPulseLines(Modifier.fillMaxWidth().padding(vertical = 6.dp), lines = 3, lineHeight = 12.dp)
         }
         if (state.error != null) item {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
@@ -290,12 +297,16 @@ private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, o
 @Composable
 private fun AdminMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
-        modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .38f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1)
+        Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, maxLines = 1)
     }
 }
 
@@ -303,11 +314,16 @@ private fun AdminMetric(label: String, value: String, modifier: Modifier = Modif
 private fun AdminModuleRow(module: AdminModuleSpec, overview: JSONObject?, onClick: () -> Unit) {
     val count = module.countKey?.let { key -> overview?.optInt(key)?.takeIf { overview.has(key) } }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .38f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(androidx.compose.ui.res.painterResource(module.iconRes), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(9.dp))
+        Icon(androidx.compose.ui.res.painterResource(module.iconRes), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)).padding(10.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(module.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             Text(module.detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -346,7 +362,7 @@ private fun AdminMembershipPanel(state: AdminCenterState, viewModel: AdminCenter
         state.membershipError?.let { Text(it, Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         state.membershipNotice?.let { Text(it, Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
         if (state.membershipLoading && state.membershipBatches.isEmpty() && state.membershipTab == "codes") {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            HeikaPulsePage(cards = 3, cardHeight = 72.dp)
             return@Column
         }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
@@ -577,7 +593,7 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
         }
     }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 10.dp)) {
-        if (state.loading && state.metadata == null) item { CircularProgressIndicator(Modifier.padding(16.dp)) }
+        if (state.loading && state.metadata == null) item { HeikaPulseLines(Modifier.padding(vertical = 10.dp), lines = 4, lineHeight = 12.dp) }
         when (state.section) {
             "categories" -> item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -764,13 +780,38 @@ private fun AdminQueueItem(
     onUserMembership: (String, String) -> Unit,
 ) {
     var note by remember(item.optString("id")) { mutableStateOf("") }
+    var expanded by remember(item.optString("id")) { mutableStateOf(false) }
     var roleMenuOpen by remember { mutableStateOf(false) }
     var membershipMenuOpen by remember { mutableStateOf(false) }
     var pendingUserUpdate by remember { mutableStateOf<Pair<String, String>?>(null) }
     val target = item.optJSONObject("target")
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .42f), RoundedCornerShape(16.dp))
+            .padding(15.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Text(when (section) { "reports", "dm-reports" -> item.optString("reason", "举报"); "users" -> item.optString("nickname", "探索者"); "ai-feedback" -> item.optString("kind", "资源反馈"); "user-feedback" -> item.optString("category", "用户反馈"); else -> item.optString("title", item.optString("post_title", "待审核内容")) }, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        Text(when (section) { "users" -> "${item.optString("role")} · ${item.optString("membership_tier")}"; "comments" -> item.optString("body"); "ai-feedback" -> item.optString("details"); "user-feedback" -> item.optString("message"); else -> target?.optString("title").orEmpty().ifBlank { item.optString("body") }.ifBlank { item.optString("status") } }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+        val preview = when (section) { "users" -> "${item.optString("role")} · ${item.optString("membership_tier")}"; "comments" -> item.optString("body"); "ai-feedback" -> item.optString("details"); "user-feedback" -> item.optString("message"); else -> target?.optString("title").orEmpty().ifBlank { item.optString("body") }.ifBlank { item.optString("status") } }
+        // 用户正文往往很长：默认收起，需要时再展开，列表不会被一屏文字淹没。
+        Text(
+            preview,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            maxLines = if (expanded) 40 else 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (preview.length > 46) {
+            Text(
+                if (expanded) "收起内容" else "展开全部内容",
+                Modifier.clip(RoundedCornerShape(999.dp)).clickable { expanded = !expanded }.padding(vertical = 4.dp, horizontal = 2.dp),
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 10.5.sp,
+            )
+        }
         if (section == "reports") Text("对象：${target?.optString("type").orEmpty()} · ${target?.optString("status").orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         if (section == "users") Text(if (item.optJSONObject("community_restriction")?.optBoolean("active") == true) "已限制发言" else "正常", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         if (section == "users") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -790,6 +831,11 @@ private fun AdminQueueItem(
                     }
                 }
             }
+        }
+        if (section == "posts" || section == "ai") {
+            // 预选审核结果：常见情形点一下就完成，不必每条都手打说明。
+            QuickReviewRow("一键通过", listOf("内容合规", "质量合格", "优质内容"), saving) { reason -> note = reason; onAction(true, reason) }
+            QuickReviewRow("一键驳回", listOf("不符合社区规范", "内容不完整", "重复投稿"), saving, reject = true) { reason -> note = reason; onAction(false, reason) }
         }
         OutlinedTextField(value = note, onValueChange = { note = it.take(500) }, modifier = Modifier.fillMaxWidth(), label = { Text("处理说明（至少 3 字）") }, maxLines = 3)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -811,6 +857,36 @@ private fun AdminQueueItem(
             onConfirm = { if (kind == "role") onUserRole(item.optString("id"), value) else onUserMembership(item.optString("id"), value); pendingUserUpdate = null },
             onCancel = { pendingUserUpdate = null },
         )
+    }
+}
+
+/** 快捷审核：一排理由，点选即提交对应结果。 */
+@Composable
+private fun QuickReviewRow(
+    label: String,
+    reasons: List<String>,
+    saving: Boolean,
+    reject: Boolean = false,
+    onPick: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            reasons.forEach { reason ->
+                val tint = if (reject) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                Text(
+                    reason,
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(tint.copy(alpha = .10f))
+                        .clickable(enabled = !saving) { onPick(reason) }
+                        .padding(horizontal = 11.dp, vertical = 6.dp),
+                    color = tint,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
     }
 }
 

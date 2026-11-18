@@ -19,6 +19,7 @@ object HeikaIconRes {
     val Publish = R.drawable.ic_lucide_upload
     val Megaphone = R.drawable.ic_lucide_megaphone
     val Send = R.drawable.ic_lucide_send
+    val ArrowUp = R.drawable.ic_lucide_arrow_up
     val Search = R.drawable.ic_lucide_search
     val Notifications = R.drawable.ic_lucide_bell
     val Filter = R.drawable.ic_lucide_list_filter
@@ -93,6 +94,7 @@ object HeikaIcons {
     val Publish: ImageVector @Composable get() = icon(HeikaIconRes.Publish)
     val Megaphone: ImageVector @Composable get() = icon(HeikaIconRes.Megaphone)
     val Send: ImageVector @Composable get() = icon(HeikaIconRes.Send)
+    val ArrowUp: ImageVector @Composable get() = icon(HeikaIconRes.ArrowUp)
     val Search: ImageVector @Composable get() = icon(HeikaIconRes.Search)
     val Notifications: ImageVector @Composable get() = icon(HeikaIconRes.Notifications)
     val Filter: ImageVector @Composable get() = icon(HeikaIconRes.Filter)

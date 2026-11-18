@@ -69,6 +69,8 @@ import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaAvatar
+import com.heika.nativeapp.ui.HeikaPulseBlock
+import com.heika.nativeapp.ui.HeikaPulseRow
 
 private val ProfileTabs = listOf("我的作品" to "works", "我的收藏" to "bookmarks", "我的点赞" to "liked")
 
@@ -182,7 +184,7 @@ fun ProfileScreen(
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                     Text(profile.nickname, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (userId == null) Text("LV${state.stats.level}", Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 7.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                                    if (userId == null) Text("LV${state.stats.level}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .3.sp)
                                 }
                                 if (profile.bio.isNotBlank()) Text(profile.bio, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                                 Text("HEIKA ID · ${profile.id.take(8).uppercase()}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
@@ -290,7 +292,7 @@ fun ProfileScreen(
                     }, sharedTransitionScope = sharedTransitionScope, animatedVisibilityScope = animatedVisibilityScope, sharedElementsEnabled = sharedElementsEnabled && !isDraft)
                 }
                 if (state.loadingMore == when (selected) { "works" -> "own"; "bookmarks" -> "bookmarks"; else -> "liked" }) item(span = StaggeredGridItemSpan.FullLine) {
-                    CircularProgressIndicator(Modifier.padding(14.dp).size(20.dp), strokeWidth = 2.dp)
+                    HeikaPulseRow(Modifier.padding(vertical = 8.dp), height = 56.dp)
                 }
             }
             if (gridState.firstVisibleItemIndex >= 2) {
@@ -342,8 +344,8 @@ private fun ProfileBrandHeader(onSettings: () -> Unit, onMembership: () -> Unit)
             Text("HEIKA", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = HeikaType.brandLatin, letterSpacing = 1.6.sp, modifier = Modifier.padding(start = 7.dp).alignByBaseline())
         }
         Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.height(36.dp).clip(CircleShape).clickable(onClick = onMembership).padding(horizontal = 11.dp), contentAlignment = Alignment.Center) {
-                Text("会员中心", color = MaterialTheme.colorScheme.primary, fontSize = 11.5.sp)
+            Box(Modifier.height(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)).clickable(onClick = onMembership).padding(horizontal = 13.dp), contentAlignment = Alignment.Center) {
+                Text("会员中心", color = MaterialTheme.colorScheme.primary, fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
             }
             Box(Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onSettings), contentAlignment = Alignment.Center) {
                 Icon(HeikaIcons.Settings, "设置", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
@@ -362,10 +364,10 @@ private fun ProfileStat(value: String, label: String) {
 
 @Composable
 private fun SkeletonBlock(width: androidx.compose.ui.unit.Dp, shape: androidx.compose.ui.graphics.Shape, height: androidx.compose.ui.unit.Dp = width) {
-    Box(Modifier.size(width = width, height = height).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)))
+    HeikaPulseBlock(Modifier.size(width = width, height = height), shape)
 }
 
 @Composable
 private fun SkeletonBlock(modifier: Modifier, height: androidx.compose.ui.unit.Dp, shape: androidx.compose.ui.graphics.Shape) {
-    Box(modifier.height(height).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)))
+    HeikaPulseBlock(modifier.height(height), shape)
 }

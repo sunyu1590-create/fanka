@@ -42,6 +42,17 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(59, "2026.11.18", listOf(
+        "注册安全升级：同一 IP 每小时最多注册 2 个账号，超出后会提示稍后再试。",
+        "注册后的恢复码改为独立页面展示，必须确认已保存才能进入黑卡。",
+        "页面加载占位统一换成呼吸脉冲骨架，不再出现系统转圈。",
+        "正文里的链接会自动识别，裸域名也能直接点；#话题 自动高亮。",
+        "发布页可以自定义添加话题，即时生效，不需要审核。",
+        "发布与私信的发送按钮换成上行箭头，按钮改为圆形，动作更明确。",
+        "管理后台焕新：作品审核支持一键通过 / 一键驳回的预设理由，长内容默认收起。",
+        "关于页统一为圆角矩形卡片，开发者改为双署名：SunYu（孙宇）与 WangXiangYu（王祥余）。",
+        "个人页「会员中心」加上底色，昵称旁的等级标记去掉背景。",
+    )),
     NativeRelease(58, "2026.11.17", listOf(
         "修复无法删除已发布内容：被探索页广告位引用的作品现在会先解除引用再删除",
         "私信「删除」改为「撤回」：双方同时消失，只允许 3 分钟内撤回，面板带倒计时",
@@ -145,7 +156,10 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                 }
             }
             item {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     SectionTitle("认识黑卡")
                     Text("黑卡是一个以探索、阅读和分享为核心的内容社区。我们希望，让发现不再只是无尽的信息滑动，而是一次充满期待的主动选择。", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, lineHeight = 20.sp)
                     Text("在这里，你可以翻开未知的卡片，阅读感兴趣的知识与故事，分享自己的想法，也可以遇见与你拥有相同兴趣的人。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 20.sp)
@@ -165,8 +179,12 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("关于开发者", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("SunYu", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("SunYu（孙宇）", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         Text("个人开发者", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("WangXiangYu（王祥余）", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("创意开发者", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                     }
                     Text("黑卡始于一个简单的想法：能不能让发现内容这件事，变得更有趣一些？", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
                     Text("从翻开第一张卡片，到逐渐形成一个可以阅读、分享与交流的社区，黑卡仍在不断成长。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)

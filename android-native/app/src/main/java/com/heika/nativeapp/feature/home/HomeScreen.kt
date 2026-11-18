@@ -108,6 +108,8 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import dev.chrisbanes.haze.HazeState
+import com.heika.nativeapp.ui.HeikaPulseLine
+import com.heika.nativeapp.ui.HeikaPulseDot
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -183,9 +185,10 @@ fun HomeScreen(
                         state.notice?.let { NoticeLine(it, isError = false) }
                         state.error?.let { NoticeLine(it, isError = true, onRetry = viewModel::reload) }
                         if (state.loading && state.candidateIds.isEmpty()) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                                Text("  正在恢复今日卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                HeikaPulseLine(height = 13.dp, widthFraction = 0.72f)
+                                HeikaPulseLine(height = 11.dp, widthFraction = 0.48f)
+                                Text("正在恢复今日卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                             }
                         }
                     }
@@ -294,7 +297,7 @@ private fun FlipCard(
         }
         if (opening) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = HeikaPalette.Gold)
+                HeikaPulseDot(size = 26.dp, color = HeikaPalette.Gold)
             }
         }
     }

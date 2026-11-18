@@ -51,6 +51,7 @@ import com.heika.nativeapp.HeikaApplication
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaNoticeBus
+import com.heika.nativeapp.ui.HeikaPulsePage
 
 @Composable
 fun NotificationsScreen(
@@ -129,7 +130,7 @@ fun NotificationsScreen(
         )
         state.error?.let { Text(it, Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         when {
-            state.loading && state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(23.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp) }
+            state.loading && state.items.isEmpty() -> HeikaPulsePage(cards = 4, cardHeight = 62.dp, horizontalPadding = 18.dp)
             !state.signedIn -> Column(Modifier.fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("登录后查看评论、回复和互动通知。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 Text("登录 / 注册", Modifier.clickable(onClick = onLogin).padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)

@@ -63,6 +63,9 @@ import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaNoticeBus
+import com.heika.nativeapp.ui.HeikaPulsePage
+import com.heika.nativeapp.ui.HeikaPulseDot
+import com.heika.nativeapp.ui.HeikaPulseRow
 
 private val searchKinds = listOf("all" to "综合", "content" to "内容", "people" to "用户", "topics" to "话题", "ai" to "AI 资源")
 
@@ -151,9 +154,7 @@ fun SearchScreen(
                 onRetryTopics = viewModel::loadHotTopics,
             )
         } else if (state.loading && state.posts.isEmpty() && state.people.isEmpty() && state.topics.isEmpty() && state.aiPosts.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-            }
+            HeikaPulsePage(cards = 3, cardHeight = 88.dp)
         } else {
             SearchResults(state, onPost, onProfile, viewModel::setKind, viewModel::submitTopicSearch, viewModel::loadMore, sharedTransitionScope, animatedVisibilityScope, sharedElementsEnabled)
         }
@@ -198,7 +199,7 @@ private fun SearchLanding(
                     Text("实时热搜", color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     Text("按内容量与参与人数排序", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                 }
-                if (state.loadingHotTopics) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                if (state.loadingHotTopics) HeikaPulseDot(size = 16.dp)
                 else IconButton(onClick = onRetryTopics) { Icon(HeikaIcons.Retry, "刷新热搜", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
             }
         }
@@ -377,7 +378,7 @@ private fun PersonResultRow(person: SearchPerson, onClick: () -> Unit) {
 private fun SearchGridFooter(state: SearchState, isEmpty: Boolean, onLoadMore: () -> Unit) {
     when {
         isEmpty && !state.loading -> EmptySearchResult("没有找到相关内容")
-        state.loadingMore -> Box(Modifier.fillMaxWidth().padding(vertical = 17.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp) }
+        state.loadingMore -> HeikaPulseRow(Modifier.padding(vertical = 10.dp), height = 44.dp)
         state.hasMore -> TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) { Text("加载更多") }
     }
 }
@@ -386,7 +387,7 @@ private fun SearchGridFooter(state: SearchState, isEmpty: Boolean, onLoadMore: (
 private fun SearchListFooter(state: SearchState, isEmpty: Boolean, onLoadMore: () -> Unit) {
     when {
         isEmpty && !state.loading -> EmptySearchResult(if (state.kind == "people") "没有找到匹配用户" else "没有找到相关内容")
-        state.loadingMore -> Box(Modifier.fillMaxWidth().padding(vertical = 17.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp) }
+        state.loadingMore -> HeikaPulseRow(Modifier.padding(vertical = 10.dp), height = 44.dp)
         state.hasMore -> TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) { Text("加载更多") }
     }
 }

@@ -106,6 +106,62 @@ private fun parseBlocks(source: String): List<MdBlock> {
     return blocks
 }
 
+
+/** 裸链接：带协议、带 www、带路径或常见顶级域的域名都会被识别。 */
+private val bareUrlPattern = Regex(
+    """((?:https?://|www\.)[^\s<>"'`）)，。；！？、]+|(?<![\w@.-])(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|cn|net|org|io|co|me|app|dev|ai|shop|top|xyz|cc|tv|info|biz|live|site|online|store|club|design|art|blog|tech|link|pro|fun|wiki|space|tools|run|codes|cloud)(?:/[^\s<>"'`）)，。；！？、]*)?)""",
+    RegexOption.IGNORE_CASE,
+)
+private val trailingPunctuation = charArrayOf('.', ',', ';', ':', '!', '?', '。', '，', '；', '：', '！', '？', ')', '）', ']', '】', '}', '>', '"', '\'')
+private val topicPattern = Regex("""(^|[\s（(【\[>])(#[\p{L}\p{N}_]{1,24})""")
+
+/** 普通文本 → 自动链接 + #话题 高亮。 */
+private fun AnnotatedString.Builder.appendRichText(
+    text: String,
+    linkColor: Color,
+    onLinkClick: (String) -> Unit,
+) {
+    var cursor = 0
+    for (match in bareUrlPattern.findAll(text)) {
+        if (match.range.first > cursor) appendTopics(text.substring(cursor, match.range.first), linkColor)
+        val raw = match.value
+        val shown = raw.trimEnd(*trailingPunctuation)
+        if (shown.isEmpty()) {
+            append(raw)
+        } else {
+            val href = if (shown.startsWith("http://", true) || shown.startsWith("https://", true)) shown else "https://$shown"
+            withLink(
+                LinkAnnotation.Clickable(
+                    tag = href,
+                    styles = TextLinkStyles(
+                        style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                    ),
+                    linkInteractionListener = { onLinkClick(href) },
+                ),
+            ) { append(shown) }
+            if (shown.length < raw.length) append(raw.substring(shown.length))
+        }
+        cursor = match.range.last + 1
+    }
+    if (cursor < text.length) appendTopics(text.substring(cursor), linkColor)
+}
+
+private fun AnnotatedString.Builder.appendTopics(text: String, linkColor: Color) {
+    if (text.isEmpty()) return
+    var cursor = 0
+    for (match in topicPattern.findAll(text)) {
+        val prefix = match.groupValues[1]
+        val tag = match.groupValues[2]
+        val start = match.range.first + prefix.length
+        if (start > cursor) append(text.substring(cursor, start))
+        withStyle(SpanStyle(color = linkColor, fontWeight = FontWeight.SemiBold, background = linkColor.copy(alpha = .10f))) {
+            append(tag)
+        }
+        cursor = start + tag.length
+    }
+    if (cursor < text.length) append(text.substring(cursor))
+}
+
 private val inlinePattern = Regex("(`[^`]+`|\\*\\*[^*]+\\*\\*|~~[^~]+~~|\\*[^*]+\\*|\\[[^\\]]+\\]\\([^)]+\\))")
 
 private fun buildInline(
@@ -116,7 +172,7 @@ private fun buildInline(
 ): AnnotatedString = buildAnnotatedString {
     var cursor = 0
     for (match in inlinePattern.findAll(text)) {
-        if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
+        if (match.range.first > cursor) appendRichText(text.substring(cursor, match.range.first), linkColor, onLinkClick)
         val token = match.value
         when {
             token.startsWith("`") -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = codeColor)) {
@@ -151,7 +207,7 @@ private fun buildInline(
         }
         cursor = match.range.last + 1
     }
-    if (cursor < text.length) append(text.substring(cursor))
+    if (cursor < text.length) appendRichText(text.substring(cursor), linkColor, onLinkClick)
 }
 
 @Composable

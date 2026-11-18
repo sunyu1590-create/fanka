@@ -104,6 +104,8 @@ import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
+import com.heika.nativeapp.ui.HeikaPulseFeed
+import com.heika.nativeapp.ui.HeikaPulseRow
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
@@ -514,17 +516,13 @@ internal fun FeedGrid(
         }
         when {
             posts.loadState.refresh is LoadState.Loading && posts.itemCount == 0 -> item(span = StaggeredGridItemSpan.FullLine) {
-                Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-                }
+                HeikaPulseFeed(Modifier.fillMaxWidth().padding(horizontal = 18.dp), cards = 3, cardHeight = 150.dp)
             }
             posts.loadState.refresh is LoadState.Error && posts.itemCount == 0 -> item(span = StaggeredGridItemSpan.FullLine) {
                 EmptyFeed(message = (posts.loadState.refresh as LoadState.Error).error.message ?: "内容暂时无法加载", onRetry = posts::retry)
             }
             posts.loadState.append is LoadState.Loading -> item(span = StaggeredGridItemSpan.FullLine) {
-                Box(Modifier.fillMaxWidth().height(60.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-                }
+                HeikaPulseRow(Modifier.padding(horizontal = 18.dp, vertical = 8.dp), height = 56.dp)
             }
             posts.loadState.append is LoadState.Error -> item(span = StaggeredGridItemSpan.FullLine) {
                 androidx.compose.material3.TextButton(onClick = posts::retry, modifier = Modifier.fillMaxWidth()) { Text("加载更多失败 · 点击重试") }

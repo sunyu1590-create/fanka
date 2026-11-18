@@ -69,6 +69,9 @@ import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaGlassSurface
 import com.heika.nativeapp.ui.HeikaLiquidGlassSurface
 import dev.chrisbanes.haze.HazeState
+import com.heika.nativeapp.ui.HeikaPulseDot
+import com.heika.nativeapp.ui.HeikaPulsePage
+import com.heika.nativeapp.ui.HeikaPulseLines
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
@@ -199,9 +202,9 @@ fun MessagesScreen(
                         items(state.people.distinctBy { it.id }, key = { it.id }) { peer -> PeerRow(peer) { viewModel.openPeer(peer) } }
                     }
                 } else if (peopleMode && state.query.length >= 2 && state.searchingPeople) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
+                    HeikaPulseLines(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), lines = 4, lineHeight = 12.dp)
                 } else if (!peopleMode && state.loading && state.conversations.isEmpty()) {
-                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+                    HeikaPulsePage(Modifier.fillMaxSize(), cards = 4, cardHeight = 64.dp, horizontalPadding = 16.dp)
                 } else if (peopleMode && state.query.length < 2) {
                     Text("搜索昵称，发现新朋友", Modifier.fillMaxWidth().padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.weight(1f))
@@ -395,15 +398,23 @@ fun MessagesScreen(
                         },
                     )
                 }
-                HeikaLiquidGlassSurface(
-                    hazeState = hazeState,
-                    modifier = Modifier.size(50.dp),
-                    shape = RoundedCornerShape(50.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    drawTopHighlight = true,
+                val sendReady = state.draft.isNotBlank() && !state.sending
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(if (sendReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f))
+                        .clickable(enabled = sendReady, onClick = viewModel::send),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    IconButton(enabled = state.draft.isNotBlank() && !state.sending, onClick = viewModel::send, modifier = Modifier.size(50.dp)) {
-                        if (state.sending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(HeikaIcons.Send, "发送", tint = MaterialTheme.colorScheme.primary)
+                    when {
+                        state.sending -> HeikaPulseDot(size = 18.dp, color = MaterialTheme.colorScheme.onPrimary)
+                        else -> Icon(
+                            HeikaIcons.ArrowUp,
+                            contentDescription = "发送",
+                            tint = if (sendReady) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(21.dp),
+                        )
                     }
                 }
             }

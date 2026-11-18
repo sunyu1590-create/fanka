@@ -47,7 +47,7 @@ data class PendingImage(
 )
 
 data class PublishState(
-    val title: String = "", val body: String = "", val topicText: String = "", val categories: List<HeikaCategory> = emptyList(),
+    val title: String = "", val body: String = "", val topicText: String = "", val topicSuggestions: List<String> = emptyList(), val categories: List<HeikaCategory> = emptyList(),
     val channel: String = "community", val contentType: String = "knowledge_article", val resourceData: Map<String, String> = emptyMap(),
     val usageScenarios: List<String> = emptyList(),
     val aiResourceTypes: List<AiResourceType> = emptyList(),
@@ -148,6 +148,35 @@ class PublishViewModel @Inject constructor(
             error = if (categories.isEmpty()) "$target 分类暂不可用，请重试" else current.error,
         ) }
     }
+
+    /** 热门话题：只做候选提示，用户也可以直接输入自己的话题。 */
+    fun loadTopicSuggestions() = viewModelScope.launch(HeikaCoroutineGuard) {
+        val topics = runCatching {
+            val array = repository.searchTopics(featured = true)
+            buildList { for (index in 0 until array.length()) array.optJSONObject(index)?.optString("name")?.takeIf(String::isNotBlank)?.let { add(it) } }
+        }.getOrDefault(emptyList())
+        mutableState.update { it.copy(topicSuggestions = topics.take(16)) }
+    }
+
+    fun addTopic(raw: String) {
+        val name = raw.trim().trimStart('#').take(24)
+        if (name.isBlank()) return
+        val current = mutableState.value
+        val existing = parseTopics(current.topicText)
+        if (existing.size >= 5) {
+            mutableState.update { it.copy(notice = "最多选择 5 个话题") }
+            return
+        }
+        if (existing.any { it.equals(name, ignoreCase = true) }) return
+        mutableState.update { it.copy(topicText = (existing + name).joinToString(" "), error = null) }
+    }
+
+    fun removeTopic(name: String) {
+        val remaining = parseTopics(mutableState.value.topicText).filterNot { it == name }
+        mutableState.update { it.copy(topicText = remaining.joinToString(" ")) }
+    }
+
+    fun currentTopics(): List<String> = parseTopics(mutableState.value.topicText)
 
     fun switchChannel(channel: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val target = if (channel == "ai") "ai" else "community"

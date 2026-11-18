@@ -67,6 +67,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.json.JSONArray
 import java.io.ByteArrayOutputStream
+import com.heika.nativeapp.ui.HeikaPulsePage
+import com.heika.nativeapp.ui.HeikaPulseRow
 
 @Composable
 fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltViewModel()) {
@@ -115,7 +117,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("编辑资料", onBack)
         if (profile == null && state.loading) {
-            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+            HeikaPulsePage(cards = 3, cardHeight = 62.dp)
         } else if (profile != null) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 100.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 item {
@@ -250,7 +252,7 @@ fun ManageWorksScreen(
                 }
             }
             if (allWorks.isEmpty() && !state.loading) item { Text("暂无可管理的作品", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(vertical = 26.dp)) }
-            if (state.loading) item { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+            if (state.loading) item { HeikaPulseRow(Modifier.padding(vertical = 8.dp), height = 56.dp) }
         }
     }
     deleteTarget?.let { post ->

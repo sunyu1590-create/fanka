@@ -71,6 +71,8 @@ import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.heika.nativeapp.ui.HeikaPulseDot
+import com.heika.nativeapp.ui.HeikaPulsePage
 
 @Composable
 fun PublishScreen(
@@ -87,8 +89,9 @@ fun PublishScreen(
     var showVideoBeta by remember { mutableStateOf(false) }
     var selectedVideo by remember { mutableStateOf<Uri?>(null) }
     var bodyPreview by remember { mutableStateOf(false) }
+    var topicDraft by remember { mutableStateOf("") }
     val publishListState = rememberLazyListState()
-    LaunchedEffect(draftId, channel) { viewModel.configureChannel(channel); viewModel.resumeDraft(draftId) }
+    LaunchedEffect(draftId, channel) { viewModel.configureChannel(channel); viewModel.resumeDraft(draftId); viewModel.loadTopicSuggestions() }
     LaunchedEffect(state.notice) {
         state.notice?.let { message ->
             HeikaNoticeBus.show(message, if (message.contains("失败")) HeikaNoticeKind.ERROR else HeikaNoticeKind.SUCCESS)
@@ -174,7 +177,7 @@ fun PublishScreen(
                 Button(onClick = onLogin) { Text("登录") }
             }
         } else if (state.loading) {
-            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { CircularProgressIndicator() }
+            HeikaPulsePage(cards = 3, cardHeight = 92.dp)
         } else {
             androidx.compose.foundation.lazy.LazyColumn(
                 state = publishListState,
@@ -304,7 +307,7 @@ fun PublishScreen(
                                     androidx.compose.foundation.layout.Box(Modifier.size(width = 124.dp, height = 158.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface)) {
                                         AsyncImage(model = image.preview, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                         IconButton(onClick = { viewModel.removeImage(image.key) }, modifier = Modifier.align(Alignment.TopEnd).size(40.dp)) { Icon(HeikaIcons.Close, "移除图片", tint = MaterialTheme.colorScheme.onBackground) }
-                                        if (image.progress) CircularProgressIndicator(Modifier.align(Alignment.Center).size(22.dp), strokeWidth = 2.dp)
+                                        if (image.progress) HeikaPulseDot(Modifier.align(Alignment.Center), size = 22.dp)
                                         Text(
                                             if (state.images.firstOrNull()?.key == image.key) "封面" else "设为封面",
                                             Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface).clickable {
@@ -408,15 +411,72 @@ fun PublishScreen(
                     }
                 }
                 item {
-                    OutlinedTextField(value = state.topicText, onValueChange = { viewModel.edit(topicText = it) }, modifier = Modifier.fillMaxWidth(), label = { Text("话题") }, placeholder = { Text("以空格分隔，最多 5 个") }, supportingText = { Text("使用网站已收录的话题名称") })
+                    val topics = viewModel.currentTopics()
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("话题", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            Text("${topics.size}/5", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        }
+                        Text("正文里写 #话题 也会自动高亮；新建话题即时生效，不需要审核。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp)
+                        if (topics.isNotEmpty()) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                topics.forEach { topic ->
+                                    Row(
+                                        Modifier.clip(RoundedCornerShape(999.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).clickable { viewModel.removeTopic(topic) }.padding(start = 11.dp, end = 7.dp, top = 6.dp, bottom = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Text("#$topic", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        Icon(HeikaIcons.Close, "移除话题", tint = MaterialTheme.colorScheme.primary.copy(alpha = .7f), modifier = Modifier.size(12.dp))
+                                    }
+                                }
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = topicDraft,
+                                onValueChange = { topicDraft = it.take(24) },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("添加自己的话题") },
+                                placeholder = { Text("例如：深夜食堂") },
+                                singleLine = true,
+                            )
+                            Button(
+                                enabled = topicDraft.isNotBlank() && topics.size < 5,
+                                onClick = { viewModel.addTopic(topicDraft); topicDraft = "" },
+                            ) { Text("添加") }
+                        }
+                        if (state.topicSuggestions.isNotEmpty()) {
+                            Text("热门话题", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                state.topicSuggestions.forEach { topic ->
+                                    FilterChip(topic, topic in topics, {
+                                        if (topic in topics) viewModel.removeTopic(topic) else viewModel.addTopic(topic)
+                                    })
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 17.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (state.saving) "正在保存到本机" else "草稿自动保存到本机", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 Spacer(Modifier.weight(1f))
-                Button(onClick = viewModel::publish, enabled = !state.publishing && !state.saving && state.categories.isNotEmpty()) {
-                    if (state.publishing) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    else { Icon(HeikaIcons.Send, null); Text(if (state.revisionMode) "提交修改" else "提交") }
+                Button(
+                    onClick = viewModel::publish,
+                    enabled = !state.publishing && !state.saving && state.categories.isNotEmpty(),
+                    shape = RoundedCornerShape(999.dp),
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                ) {
+                    if (state.publishing) HeikaPulseDot(size = 17.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    else {
+                        Icon(HeikaIcons.ArrowUpRight, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.size(6.dp))
+                        Text(if (state.revisionMode) "提交修改" else "发布", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

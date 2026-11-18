@@ -121,6 +121,7 @@ import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.sharedRatingKey
 import com.heika.nativeapp.ui.sharedTagKey
 import dev.chrisbanes.haze.HazeState
+import com.heika.nativeapp.ui.HeikaPulsePage
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -259,7 +260,7 @@ fun PostDetailScreen(
             }
         })
         if (state.loading && visiblePost == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            HeikaPulsePage(cards = 2, cardHeight = 132.dp)
         } else if (visiblePost == null) {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(state.error ?: "内容暂时无法显示", color = MaterialTheme.colorScheme.onSurfaceVariant)
