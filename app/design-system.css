@@ -6366,7 +6366,7 @@ img, video, canvas, iframe { max-width:100%; }
 
 /* 恢复码页：手机单列，码不折行；按钮给出明确的最小宽度 */
 .recovery-codes-page .recovery-codes-list li { font-size: 13.5px; white-space: nowrap; }
-.recovery-codes-page .primary-button { min-width: 168px; justify-content: center; }
+.recovery-codes-page .primary-button { width: 100%; max-width: 320px; justify-content: center; }
 @media (max-width: 560px) {
   .recovery-codes-page .recovery-codes-list { grid-template-columns: 1fr; gap: 9px; }
 }
