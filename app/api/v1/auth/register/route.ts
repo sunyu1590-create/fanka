@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { createHash } from "node:crypto";
 import { adminClient } from "@/lib/server/admin-client";
+import { hashAccessCode, normalizeAccessCode } from "@/lib/access-codes";
 import { ApiError, dbError, jsonBody, respond, textField } from "@/lib/server/api";
 import { clientIp } from "@/lib/server/client-ip";
 
@@ -48,19 +48,22 @@ export async function POST(req: NextRequest) {
     const rawNickname = typeof body.nickname === "string" ? body.nickname.trim() : "";
     const nickname = rawNickname ? textField(rawNickname, "昵称", 1, 24) : email.split("@")[0].slice(0, 24);
     let inviteCodeHash: string | null = null;
-    if (body.inviteCode !== undefined && body.inviteCode !== null && body.inviteCode !== "") {
-      if (typeof body.inviteCode !== "string") throw new ApiError(400, "入驻邀请码格式无效");
-      const inviteCode = body.inviteCode.trim().toUpperCase().replace(/\s/g, "");
-      if (!/^HEIKA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(inviteCode)) throw new ApiError(400, "入驻邀请码格式无效");
-      inviteCodeHash = createHash("sha256").update(inviteCode, "utf8").digest("hex");
+    if (body.inviteCode !== undefined && body.inviteCode !== null && String(body.inviteCode).trim() !== "") {
+      const inviteCode = normalizeAccessCode(body.inviteCode);
+      if (!inviteCode) throw new ApiError(400, "邀请码格式不正确，请重新完整复制（形如 HEIKA-XXXX-XXXX-XXXX）");
+      inviteCodeHash = hashAccessCode(inviteCode);
       const admin = adminClient();
       const found = await admin.from("access_codes").select("id,batch_id,status").eq("code_hash", inviteCodeHash).maybeSingle();
       dbError(found.error);
-      const batch = found.data ? await admin.from("access_code_batches").select("code_kind,active,expires_at").eq("id", found.data.batch_id).maybeSingle() : { data: null, error: null };
+      if (!found.data) throw new ApiError(400, "没有找到这个邀请码，请确认复制完整、没有多余字符");
+      const batch = await admin.from("access_code_batches").select("code_kind,active,expires_at").eq("id", found.data.batch_id).maybeSingle();
       dbError(batch.error);
-      if (!found.data || found.data.status !== "unused" || batch.data?.code_kind !== "invitation" || !batch.data.active || (batch.data.expires_at && Date.parse(batch.data.expires_at) <= Date.now())) {
-        throw new ApiError(400, "入驻邀请码无效、已使用或已过期");
-      }
+      if (found.data.status === "redeemed") throw new ApiError(409, "这个邀请码已经被使用过了");
+      if (found.data.status !== "unused") throw new ApiError(409, "这个邀请码已被停用");
+      if (batch.data?.code_kind === "certification") throw new ApiError(400, "这是认证码，不能用于注册。请先注册，再到「设置 → 兑换认证码」使用");
+      if (batch.data?.code_kind !== "invitation") throw new ApiError(400, "这个码不是入驻邀请码");
+      if (!batch.data.active) throw new ApiError(409, "这个批次已停用，请联系管理员");
+      if (batch.data.expires_at && Date.parse(batch.data.expires_at) <= Date.now()) throw new ApiError(409, "这个邀请码已过期");
     }
 
     const ip = clientIp(req);

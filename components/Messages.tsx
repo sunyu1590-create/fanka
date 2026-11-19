@@ -9,6 +9,7 @@ import { promptInApp } from "@/lib/in-app-dialog";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
 import AnimatedNotice from "./AnimatedNotice";
 import RecoveryCodesPage from "./RecoveryCodesPage";
+import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelcomePage";
 import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
 import ProfileBadgeList, { type ProfileBadge } from "./ProfileBadgeList";
@@ -27,7 +28,6 @@ type Message = {
   media_path?: string;
 };
 type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset" | "codes" | "invite-welcome";
-type InvitationWelcome = { kind?: string; batchLabel?: string; badge?: { label?: string }; rewardDays?: number; expiresAt?: string };
 export default function Messages({
   initialPeer,
   onPeerOpened,
@@ -98,6 +98,28 @@ export default function Messages({
   const refreshing = useRef(false);
   const refreshQueued = useRef(false);
   const [media, setMedia] = useState<Record<string, string>>({});
+  // 顶层（社区）接管渲染后会清掉待办标记，这里同步清空内部视图，
+  // 避免走完引导页回到消息页时又看到一次恢复码或欢迎信。
+  useEffect(() => {
+    const sync = () => {
+      try {
+        if (!window.localStorage.getItem("heika:pending-recovery-codes")) {
+          setNewRecoveryCodes([]);
+          setAuthView((view) => (view === "codes" ? "login" : view));
+        }
+        if (!window.localStorage.getItem("heika:pending-invitation")) {
+          setPendingInvitation(null);
+          setAuthView((view) => (view === "invite-welcome" ? "login" : view));
+        }
+      } catch {}
+    };
+    window.addEventListener("heika:recovery-codes", sync);
+    window.addEventListener("heika:pending-invitation", sync);
+    return () => {
+      window.removeEventListener("heika:recovery-codes", sync);
+      window.removeEventListener("heika:pending-invitation", sync);
+    };
+  }, []);
   useEffect(() => {
     if (!selectedMessage) return;
     setNow(Date.now());
@@ -429,6 +451,15 @@ export default function Messages({
         } catch {
           codes = [];
         }
+        // 受邀注册的欢迎信必须留到恢复码确认之后再出现，因此先落盘。
+        const invitation = result.data?.invitation || null;
+        if (invitation) {
+          setPendingInvitation(invitation);
+          try {
+            window.localStorage.setItem("heika:pending-invitation", JSON.stringify(invitation));
+            window.dispatchEvent(new Event("heika:pending-invitation"));
+          } catch {}
+        }
         if (codes.length) {
           setNewRecoveryCodes(codes);
           setAuthView("codes");
@@ -437,9 +468,11 @@ export default function Messages({
             window.localStorage.setItem("heika:pending-recovery-codes", JSON.stringify(codes));
             window.dispatchEvent(new Event("heika:recovery-codes"));
           } catch {}
+        } else if (invitation) {
+          setAuthView("invite-welcome");
         } else {
-          if (result.data?.invitation) setAuthView("invite-welcome");
-          else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
+          setAuthView("login");
+          setAuthMessage("账号已创建，欢迎来到黑卡。");
         }
       } else if (authView === "forgot") {
         if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
@@ -615,7 +648,11 @@ export default function Messages({
       try { window.localStorage.removeItem("heika:pending-recovery-codes"); } catch {}
     }} />;
   if (authView === "invite-welcome" && pendingInvitation)
-    return <section className="page invite-welcome-page"><article className="invite-welcome-letter"><span className="invite-welcome-mark">✦</span><p className="invite-welcome-kicker">一封来自黑卡的欢迎信</p><h1>谢谢你，受邀而来。</h1><p>你好，欢迎来到黑卡。</p><p>这封信想先认真地对你说一声谢谢。感谢邀请你的人愿意把黑卡介绍给你，也感谢你愿意接过这份邀请，成为这个社区的新朋友。</p><p>黑卡从一个简单的念头开始：让人们在一次次探索里遇见值得停留的内容，也让每一份真诚的分享都被看见。一个社区之所以慢慢长大，靠的不是热闹的口号，而是像你这样愿意加入、愿意交流、愿意留下好内容的人。</p><p>你的账号已经获得 <strong>{pendingInvitation.badge?.label || "受邀入驻"}</strong> 标识。之后，其他用户可以在你的公开主页和私信资料旁看到它，知道你是通过社区邀请加入的。这份标识代表一次友好的引荐，也代表我们欢迎你在这里找到自己的位置。</p><p>同时，我们已为你的账号开通 <strong>Pro {pendingInvitation.rewardDays || 30} 天</strong>。希望这段时间能让你更自在地体验黑卡的探索与创作功能。你可以慢慢熟悉这里，不必急着发布什么；当灵感出现时，也期待看到你愿意分享的故事、经验或作品。</p><p>如果你是带着创作计划来的，欢迎把这里当作一个认真交流的地方；如果你只是想先四处看看，也完全没关系。无论从哪里开始，我们都希望你能在黑卡里发现一些新的想法，并遇见值得继续交流的人。</p><p>再次感谢你的加入。愿你在黑卡的每一次翻阅，都能遇见一点意料之外的惊喜。</p><div className="invite-welcome-signature"><span>诚挚欢迎</span><strong>黑卡官方菌</strong>{pendingInvitation.batchLabel && <small>邀请批次：{pendingInvitation.batchLabel}</small>}</div><button type="button" className="primary-button" onClick={() => { setAuthView("login"); setAuthMessage(""); }}>进入黑卡</button></article></section>;
+    return <InvitationWelcomePage invitation={pendingInvitation} onDone={() => {
+      setAuthView("login");
+      setAuthMessage("");
+      try { window.localStorage.removeItem("heika:pending-invitation"); } catch {}
+    }} />;
   if (!user || authView === "reset")
   if (!user || authView === "reset")
     return (
@@ -627,7 +664,7 @@ export default function Messages({
           onSubmit={(e) => void auth(e)}
         >
           {authView === "signup" && <label>昵称<input autoComplete="nickname" required minLength={2} maxLength={24} value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="2–24 个字，之后也可以修改" /></label>}
-          {authView === "signup" && <label>入驻邀请码（选填）<input autoComplete="off" maxLength={24} value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} placeholder="HEIKA-XXXX-XXXX-XXXX" /></label>}
+          {authView === "signup" && <label>入驻邀请码（选填）<input autoComplete="off" maxLength={400} value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} placeholder="HEIKA-XXXX-XXXX-XXXX" /></label>}
           {authView !== "reset" && authView !== "confirm" && <label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></label>}
           {authView === "verify-otp" && <label>邮箱验证码<input inputMode="numeric" autoComplete="one-time-code" required maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="输入邮件中的验证码" /></label>}
           {authView === "recover-code" && <label>账号恢复码<input autoComplete="off" required value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder="AAAAA-BBBBB-CCCCC-DDDDD" /></label>}

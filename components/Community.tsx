@@ -59,6 +59,7 @@ import DiscoveryPostCard from "./DiscoveryPostCard";
 const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
 import RecoveryCodesPage from "./RecoveryCodesPage";
+import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelcomePage";
 import { FollowedTopicsSettings, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
@@ -629,6 +630,7 @@ export default function Community() {
       | null
     >(null),
     [pendingRecoveryCodes, setPendingRecoveryCodes] = useState<string[]>([]),
+    [pendingInvitation, setPendingInvitation] = useState<InvitationWelcome | null>(null),
     [composerPanel, setComposerPanel] = useState<"topics" | "settings" | "preview" | null>(null),
     [composerMediaId, setComposerMediaId] = useState<string | null>(null),
     [draftSyncError, setDraftSyncError] = useState(""),
@@ -744,6 +746,22 @@ export default function Community() {
     read();
     window.addEventListener("heika:recovery-codes", read);
     return () => window.removeEventListener("heika:recovery-codes", read);
+  }, []);
+
+  // 受邀注册的欢迎信排在恢复码之后、引导页之前。
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = window.localStorage.getItem("heika:pending-invitation");
+        const parsed = raw ? JSON.parse(raw) : null;
+        setPendingInvitation(parsed && typeof parsed === "object" ? (parsed as InvitationWelcome) : null);
+      } catch {
+        setPendingInvitation(null);
+      }
+    };
+    read();
+    window.addEventListener("heika:pending-invitation", read);
+    return () => window.removeEventListener("heika:pending-invitation", read);
   }, []);
 
   useEffect(() => () => {
@@ -4047,7 +4065,17 @@ export default function Community() {
       standalone
       onDone={() => {
         try { window.localStorage.removeItem("heika:pending-recovery-codes"); } catch {}
+        window.dispatchEvent(new Event("heika:recovery-codes"));
         setPendingRecoveryCodes([]);
+      }}
+    />;
+  if (pendingInvitation)
+    return <InvitationWelcomePage
+      invitation={pendingInvitation}
+      onDone={() => {
+        try { window.localStorage.removeItem("heika:pending-invitation"); } catch {}
+        window.dispatchEvent(new Event("heika:pending-invitation"));
+        setPendingInvitation(null);
       }}
     />;
   if (!state.onboardingDone)

@@ -49,7 +49,7 @@ export default function CertificationSettings() {
     <header><div><h2>兑换认证码</h2><p>输入管理员发放的认证码，兑换后认证标识会显示在你的公开主页和私信资料旁。</p></div><button type="button" className="soft-button" onClick={() => void load()} disabled={loading} aria-label="刷新认证信息"><RefreshCw size={15}/></button></header>
     {error && <p className="moderation-feedback error" role="alert">{error}</p>}
     {message && <p className="moderation-feedback" role="status">{message}</p>}
-    <form onSubmit={(event) => void redeem(event)}><label htmlFor="certification-code">认证码</label><div><input id="certification-code" value={code} maxLength={24} autoComplete="off" onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="HEIKA-XXXX-XXXX-XXXX"/><button type="submit" disabled={busy || !code.trim()}><TicketCheck size={16}/>{busy ? "兑换中…" : "兑换认证"}</button></div></form>
+    <form onSubmit={(event) => void redeem(event)}><label htmlFor="certification-code">认证码</label><div><input id="certification-code" value={code} maxLength={400} autoComplete="off" onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="HEIKA-XXXX-XXXX-XXXX"/><button type="submit" disabled={busy || !code.trim()}><TicketCheck size={16}/>{busy ? "兑换中…" : "兑换认证"}</button></div></form>
     <section><h3>我的认证标识</h3>{loading ? <p>正在读取认证信息…</p> : badges.length ? <ul>{badges.map((badge) => <li key={badge.id}><BadgeCheck size={16} style={{ color: badge.color || "#78613B" }}/><span><strong>{badge.label}</strong>{badge.description && <small>{badge.description}</small>}</span></li>)}</ul> : <p>暂时没有认证标识。获得认证码后可在这里兑换。</p>}</section>
   </section>;
 }
