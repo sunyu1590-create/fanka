@@ -76,6 +76,7 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
 .composer-attachment-total{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
 .composer-attachment-total.is-over{color:#c75d60}
 .composer-attachment-limit{font-size:11px;color:var(--muted)}
+.composer-attachment-progress{display:block;width:100%;height:4px;margin:9px 0 0;accent-color:var(--action)}
 .composer-attachments .composer-field-error{margin:8px 0 0}
 .composer-media-choice.is-locked{border-style:dashed;color:var(--muted);cursor:pointer}
 .composer-media-choice.is-locked .composer-media-choice-copy strong{color:var(--muted)}
@@ -88,3 +89,5 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
 /* 发布按钮：图标 + 文字，新图标更接近"发送出去"的动作 */
 .composer-publish-button { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding-inline: 17px; }
 .composer-publish-button svg { flex: none; }
+.composer-attachment-add{cursor:pointer}
+.ai-workbench-prompt{display:grid;gap:7px;margin:12px 0;color:var(--muted);font-size:11px}.ai-workbench-prompt textarea{width:100%;min-height:76px;resize:vertical;padding:10px 11px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:12px;line-height:1.65}.ai-workbench-prompt-actions{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 9px}.ai-workbench-conversation{display:grid;gap:8px;max-height:240px;overflow:auto;margin:10px 0;padding:2px}.ai-workbench-turn,.ai-workbench-last-request{padding:9px 11px;border:1px solid var(--line);background:var(--surface)}.ai-workbench-turn.assistant{background:color-mix(in srgb,var(--surface) 70%,var(--bg))}.ai-workbench-turn small,.ai-workbench-last-request small{color:var(--muted);font-size:9px}.ai-workbench-turn p,.ai-workbench-last-request p{margin:4px 0 0;color:var(--ink);font-size:11px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.ai-workbench-last-request{border-left:2px solid var(--accent)}

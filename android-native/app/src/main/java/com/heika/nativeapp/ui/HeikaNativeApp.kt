@@ -666,7 +666,8 @@ private fun shareNativePost(context: android.content.Context, post: HeikaPost) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_SUBJECT, post.title)
-        putExtra(Intent.EXTRA_TEXT, "${post.title}\n$url")
+        val summary = post.aiSummary ?: post.body.replace(Regex("[#>*_`\\[\\]()]"), " ").replace(Regex("\\s+"), " ").trim().take(180)
+        putExtra(Intent.EXTRA_TEXT, listOf(post.title, summary, "作者：${post.author}", url).filter(String::isNotBlank).joinToString("\n"))
     }
     runCatching { context.startActivity(Intent.createChooser(send, "分享内容")) }
 }

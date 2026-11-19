@@ -7,6 +7,17 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.51.0",
+    date: "2026.11.19",
+    notes: [
+      { category: "新功能", text: "发布页附件上传显示真实进度并支持失败重试；网页端与 Android 端均使用服务端鉴权和附件校验，发布后仍按作品权限提供下载或预览。" },
+      { category: "新功能", text: "管理员新增 AI 总结队列、待审作品 AI 辅助审核、人工复审、模型配置和用量统计；后台任务可暂停、继续、重试，只有明确无风险的作品会进入原审核通过流程。" },
+      { category: "新功能", text: "已发布作品详情在标题下方展示与正文版本绑定的 AI 摘要；创作助手支持多轮继续修改和 Markdown 结构优化，原稿只在确认后替换。" },
+      { category: "体验优化", text: "统一网页与 Android 的固态玻璃材质和详情分享入口；无图作品以真实正文摘要构成卡片，邀请函保留原文并加入连续展开效果。" },
+      { category: "问题修复", text: "修复 AI 详情附件重复展示，并限制分享链接只从公开作品生成；私有附件仍由服务端签发短期访问链接。" },
+    ],
+  },
+  {
     version: "2.50.0",
     date: "2026.11.19",
     notes: [

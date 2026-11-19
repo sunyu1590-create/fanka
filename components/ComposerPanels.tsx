@@ -182,12 +182,15 @@ export const ComposerMediaStrip = memo(function ComposerMediaStrip({ images, cov
 });
 
 /** AI 内容的附件区：最多 3 个、单文件 30 MB、合计 50 MB，名额全服每天 20 个。 */
-export const ComposerAttachments = memo(function ComposerAttachments({ items, quota, busy, error, onAdd, onRemove }: {
+export const ComposerAttachments = memo(function ComposerAttachments({ items, quota, busy, error, progress, retryAvailable, onAdd, onRetry, onRemove }: {
   items: PostAttachment[];
   quota: { used: number; limit: number; remaining: number } | null;
   busy: boolean;
   error: string;
+  progress: number | null;
+  retryAvailable: boolean;
   onAdd: (files: FileList | null) => void;
+  onRetry: () => void;
   onRemove: (path: string) => void;
 }) {
   const total = items.reduce((sum, item) => sum + item.size, 0);
@@ -209,11 +212,13 @@ export const ComposerAttachments = memo(function ComposerAttachments({ items, qu
     <div className="composer-attachment-foot">
       {items.length < MAX_ATTACHMENT_FILES ? <label className={`composer-attachment-add${busy ? " is-busy" : ""}`}>
         <Paperclip size={15}/>
-        <span>{busy ? "上传中…" : "添加附件"}</span>
+        <span>{busy ? `上传中 ${progress ?? 0}%` : "添加附件"}</span>
         <input type="file" accept={ATTACHMENT_ACCEPT} disabled={busy} onChange={(event) => { onAdd(event.target.files); event.currentTarget.value = ""; }} />
       </label> : <span className="composer-attachment-limit">已达 {MAX_ATTACHMENT_FILES} 个上限</span>}
       {items.length > 0 && <span className={`composer-attachment-total${total > 50 * 1024 * 1024 ? " is-over" : ""}`}>{formatAttachmentSize(total)} / 50 MB</span>}
     </div>
+    {busy && <progress className="composer-attachment-progress" max={100} value={progress ?? 0} aria-label={`附件上传 ${progress ?? 0}%`} />}
+    {retryAvailable && !busy && <button type="button" className="composer-save-retry" onClick={onRetry}>重试失败附件</button>}
     {error && <p role="alert" className="composer-field-error">{error}</p>}
   </section>;
 });

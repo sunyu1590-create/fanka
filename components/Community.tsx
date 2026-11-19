@@ -47,6 +47,7 @@ import {
 import dynamic from "next/dynamic";
 import AnnouncementAdmin from "./AnnouncementAdmin";
 import ProgressiveImage from "./ProgressiveImage";
+import PostAISummary from "./PostAISummary";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp, promptInApp } from "@/lib/in-app-dialog";
 const Messages = dynamic(() => import("./Messages"), {
@@ -106,6 +107,7 @@ const FeedbackAdmin = dynamic(() => import("./FeedbackAdmin"));
 const NotificationSettings = dynamic(() => import("./NotificationSettings"));
 const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div className="empty">正在加载 AI 空间…</div> });
 const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
+const PostAttachmentsPanel = dynamic(() => import("./PostAttachmentsPanel"));
 const AppealCenter = dynamic(() => import("./AppealCenter"));
 import type { AiContentType } from "@/lib/ai-resources";
 
@@ -680,7 +682,9 @@ export default function Community() {
     [pollQuestion, setPollQuestion] = useState(""),
     [pollOptions, setPollOptions] = useState(["", ""]),
     [aiWorkbenchOpen, setAiWorkbenchOpen] = useState(false),
-    [aiWorkbenchMode, setAiWorkbenchMode] = useState<"title" | "outline" | "polish" | "topics">("outline"),
+    [aiWorkbenchMode, setAiWorkbenchMode] = useState<"title" | "outline" | "polish" | "continue" | "markdown" | "topics">("outline"),
+    [aiWorkbenchPrompt, setAiWorkbenchPrompt] = useState(""),
+    [aiWorkbenchMessages, setAiWorkbenchMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]),
     [aiWorkbenchOutput, setAiWorkbenchOutput] = useState(""),
     [aiWorkbenchBusy, setAiWorkbenchBusy] = useState(false),
     [aiPreviousBody, setAiPreviousBody] = useState<string | null>(null),
@@ -703,6 +707,8 @@ export default function Community() {
     [composerAttachments, setComposerAttachments] = useState<PostAttachment[]>([]),
     [attachmentQuota, setAttachmentQuota] = useState<{ used: number; limit: number; remaining: number } | null>(null),
     [attachmentBusy, setAttachmentBusy] = useState(false),
+    [attachmentProgress, setAttachmentProgress] = useState<number | null>(null),
+    [attachmentRetryFiles, setAttachmentRetryFiles] = useState<File[]>([]),
     [attachmentError, setAttachmentError] = useState(""),
     [composerValidation, setComposerValidation] = useState<"" | "title" | "body">(""),
     [uploadingImages, setUploadingImages] = useState(false),
@@ -960,6 +966,7 @@ export default function Community() {
   const flushComposerDraft = useRef<() => Promise<void>>(async () => {});
   useEffect(() => { composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.clear(); }, [accountId]);
   const publishInFlight = useRef(false);
+  const attachmentUploadIds = useRef(new WeakMap<File, string>());
   const videoCompressionSequence = useRef(0);
   const videoCompressionAbort = useRef<AbortController | null>(null);
   const draftMediaBusy = useRef(new Set<string>());
@@ -2604,10 +2611,10 @@ export default function Community() {
     try {
       const old = state.own.find((p) => p.id === editing);
       const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
-      const attachmentPayload = writeChannel === "ai" ? composerAttachments : [];
+      const attachmentPayload = composerAttachments;
       const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai"
         ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, attachments: attachmentPayload, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
-        : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
+        : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag, topics: writeTopics, attachments: attachmentPayload, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
@@ -2641,7 +2648,7 @@ export default function Community() {
       const mediaPaths = [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])];
       const item = writeChannel === "ai"
         ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData, attachments: attachmentPayload, mediaPaths, coverUrl: cover?.external ? cover.url : null })
-        : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null });
+        : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: writeTag, topics: writeTopics, attachments: attachmentPayload, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null });
       if (!item) return;
       update((s) => ({
         ...s,
@@ -2701,14 +2708,14 @@ export default function Community() {
   };
 
   useEffect(() => {
-    if (modal !== "write" || writeChannel !== "ai") return;
+    if (modal !== "write") return;
     void refreshAttachmentQuota();
   }, [modal, writeChannel]);
 
-  const addComposerAttachments = async (files: FileList | null) => {
-    if (!files?.length || attachmentBusy) return;
+  const uploadComposerAttachments = async (files: File[]) => {
+    if (!files.length || attachmentBusy) return;
     setAttachmentError("");
-    const incoming = [...files];
+    const incoming = files;
     if (composerAttachments.length + incoming.length > MAX_ATTACHMENT_FILES) {
       setAttachmentError(`最多上传 ${MAX_ATTACHMENT_FILES} 个附件`);
       return;
@@ -2722,27 +2729,82 @@ export default function Community() {
       return;
     }
     setAttachmentBusy(true);
+    setAttachmentProgress(0);
+    const failed: File[] = [];
+    const totalBytes = incoming.reduce((sum, file) => sum + file.size, 0);
+    let completedBytes = 0;
     try {
       for (const file of incoming) {
-        const form = new FormData();
-        form.set("file", file);
-        const response = await cloudFetch("/api/v1/attachments", { method: "POST", body: form });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.data) throw new Error(payload?.error || "附件上传失败，请稍后重试");
-        setComposerAttachments((current) => [...current, payload.data as PostAttachment]);
-        if (typeof payload.data.remaining === "number") setAttachmentQuota((current) => current ? { ...current, remaining: payload.data.remaining, used: current.limit - payload.data.remaining } : current);
+        try {
+          const db = await browserDb();
+          const { data } = await db.auth.getSession();
+          if (!data.session) throw new Error("登录状态已失效，请重新登录后重试");
+          const form = new FormData();
+          form.set("file", file);
+          let uploadId = attachmentUploadIds.current.get(file);
+          if (!uploadId) {
+            uploadId = crypto.randomUUID();
+            attachmentUploadIds.current.set(file, uploadId);
+          }
+          form.set("uploadId", uploadId);
+          const uploaded = await new Promise<{ data: PostAttachment & { remaining?: number } }>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/v1/attachments");
+            xhr.setRequestHeader("Authorization", `Bearer ${data.session.access_token}`);
+            xhr.upload.onprogress = (event) => {
+              if (!event.lengthComputable || totalBytes <= 0) return;
+              setAttachmentProgress(Math.min(99, Math.floor(((completedBytes + event.loaded) / totalBytes) * 100)));
+            };
+            xhr.onerror = () => reject(new Error("网络中断，附件未能上传，请重试"));
+            xhr.onabort = () => reject(new Error("附件上传已取消"));
+            xhr.onload = () => {
+              let payload: { data?: PostAttachment & { remaining?: number }; error?: string } | null = null;
+              try { payload = JSON.parse(xhr.responseText); } catch { /* 由状态码提供通用错误 */ }
+              if (xhr.status < 200 || xhr.status >= 300 || !payload?.data) {
+                reject(new Error(payload?.error || "附件上传失败，请稍后重试"));
+                return;
+              }
+              resolve(payload as { data: PostAttachment & { remaining?: number } });
+            };
+            xhr.send(form);
+          });
+          setComposerAttachments((current) => [...current, uploaded.data]);
+          attachmentUploadIds.current.delete(file);
+          setAttachmentRetryFiles((current) => current.filter((item) => item !== file));
+          if (typeof uploaded.data.remaining === "number") setAttachmentQuota((current) => current ? { ...current, remaining: uploaded.data.remaining!, used: current.limit - uploaded.data.remaining! } : current);
+        } catch (error) {
+          failed.push(file);
+          setAttachmentError(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
+        }
+        completedBytes += file.size;
+        setAttachmentProgress(totalBytes ? Math.min(100, Math.floor((completedBytes / totalBytes) * 100)) : 100);
       }
-    } catch (error) {
-      setAttachmentError(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
+      setAttachmentRetryFiles((current) => [...current.filter((item) => !incoming.includes(item)), ...failed]);
+      if (failed.length === 0) setAttachmentError("");
     } finally {
       setAttachmentBusy(false);
+      setAttachmentProgress(null);
       void refreshAttachmentQuota();
     }
+  };
+
+  const addComposerAttachments = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setAttachmentRetryFiles([]);
+    await uploadComposerAttachments([...files]);
+  };
+
+  const retryComposerAttachments = async () => {
+    if (!attachmentRetryFiles.length) return;
+    const retry = [...attachmentRetryFiles];
+    setAttachmentRetryFiles([]);
+    await uploadComposerAttachments(retry);
   };
 
   const removeComposerAttachment = async (path: string) => {
     const previous = composerAttachments;
     setComposerAttachments((current) => current.filter((item) => item.path !== path));
+    if (composerEditingPublished) return;
     try {
       await cloudRequest(`/api/v1/attachments?path=${encodeURIComponent(path)}`, undefined, "DELETE");
     } catch {
@@ -2836,13 +2898,14 @@ export default function Community() {
         const raw = ownRaw || legacyRaw || (accountId && channel === "community" ? localStorage.getItem("heika-compose-guest") : null);
         const fileOwner = ownRaw || legacyRaw || !accountId ? owner : "guest";
         if (raw) {
-          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; channel?: "community" | "ai"; contentType?: AiContentType; resourceData?: Record<string,string>; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
+          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; channel?: "community" | "ai"; contentType?: AiContentType; resourceData?: Record<string,string>; attachments?: PostAttachment[]; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
           setTitle(saved.title || "");
           setBody(saved.body || "");
           setWriteTag(saved.tag || (channel === "ai" ? aiCategories[0]?.name || "AI 知识" : communityCategories[0] || tags[0]));
           setWriteTopics(saved.topics || []);
           setWriteContentType(saved.contentType || "knowledge_article");
           setAiResourceFields(saved.resourceData || {});
+          setComposerAttachments(saved.attachments || []);
           setWriteSeriesId(saved.seriesId || "");
           setPollQuestion(saved.poll?.question || "");
           setPollOptions(saved.poll?.options?.length ? [...saved.poll.options, "", ""].slice(0, 4) : ["", ""]);
@@ -2886,10 +2949,10 @@ export default function Community() {
     const currentSession = () => composerSession.current === generation;
     setDraftCloudSynced(false);
     const persist = async () => {
-      if (publishInFlight.current || !currentSession() || (!title && !body && !composerImages.length && !composerVideo && !pollQuestion && !pollOptions.some(Boolean))) return;
+      if (publishInFlight.current || !currentSession() || (!title && !body && !composerImages.length && !composerVideo && !composerAttachments.length && !pollQuestion && !pollOptions.some(Boolean))) return;
       const owner = accountId || "guest";
       const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
-      const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
+      const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, attachments: composerAttachments, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
       localStorage.setItem(`heika-compose-${writeChannel}-${owner}`, JSON.stringify(draftData));
       if (writeChannel === "community") localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData));
       await saveDraftFiles(`${owner}:${writeChannel}`, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
@@ -2902,15 +2965,15 @@ export default function Community() {
         setDraftSaving(true);
         try {
         if (accountId && !composerEditingPublished) {
-          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex, writeChannel, writeContentType, aiResourceFields });
+          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex, writeChannel, writeContentType, aiResourceFields, composerAttachments });
           let cloudDraft = composerDraftRef.current || composerCloudDrafts.current.get(`${owner}:${writeChannel}`) || state.own.find((item) => item.id === editing && item.status === "draft" && (item.channel || "community") === writeChannel);
           if (lastDraftPayload.current !== signature || !cloudDraft) {
             setDraftSaving(true);
             try {
               const cover = composerImages[coverIndex];
               const saved = writeChannel === "ai"
-                ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: cloudDraft?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields, coverUrl: cover?.external ? cover.url : null }) as Post | null
-                : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId ? cloudDraft.id : undefined, title, body, tag: writeTag, topics: writeTopics, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
+                ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: cloudDraft?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields, attachments: composerAttachments, coverUrl: cover?.external ? cover.url : null }) as Post | null
+                : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId ? cloudDraft.id : undefined, title, body, tag: writeTag, topics: writeTopics, attachments: composerAttachments, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
               if (saved?.cloudId) composerCloudDrafts.current.set(`${owner}:${writeChannel}`,saved);
               if (!currentSession()) return;
               if (!saved?.cloudId) throw new Error("云端草稿暂时不可用");
@@ -2953,7 +3016,7 @@ export default function Community() {
     return () => { window.clearTimeout(timer); window.removeEventListener("pagehide",save); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
   // UI-only panels are excluded so opening a sheet does not restart autosave.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerEditingPublished, writeChannel, writeContentType, aiResourceFields, draftRetry, composerMediaLoadFailed]);
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerAttachments, composerEditingPublished, writeChannel, writeContentType, aiResourceFields, draftRetry, composerMediaLoadFailed]);
   const reloadComposerMedia = async () => {
     const old=composerDraftRef.current || state.own.find(item=>item.id===editing);
     if(!old?.cloudId)return;
@@ -3013,8 +3076,8 @@ export default function Community() {
     if (channel === writeChannel || isPublishing) return;
     if (draftSaving || uploadingImages || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在同步，请稍后切换");
     const targetRaw = localStorage.getItem(`heika-compose-${channel}-${accountId || "guest"}`);
-    const hasTargetDraft = Boolean(targetRaw && (()=>{try{const draft=JSON.parse(targetRaw);return draft.title || draft.body || draft.images?.length || draft.video;}catch{return false;}})());
-    if ((title || body || writeTopics.length || composerImages.length || composerVideo || Object.values(aiResourceFields).some(Boolean)) && !await confirmInApp(hasTargetDraft ? "目标下已有草稿，切换后将恢复它。当前内容会先保留在原目标，不会被清空。" : "切换会保留标题、正文和附件。分类与话题需要重新选择，原目标的草稿会保留。", { title:"切换发布目标", confirmLabel:"切换目标" })) return;
+    const hasTargetDraft = Boolean(targetRaw && (()=>{try{const draft=JSON.parse(targetRaw);return draft.title || draft.body || draft.images?.length || draft.video || draft.attachments?.length;}catch{return false;}})());
+    if ((title || body || writeTopics.length || composerImages.length || composerVideo || composerAttachments.length || Object.values(aiResourceFields).some(Boolean)) && !await confirmInApp(hasTargetDraft ? "目标下已有草稿，切换后将恢复它。当前内容会先保留在原目标，不会被清空。" : "切换会保留标题、正文和附件。分类与话题需要重新选择，原目标的草稿会保留。", { title:"切换发布目标", confirmLabel:"切换目标" })) return;
     try { await flushComposerDraft.current(); } catch { toast("请先重试保存草稿，再切换目标"); return; }
     await draftCloudQueue.current;
     if (hasTargetDraft) { await openComposer(undefined,channel); return; }
@@ -3270,12 +3333,16 @@ export default function Community() {
   };
   const generateAiWorkbench = async () => {
     if (!accountId) { toast("登录后可以使用 AI 创作工作台"); return; }
+    const prompt = aiWorkbenchPrompt.trim();
     setAiWorkbenchBusy(true); setAiWorkbenchOutput(""); setAiResultApplied(false);
     try {
       setAiWorkbenchOutput("");
-      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag }) as { output?: unknown } | null;
+      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag, prompt, messages: aiWorkbenchMessages }) as { output?: unknown } | null;
       if (typeof result?.output !== "string" || !result.output.trim()) throw new Error("登录状态已失效或 AI 没有返回内容，请重试");
       setAiWorkbenchOutput(result.output);
+      const userMessage = prompt || `请根据当前稿件执行${({ title: "标题建议", outline: "写作提纲", polish: "润色正文", continue: "内容续写", markdown: "Markdown 优化", topics: "推荐话题" } as const)[aiWorkbenchMode]}。`;
+      setAiWorkbenchMessages((current) => [...current, { role: "user" as const, content: userMessage }, { role: "assistant" as const, content: result.output as string }].slice(-12));
+      setAiWorkbenchPrompt("");
     } catch (error) { toast(error instanceof Error ? error.message : "AI 生成失败，请稍后重试"); }
     finally { setAiWorkbenchBusy(false); }
   };
@@ -3287,7 +3354,7 @@ export default function Community() {
     if (aiWorkbenchMode === "title") {
       const suggestion = aiWorkbenchOutput.split("\n").map((line) => line.replace(/^\s*(?:#{1,6}\s*|\d+[.、)）]\s*|[-*+]\s*)/, "").trim()).find(Boolean);
       if (suggestion) setTitle(suggestion.slice(0, 80));
-    } else if (aiWorkbenchMode === "polish") setBody(aiWorkbenchOutput.trim());
+    } else if (aiWorkbenchMode === "polish" || aiWorkbenchMode === "markdown") setBody(aiWorkbenchOutput.trim());
     else if (aiWorkbenchMode === "topics") {
       const knownTopics = new Set(topicChoices.map((item) => item.name));
       const candidates = [...aiWorkbenchOutput.matchAll(/#([\u4e00-\u9fa5A-Za-z0-9_-]{2,20})/g)].map((match) => match[1]).filter((name) => knownTopics.has(name));
@@ -3507,6 +3574,48 @@ export default function Community() {
   const isImmersive = (tab === "messages" && (chatConversationOpen || messagePeer !== null)) || detail !== null || transitionPhase !== null;
   const candidatePost = detail === null ? null : all.find((p) => p.id === detail);
   const post = detail !== null && detailPostOverride?.id === detail ? detailPostOverride : candidatePost;
+  const sharePublishedPost = async () => {
+    if (!post || post.status !== "published") { toast("仅公开发布的作品可以分享"); return; }
+    const url = postShareUrl(post);
+    let summary = "";
+    if (post.cloudId) {
+      try {
+        const response = await fetch(`/api/v1/posts/${encodeURIComponent(post.cloudId)}/summary`, { cache: "no-store" });
+        const result = response.ok ? await response.json() : null;
+        if (typeof result?.data?.summary === "string") summary = result.data.summary;
+      } catch { /* share can continue without a generated summary */ }
+    }
+    const text = [summary || markdownToText(post.body).slice(0, 180), post.author ? `作者：${post.author}` : ""].filter(Boolean).join("\n");
+    try {
+      if (navigator.share) await navigator.share({ title: post.title, text, url });
+      else { await navigator.clipboard.writeText(`${post.title}\n${text}\n${url}`); toast("分享内容已复制，可粘贴到其他应用"); }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      try { await navigator.clipboard.writeText(`${post.title}\n${text}\n${url}`); toast("分享面板不可用，分享内容已复制"); }
+      catch { toast("分享失败，请复制作品链接重试"); }
+    }
+  };
+  const shareToPlatform = (platform: "x" | "facebook" | "qq" | "wechat" | "instagram") => {
+    if (!post || post.status !== "published") { toast("仅公开发布的作品可以分享"); return; }
+    const url = postShareUrl(post);
+    const title = encodeURIComponent(post.title);
+    const encodedUrl = encodeURIComponent(url);
+    const summary = encodeURIComponent(markdownToText(post.body).slice(0, 180));
+    const targets: Record<typeof platform, string | null> = {
+      x: `https://twitter.com/intent/tweet?text=${title}&url=${encodedUrl}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      qq: `https://connect.qq.com/widget/shareqq/index.html?url=${encodedUrl}&title=${title}&summary=${summary}`,
+      wechat: null,
+      instagram: null,
+    };
+    if (targets[platform]) {
+      window.open(targets[platform]!, "_blank", "noopener,noreferrer");
+      setDetailMoreOpen(false);
+      return;
+    }
+    void navigator.clipboard?.writeText(url).then(() => toast(platform === "wechat" ? "作品链接已复制，可粘贴到微信分享" : "作品链接已复制，可粘贴到 Instagram 对话中分享")).catch(() => toast("当前浏览器不能访问剪贴板，请使用系统分享"));
+    setDetailMoreOpen(false);
+  };
   useEffect(() => {
     if (detail === null || !post?.cloudId || !post.isPartial) return;
     if (detailPostOverride?.id === detail && !detailPostOverride.isPartial) return;
@@ -4980,23 +5089,20 @@ export default function Community() {
                         setDetailMoreOpen(false); toast(`已减少 #${firstTopic} 推荐，可在推荐偏好中恢复`);
                       }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
                     }}><ThumbsDown size={16} /> 减少 #{firstTopic}</button>; })()}
-                    <button onClick={() => {
-                      const url = postShareUrl(post);
-                      void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
-                      setDetailMoreOpen(false);
-                    }}><Share2 size={16} /> 复制链接</button>
-                    <button onClick={() => {
-                      const url = postShareUrl(post);
-                      setDetailMoreOpen(false);
-                      void (async () => {
-                        try {
-                          if (navigator.share) await navigator.share({ title: post.title, url });
-                          else { await navigator.clipboard.writeText(url); toast("链接已复制，可粘贴分享"); }
-                        } catch (error) {
-                          if (!(error instanceof DOMException && error.name === "AbortError")) toast("分享失败，请稍后重试");
-                        }
-                      })();
-                    }}><Share2 size={16} /> 分享内容</button>
+                    {post.status === "published" && <>
+                      <button onClick={() => {
+                        const url = postShareUrl(post);
+                        void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
+                        setDetailMoreOpen(false);
+                      }}><Share2 size={16} /> 复制链接</button>
+                      <button onClick={() => { setDetailMoreOpen(false); void sharePublishedPost(); }}><Share2 size={16} /> 系统分享</button>
+                      <span className="detail-more-group">快捷分享</span>
+                      <button onClick={() => shareToPlatform("x")}><Share2 size={16} /> 分享到 X</button>
+                      <button onClick={() => shareToPlatform("facebook")}><Share2 size={16} /> 分享到 Facebook</button>
+                      <button onClick={() => shareToPlatform("qq")}><Share2 size={16} /> 分享到 QQ</button>
+                      <button onClick={() => shareToPlatform("wechat")}><Share2 size={16} /> 复制用于微信</button>
+                      <button onClick={() => shareToPlatform("instagram")}><Share2 size={16} /> 复制用于 Instagram</button>
+                    </>}
                     {post.cloudId && post.status === "published" && <button onClick={() => {
                       if (!accountId) { setDetailMoreOpen(false); toast("登录后可以举报内容"); return; }
                       setReportPostId(post.cloudId!); setReportCommentId(null); setReportReason(""); setReportNote(""); setDetailMoreOpen(false); setModal("report");
@@ -5057,6 +5163,7 @@ export default function Community() {
                   <span>{post.tag || "社区作品"}</span>
                   <h1>{post.title}</h1>
                 </section> : <h1>{post.title}</h1>}
+                {post.cloudId && post.status === "published" && <PostAISummary postId={post.cloudId}/>}
                 <p className="byline">
                   {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}><span>{post.author} ↗</span><ProfileBadgeMarks badges={post.authorBadges || []}/></button> : <>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []}/></>}
                   <span> · {post.date}</span>
@@ -5068,6 +5175,7 @@ export default function Community() {
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
                 {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
                 {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} action={aiDetailAction} onActionClose={closeAiDetailAction} onVersionsAvailability={setAiVersionsAvailable}/></Suspense>}
+                {post.channel !== "ai" && <Suspense fallback={null}><PostAttachmentsPanel resourceData={post.resourceData || {}} onNotice={toast}/></Suspense>}
                 {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <div className="detail-rating-main"><span>内容评分</span>
@@ -5142,11 +5250,7 @@ export default function Community() {
                 }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
               }}><Heart size={19} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span className="detail-like-count">{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span></button>
               <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
-              <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => {
-                const shareData = { title: post.title, text: post.body, url: `${location.origin}/?post=${post.id}` };
-                if (navigator.share) void navigator.share(shareData).catch(() => {});
-                else void navigator.clipboard?.writeText(shareData.url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
-              }}><Share2 size={20} /></button>
+              {post.status === "published" && <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => void sharePublishedPost()}><Share2 size={20} /></button>}
             </form>
           </div>
           {previewImage && detailImages[displayedImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[displayedImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
@@ -5458,7 +5562,7 @@ export default function Community() {
                   </section>}
                 </section>
                 {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
-                {writeChannel === "ai" && <ComposerAttachments items={composerAttachments} quota={attachmentQuota} busy={attachmentBusy} error={attachmentError} onAdd={(files) => void addComposerAttachments(files)} onRemove={(path) => void removeComposerAttachment(path)}/>}
+                <ComposerAttachments items={composerAttachments} quota={attachmentQuota} busy={attachmentBusy} error={attachmentError} progress={attachmentProgress} retryAvailable={attachmentRetryFiles.length > 0} onAdd={(files) => void addComposerAttachments(files)} onRetry={() => void retryComposerAttachments()} onRemove={(path) => void removeComposerAttachment(path)}/>
                 {writeChannel === "ai" && AI_EDITOR_FIELDS[writeContentType].length > 0 && <section className="composer-ai-resource-fields" aria-label="AI 资源信息"><div className="composer-section-heading"><span><strong>资源信息</strong><small>代码、安装命令和 Prompt 仅展示与复制，不会在服务器执行</small></span><span>{AI_EDITOR_FIELDS[writeContentType].filter((field) => field.required).length} 项必填</span></div>{AI_EDITOR_FIELDS[writeContentType].map((field) => <label key={field.key}>{field.label}{field.required && <i>必填</i>}{field.multiline ? <textarea value={aiResourceFields[field.key] || ""} maxLength={12000} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint} rows={field.key === "prompt" || field.key === "installation" || field.key === "steps" ? 6 : 3}/> : <input type={field.key.endsWith("_url") ? "url" : "text"} value={aiResourceFields[field.key] || ""} maxLength={1200} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint}/>}</label>)}</section>}
                 <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("topics")}><span># 话题</span><small>{writeTopics.length ? writeTopics.map(topic=>`#${topic}`).join(" ") : "添加话题"}</small><ChevronRight size={16}/></button>
                 <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("settings")}><span>更多发布设置</span><small>{writeTag}{writeSeriesId ? " · 已选系列" : ""}{pollQuestion.trim() ? " · 已加投票" : ""}</small><ChevronRight size={16}/></button>
@@ -5501,12 +5605,22 @@ export default function Community() {
                   {pollOptions.length < 4 && <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ""])}><Plus size={14}/>添加选项</button>}
                 </section>}
                 <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
-                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong><i>DEEPSEEK</i></span><small>{aiWorkbenchOpen ? "收起工作台" : "标题、提纲、润色与话题建议"}</small><ChevronDown size={17}/></button>
-                  {aiWorkbenchOpen && <div className="ai-workbench-body"><div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiResultApplied(false); }}>{label}</button>)}</div><p className="ai-workbench-guidance">生成结果支持 Markdown 预览；采用前可先复制，应用后也能撤回。</p><button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "DeepSeek 正在整理…" : "生成建议"}</button>{aiWorkbenchOutput && <><div className="ai-workbench-result"><small>DeepSeek 建议 · 未发布</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "替换正文" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}{!aiWorkbenchOutput && <div className="ai-workbench-placeholder">{aiWorkbenchMode === "title" ? "填写正文后，生成多个标题方向。" : aiWorkbenchMode === "outline" ? "从你的标题和正文素材中，整理文章结构。" : aiWorkbenchMode === "polish" ? "保留原意与语气，改善正文表达。" : "从内容主题中找出更贴合的社区话题。"}</div>}</div>}
+                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong></span><small>{aiWorkbenchOpen ? "收起工作台" : "润色、扩写、标题与 Markdown 整理"}</small><ChevronDown size={17}/></button>
+                  {aiWorkbenchOpen && <div className="ai-workbench-body">
+                    <div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["continue", "续写正文"], ["markdown", "Markdown 优化"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiWorkbenchMessages([]); setAiWorkbenchPrompt(""); setAiResultApplied(false); }}>{label}</button>)}</div>
+                    <p className="ai-workbench-guidance">当前标题与正文会作为上下文。你可以继续提出修改意见；原稿只有点击“使用此版本”后才会改变。</p>
+                    {aiWorkbenchMessages.length > 2 && <div className="ai-workbench-conversation" aria-label="此前的修改对话">{aiWorkbenchMessages.slice(0, -2).map((message, index) => <div className={`ai-workbench-turn ${message.role}`} key={`${index}-${message.role}`}><small>{message.role === "user" ? "你的要求" : "AI 修改结果"}</small><p>{message.content}</p></div>)}</div>}
+                    {aiWorkbenchMessages.length >= 2 && <div className="ai-workbench-last-request"><small>本轮要求</small><p>{aiWorkbenchMessages.at(-2)?.content}</p></div>}
+                    <label className="ai-workbench-prompt"><span>你希望怎么修改</span><textarea value={aiWorkbenchPrompt} onChange={(event) => setAiWorkbenchPrompt(event.target.value)} maxLength={2000} rows={3} placeholder="例如：保留原意，语气更自然一些；再补充一个具体步骤。" /></label>
+                    <div className="ai-workbench-prompt-actions"><button type="button" className="soft-button" onClick={() => { setAiWorkbenchMessages([]); setAiWorkbenchOutput(""); setAiWorkbenchPrompt("请从当前正文开始，保留原意和事实，给出一版润色结果。"); setAiWorkbenchMode("polish"); }}>从当前正文开始润色</button><button type="button" className="soft-button" disabled={!aiWorkbenchMessages.length} onClick={() => { setAiWorkbenchMessages([]); setAiWorkbenchOutput(""); setAiWorkbenchPrompt(""); }}>清空对话</button></div>
+                    <button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim() && !aiWorkbenchPrompt.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "正在整理…" : aiWorkbenchMessages.length ? "继续修改" : "生成建议"}</button>
+                    {aiWorkbenchOutput && <><div className="ai-workbench-result"><small>生成结果 · 尚未写入正文</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" || aiWorkbenchMode === "markdown" ? "使用此版本" : aiWorkbenchMode === "continue" ? "使用续写内容" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}
+                    {!aiWorkbenchOutput && <div className="ai-workbench-placeholder">可直接输入修改要求，或从当前正文开始；生成结果会先预览，不会自动覆盖原稿。</div>}
+                  </div>}
                 </section>
                   </div>
                 </div>
-</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={{ ...aiResourceFields, attachments: composerAttachments }} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
+</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<PostAttachmentsPanel resourceData={{ attachments: composerAttachments }} onNotice={toast}/><div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}

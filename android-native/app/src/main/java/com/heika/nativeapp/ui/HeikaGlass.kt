@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import dev.chrisbanes.haze.HazeState
@@ -24,10 +25,10 @@ import dev.chrisbanes.haze.hazeEffect
  *
  * 设计语言：实体磨砂底色为绝对主体，局部高斯模糊仅作辅助；
  * 不再使用液态玻璃的流动光泽、噪点流光、动态高光与过度透明。
- * 无模糊设备上直接落到高不透明度实体底色，不允许文字穿透。
+ * 玻璃层保留透光和原有模糊半径，叠加中性底色压低艳色；不支持模糊时使用清晰的实体底板。
  */
 
-/** 弹窗 / 菜单 / 浮层用的固态磨砂面板：高不透明度深色底板 + 局部模糊 + 轻边框。 */
+/** 弹窗 / 菜单 / 浮层用的中性磨砂面板：适度透光 + 局部模糊 + 轻边框。 */
 @Composable
 fun HeikaGlassSurface(
     hazeState: HazeState?,
@@ -41,8 +42,9 @@ fun HeikaGlassSurface(
 ) {
     val dark = LocalHeikaDark.current
     val surface = glassColor ?: MaterialTheme.colorScheme.surface
-    // 固态优先：深色约 90%、浅色约 94% 不透明度，正文永不穿透。
-    val alpha = ((if (dark) .90f else .94f) * emphasis).coerceIn(.85f, .98f)
+    val neutralSurface = if (dark) lerp(surface, Color(0xFF090B0E), .24f) else lerp(surface, Color(0xFFFFFEFC), .16f)
+    val alpha = ((if (hazeState != null) { if (dark) .74f else .82f } else { if (dark) .92f else .94f }) * emphasis)
+        .coerceIn(if (hazeState != null) .66f else .88f, .98f)
     val clipped = modifier.clip(shape)
     Box(
         clipped
@@ -50,14 +52,14 @@ fun HeikaGlassSurface(
                 if (hazeState != null) Modifier.hazeEffect(
                     state = hazeState,
                     style = HazeStyle(
-                        backgroundColor = surface.copy(alpha = alpha),
-                        tint = HazeTint(surface.copy(alpha = if (dark) .10f else .12f)),
+                        backgroundColor = neutralSurface.copy(alpha = alpha),
+                        tint = HazeTint(if (dark) Color.Black.copy(alpha = .14f) else Color.White.copy(alpha = .12f)),
                         blurRadius = 20.dp,
-                        fallbackTint = HazeTint(surface.copy(alpha = if (dark) .96f else .98f)),
+                        fallbackTint = HazeTint(neutralSurface.copy(alpha = if (dark) .94f else .96f)),
                     ),
                 ) else Modifier,
             )
-            .background(surface.copy(alpha = alpha), shape)
+            .background(neutralSurface.copy(alpha = alpha), shape)
             .border(.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .38f else .45f), shape)
             .padding(contentPadding),
         content = content,
@@ -94,21 +96,21 @@ fun HeikaSolidBadgeSurface(
     val dark = LocalHeikaDark.current
     val surface = MaterialTheme.colorScheme.surface
     val outline = MaterialTheme.colorScheme.outline
-    // 角标贴在图片上，取中高不透明度：磨砂实感优先，必要时才透出极少底图。
-    val alpha = if (dark) .82f else .88f
+    val neutralSurface = if (dark) lerp(surface, Color(0xFF090B0E), .26f) else lerp(surface, Color(0xFFFFFEFC), .18f)
+    val alpha = if (hazeState != null) { if (dark) .74f else .80f } else { if (dark) .92f else .94f }
     val clipped = modifier.clip(shape)
     Box(
         clipped.then(
             if (hazeState != null) Modifier.hazeEffect(
                 state = hazeState,
                 style = HazeStyle(
-                    backgroundColor = surface.copy(alpha = alpha),
-                    tint = HazeTint(surface.copy(alpha = if (dark) .08f else .10f)),
+                    backgroundColor = neutralSurface.copy(alpha = alpha),
+                    tint = HazeTint(if (dark) Color.Black.copy(alpha = .14f) else Color.White.copy(alpha = .12f)),
                     blurRadius = 16.dp,
-                    fallbackTint = HazeTint(surface.copy(alpha = if (dark) .90f else .94f)),
+                    fallbackTint = HazeTint(neutralSurface.copy(alpha = if (dark) .94f else .96f)),
                 ),
             ) else Modifier,
-        ).background(surface.copy(alpha = alpha), shape)
+        ).background(neutralSurface.copy(alpha = alpha), shape)
             .border(.5.dp, outline.copy(alpha = if (dark) .42f else .52f), shape)
             .padding(contentPadding),
         content = content,

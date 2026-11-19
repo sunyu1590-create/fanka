@@ -4,6 +4,9 @@ import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import com.heika.nativeapp.ui.HeikaAlertDialog
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -36,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -90,6 +94,13 @@ fun PublishScreen(
     var selectedVideo by remember { mutableStateOf<Uri?>(null) }
     var bodyPreview by remember { mutableStateOf(false) }
     var topicDraft by remember { mutableStateOf("") }
+    var aiAssistantOpen by remember { mutableStateOf(false) }
+    var aiMode by remember { mutableStateOf("polish") }
+    var aiPrompt by remember { mutableStateOf("") }
+    var aiOutput by remember { mutableStateOf("") }
+    var aiBusy by remember { mutableStateOf(false) }
+    var aiMessages by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    var aiPreApply by remember { mutableStateOf<Pair<String, String>?>(null) }
     val publishListState = rememberLazyListState()
     LaunchedEffect(draftId, channel) { viewModel.configureChannel(channel); viewModel.resumeDraft(draftId); viewModel.loadTopicSuggestions() }
     LaunchedEffect(state.notice) {
@@ -117,7 +128,7 @@ fun PublishScreen(
             }
         }
     }
-    LaunchedEffect(state.channel) { if (state.channel == "ai") viewModel.refreshAttachmentQuota() }
+    LaunchedEffect(state.channel) { viewModel.refreshAttachmentQuota() }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia((9 - state.images.size).coerceAtLeast(1))) { uris ->
         scope.launch(HeikaCoroutineGuard) {
             for (uri in uris) {
@@ -245,12 +256,12 @@ fun PublishScreen(
                         }
                     }
                 }
-                if (state.channel == "ai") item {
+                item {
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("附件", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("安装包、压缩包、PDF · 最多 3 个，单个 30 MB，合计 50 MB", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+                                Text("图片、PDF、文档、Markdown、JSON、YAML、压缩包 · 最多 3 个", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
                             }
                             Text(
                                 state.attachmentQuota?.let { "今日剩余 $it/20" } ?: "名额查询中",
@@ -264,6 +275,15 @@ fun PublishScreen(
                                     Text(item.name, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                     Text(friendlySize(item.size), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
                                 }
+                                val previewable = item.mime.startsWith("image/") || item.mime.startsWith("text/") || item.mime == "application/pdf" || item.mime == "application/json"
+                                if (previewable) TextButton(onClick = {
+                                    scope.launch(HeikaCoroutineGuard) {
+                                        runCatching {
+                                            val url = viewModel.attachmentPreviewUrl(item)
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        }.onFailure { HeikaNoticeBus.show(it.message ?: "当前设备无法预览此附件", HeikaNoticeKind.ERROR) }
+                                    }
+                                }) { Text("预览", color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp) }
                                 TextButton(onClick = { viewModel.removeAttachment(item.path) }) { Text("移除", color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
                             }
                         }
@@ -274,8 +294,94 @@ fun PublishScreen(
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                             ) { Text(if (state.attachmentBusy) "上传中…" else "添加附件", fontSize = 12.sp) }
                         }
+                        if (state.attachmentBusy) {
+                            LinearProgressIndicator(
+                                progress = { ((state.attachmentProgress ?: 0).coerceIn(0, 100)) / 100f },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text("附件上传 ${state.attachmentProgress ?: 0}%", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        }
                         state.attachmentError?.let { message ->
-                            Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                if (state.attachmentRetryAvailable) TextButton(onClick = { viewModel.retryAttachmentUpload() }, enabled = !state.attachmentBusy) {
+                                    Text("重试", color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+                if (state.channel == "ai") item {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("AI 创作助手", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(if (aiAssistantOpen) "当前正文会作为上下文；确认后才会写入" else "多轮润色、标题建议、续写与 Markdown 整理", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                            }
+                            TextButton(onClick = { aiAssistantOpen = !aiAssistantOpen }) { Text(if (aiAssistantOpen) "收起" else "开始") }
+                        }
+                        if (aiAssistantOpen) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("polish" to "润色", "title" to "标题", "continue" to "续写", "outline" to "提纲", "markdown" to "Markdown 优化", "topics" to "话题").forEach { (mode, label) ->
+                                    FilterChip(label, aiMode == mode, { aiMode = mode; aiOutput = ""; aiMessages = emptyList(); aiPreApply = null })
+                                }
+                            }
+                            aiMessages.dropLast(2).forEach { (role, message) ->
+                                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.background).padding(9.dp)) {
+                                    Text(if (role == "user") "你的要求" else "AI 修改结果", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                                    Text(message, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 4.dp))
+                                }
+                            }
+                            aiMessages.lastOrNull { it.first == "user" }?.let { (_, message) ->
+                                if (aiOutput.isNotBlank()) Text("本轮要求：$message", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            }
+                            OutlinedTextField(value = aiPrompt, onValueChange = { aiPrompt = it.take(2000) }, modifier = Modifier.fillMaxWidth(), label = { Text("你希望怎么修改") }, placeholder = { Text("例如：保留原意，语气更自然；补充一个具体步骤。") }, minLines = 2, maxLines = 5)
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(onClick = { aiMode = "polish"; aiPrompt = "请从当前正文开始，保留原意和事实，给出一版润色结果。"; aiOutput = "" }) { Text("从当前正文开始润色", fontSize = 10.sp) }
+                                TextButton(onClick = { aiMessages = emptyList(); aiOutput = ""; aiPrompt = ""; aiPreApply = null }) { Text("清空对话", fontSize = 10.sp) }
+                            }
+                            Button(onClick = {
+                                if (aiBusy) return@Button
+                                val prompt = aiPrompt.trim()
+                                aiBusy = true
+                                scope.launch(HeikaCoroutineGuard) {
+                                    try {
+                                        val result = viewModel.generateAiWorkbench(aiMode, prompt, aiMessages)
+                                        val userMessage = prompt.ifBlank { "请根据当前稿件完成${mapOf("polish" to "润色", "title" to "标题建议", "continue" to "续写", "outline" to "提纲整理", "markdown" to "Markdown 优化", "topics" to "话题推荐")[aiMode]}。" }
+                                        aiOutput = result
+                                        aiMessages = (aiMessages + listOf("user" to userMessage, "assistant" to result)).takeLast(12)
+                                        aiPrompt = ""
+                                    } catch (error: Exception) {
+                                        HeikaNoticeBus.show(error.message ?: "AI 请求失败，请重试", HeikaNoticeKind.ERROR)
+                                    } finally { aiBusy = false }
+                                }
+                            }, enabled = !aiBusy && (state.title.isNotBlank() || state.body.isNotBlank() || aiPrompt.isNotBlank()), modifier = Modifier.fillMaxWidth()) {
+                                if (aiBusy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(HeikaIcons.Robot, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.size(7.dp)); Text(if (aiBusy) "正在整理…" else if (aiMessages.isNotEmpty()) "继续修改" else "生成建议")
+                            }
+                            if (aiOutput.isNotBlank()) {
+                                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.background).padding(11.dp)) {
+                                    Text("生成结果 · 尚未写入正文", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                                    HeikaMarkdown(aiOutput, modifier = Modifier.padding(top = 7.dp), baseSize = 12.sp)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    OutlinedButton(onClick = {
+                                        if (aiPreApply == null) aiPreApply = state.title to state.body
+                                        when (aiMode) {
+                                            "title" -> viewModel.edit(title = aiOutput.lines().firstOrNull()?.replace(Regex("^[#*\\-0-9.、)） ]+"), "")?.take(80) ?: state.title)
+                                            "polish", "markdown" -> viewModel.edit(body = aiOutput.trim())
+                                            "continue", "outline" -> viewModel.edit(body = listOf(state.body.trim(), aiOutput.trim()).filter(String::isNotEmpty).joinToString("\n\n"))
+                                            "topics" -> aiOutput.split(Regex("[\\s,，]+" )).map { it.trim().removePrefix("#") }.filter { it.length in 2..20 }.take(5).forEach(viewModel::addTopic)
+                                        }
+                                        HeikaNoticeBus.show("已将建议放入编辑区", HeikaNoticeKind.SUCCESS)
+                                    }, modifier = Modifier.weight(1f)) { Text(if (aiMode == "title") "使用首条标题" else "使用此版本", fontSize = 10.sp) }
+                                    OutlinedButton(onClick = {
+                                        (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(ClipData.newPlainText("AI 生成结果", aiOutput))
+                                        HeikaNoticeBus.show("已复制", HeikaNoticeKind.SUCCESS)
+                                    }) { Text("复制", fontSize = 10.sp) }
+                                    if (aiPreApply != null) TextButton(onClick = { aiPreApply?.let { (oldTitle, oldBody) -> viewModel.edit(title = oldTitle, body = oldBody) }; aiPreApply = null }) { Text("撤回", fontSize = 10.sp) }
+                                }
+                            }
                         }
                     }
                 }
@@ -467,7 +573,7 @@ fun PublishScreen(
                 Spacer(Modifier.weight(1f))
                 Button(
                     onClick = viewModel::publish,
-                    enabled = !state.publishing && !state.saving && state.categories.isNotEmpty(),
+                    enabled = !state.publishing && !state.saving && !state.attachmentBusy && state.categories.isNotEmpty(),
                     shape = RoundedCornerShape(999.dp),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
                 ) {

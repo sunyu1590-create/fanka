@@ -40,9 +40,9 @@ object HeikaGlassTokens {
     val borderWidth = .5.dp
     val dialogBlurRadius = 20.dp
     val menuBlurRadius = 20.dp
-    /** 固态磨砂底板不透明度：深色 90%、浅色 94%，文字绝不穿透。 */
-    const val darkDialogTintAlpha = .90f
-    const val lightDialogTintAlpha = .94f
+    /** 玻璃面保留底层轮廓，同时用中性色压住艳色透出。 */
+    const val darkDialogTintAlpha = .74f
+    const val lightDialogTintAlpha = .82f
     const val backdropDimAmount = .16f
 }
 

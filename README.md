@@ -1,49 +1,61 @@
 # 黑卡 HEIKA
 
-黑卡 HEIKA 是一个由个人开发和维护的内容探索社区，围绕每日翻卡、兴趣发现、阅读与交流展开。用户可以发现社区作品和 AI 资源，收藏、评分、评论、私信及发布内容；网页端与 Android App 共用账号和核心业务服务。
+HEIKA 是内容探索社区，网页端与原生 Android App 共用账号和核心业务 API。当前工作主线是 GitHub `main`；本文件记录该分支的实际工程结构，旧部署说明不再作为构建依据。
 
 ## 当前版本
 
-- 网站：`2.40.9`（`publish-vercel` 同步到 `main`）
-- Android：原生应用工程保留在 `android/`，应用 ID 为 `com.heika.community`；当前底包版本为 `2.2.3`。
-- 网站生产域名：`https://moonclean.shop`
+- 网页端：`2.51.0`，版本号位于 `package.json`，更新内容位于 `lib/release-notes.ts`。
+- Android 原生端：`2.12.0`（`versionCode` 66），以 `android-native/app/build.gradle.kts` 为准。
+- 当前网站域名配置：`https://moonclean.shop`。更改生产目标前，先检查 `Caddyfile`、Compose 文件和远程环境，不要从旧文档推断。
 
-## 最近更新
+## 工程结构
 
-- 网站升级到 2.40.9，修复桌面端作品详情布局，并完善探索页广告与网页端 App 下载入口配置。
-- 统一二级页面移动端导航显示，避免旧版悬浮导航残留。
-- 持续完善发现内容、AI 空间、会员、通知、资料和社区 API。
-- 更新全局动效与页面视觉一致性，优化公开主页及玻璃质感底部导航。
-- 保留 Android 原生关于页、通知权限与偏好设置、缓存刷新能力。
-- 保留首页已翻开卡片的冷启动恢复修复：账号隔离持久化、稳定图片引用、网络恢复后的内容同步与图片重试。
+- `app/`、`components/`：Next.js App Router、网页界面及 `/api/v1` 服务端路由。
+- `lib/`：内容、鉴权、服务端数据访问、附件、AI 服务及共享业务逻辑。
+- `supabase/migrations/`：数据库变更脚本。生产迁移必须由部署审核者先检查再执行。
+- `android-native/`：当前发布工作流采用的 Kotlin / Jetpack Compose 原生 App；没有 WebView 容器。
+- `android/`、`mobile/`：遗留或独立参考工程，不是当前主 Android APK 工作流的构建源。
+- `scripts/ai-task-worker.mjs`：容器内 AI 任务队列工作进程。
+- `Dockerfile`、`docker-compose.yml`、`Caddyfile`：现有容器、工作进程和反向代理配置。
 
-## 项目结构
+## 当前服务依赖
 
-- `app/`、`components/`：Next.js App Router 页面、服务端 API 与网站界面。
-- `lib/`：共享业务逻辑、数据访问、内容呈现与图片资源处理。
-- `supabase/`：数据库迁移、策略及相关配置。
-- `android/`：Kotlin Android 应用、WebView 容器及原生系统能力。
-- `mobile/`：Expo/React Native 辅助工程；APK 正式构建以 `android/` 原生工程为准。
+- 网站 API 服务通过 Supabase SDK 访问 Auth、Postgres 和 Storage；主服务密钥仅供服务端使用。不要在网页变量或 APK 中放入服务密钥。
+- Android 登录与账号令牌通过现有 CloudBase 账号网关及 HEIKA API；App 继续复用 `/api/v1` 业务服务。
+- DeepSeek API 密钥由管理员保存后使用 AES-256-GCM 加密，并存放在 `@vercel/blob` 私有对象中。该 SDK 是代码中的密钥存储依赖，不表示网站部署在 Vercel。
+- 当前 Compose 配置包含 `app`、`ai-worker`、`caddy`。交接 AI 必须核验目标机现有容器、域名、数据服务和环境后再部署。
 
-## 本地开发
+## 本地检查
 
-需要 Node.js 20.9 或更高版本：
+网页端需要 Node.js 22：
 
 ```bash
 npm ci
-npm run dev
-```
-
-默认打开 `http://localhost:3000`。常用验证命令：
-
-```bash
 npm run typecheck
 npm test
+npm run lint
 npm run build
 ```
 
-Android APK 由 `.github/workflows/android-apk.yml` 中的 GitHub Actions 工作流构建。构建应使用最新成功的 Android 原生源代码版本，并从 `publish-vercel` 获取网站代码；不要从落后的 `main` 版本单独选取网站源代码。
+Android 工程在 `android-native/`，需要 Java 17、Android SDK 35 和 Gradle 8.11.1：
 
-## 技术栈
+```bash
+cd android-native
+./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
 
-网站使用 Next.js、React、TypeScript 与原生 CSS；后端业务通过服务端 API 访问 Supabase。Android 使用 Kotlin 原生应用容器，并复用网站账号与业务 API。数据库迁移位于 `supabase/migrations/`。密钥应通过部署环境变量或 GitHub Secrets 配置，不得提交到仓库。
+主 APK 工作流为 `.github/workflows/android-apk.yml`。Debug APK 使用 CI 调试签名；Release APK 在没有正式签名配置时为未签名预览包，不可作为生产升级包。
+
+## 相关环境变量名称
+
+实际部署前以 `lib/`、`Dockerfile`、`docker-compose.yml` 和目标服务器 `.env` 为准。常见名称包括：
+
+- `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`（兼容旧名 `SUPABASE_SECRET_KEY`）
+- `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`NEXT_PUBLIC_AUTH_REDIRECT_URL`、`PUBLIC_BASE_URL`
+- `AI_SETTINGS_ENCRYPTION_KEY`、`BLOB_READ_WRITE_TOKEN`、`AI_TASK_WORKER_TOKEN`、`NEXT_PUBLIC_VIDEO_UPLOAD_BETA`
+
+仓库只记录变量名和占位配置，禁止提交任何真实密钥。AI worker 需要与主服务配置相同的 `AI_TASK_WORKER_TOKEN`。
+
+## 迁移与部署纪律
+
+代码提交、构建成功、数据库迁移、服务器部署、Android 真机验证是不同状态。本仓库任务不代表生产迁移或部署已执行。应用新迁移前，部署审核者应确认备份、当前 schema 版本、DDL 和回滚方案；禁止在生产数据库直接运行未审查脚本。

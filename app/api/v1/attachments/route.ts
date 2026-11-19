@@ -9,6 +9,7 @@ import {
   MAX_ATTACHMENT_TOTAL_BYTES,
   attachmentExtension,
   attachmentOwner,
+  isPreviewableAttachment,
 } from "@/lib/attachments";
 
 export const runtime = "nodejs";
@@ -22,8 +23,8 @@ function today() {
  * 附件桶是私有桶，且没有给普通用户开 RLS 策略。
  * 读写统一走 service role，权限判断在下面按"路径属主"自己做。
  */
-async function contextSafe(req: NextRequest) {
-  const { user } = await context(req);
+async function contextSafe(req: NextRequest, required = true) {
+  const { user } = await context(req, required);
   return { db: adminClient(), user };
 }
 
@@ -74,17 +75,24 @@ async function canRead(db: AdminDb, path: string, userId: string) {
 /** 今日剩余名额。 */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db, user } = await contextSafe(req);
-    if (!user) throw new ApiError(401, "请先登录");
     const path = req.nextUrl.searchParams.get("path");
     if (path) {
+      const { db, user } = await contextSafe(req, false);
       // 私有桶不给直链，签发 7 天有效的下载链接。
-      if (attachmentOwner(path) !== user.id && !(await canRead(db, path, user.id))) throw new ApiError(403, "附件不存在");
-      const download = req.nextUrl.searchParams.get("name") || undefined;
-      const { data, error } = await db.storage.from(ATTACHMENT_BUCKET).createSignedUrl(path, 604800, download ? { download } : undefined);
+      if ((!user || attachmentOwner(path) !== user.id) && !(await canRead(db, path, user?.id || ""))) throw new ApiError(403, "附件不存在");
+      const preview = req.nextUrl.searchParams.get("preview") === "1";
+      if (preview && !isPreviewableAttachment(path)) throw new ApiError(400, "该附件类型不支持在线预览，请下载后查看");
+      // Force attachments to download by default. Only the explicit safe
+      // preview allowlist may open inline, so executable/resource types cannot
+      // run inside a browser page.
+      const requestedName = req.nextUrl.searchParams.get("name") || path.split("/").pop() || "attachment";
+      const download = preview ? undefined : safeDisplayName(requestedName);
+      const { data, error } = await db.storage.from(ATTACHMENT_BUCKET).createSignedUrl(path, 3600, { download });
       if (error || !data?.signedUrl) throw new ApiError(404, "附件不存在或已过期");
       return { url: data.signedUrl };
     }
+    const { db, user } = await contextSafe(req);
+    if (!user) throw new ApiError(401, "请先登录");
     const [usage, entitlement] = await Promise.all([usedToday(db, user.id), dailyAllowance(db, user.id)]);
     if (usage.error) throw new ApiError(503, "今日附件额度暂时无法读取");
     return { used: usage.used, limit: entitlement.limit, remaining: Math.max(0, entitlement.limit - usage.used), tier: entitlement.tier, max_files: MAX_ATTACHMENT_FILES, max_file_bytes: MAX_ATTACHMENT_BYTES, max_total_bytes: MAX_ATTACHMENT_TOTAL_BYTES };
@@ -104,6 +112,20 @@ export async function POST(req: NextRequest) {
     if (!ATTACHMENT_MIME[ext]) throw new ApiError(400, `不支持 ${ext ? "." + ext : "该"} 格式，可上传 APK、压缩包、PDF、文档或图片`);
 
     const day = today();
+    const uploadId = String(form.get("uploadId") || "");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uploadId)) throw new ApiError(400, "附件上传编号无效，请重新选择文件");
+    const fileName = `${user.id}__${uploadId}.${ext}`;
+    const path = `${day}/${fileName}`;
+    const existingFiles = await db.storage.from(ATTACHMENT_BUCKET).list(day, { limit: 10, search: fileName });
+    if (existingFiles.error) throw new ApiError(503, "附件暂时无法核验，请稍后重试");
+    const existing = (existingFiles.data || []).find((item) => item.name === fileName);
+    if (existing) {
+      if (Number(existing.metadata?.size) !== file.size) throw new ApiError(409, "此附件上传编号已用于其他文件，请重新选择后再试");
+      const [usage, entitlement] = await Promise.all([usedToday(db, user.id), dailyAllowance(db, user.id)]);
+      if (usage.error) throw new ApiError(503, "今日附件额度暂时无法读取");
+      return { path, name: safeDisplayName(file.name), size: file.size, mime: ATTACHMENT_MIME[ext], remaining: Math.max(0, entitlement.limit - usage.used) };
+    }
+
     const entitlement = await dailyAllowance(db, user.id);
     const observed = await usedToday(db, user.id);
     if (observed.error) throw new ApiError(503, "今日附件额度暂时无法读取");
@@ -115,8 +137,6 @@ export async function POST(req: NextRequest) {
       throw new ApiError(503, "附件额度暂不可用，请稍后重试");
     }
     const used = Number(reservation.data) || observed.used + 1;
-    const id = crypto.randomUUID();
-    const path = `${day}/${user.id}__${id}.${ext}`;
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { error } = await db.storage.from(ATTACHMENT_BUCKET).upload(path, bytes, {
       contentType: ATTACHMENT_MIME[ext],
@@ -148,6 +168,9 @@ export async function DELETE(req: NextRequest) {
     if (!/^\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}__[0-9a-f-]{36}\.[a-z0-9]{1,8}$/.test(path) || !fileName.startsWith(`${user.id}__`)) {
       throw new ApiError(400, "附件路径无效");
     }
+    const referenced = await db.from("posts").select("id,status").filter("resource_data->attachments", "cs", JSON.stringify([{ path }])).limit(20);
+    dbError(referenced.error);
+    if ((referenced.data || []).some((post) => post.status === "published")) throw new ApiError(409, "该附件仍属于已发布作品，先提交修改并等待审核后再清理");
     const { error } = await db.storage.from(ATTACHMENT_BUCKET).remove([path]);
     dbError(error);
     const [year, month, day] = path.slice(0, 10).split("-").map(Number);

@@ -12,6 +12,19 @@ services:
     networks:
       - web
 
+  ai-worker:
+    image: fanka:latest
+    container_name: fanka-ai-worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      AI_TASK_WORKER_URL: http://app:3000/api/v1/internal/ai-tasks/process
+    command: ["node", "scripts/ai-task-worker.mjs"]
+    depends_on:
+      - app
+    networks:
+      - web
+
   caddy:
     image: caddy:2-alpine
     container_name: caddy

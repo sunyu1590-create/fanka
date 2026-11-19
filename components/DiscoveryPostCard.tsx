@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { ArrowRight, Heart, Star } from "lucide-react";
 import { feedImageSource } from "@/lib/feed-images";
 import type { Post } from "@/lib/content";
+import { markdownToText } from "./MarkdownContent";
 import { ProfileBadgeMarks } from "./ProfileBadgeList";
 
 type DiscoveryPostCardProps = {
@@ -47,12 +48,14 @@ export default function DiscoveryPostCard({
       ? source
       : `${source}${source.includes("?") ? "&" : "?"}retry=${retryCount}`
     : undefined;
+  const textExcerpt = markdownToText(post.body || "").replace(/\s+/g, " ").trim().slice(0, 420);
+  const textCardHeight = Math.max(142, Math.min(272, 124 + Math.min(post.title.length, 80) * 0.8 + Math.min(textExcerpt.length, 360) * 0.16));
 
   return (
     <article className="post-card editorial-post discover-content-card heika-discovery-card" data-discover-id={post.id}>
       <div
         className={`discovery-cover${source && imageFailed ? " is-failed" : ""}${!source && !coverVideo ? " is-text-only" : ""}`}
-        style={source || coverVideo ? { aspectRatio: String(coverRatio) } : undefined}
+        style={source || coverVideo ? { aspectRatio: String(coverRatio) } : !source ? { "--text-card-min-height": `${textCardHeight}px` } as CSSProperties : undefined}
       >
         <button
           type="button"
@@ -93,7 +96,7 @@ export default function DiscoveryPostCard({
           ) : (
             <span className="discovery-text-copy">
               <strong>{post.title}</strong>
-              <span>{post.body}</span>
+              <span>{textExcerpt}</span>
             </span>
           )}
         </button>

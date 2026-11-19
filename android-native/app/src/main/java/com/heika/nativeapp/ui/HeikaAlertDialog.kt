@@ -149,7 +149,8 @@ fun HeikaAlertDialog(
                 Box(
                     Modifier.matchParentSize().background(
                         background.copy(
-                            alpha = if (dark) HeikaGlassTokens.darkDialogTintAlpha
+                            alpha = if (capturedBitmap == null) { if (dark) .92f else .94f }
+                            else if (dark) HeikaGlassTokens.darkDialogTintAlpha
                             else HeikaGlassTokens.lightDialogTintAlpha,
                         ),
                     ),

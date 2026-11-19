@@ -53,6 +53,7 @@ data class PublishState(
     val aiResourceTypes: List<AiResourceType> = emptyList(),
     val category: String = "", val images: List<PendingImage> = emptyList(), val mediaPaths: List<String> = emptyList(),
     val attachments: List<AttachmentDraft> = emptyList(), val attachmentBusy: Boolean = false,
+    val attachmentProgress: Int? = null, val attachmentRetryAvailable: Boolean = false,
     val attachmentQuota: Int? = null, val attachmentError: String? = null,
     val pendingDeletePaths: List<String> = emptyList(),
     val draftId: Int? = null, val draftCloudId: String? = null, val accountId: String? = null, val revisionMode: Boolean = false,
@@ -66,6 +67,7 @@ data class PublishState(
 data class AttachmentDraft(val path: String, val name: String, val size: Long, val mime: String) {
     fun toJson(): JSONObject = JSONObject().put("path", path).put("name", name).put("size", size).put("mime", mime)
 }
+private data class RetryAttachment(val name: String, val mime: String, val bytes: ByteArray, val uploadId: String)
 
 private fun attachmentsOf(json: JSONObject?): List<AttachmentDraft> {
     val array = json?.optJSONArray("attachments") ?: return emptyList()
@@ -97,6 +99,7 @@ class PublishViewModel @Inject constructor(
     private val auth: AuthRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
+    private val retryAttachments = mutableListOf<RetryAttachment>()
     private val mutableState = MutableStateFlow(PublishState())
     val state = mutableState.asStateFlow()
     private var saveJob: Job? = null
@@ -297,6 +300,7 @@ class PublishViewModel @Inject constructor(
             title = snapshot.optString("title"), body = snapshot.optString("body"), topicText = snapshot.optString("topicText"),
             contentType = snapshot.optString("contentType").ifBlank { current.contentType },
             resourceData = snapshot.optJSONObject("resourceData")?.let(::stringFields).orEmpty(),
+            attachments = attachmentsOf(snapshot),
             usageScenarios = snapshot.stringList("usageScenarios").filter { it in AiResourceRules.usageScenarios.map { option -> option.first } },
             category = snapshot.optString("category").ifBlank { current.category },
             images = images, mediaPaths = images.mapNotNull(PendingImage::path),
@@ -341,7 +345,7 @@ class PublishViewModel @Inject constructor(
 
     private fun scheduleSave() {
         val current = mutableState.value
-        if (current.title.isBlank() && current.body.isBlank() && current.images.isEmpty()) return
+        if (current.title.isBlank() && current.body.isBlank() && current.images.isEmpty() && current.attachments.isEmpty()) return
         saveJob?.cancel()
         saveJob = viewModelScope.launch(HeikaCoroutineGuard) {
             delay(900)
@@ -374,6 +378,7 @@ class PublishViewModel @Inject constructor(
             .put("revisionMode", current.revisionMode).put("serverStatus", current.serverStatus).put("title", current.title).put("body", current.body)
             .put("topicText", current.topicText).put("category", current.category).put("channel", current.channel)
             .put("contentType", current.contentType).put("resourceData", JSONObject(current.resourceData))
+            .put("attachments", JSONArray().apply { current.attachments.forEach { put(it.toJson()) } })
             .put("usageScenarios", JSONArray(current.usageScenarios)).put("images", images)
             .put("pendingDeletePaths", JSONArray(current.pendingDeletePaths))
             .put("needsServerSync", needsServerSync).put("savedAt", System.currentTimeMillis())
@@ -612,7 +617,7 @@ class PublishViewModel @Inject constructor(
                 attachments = current.attachments.map { it.toJson() },
             )
         } else {
-            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths)
+            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths, current.attachments.map { it.toJson() })
         }
     }
 
@@ -660,9 +665,11 @@ class PublishViewModel @Inject constructor(
     fun retryRemovedImageCleanup() = viewModelScope.launch(HeikaCoroutineGuard) { retryPendingDeletes() }
 
     /** 上传一个附件到服务端，成功后进入草稿列表。 */
-    suspend fun addAttachment(name: String, mime: String, bytes: ByteArray) {
+    suspend fun addAttachment(name: String, mime: String, bytes: ByteArray, retrying: Boolean = false, uploadId: String = UUID.randomUUID().toString()) {
         val current = mutableState.value
-        if (current.attachments.size >= 3) {
+        if (current.attachmentBusy) return
+        val reservedRetries = retryAttachments.filterNot { retrying && it.bytes === bytes }
+        if (current.attachments.size + reservedRetries.size >= 3) {
             mutableState.update { it.copy(attachmentError = "最多上传 3 个附件") }
             return
         }
@@ -670,18 +677,20 @@ class PublishViewModel @Inject constructor(
             mutableState.update { it.copy(attachmentError = "单个附件不能超过 30 MB") }
             return
         }
-        if (current.attachments.sumOf { it.size } + bytes.size > 50L * 1024 * 1024) {
+        if (current.attachments.sumOf { it.size } + reservedRetries.sumOf { it.bytes.size.toLong() } + bytes.size > 50L * 1024 * 1024) {
             mutableState.update { it.copy(attachmentError = "附件合计不能超过 50 MB") }
             return
         }
-        mutableState.update { it.copy(attachmentBusy = true, attachmentError = null) }
-        runCatching { repository.uploadAttachment(name, mime, bytes) }
+        mutableState.update { it.copy(attachmentBusy = true, attachmentProgress = 0, attachmentError = null) }
+        runCatching { repository.uploadAttachment(name, mime, bytes, uploadId) { progress -> mutableState.update { state -> state.copy(attachmentProgress = progress) } } }
             .onSuccess { data ->
                 val path = data.optString("path")
                 val remaining = data.optInt("remaining", -1)
                 mutableState.update { state ->
                     state.copy(
                         attachmentBusy = false,
+                        attachmentProgress = null,
+                        attachmentRetryAvailable = false,
                         attachments = state.attachments + AttachmentDraft(
                             path = path,
                             name = data.optString("name").ifBlank { name },
@@ -691,10 +700,19 @@ class PublishViewModel @Inject constructor(
                         attachmentQuota = if (remaining >= 0) remaining else state.attachmentQuota,
                     )
                 }
+                retryAttachments.removeAll { it.bytes === bytes }
+                mutableState.update { it.copy(attachmentRetryAvailable = retryAttachments.isNotEmpty()) }
+                persistLocalSnapshot()
             }
             .onFailure { error ->
-                mutableState.update { it.copy(attachmentBusy = false, attachmentError = error.message ?: "附件上传失败") }
+                if (retryAttachments.none { it.bytes === bytes }) retryAttachments += RetryAttachment(name, mime, bytes, uploadId)
+                mutableState.update { it.copy(attachmentBusy = false, attachmentProgress = null, attachmentRetryAvailable = true, attachmentError = error.message ?: "附件上传失败") }
             }
+    }
+
+    fun retryAttachmentUpload() = viewModelScope.launch(HeikaCoroutineGuard) {
+        val pending = retryAttachments.firstOrNull() ?: return@launch
+        addAttachment(pending.name, pending.mime, pending.bytes, retrying = true, uploadId = pending.uploadId)
     }
 
     fun removeAttachment(path: String) = viewModelScope.launch(HeikaCoroutineGuard) {
@@ -707,12 +725,20 @@ class PublishViewModel @Inject constructor(
         refreshAttachmentQuota()
     }
 
+    suspend fun attachmentPreviewUrl(item: AttachmentDraft): String = repository.attachmentUrl(item.path, item.name)
+
     fun refreshAttachmentQuota() = viewModelScope.launch(HeikaCoroutineGuard) {
         val remaining = runCatching { repository.attachmentQuota() }.getOrDefault(-1)
         if (remaining >= 0) mutableState.update { it.copy(attachmentQuota = remaining) }
     }
 
     fun clearAttachmentError() = mutableState.update { it.copy(attachmentError = null) }
+
+    suspend fun generateAiWorkbench(mode: String, prompt: String, messages: List<Pair<String, String>>): String {
+        val current = mutableState.value
+        ensureSameAccount(current.accountId)
+        return repository.aiWorkbench(mode, current.title, current.body, current.category, prompt, messages)
+    }
 
     fun publish() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!publishMutex.tryLock()) return@launch

@@ -15,6 +15,8 @@ import { validateTopicNames } from "@/lib/topic-validation";
 import { cardRarityTier } from "@/lib/progression";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
+import { postAttachments, withPostAttachments } from "@/lib/server/post-attachments";
+import { enqueuePostClassification } from "@/lib/server/ai-classification-queue";
 const mediaVariants = (path: string) => {
   const match = path.match(/^(.*\/)([^/]+)\.(?:jpg|png|webp)$/i);
   return match ? [`${match[1]}${match[2]}-480.webp`, `${match[1]}${match[2]}-960.webp`] : [];
@@ -79,7 +81,7 @@ async function ensurePollEditable(db: SupabaseClient, postId: string, value: unk
   if (!same) throw new ApiError(409, "投票已经开始，不能再更改选项");
 }
 /** 话题即写即用：不存在的话题自动建一条已生效的记录，不再走人工收录。 */
-async function ensureTopicIds(db: SupabaseClient, names: string[], userId: string) {
+async function ensureTopicIds(db: SupabaseClient, names: string[]) {
   if (!names.length) return [] as number[];
   const { data: existing, error } = await db.from("interest_tags").select("id,name").in("name", names);
   dbError(error);
@@ -99,10 +101,10 @@ async function ensureTopicIds(db: SupabaseClient, names: string[], userId: strin
   return names.map((name) => found.get(name.toLocaleLowerCase())).filter((id): id is number => typeof id === "number");
 }
 
-async function replaceTopics(db: SupabaseClient, postId: string, value: unknown, userId: string) {
+async function replaceTopics(db: SupabaseClient, postId: string, value: unknown) {
   const checked = validateTopicNames(value);
   if (checked.error) throw new ApiError(400, checked.error);
-  const ids = await ensureTopicIds(db, checked.names, userId);
+  const ids = await ensureTopicIds(db, checked.names);
   if (ids.length !== checked.names.length) throw new ApiError(400, "话题创建失败，请稍后重试");
   const result = await db.rpc("replace_post_topics", { p_post_id: postId, p_topic_ids: ids });
   dbError(result.error);
@@ -310,13 +312,14 @@ export async function POST(req: NextRequest) {
         dbError(owned.error);
         if (!owned.data) throw new ApiError(400, "请选择自己的作品系列");
       }
-      let existingQuery = db.from("posts").select("id,status").eq("author_id", user!.id).eq("is_demo", false);
+      let existingQuery = db.from("posts").select("id,status,resource_data").eq("author_id", user!.id).eq("is_demo", false);
       if (clientId !== null) existingQuery = existingQuery.eq("client_id", clientId).in("status", ["draft", "pending_review"]);
       else existingQuery = existingQuery.eq("status", "draft").order("updated_at", { ascending: false }).limit(1);
       const { data: existing, error: existingError } = await existingQuery.maybeSingle();
       dbError(existingError);
       if (clientId !== null && !existing) throw new ApiError(404, "草稿不存在或已不能编辑");
-      const values: Record<string, unknown> = { author_id: user!.id, tag_id: tag!.id, title, body, series_id: seriesId, status: existing?.status || "draft", updated_at: new Date().toISOString() };
+      const attachments = await postAttachments(b.attachments, user!.id, existing?.resource_data);
+      const values: Record<string, unknown> = { author_id: user!.id, tag_id: tag!.id, title, body, series_id: seriesId, resource_data: withPostAttachments(existing?.resource_data, attachments), status: existing?.status || "draft", updated_at: new Date().toISOString() };
       if (typeof b.coverUrl === "string") {
         try { const url = new URL(b.coverUrl); values.image_url = ["https:", "http:"].includes(url.protocol) ? url.toString() : null; }
         catch { throw new ApiError(400, "封面图片地址无效"); }
@@ -331,7 +334,7 @@ export async function POST(req: NextRequest) {
       }
       dbError(result.error);
       const postId = (result.data as { id: string }).id;
-      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics, user!.id);
+      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
       await replacePoll(db, postId, b.poll);
       if (Array.isArray(b.mediaPaths)) {
         const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];
@@ -382,11 +385,13 @@ export async function POST(req: NextRequest) {
       const clientId = b.id === undefined || b.id === null || b.id === "" ? null : Number(b.id);
       if (clientId !== null && (!Number.isSafeInteger(clientId) || clientId < 1)) throw new ApiError(400, "草稿编号无效");
       const existingPost = clientId !== null
-        ? await db.from("posts").select("id,status").eq("client_id", clientId).eq("author_id", user!.id).single()
+        ? await db.from("posts").select("id,status,resource_data").eq("client_id", clientId).eq("author_id", user!.id).single()
         : null;
       if (existingPost) {
         dbError(existingPost.error);
       }
+      const attachments = await postAttachments(b.attachments, user!.id, existingPost?.data?.resource_data);
+      const resourceData = withPostAttachments(existingPost?.data?.resource_data, attachments);
       if (existingPost?.data) await ensurePollEditable(db, existingPost.data.id, b.poll);
       const seriesId = typeof b.seriesId === "string" && b.seriesId ? b.seriesId : null;
       if (seriesId) {
@@ -423,7 +428,7 @@ export async function POST(req: NextRequest) {
           try { const url = new URL(b.coverUrl); if (["https:", "http:"].includes(url.protocol)) coverUrl = url.toString(); }
           catch { throw new ApiError(400, "封面图片地址无效"); }
         }
-        const payload = { title, body, tag: String(b.tag), topics: checkedTopics.names, seriesId, poll, mediaPaths, coverUrl };
+        const payload = { title, body, tag: String(b.tag), topics: checkedTopics.names, seriesId, poll, mediaPaths, coverUrl, resourceData };
         const revision = await db.from("post_revisions").upsert({
           post_id: existingPost.data.id, author_id: user!.id, payload, status: "pending", review_note: null,
           reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString(),
@@ -446,6 +451,7 @@ export async function POST(req: NextRequest) {
         series_id: seriesId,
         status: existingPost?.data?.status === "draft" ? "draft" : "pending_review",
         image_url: typeof b.coverUrl === "string" ? (() => { try { const url = new URL(b.coverUrl); return ["https:", "http:"].includes(url.protocol) ? url.toString() : null; } catch { return null; } })() : null,
+        resource_data: resourceData,
       };
       const q = db.from("posts");
       const { data, error } = clientId !== null
@@ -458,7 +464,7 @@ export async function POST(req: NextRequest) {
         : await q.insert(values).select(libraryFields).single();
       dbError(error);
       const postId = (data as { id: string }).id;
-      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics, user!.id);
+      if (Array.isArray(b.topics)) await replaceTopics(db, postId, b.topics);
       await replacePoll(db, postId, b.poll);
       if (Array.isArray(b.mediaPaths)) {
         const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];
@@ -491,6 +497,7 @@ export async function POST(req: NextRequest) {
       dbError(publishError);
       const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single();
       dbError(refreshed.error);
+      await enqueuePostClassification(postId);
       return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];
     }
     let postQuery = db

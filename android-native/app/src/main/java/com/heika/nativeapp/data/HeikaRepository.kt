@@ -20,6 +20,11 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import retrofit2.Response
 import okhttp3.ResponseBody
+import okhttp3.RequestBody
+import okio.Buffer
+import okio.BufferedSink
+import okio.ForwardingSink
+import okio.buffer
 
 @Singleton
 class HeikaRepository @Inject constructor(
@@ -950,6 +955,27 @@ class HeikaRepository @Inject constructor(
             ?: throw IOException("AI 内容暂不可用")
     }
 
+    suspend fun aiWorkbench(
+        mode: String,
+        title: String,
+        content: String,
+        category: String,
+        prompt: String,
+        messages: List<Pair<String, String>>,
+    ): String = withContext(Dispatchers.IO) {
+        require(mode in setOf("title", "outline", "polish", "continue", "markdown", "topics")) { "创作模式无效" }
+        val history = JSONArray().apply {
+            messages.takeLast(8).forEach { (role, text) ->
+                if (role == "user" || role == "assistant") put(JSONObject().put("role", role).put("content", text.take(2400)))
+            }
+        }
+        val payload = JSONObject().put("mode", mode).put("title", title.take(160)).put("content", content.take(6000))
+            .put("category", category.take(40)).put("prompt", prompt.take(2000)).put("messages", history)
+        val result = request("/api/v1/ai/workbench", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject
+            ?: throw IOException("AI 工作台暂不可用")
+        result.optString("output").takeIf(String::isNotBlank) ?: throw IOException("AI 没有返回内容，请重试")
+    }
+
     suspend fun searchTopics(query: String? = null, featured: Boolean = false): JSONArray = withContext(Dispatchers.IO) {
         val params = buildList {
             query?.trim()?.takeIf(String::isNotBlank)?.let { add("q=${encode(it.take(60))}") }
@@ -1005,8 +1031,8 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    suspend fun publishDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String>, mediaPaths: List<String>): JSONObject = withContext(Dispatchers.IO) {
-        val payload = JSONObject().put("action", "publish").put("title", title).put("body", body).put("tag", tag).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
+    suspend fun publishDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String>, mediaPaths: List<String>, attachments: List<JSONObject> = emptyList()): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("action", "publish").put("title", title).put("body", body).put("tag", tag).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths)).put("attachments", JSONArray(attachments))
         id?.let { payload.put("id", it) }
         request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
@@ -1170,13 +1196,31 @@ class HeikaRepository @Inject constructor(
     }
 
     /** AI 内容附件：单个 ≤30 MB，最多 3 个，全服每天 20 个名额。 */
-    suspend fun uploadAttachment(fileName: String, mimeType: String, bytes: ByteArray): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun uploadAttachment(fileName: String, mimeType: String, bytes: ByteArray, uploadId: String, onProgress: (Int) -> Unit = {}): JSONObject = withContext(Dispatchers.IO) {
         require(bytes.size in 1..(30 * 1024 * 1024)) { "单个附件不能超过 30 MB" }
         val token = auth.currentToken() ?: throw IOException("请先登录后继续")
         val requestBody = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("uploadId", uploadId)
             .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
             .build()
-        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/attachments", "Bearer $token", requestBody)
+        val progressBody = object : RequestBody() {
+            override fun contentType() = requestBody.contentType()
+            override fun contentLength() = requestBody.contentLength()
+            override fun writeTo(sink: BufferedSink) {
+                val total = contentLength()
+                var written = 0L
+                val counting = object : ForwardingSink(sink) {
+                    override fun write(source: Buffer, byteCount: Long) {
+                        super.write(source, byteCount)
+                        written += byteCount
+                        if (total > 0) onProgress(((written * 100L) / total).toInt().coerceIn(0, 100))
+                    }
+                }.buffer()
+                requestBody.writeTo(counting)
+                counting.flush()
+            }
+        }
+        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/attachments", "Bearer $token", progressBody)
         val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
         val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
         if (!response.isSuccessful || root.has("error")) throw IOException(root.optString("error").ifBlank { "附件上传失败（${response.code()}）" })

@@ -42,6 +42,12 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(66, "2026.11.19", listOf(
+        "发布页附件上传增加真实进度和失败重试，精选内容与 AI 内容均可添加经服务端校验的附件。",
+        "作品详情标题下展示版本匹配的 AI 摘要；详情页增加系统分享，分享前检查作品公开状态。",
+        "全局玻璃材质减轻背景色彩透出并保留原有模糊，邀请函信封保留完整正文并修正翻盖与信纸层级。",
+        "网页管理后台新增 AI 总结与审核任务、人工复审、已验证模型配置及真实 Token 资源统计入口。",
+    )),
     NativeRelease(65, "2026.11.19", listOf(
         "全局视觉改为 Solid Glass 固态磨砂：取消流光、色散与过度透明，弹窗和菜单不再出现文字穿透。",
         "发现页卡片底部改为左侧作者与认证、右侧点赞与分享，两列瀑布流对齐统一，分享可直接唤起系统分享。",

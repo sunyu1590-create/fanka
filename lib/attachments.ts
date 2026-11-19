@@ -49,9 +49,18 @@ export const ATTACHMENT_ACCEPT = Object.keys(ATTACHMENT_MIME)
   .map((ext) => `.${ext}`)
   .join(",");
 
+export const PREVIEWABLE_ATTACHMENT_EXTENSIONS = [
+  "pdf", "txt", "md", "markdown", "json", "yaml", "yml", "csv",
+  "png", "jpg", "jpeg", "webp",
+] as const;
+
 export function attachmentExtension(name: string) {
   const match = name.toLowerCase().match(/\.([a-z0-9]{1,8})$/);
   return match ? match[1] : "";
+}
+
+export function isPreviewableAttachment(name: string) {
+  return PREVIEWABLE_ATTACHMENT_EXTENSIONS.includes(attachmentExtension(name) as typeof PREVIEWABLE_ATTACHMENT_EXTENSIONS[number]);
 }
 
 export function formatAttachmentSize(bytes: number) {

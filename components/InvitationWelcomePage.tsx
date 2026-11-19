@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * 受邀注册后的欢迎信。
@@ -23,22 +23,37 @@ export default function InvitationWelcomePage({
   invitation: InvitationWelcome;
   onDone: () => void;
 }) {
-  const [opened, setOpened] = useState(false);
+  const [phase, setPhase] = useState<"closed" | "flap" | "paper" | "open">("closed");
+  const opened = phase === "open";
   const rewardDays = Math.max(0, Math.floor(Number(invitation.rewardDays) || 0));
+
+  useEffect(() => {
+    if (phase === "closed" || phase === "open") return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      setPhase("open");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setPhase((current) => current === "flap" ? "paper" : current === "paper" ? "open" : current);
+    }, phase === "flap" ? 680 : 560);
+    return () => window.clearTimeout(timer);
+  }, [phase]);
 
   return (
     <section className="page invite-welcome-page">
-      <div className={`invite-welcome-scene${opened ? " is-open" : ""}`}>
+      <div className={`invite-welcome-scene invite-phase-${phase}${opened ? " is-open" : ""}`}>
         <button
           type="button"
           className="invite-envelope"
           aria-expanded={opened}
           aria-label={opened ? "邀请信已打开" : "打开邀请信"}
-          onClick={() => setOpened(true)}
+          onClick={() => setPhase("flap")}
           disabled={opened}
         >
           <span className="invite-envelope-paper"><span>黑卡邀请函</span><i>✦</i></span>
           <span className="invite-envelope-front" />
+          <span className="invite-envelope-flap" aria-hidden="true"><i /><b /></span>
           <span className="invite-envelope-seal">✦</span>
           {!opened && <span className="invite-envelope-prompt">轻触封印，打开这封信</span>}
         </button>

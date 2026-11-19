@@ -27,7 +27,7 @@ export default function AIResourceDetails({ preview = false, postId, contentType
   const [sending, setSending] = useState(false);
   const [copiedKey, setCopiedKey] = useState("");
   const attachments = useMemo(() => readAttachments(resourceData), [resourceData]);
-  const fields = useMemo(() => Object.entries(resourceData || {}).filter(([, value]) => (typeof value === "string" && value.trim()) || (Array.isArray(value) && value.length)), [resourceData]);
+  const fields = useMemo(() => Object.entries(resourceData || {}).filter(([key, value]) => key !== "attachments" && ((typeof value === "string" && value.trim()) || (Array.isArray(value) && value.length))), [resourceData]);
 
   useEffect(() => {
     if (preview) return;
@@ -71,9 +71,10 @@ export default function AIResourceDetails({ preview = false, postId, contentType
 
   const downloadAttachment = async (path: string, name: string) => {
     try {
-      const result = await cloudRequest(`/api/v1/attachments?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`) as { url?: string } | null;
-      if (!result?.url) throw new Error();
-      window.open(result.url, "_blank", "noopener,noreferrer");
+      const response = await cloudFetch(`/api/v1/attachments?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`);
+      const payload = await response.json();
+      if (!response.ok || !payload?.data?.url) throw new Error();
+      window.open(payload.data.url, "_blank", "noopener,noreferrer");
     } catch { onNotice("附件下载链接获取失败，请稍后重试"); }
   };
 
