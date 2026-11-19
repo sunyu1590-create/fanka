@@ -308,7 +308,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
-                        hazeState = hazeState,
                     )
                 }
                 composable("mall") {
