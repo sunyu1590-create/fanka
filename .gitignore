@@ -22,3 +22,6 @@ supabase/.temp/
 android-native/app/build/
 android-native/build/
 android-native/.gradle/
+
+# Kotlin 编译缓存
+android-native/.kotlin/
