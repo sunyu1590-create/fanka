@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, ChevronRight, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Check, ChevronRight, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
@@ -11,6 +11,7 @@ import AdminAIWorkspace from "./AdminAIWorkspace";
 import AdminGovernance from "./AdminGovernance";
 import AdminAppeals from "./AdminAppeals";
 import AdminMembership from "./AdminMembership";
+import AdminCommunityAccess from "./AdminCommunityAccess";
 
 type Report = {
   id: string;
@@ -29,7 +30,7 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "exploration-ad" | "app-download" | "membership";
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
@@ -53,6 +54,7 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
   { title: "账号与工具", modules: [
     { id: "users", title: "账号管理", description: "角色、会员与社区发言限制", icon: Users },
     { id: "membership", title: "会员与赞助", description: "卡密、权益期限与爱发电人工核验", icon: CreditCard },
+    { id: "community-access", title: "认证与官方消息", description: "入驻邀请码、认证标识与官方卡片通知", icon: BadgeCheck },
     { id: "ai-settings", title: "AI 工作台", description: "配置创作工作台服务密钥", icon: ShieldCheck },
   ] },
   { title: "AI 内容运营", modules: [
@@ -76,6 +78,7 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   "ai-space": "AI 专区管理",
   appeals: "申诉处理",
   membership: "会员与赞助",
+  "community-access": "认证与官方消息",
   "exploration-ad": "探索中心广告位",
   "app-download": "App 下载入口",
 };
@@ -406,7 +409,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         {adminModuleGroups.map((group) => {
           const modules = group.modules.filter((module) => {
             if (role === "admin") return true;
-            if (["users", "membership", "ai-settings", "topic-events", "exploration-ad", "app-download"].includes(module.id)) return false;
+            if (["users", "membership", "community-access", "ai-settings", "topic-events", "exploration-ad", "app-download"].includes(module.id)) return false;
             if (module.id === "keywords" && role !== "content_manager") return false;
             return true;
           });
@@ -434,7 +437,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
+    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
         <div className="admin-topic-event-form-heading"><div><small>AI / PROVIDER</small><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}

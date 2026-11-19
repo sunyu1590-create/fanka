@@ -34,12 +34,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,6 +101,7 @@ fun ProfileScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var selected by remember(userId) { mutableStateOf("works") }
+    var certificationCode by rememberSaveable(userId) { mutableStateOf("") }
     var hasResumedOnce by remember(userId) { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val worksState = rememberLazyStaggeredGridState()
@@ -202,6 +206,13 @@ fun ProfileScreen(
                                 if (visibleDetails.isNotEmpty()) Text(visibleDetails.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .82f), fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
                             }
                             if (userId == null) Icon(HeikaIcons.Edit, "编辑资料", Modifier.size(42.dp).clip(CircleShape).clickable(onClick = onEditProfile).padding(10.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (state.badges.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(bottom = 7.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            state.badges.take(4).forEach { badge -> Text(badge.label, Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 9.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium) }
+                            if (state.badges.size > 4) Text("+${state.badges.size - 4}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(vertical = 5.dp))
+                        }
+                        if (state.own) {
+                            OutlinedTextField(value = certificationCode, onValueChange = { certificationCode = it.uppercase().take(24) }, label = { Text("兑换认证码") }, placeholder = { Text("HEIKA-XXXX-XXXX-XXXX") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { TextButton(enabled = !state.saving && certificationCode.isNotBlank(), onClick = { viewModel.redeemCertificationCode(certificationCode); certificationCode = "" }) { Text(if (state.saving) "兑换中" else "兑换") } })
                         }
                         if (state.own) {
                             Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceAround) {

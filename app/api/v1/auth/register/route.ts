@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 import { adminClient } from "@/lib/server/admin-client";
-import { ApiError, jsonBody, respond, textField } from "@/lib/server/api";
+import { ApiError, dbError, jsonBody, respond, textField } from "@/lib/server/api";
 import { clientIp } from "@/lib/server/client-ip";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,6 +47,21 @@ export async function POST(req: NextRequest) {
     const password = textField(body.password, "密码", 8, 128);
     const rawNickname = typeof body.nickname === "string" ? body.nickname.trim() : "";
     const nickname = rawNickname ? textField(rawNickname, "昵称", 1, 24) : email.split("@")[0].slice(0, 24);
+    let inviteCodeHash: string | null = null;
+    if (body.inviteCode !== undefined && body.inviteCode !== null && body.inviteCode !== "") {
+      if (typeof body.inviteCode !== "string") throw new ApiError(400, "入驻邀请码格式无效");
+      const inviteCode = body.inviteCode.trim().toUpperCase().replace(/\s/g, "");
+      if (!/^HEIKA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(inviteCode)) throw new ApiError(400, "入驻邀请码格式无效");
+      inviteCodeHash = createHash("sha256").update(inviteCode, "utf8").digest("hex");
+      const admin = adminClient();
+      const found = await admin.from("access_codes").select("id,batch_id,status").eq("code_hash", inviteCodeHash).maybeSingle();
+      dbError(found.error);
+      const batch = found.data ? await admin.from("access_code_batches").select("code_kind,active,expires_at").eq("id", found.data.batch_id).maybeSingle() : { data: null, error: null };
+      dbError(batch.error);
+      if (!found.data || found.data.status !== "unused" || batch.data?.code_kind !== "invitation" || !batch.data.active || (batch.data.expires_at && Date.parse(batch.data.expires_at) <= Date.now())) {
+        throw new ApiError(400, "入驻邀请码无效、已使用或已过期");
+      }
+    }
 
     const ip = clientIp(req);
     const slot = ip ? await claimSignupSlot(ip) : null;
@@ -77,6 +93,19 @@ export async function POST(req: NextRequest) {
     await db.from("profiles").update({ nickname }).eq("id", uid);
     if (slot != null) await db.from("signup_ip_slots").update({ email }).eq("id", slot);
 
-    return { uid, email };
+    let invitation: unknown = null;
+    if (inviteCodeHash) {
+      const redeemed = await db.rpc("redeem_access_code", { p_code_hash: inviteCodeHash, p_user_id: uid, p_signup: true });
+      if (redeemed.error || !redeemed.data) {
+        await db.auth.admin.deleteUser(uid);
+        await releaseSignupSlot(slot);
+        const reason = redeemed.error?.message || "入驻邀请码兑换失败";
+        if (/unavailable|already has|only be used|must be redeemed/i.test(reason)) throw new ApiError(409, "入驻邀请码刚刚失效，请更换邀请码后重试");
+        throw new ApiError(503, "邀请码奖励暂不可用，请稍后重试");
+      }
+      invitation = redeemed.data;
+    }
+
+    return { uid, email, invitation };
   });
 }

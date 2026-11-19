@@ -7,7 +7,7 @@ import { cloudRequest } from "@/lib/cloud";
 type Batch = { id: string; label: string; tier: string; duration_days: number; quantity: number; active: boolean; expires_at: string | null; unused: number; redeemed: number; disabled: number; codes: { id: string; status: string }[] };
 type Order = { id: string; provider_order_id: string; user_id: string; tier: string; duration_days: number; amount_cents: number; currency: string; status: string; verified_at: string | null; failure_reason: string | null; created_at: string };
 type UserRow = { id: string; nickname: string; membership_tier: "free" | "plus" | "pro"; created_at: string; membership: { tier: string; starts_at: string | null; expires_at: string | null; pending_tier: string | null; pending_days: number; source: string } | null };
-type AdminPlan = { tier: string; price_cents: number; currency: string; duration_days: number | null; daily_flip_allowance: number };
+type AdminPlan = { tier: string; price_cents: number; currency: string; duration_days: number | null; daily_flip_allowance: number; daily_attachment_allowance: number; active: boolean };
 type Data = { stats: Record<string, number>; plans: AdminPlan[]; batches: Batch[]; orders: Order[] };
 const tierName = (tier: string) => tier === "pro" ? "Pro" : tier === "plus" ? "Plus" : "Free";
 const dateLabel = (value: string | null) => value ? new Date(value).toLocaleDateString("zh-CN") : "长期有效";
@@ -28,6 +28,31 @@ function MemberRow({ account, onDone }: { account: UserRow; onDone: () => void }
   return <article className="membership-admin-user-row"><span><strong>{account.nickname || "探索者"}</strong><small>{account.id} · 当前 {tierName(account.membership?.tier || account.membership_tier)} · {account.membership?.expires_at ? `到期 ${dateLabel(account.membership.expires_at)}` : "无期限/免费"}</small></span>
     <form className="membership-admin-user-controls" onSubmit={(event) => void save(event)}><select value={tier} onChange={(event) => setTier(event.target.value as UserRow["membership_tier"])} aria-label="设置会员等级"><option value="free">Free</option><option value="plus">Plus</option><option value="pro">Pro</option></select><input type="number" min="1" max="3650" value={days} disabled={tier === "free"} onChange={(event) => setDays(event.target.value)} aria-label="会员有效天数"/><input minLength={3} maxLength={500} required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="操作原因" aria-label="会员调整原因"/><button type="submit" disabled={busy}>{busy ? "保存中" : "调整"}</button>{error && <small role="alert">{error}</small>}</form>
   </article>;
+}
+
+function AttachmentAllowanceEditor({ plan, onSaved }: { plan: AdminPlan; onSaved: (message: string) => void }) {
+  const [value, setValue] = useState(String(plan.daily_attachment_allowance));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => setValue(String(plan.daily_attachment_allowance)), [plan.daily_attachment_allowance]);
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    const dailyAttachments = Number(value);
+    if (!Number.isInteger(dailyAttachments) || dailyAttachments < 0 || dailyAttachments > 1000) { setError("请输入 0–1000 之间的整数"); return; }
+    setBusy(true); setError("");
+    try {
+      await cloudRequest(`/api/v1/admin/membership/plans/${plan.tier}`, {
+        dailyFlips: plan.daily_flip_allowance, dailyAttachments, priceCents: plan.price_cents,
+        durationDays: plan.duration_days, enabled: plan.active,
+      }, "PATCH");
+      onSaved(`${tierName(plan.tier)} 每日附件额度已更新为 ${dailyAttachments} 个`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "附件额度更新失败"); }
+    finally { setBusy(false); }
+  };
+  return <form className="attachment-quota-editor" onSubmit={(event) => void save(event)}>
+    <label><span><strong>{tierName(plan.tier)}</strong><small>每日附件数</small></span><input aria-label={`${tierName(plan.tier)}每日附件数`} type="number" min="0" max="1000" value={value} onChange={(event) => setValue(event.target.value)}/></label>
+    <button type="submit" disabled={busy}>{busy ? "保存中" : "保存"}</button>{error && <small role="alert">{error}</small>}
+  </form>;
 }
 
 export default function AdminMembership() {
@@ -65,6 +90,8 @@ export default function AdminMembership() {
     {error && <p className="moderation-feedback error" role="alert">{error}</p>}{notice && <p className="moderation-feedback" role="status">{notice}</p>}
     {loading && !data ? <p className="moderation-empty">正在读取会员数据…</p> : <>
       <div className="membership-admin-stats">{[[stats.free,"Free 用户"],[stats.plus,"Plus 会员"],[stats.pro,"Pro 会员"],[stats.active,"当前有效会员"],[stats.redemptionsThisMonth,"本月兑换"],[stats.unusedCodes,"未兑换卡密"],[stats.verifiedOrders,`已核验订单 · ¥${((stats.verifiedAmountCents || 0)/100).toFixed(2)}`],[stats.exceptionOrders,"异常订单"]].map(([value,labelText]) => <div key={String(labelText)}><strong>{Number(value || 0).toLocaleString("zh-CN")}</strong><span>{labelText}</span></div>)}</div>
+
+      <section className="membership-admin-panel"><h2>每日附件额度</h2><p className="membership-admin-muted">独立于每日翻卡次数，按账号和北京时间自然日计算。推荐初始值：Free 20、Plus 23、Pro 26。</p><div className="attachment-quota-editors">{data?.plans.map((plan) => <AttachmentAllowanceEditor key={plan.tier} plan={plan} onSaved={(message) => { setNotice(message); void load(); }}/>)}</div></section>
 
       <section className="membership-admin-panel"><h2><KeyRound size={16}/> 生成激活码批次</h2><form className="membership-admin-form" onSubmit={(event) => void createBatch(event)}>
         <label>会员档位<select value={tier} onChange={(event) => setTier(event.target.value)}><option value="plus">Plus</option><option value="pro">Pro</option></select></label>

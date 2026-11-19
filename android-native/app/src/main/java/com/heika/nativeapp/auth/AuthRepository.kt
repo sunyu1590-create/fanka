@@ -95,16 +95,18 @@ class AuthRepository @Inject constructor(
         signUpWithPasswordFallback(email, password, nickname)
     }
 
-    suspend fun signUpWithPasswordFallback(email: String, password: String, nickname: String) = withContext(Dispatchers.IO) {
+    suspend fun signUpWithPasswordFallback(email: String, password: String, nickname: String, inviteCode: String? = null): Pair<HeikaSession, JSONObject?> = withContext(Dispatchers.IO) {
         require(email.isNotBlank()) { "请输入邮箱" }
         require(password.length >= 8) { "密码至少需要 8 位" }
         val target = normalizeEmail(email)
         val display = nickname.trim().ifBlank { target.substringBefore('@') }
-        apiRequest(
+        val registration = apiRequest(
             "/api/v1/auth/register",
-            body = JSONObject().put("email", target).put("password", password).put("nickname", display),
-        )
-        signIn(target, password)
+            body = JSONObject().put("email", target).put("password", password).put("nickname", display)
+                .apply { inviteCode?.trim()?.takeIf(String::isNotBlank)?.let { put("inviteCode", it) } },
+        ) as? JSONObject
+        val invitation = registration?.optJSONObject("data")?.optJSONObject("invitation")
+        signIn(target, password) to invitation
     }
 
     suspend fun recoverWithCode(email: String, code: String, password: String) = withContext(Dispatchers.IO) {

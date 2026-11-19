@@ -6,7 +6,7 @@ import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, CircleHelp, Clock3, H
 import { cloudRequest } from "@/lib/cloud";
 import type { MembershipTier } from "@/lib/membership-plans";
 
-type Plan = { tier: MembershipTier; name: string; daily_flip_allowance: number; price_cents: number; currency: string; duration_days: number | null; benefits: string[]; active: boolean };
+type Plan = { tier: MembershipTier; name: string; daily_flip_allowance: number; daily_attachment_allowance: number; price_cents: number; currency: string; duration_days: number | null; benefits: string[]; active: boolean };
 type MembershipState = { tier: MembershipTier; startsAt: string | null; expiresAt: string | null; pendingTier: MembershipTier | null; pendingDays: number; source: string; dailyFlipAllowance: number; baseDailyFlipAllowance: number; dailyFlipsUsed: number; dailyLuckyBonus: number };
 type Props = { tier: MembershipTier; dailyAllowance: number; usedFlips: number; accountId?: string | null; experienceTotal?: number };
 
@@ -102,7 +102,8 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, acco
       <div className="heika-membership-plan-grid" role="group" aria-label="会员方案">
         {plans.map((plan) => <button type="button" key={plan.tier} className={`heika-membership-plan tier-${plan.tier}${selected === plan.tier ? " selected" : ""}${currentTier === plan.tier ? " current" : ""}`} aria-pressed={selected === plan.tier} onClick={() => { setSelected(plan.tier); setSupportPlanConfirm(false); }}>
           <span className="heika-membership-plan-top"><strong>{plan.name}</strong>{currentTier === plan.tier && <em>当前方案</em>}</span>
-          <span className="heika-membership-plan-quota"><b>{plan.daily_flip_allowance}</b> 次 / 日</span>
+          <span className="heika-membership-plan-quota"><b>{plan.daily_flip_allowance}</b> 次翻卡 / 日</span>
+          <span className="heika-membership-plan-attachments">附件 <b>{plan.daily_attachment_allowance}</b> 个 / 日</span>
           <span className="heika-membership-plan-price">{formatPrice(plan)}{plan.duration_days ? <small> / {plan.duration_days} 天</small> : null}</span>
         </button>)}
       </div>

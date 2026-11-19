@@ -13,8 +13,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ti
     if (!tiers.has(tier)) throw new ApiError(400, "会员档位无效");
     const body = await jsonBody(req);
     const dailyFlips = Number(body.dailyFlips);
+    const dailyAttachments = body.dailyAttachments === undefined ? null : Number(body.dailyAttachments);
     const priceCents = Number(body.priceCents);
     if (!Number.isInteger(dailyFlips) || dailyFlips < 1 || dailyFlips > 100) throw new ApiError(400, "每日翻卡次数需为 1–100");
+    if (dailyAttachments !== null && (!Number.isInteger(dailyAttachments) || dailyAttachments < 0 || dailyAttachments > 1000)) throw new ApiError(400, "每日附件数需为 0–1000");
     if (!Number.isInteger(priceCents) || priceCents < 0 || priceCents > 1000000) throw new ApiError(400, "方案金额无效");
     if (typeof body.enabled !== "boolean") throw new ApiError(400, "方案状态无效");
     let durationDays: number | null = null;
@@ -30,6 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ti
       active: body.enabled,
       updated_at: new Date().toISOString(),
     };
+    if (dailyAttachments !== null) patch.daily_attachment_allowance = dailyAttachments;
     if (durationDays !== null) patch.duration_days = durationDays;
     // Plan rows are service-role writable only; the admin check above already
     // gates access, so the privileged client performs the update.
@@ -39,8 +42,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ti
     if (!updated.data) throw new ApiError(404, "会员方案不存在");
     await recordModerationAudit(db, {
       actorId: user.id, action: "membership_plan_updated", targetType: "membership_plan", targetId: tier,
-      reason: `调整 ${tier.toUpperCase()} 方案：每日 ${dailyFlips} 次 / ${priceCents} 分 / ${body.enabled ? "启用" : "停用"}`,
-      details: { tier, dailyFlips, priceCents, durationDays, enabled: body.enabled },
+      reason: `调整 ${tier.toUpperCase()} 方案：每日翻卡 ${dailyFlips} 次${dailyAttachments === null ? "" : `，附件 ${dailyAttachments} 个`} / ${priceCents} 分 / ${body.enabled ? "启用" : "停用"}`,
+      details: { tier, dailyFlips, dailyAttachments, priceCents, durationDays, enabled: body.enabled },
     });
     return updated.data;
   });

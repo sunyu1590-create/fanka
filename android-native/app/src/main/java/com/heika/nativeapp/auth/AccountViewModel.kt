@@ -1,5 +1,6 @@
 package com.heika.nativeapp.auth
 
+import org.json.JSONObject
 import com.heika.nativeapp.ui.HeikaCoroutineGuard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -24,6 +25,8 @@ data class AccountUiState(
     val verificationEmail: String? = null,
     /** 新注册后生成的一次性恢复码。非空时页面必须先展示它，不能直接进入主界面。 */
     val pendingRecoveryCodes: List<String> = emptyList(),
+    val pendingInvitation: JSONObject? = null,
+    val invitationWelcomePending: Boolean = false,
     /** 本机登录过的账号，用于快捷更换。 */
     val accounts: List<SecureSessionStore.StoredAccount> = emptyList(),
 )
@@ -75,20 +78,22 @@ class AccountViewModel @Inject constructor(
         }
     }
 
-    fun signUp(email: String, password: String, confirm: String, nickname: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+    fun signUp(email: String, password: String, confirm: String, nickname: String, inviteCode: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (password != confirm) return@launch showError("两次输入的密码不一致")
         if (password.length < 8) return@launch showError("密码至少需要 8 位")
         if (nickname.trim().length < 2) return@launch showError("昵称至少需要 2 个字")
         // 当前后端注册不需要邮箱验证码，直接建号并登录。
-        perform({ auth.signUpWithPasswordFallback(email, password, nickname) }) { session ->
+        perform({ auth.signUpWithPasswordFallback(email, password, nickname, inviteCode) }) { result ->
             // 注册成功立刻生成恢复码：目前找回密码只有这一种方式，
             // 让用户"稍后去设置里生成"等于大概率永远不会生成。
             val codes = runCatching { repository.generateRecoveryCodes() }.getOrDefault(emptyList())
             mutableState.value = AccountUiState(
-                session = session,
+                session = result.first,
                 loading = false,
-                message = if (codes.isEmpty()) "账号已创建，欢迎来到黑卡。" else null,
+                message = if (codes.isEmpty() && result.second == null) "账号已创建，欢迎来到黑卡。" else null,
                 pendingRecoveryCodes = codes,
+                pendingInvitation = result.second,
+                invitationWelcomePending = codes.isEmpty() && result.second != null,
             )
         }
     }
@@ -96,7 +101,11 @@ class AccountViewModel @Inject constructor(
     /** 用户确认已保存恢复码后，放行进入主界面。 */
     fun acknowledgeRecoveryCodes() = mutableState.update {
         if (it.pendingRecoveryCodes.isEmpty()) it
-        else it.copy(pendingRecoveryCodes = emptyList(), message = "账号已创建，欢迎来到黑卡。")
+        else it.copy(pendingRecoveryCodes = emptyList(), invitationWelcomePending = it.pendingInvitation != null, message = if (it.pendingInvitation == null) "账号已创建，欢迎来到黑卡。" else null)
+    }
+
+    fun acknowledgeInvitationWelcome() = mutableState.update {
+        it.copy(invitationWelcomePending = false, pendingInvitation = null, message = "账号已创建，欢迎来到黑卡。")
     }
 
     fun requestSignUpCode(email: String) = viewModelScope.launch(HeikaCoroutineGuard) {
@@ -123,13 +132,15 @@ class AccountViewModel @Inject constructor(
         val verificationId = current.verificationId
             ?.takeIf { current.verificationEmail.equals(email.trim(), ignoreCase = true) }
             ?: return@launch showError("请先获取邮箱验证码。")
-        perform({ auth.signUpWithCode(email, password, nickname, code, verificationId) }) { session ->
+        perform({ auth.signUpWithCode(email, password, nickname, code, verificationId) }) { result ->
             val codes = runCatching { repository.generateRecoveryCodes() }.getOrDefault(emptyList())
             mutableState.value = AccountUiState(
-                session = session,
+                session = result.first,
                 loading = false,
-                message = if (codes.isEmpty()) "账号已创建，欢迎来到黑卡。" else null,
+                message = if (codes.isEmpty() && result.second == null) "账号已创建，欢迎来到黑卡。" else null,
                 pendingRecoveryCodes = codes,
+                pendingInvitation = result.second,
+                invitationWelcomePending = codes.isEmpty() && result.second != null,
             )
         }
     }

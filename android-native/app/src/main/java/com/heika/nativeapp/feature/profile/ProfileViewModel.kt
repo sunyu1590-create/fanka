@@ -27,6 +27,7 @@ data class NativeProfile(
     val tier: String,
     val showBookmarks: Boolean,
 )
+data class NativeBadge(val id: String, val label: String, val description: String, val color: String)
 
 data class ProfileAttributeValue(
     val gender: String = "",
@@ -52,6 +53,7 @@ data class ProfileStats(
 data class ProfileState(
     val profile: NativeProfile? = null,
     val profileAttributes: ProfileAttributeValue = ProfileAttributeValue(),
+    val badges: List<NativeBadge> = emptyList(),
     val posts: List<HeikaPost> = emptyList(),
     val bookmarks: List<HeikaPost> = emptyList(),
     val liked: List<HeikaPost> = emptyList(),
@@ -132,6 +134,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                 val libraryStateReq = async { repository.myLibraryState() }
                 val progressionReq = async { repository.progression() }
                 val missionsReq = async { repository.dailyMissions() }
+                val badgesReq = async { repository.myAccessCodes() }
                 val data = profileReq.await()
                 val profileJson = data.optJSONObject("profile") ?: data
                 val profile = profileJson.toProfile(id)
@@ -174,6 +177,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                     // /api/v1/library-state names this collection profileDetails;
                     // /api/v1/profiles/:id uses details for public profiles.
                     profileAttributes(data.optJSONArray("profileDetails")),
+                    parseBadges(badgesReq.await().optJSONArray("badges")),
                     owned.filter { JSONObject(it.rawJson).optString("status") != "draft" },
                     bookmarks,
                     liked,
@@ -190,14 +194,14 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
                 val posts = data.optJSONArray("posts").jsonObjects().map(HeikaPost::from)
                 val bookmarks = data.optJSONArray("bookmarks").jsonObjects().map(HeikaPost::from)
                 val follow = if (session != null) runCatching { repository.creatorFollowState(id) }.getOrDefault(JSONObject()) else JSONObject()
-                ProfileLoadResult(profileJson.toProfile(id), profileAttributes(data.optJSONArray("details")), posts, bookmarks, emptyList(), emptyList(), ProfileStats(bookmarks = bookmarks.size), follow)
+                ProfileLoadResult(profileJson.toProfile(id), profileAttributes(data.optJSONArray("details")), parseBadges(data.optJSONArray("badges")), posts, bookmarks, emptyList(), emptyList(), ProfileStats(bookmarks = bookmarks.size), follow)
             }
         }.onSuccess { result ->
             if (generation != loadGeneration || loadedFor != id) return@onSuccess
             val latestUser = runCatching { auth.current()?.userId }.getOrNull()
             if (own && latestUser != id) return@onSuccess
             val updated = ProfileState(
-                profile = result.profile, profileAttributes = result.profileAttributes, posts = result.posts, bookmarks = result.bookmarks, liked = result.liked,
+                profile = result.profile, profileAttributes = result.profileAttributes, badges = result.badges, posts = result.posts, bookmarks = result.bookmarks, liked = result.liked,
                 drafts = result.drafts, hasMoreWorks = result.hasMoreWorks,
                 hasMoreBookmarks = result.hasMoreBookmarks, hasMoreLiked = result.hasMoreLiked,
                 stats = result.stats, following = result.follow.optBoolean("following"),
@@ -351,12 +355,24 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         }.onFailure { error -> mutableState.update { it.copy(error = error.message ?: "关注操作失败") } }
     }
 
+    fun redeemCertificationCode(code: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (code.isBlank() || mutableState.value.saving) return@launch
+        mutableState.update { it.copy(saving = true, error = null, notice = null) }
+        runCatching { repository.redeemCertificationCode(code) }.onSuccess { result ->
+            runCatching { repository.myAccessCodes() }.onSuccess { data ->
+                val label = result.optJSONObject("badge")?.optString("label").orEmpty().ifBlank { "认证" }
+                mutableState.update { it.copy(saving = false, badges = parseBadges(data.optJSONArray("badges")), notice = "已获得「$label」标识", error = null) }
+            }.onFailure { error -> mutableState.update { it.copy(saving = false, error = error.message ?: "认证信息刷新失败") } }
+        }.onFailure { error -> mutableState.update { it.copy(saving = false, error = error.message ?: "认证码兑换失败") } }
+    }
+
     private fun decodeSnapshot(root: JSONObject, own: Boolean): ProfileState {
         fun posts(key: String) = root.optJSONArray(key).jsonObjects().map(HeikaPost::from)
         val profileJson = root.optJSONObject("profile") ?: JSONObject()
         return ProfileState(
             profile = profileJson.toProfile(profileJson.optString("id")), posts = posts("posts"), bookmarks = posts("bookmarks"),
             profileAttributes = profileAttributes(root.optJSONArray("profileAttributes")),
+            badges = parseBadges(root.optJSONArray("badges")),
             liked = posts("liked"), drafts = posts("drafts"),
             hasMoreWorks = root.optBoolean("hasMoreWorks"), hasMoreBookmarks = root.optBoolean("hasMoreBookmarks"),
             hasMoreLiked = root.optBoolean("hasMoreLiked"),
@@ -380,6 +396,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         .put("liked", JSONArray(state.liked.map { JSONObject(it.rawJson) }))
         .put("drafts", JSONArray(state.drafts.map { JSONObject(it.rawJson) }))
         .put("profileAttributes", profileAttributesJson(state.profileAttributes))
+        .put("badges", JSONArray(state.badges.map { JSONObject().put("id", it.id).put("label", it.label).put("description", it.description).put("color", it.color) }))
         .put("hasMoreWorks", state.hasMoreWorks).put("hasMoreBookmarks", state.hasMoreBookmarks).put("hasMoreLiked", state.hasMoreLiked)
         .put("stats", JSONObject().put("totalOpened", state.stats.totalOpened).put("streak", state.stats.streak).put("bookmarks", state.stats.bookmarks).put("experience", state.stats.experience).put("level", state.stats.level).put("progress", state.stats.progress)
             .put("dailyTasks", state.stats.dailyTasks ?: JSONObject.NULL).put("claimedDailyTasks", state.stats.claimedDailyTasks)
@@ -430,8 +447,15 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
     }
 
     private data class ProfileLoadResult(
-        val profile: NativeProfile, val profileAttributes: ProfileAttributeValue, val posts: List<HeikaPost>, val bookmarks: List<HeikaPost>,
+        val profile: NativeProfile, val profileAttributes: ProfileAttributeValue, val badges: List<NativeBadge>, val posts: List<HeikaPost>, val bookmarks: List<HeikaPost>,
         val liked: List<HeikaPost>, val drafts: List<HeikaPost>, val stats: ProfileStats, val follow: JSONObject,
         val hasMoreWorks: Boolean = false, val hasMoreBookmarks: Boolean = false, val hasMoreLiked: Boolean = false,
     )
+
+    private fun parseBadges(rows: JSONArray?) = rows.jsonObjects().mapNotNull { row ->
+        val badge = row.optJSONObject("profile_badge_types") ?: row
+        badge.optString("label").takeIf(String::isNotBlank)?.let {
+            NativeBadge(badge.optString("id"), it, badge.optString("description"), badge.optString("color", "#78613B"))
+        }
+    }
 }

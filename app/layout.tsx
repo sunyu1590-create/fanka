@@ -7,6 +7,7 @@ import './design-system.css';
 import './settings.css';
 import './composer.css';
 import './public-profile.css';
+import './community-access.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',

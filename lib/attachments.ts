@@ -4,8 +4,6 @@ export const ATTACHMENT_BUCKET = "post-attachments";
 export const MAX_ATTACHMENT_FILES = 3;
 export const MAX_ATTACHMENT_BYTES = 30 * 1024 * 1024;
 export const MAX_ATTACHMENT_TOTAL_BYTES = 50 * 1024 * 1024;
-export const DAILY_ATTACHMENT_QUOTA = 20;
-
 export type PostAttachment = {
   path: string;
   name: string;

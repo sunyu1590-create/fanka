@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { ArrowLeft, ArrowUp, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Users } from "lucide-react";
+import { ArrowLeft, ArrowUp, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Users, X } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
+import { cloudRequest } from "@/lib/cloud";
 import { authRedirectUrl } from "@/lib/auth-redirect";
 import { promptInApp } from "@/lib/in-app-dialog";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
@@ -12,6 +13,7 @@ import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
 type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
+type OfficialNotice = { id: string; title: string; body: string; image_url: string | null; action_label: string | null; action_url: string | null; published_at: string; delivered_at: string; read_at: string | null };
 /** 撤回窗口（秒），与服务端 180 秒保持一致。 */
 const RECALL_SECONDS = 180;
 
@@ -23,7 +25,8 @@ type Message = {
   created_at: string;
   media_path?: string;
 };
-type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset" | "codes";
+type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset" | "codes" | "invite-welcome";
+type InvitationWelcome = { kind?: string; batchLabel?: string; badge?: { label?: string }; rewardDays?: number; expiresAt?: string };
 export default function Messages({
   initialPeer,
   onPeerOpened,
@@ -51,6 +54,8 @@ export default function Messages({
     [authView, setAuthView] = useState<AuthView>("login"),
     [email, setEmail] = useState(""),
     [nickname, setNickname] = useState(""),
+    [inviteCode, setInviteCode] = useState(""),
+    [pendingInvitation, setPendingInvitation] = useState<InvitationWelcome | null>(null),
     [password, setPassword] = useState(""),
     [confirmPassword, setConfirmPassword] = useState(""),
     [otp, setOtp] = useState(""),
@@ -58,7 +63,6 @@ export default function Messages({
     [error, setError] = useState(""),
     [confirmDelete, setConfirmDelete] = useState(false),
     [newRecoveryCodes, setNewRecoveryCodes] = useState<string[]>([]),
-    [codesSaved, setCodesSaved] = useState(false),
     [authMessage, setAuthMessage] = useState(""),
     [resendSeconds, setResendSeconds] = useState(0),
     [authPurpose, setAuthPurpose] = useState<"signup" | "recovery">("signup"),
@@ -68,6 +72,8 @@ export default function Messages({
     [query, setQuery] = useState(""),
     [people, setPeople] = useState<Profile[]>([]),
     [rooms, setRooms] = useState<Room[]>([]),
+    [officialNotices, setOfficialNotices] = useState<OfficialNotice[]>([]),
+    [officialInboxOpen, setOfficialInboxOpen] = useState(false),
     [names, setNames] = useState<Record<string, Profile>>({}),
     [active, setActive] = useState<Room | null>(null),
     [messages, setMessages] = useState<Message[]>([]),
@@ -165,6 +171,8 @@ export default function Messages({
               updateActiveConversation(null);
               setMessages([]);
               setRooms([]);
+              setOfficialNotices([]);
+              setOfficialInboxOpen(false);
               setPeople([]);
             }
             setUser(session?.user ?? null);
@@ -203,7 +211,13 @@ export default function Messages({
     if (refreshing.current) { refreshQueued.current = true; return; }
     refreshing.current = true;
     try {
-      const summary = await readInboxSummary(db, user.id);
+      const [summaryResult, noticesResult] = await Promise.allSettled([
+        readInboxSummary(db, user.id),
+        cloudRequest("/api/v1/official-notices") as Promise<{ items?: OfficialNotice[] } | null>,
+      ]);
+      if (summaryResult.status === "rejected") throw summaryResult.reason;
+      const summary = summaryResult.value;
+      if (noticesResult.status === "fulfilled" && userIdRef.current === user.id) setOfficialNotices(noticesResult.value?.items || []);
       if (userIdRef.current !== user.id) return;
       const rows: Room[] = summary.map((row) => ({ id: row.conversation_id, user_a: row.user_a, user_b: row.user_b, created_at: row.created_at }));
       setRooms(rows);
@@ -233,6 +247,16 @@ export default function Messages({
         window.setTimeout(() => void refresh(), 0);
       }
     }
+  };
+  const openOfficialInbox = async () => {
+    if (!user) return;
+    setOfficialInboxOpen(true);
+    try {
+      await cloudRequest("/api/v1/official-notices", {}, "POST");
+      const now = new Date().toISOString();
+      setOfficialNotices((items) => items.map((item) => ({ ...item, read_at: item.read_at || now })));
+      window.dispatchEvent(new Event("heika-read"));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "官方通知读取失败"); }
   };
   const read = async (room: string) => {
     if (db && user)
@@ -365,10 +389,11 @@ export default function Messages({
         const response = await fetch("/api/v1/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.trim(), password, nickname: nickname.trim() }),
+          body: JSON.stringify({ email: email.trim(), password, nickname: nickname.trim(), ...(inviteCode.trim() ? { inviteCode: inviteCode.trim() } : {}) }),
         });
-        const result = (await response.json().catch(() => ({}))) as { error?: string };
+        const result = (await response.json().catch(() => ({}))) as { error?: string; data?: { invitation?: InvitationWelcome | null } };
         if (!response.ok) throw new Error(result.error || "注册失败，请稍后重试");
+        setPendingInvitation(result.data?.invitation || null);
         const { error: signInError } = await db.auth.signInWithPassword({ email: email.trim(), password });
         if (signInError) {
           setAuthView("login");
@@ -392,7 +417,6 @@ export default function Messages({
           codes = [];
         }
         if (codes.length) {
-          setCodesSaved(false);
           setNewRecoveryCodes(codes);
           setAuthView("codes");
           // 新账号会被引导页接管，顶层需要知道"还有恢复码没确认"。
@@ -401,8 +425,8 @@ export default function Messages({
             window.dispatchEvent(new Event("heika:recovery-codes"));
           } catch {}
         } else {
-          setAuthView("login");
-          setAuthMessage("账号已创建，欢迎来到黑卡。");
+          if (result.data?.invitation) setAuthView("invite-welcome");
+          else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
         }
       } else if (authView === "forgot") {
         if (resendSeconds > 0) throw new Error(`请等待 ${resendSeconds} 秒后再发送验证码。`);
@@ -555,11 +579,12 @@ export default function Messages({
   if (authView === "codes" && newRecoveryCodes.length)
     return <RecoveryCodesPage codes={newRecoveryCodes} onDone={() => {
       setNewRecoveryCodes([]);
-      setCodesSaved(false);
-      setAuthView("login");
-      setAuthMessage("账号已创建，欢迎来到黑卡。");
+      if (pendingInvitation) setAuthView("invite-welcome");
+      else { setAuthView("login"); setAuthMessage("账号已创建，欢迎来到黑卡。"); }
       try { window.localStorage.removeItem("heika:pending-recovery-codes"); } catch {}
     }} />;
+  if (authView === "invite-welcome" && pendingInvitation)
+    return <section className="page invite-welcome-page"><div className="eyebrow">HEIKA / INVITATION</div><div className="invite-welcome-letter"><span className="invite-welcome-mark">✦</span><p className="eyebrow">给新加入黑卡的创作者</p><h1>谢谢你，受邀而来。</h1><p>黑卡因为愿意分享的人而变得更好。感谢你带着自己的经验与灵感加入这里，也感谢你愿意为社区添上一份优质内容。</p><p>你的账号已获得 <strong>{pendingInvitation.badge?.label || "受邀入驻"}</strong> 标识，并已开启 <strong>Pro {pendingInvitation.rewardDays || 30} 天</strong>。欢迎在这里慢慢探索，也期待看到你的作品。</p><small>{pendingInvitation.batchLabel ? `邀请批次：${pendingInvitation.batchLabel}` : "黑卡官方"}</small><button type="button" className="primary-button" onClick={() => { setAuthView("login"); setAuthMessage(""); }}>进入黑卡</button></div></section>;
   if (!user || authView === "reset")
   if (!user || authView === "reset")
     return (
@@ -572,6 +597,7 @@ export default function Messages({
           onSubmit={(e) => void auth(e)}
         >
           {authView === "signup" && <label>昵称<input autoComplete="nickname" required minLength={2} maxLength={24} value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="2–24 个字，之后也可以修改" /></label>}
+          {authView === "signup" && <label>入驻邀请码（选填）<input autoComplete="off" maxLength={24} value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} placeholder="HEIKA-XXXX-XXXX-XXXX" /></label>}
           {authView !== "reset" && authView !== "confirm" && <label>邮箱<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></label>}
           {authView === "verify-otp" && <label>邮箱验证码<input inputMode="numeric" autoComplete="one-time-code" required maxLength={8} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="输入邮件中的验证码" /></label>}
           {authView === "recover-code" && <label>账号恢复码<input autoComplete="off" required value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder="AAAAA-BBBBB-CCCCC-DDDDD" /></label>}
@@ -596,7 +622,7 @@ export default function Messages({
   return (
     <section className={`page messages-page${active ? " is-chat-open" : ""}`}>
       <div className="messages-inbox-pane">
-      <div className="messages-title-row"><div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0)} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
+      <div className="messages-title-row"><div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0) + officialNotices.filter((notice) => !notice.read_at).length} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
       {!active && <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />}
       <div className="messages-inbox-switch" role="tablist" aria-label="消息列表类别">
         <button type="button" role="tab" aria-selected={inboxMode === "chats"} className={inboxMode === "chats" ? "selected" : ""} onClick={() => { setInboxMode("chats"); setQuery(""); setPeople([]); }}>会话 <small>{rooms.length}</small></button>
@@ -621,6 +647,9 @@ export default function Messages({
         <button type="button" className={inboxFilter === "all" ? "selected" : ""} aria-pressed={inboxFilter === "all"} onClick={() => setInboxFilter("all")}>全部</button>
         <button type="button" className={inboxFilter === "unread" ? "selected" : ""} aria-pressed={inboxFilter === "unread"} onClick={() => setInboxFilter("unread")}>未读{Object.values(unread).reduce((sum, count) => sum + count, 0) ? ` · ${Object.values(unread).reduce((sum, count) => sum + count, 0)}` : ""}</button>
       </div>}
+      {inboxMode === "chats" && (inboxFilter !== "unread" || officialNotices.some((notice) => !notice.read_at)) && <button type="button" className="official-notice-entry" onClick={() => void openOfficialInbox()}>
+        <span className="official-notice-avatar"><Bell size={18}/></span><span className="official-notice-entry-copy"><strong>黑卡官方</strong><small>{officialNotices[0]?.title || "官方公告和重要提醒会出现在这里"}</small></span><span className="official-notice-entry-meta"><small>通知</small>{officialNotices.filter((notice) => !notice.read_at).length > 0 && <i>{officialNotices.filter((notice) => !notice.read_at).length}</i>}</span>
+      </button>}
       {inboxMode === "people" && people.map((p) => (
         <button
           className="conversation-row conversation-person-row"
@@ -665,6 +694,14 @@ export default function Messages({
         return (inboxFilter !== "unread" || !!unread[room.id]) && (!query.trim() || `${names[peerId]?.nickname || ""} ${preview[room.id]?.body || ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
       }) && <div className="messages-empty compact"><strong>{inboxFilter === "unread" ? "没有未读会话" : "没有匹配的会话"}</strong><span>{inboxFilter === "unread" ? "新消息会出现在这里。" : "试试昵称或最近消息中的关键词。"}</span></div>}
       </div>
+      {officialInboxOpen && <div className="modal-backdrop official-inbox-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setOfficialInboxOpen(false); }}>
+        <section className="official-inbox-panel" role="dialog" aria-modal="true" aria-label="黑卡官方通知">
+          <header><div><span className="eyebrow">HEIKA / OFFICIAL</span><h2>黑卡官方</h2><p>平台公告与重要提醒</p></div><button type="button" className="close" aria-label="关闭官方通知" onClick={() => setOfficialInboxOpen(false)}><X size={18}/></button></header>
+          <div className="official-inbox-cards">{officialNotices.length ? officialNotices.map((notice) => <article className="official-notice-card" key={notice.id}>
+            <small>{new Date(notice.published_at).toLocaleString("zh-CN")}</small><h3>{notice.title}</h3><p>{notice.body}</p>{notice.image_url && <img src={notice.image_url} alt="通知图片" loading="lazy"/>}{notice.action_label && notice.action_url && <a href={notice.action_url} target={notice.action_url.startsWith("/") ? undefined : "_blank"} rel={notice.action_url.startsWith("/") ? undefined : "noopener noreferrer"}>{notice.action_label}</a>}
+          </article>) : <div className="messages-empty compact"><strong>暂时没有官方通知</strong><span>后续公告和提醒会出现在这里。</span></div>}</div>
+        </section>
+      </div>}
       {profile && (
         <div className="modal-backdrop">
           <div className="modal">

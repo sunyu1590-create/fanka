@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db } = await requireAdmin(req);
     const result = await db.from("membership_plans")
-      .select("tier,name,daily_flip_allowance,price_cents,currency,duration_days,benefits,active,sort_order,updated_at")
+      .select("tier,name,daily_flip_allowance,daily_attachment_allowance,price_cents,currency,duration_days,benefits,active,sort_order,updated_at")
       .order("sort_order");
     dbError(result.error);
     return { items: result.data || [] };

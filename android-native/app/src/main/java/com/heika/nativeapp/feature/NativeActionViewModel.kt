@@ -63,15 +63,19 @@ class NativeActionViewModel @Inject constructor(private val repository: HeikaRep
                 put("tier", tier)
                 put("display_name", row.optString("name", tier.uppercase()))
                 put("daily_flips", row.optInt("daily_flip_allowance", row.optInt("dailyFlips", 5)))
+                put("daily_attachments", row.optInt("daily_attachment_allowance", 20))
                 put("support_price_cents", row.optInt("price_cents", row.optInt("priceCents")))
                 put("duration_days", row.optInt("duration_days", row.optInt("durationDays", 30)))
                 put("benefits", row.optJSONArray("benefits") ?: JSONArray())
             })
         }
+        val tier = membership.optString("tier", raw.optString("tier", "free")).ifBlank { "free" }
+        val attachmentAllowance = (0 until plans.length()).mapNotNull { plans.optJSONObject(it) }.firstOrNull { it.optString("tier") == tier }?.optInt("daily_attachments", 20) ?: 20
         return JSONObject().apply {
-            put("tier", membership.optString("tier", raw.optString("tier", "free")).ifBlank { "free" })
+            put("tier", tier)
             put("experience", experience)
             put("dailyAllowance", allowance)
+            put("dailyAttachmentAllowance", attachmentAllowance)
             put("remaining", (allowance - used).coerceAtLeast(0))
             put("expiresAt", expiry ?: JSONObject.NULL)
             put("plans", plans)

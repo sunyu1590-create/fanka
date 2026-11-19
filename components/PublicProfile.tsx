@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, Check, ChevronRight, LockKeyhole, MessageCircle, MoreHorizontal, Share2, UserRound } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
@@ -8,6 +8,7 @@ import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 
 type PublicInfo = { nickname: string | null; bio: string | null; avatar_url: string | null; show_bookmarks: boolean };
+type PublicBadge = { id: string; label: string; description: string; color: string };
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
 type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; video_url?: string | null; created_at?: string; post_media?: { storage_path: string; sort_order: number }[] };
 type ProfileLayout = "masonry" | "list";
@@ -107,6 +108,7 @@ export default function PublicProfile({
 }) {
   const [profile, setProfile] = useState<PublicInfo>();
   const [attributes, setAttributes] = useState<PublicAttribute[]>([]);
+  const [badges, setBadges] = useState<PublicBadge[]>([]);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [bookmarks, setBookmarks] = useState<ProfilePost[]>([]);
   const [following, setFollowing] = useState(false);
@@ -124,6 +126,7 @@ export default function PublicProfile({
     let alive = true;
     setProfile(undefined);
     setAttributes([]);
+    setBadges([]);
     setPosts([]);
     setBookmarks([]);
     setFollowing(false);
@@ -135,17 +138,23 @@ export default function PublicProfile({
     setAvatarFailed(false);
     void browserDb()
       .then(async (db) => {
-        const [p, a, c, followResponse] = await Promise.all([
+        const [p, a, c, followResponse, badgeResponse] = await Promise.all([
           db.from("profiles").select("nickname,bio,avatar_url,show_bookmarks").eq("id", id).single(),
           db.from("profile_attributes").select("attribute,value").eq("user_id", id).eq("is_public", true),
           db.from("posts").select("client_id,title,body,image_url,created_at,post_media(storage_path,sort_order)").eq("author_id", id).eq("status", "published").order("created_at", { ascending: false }).limit(30),
           cloudFetch(`/api/v1/creator-follows?creator=${encodeURIComponent(id)}`, { cache: "no-store" }),
+          cloudFetch(`/api/v1/profiles/${encodeURIComponent(id)}`, { cache: "no-store" }),
         ]);
         if (!alive) return;
         if (p.error) { setError(p.error.message); return; }
         const info = p.data as PublicInfo;
         setProfile(info);
         setAttributes((a.data || []) as PublicAttribute[]);
+        if (badgeResponse.ok) {
+          const badgePayload = await badgeResponse.json();
+          if (!alive) return;
+          setBadges((badgePayload.data?.badges || []) as PublicBadge[]);
+        }
         if (c.error) { setError("暂时无法加载公开内容。"); return; }
         const signedPosts = await withSignedPostImages(db, (c.data || []) as ProfilePost[]);
         if (!alive) return;
@@ -259,6 +268,7 @@ export default function PublicProfile({
               <div className="public-profile-name-block">
                 <h1>{profile.nickname || "探索者"}</h1>
                 <div className="public-profile-account"><span>HEIKA 创作者</span><span aria-hidden="true">·</span><span>UID {id.slice(0, 8).toUpperCase()}</span></div>
+                {badges.length > 0 && <div className="profile-badge-list">{badges.map((badge) => <span key={badge.id} title={badge.description} style={{ "--profile-badge-color": badge.color } as CSSProperties}>{badge.label}</span>)}</div>}
               </div>
             </section>
             <div className="public-profile-bio-block">

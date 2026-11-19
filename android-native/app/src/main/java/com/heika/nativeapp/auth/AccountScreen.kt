@@ -65,6 +65,7 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
     val password = passwordField.text
     var confirmation by rememberSaveable { mutableStateOf("") }
     var nickname by rememberSaveable { mutableStateOf("") }
+    var inviteCode by rememberSaveable { mutableStateOf("") }
     var code by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     // 已登录时点"登录其他账号"进入的登录表单：会话还在，只是暂时盖住账号列表。
@@ -74,6 +75,10 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
     // 用户必须先确认保存，才会回到正常登录/已登录界面。
     if (state.pendingRecoveryCodes.isNotEmpty()) {
         NewAccountRecoveryPage(state.pendingRecoveryCodes, viewModel::acknowledgeRecoveryCodes)
+        return
+    }
+    if (state.invitationWelcomePending && state.pendingInvitation != null) {
+        InvitationWelcomePage(state.pendingInvitation, viewModel::acknowledgeInvitationWelcome)
         return
     }
     val focusManager = LocalFocusManager.current
@@ -90,6 +95,7 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
             passwordField = TextFieldValue("")
             confirmation = ""
             nickname = ""
+            inviteCode = ""
             code = ""
             passwordVisible = false
             hadSession = false
@@ -110,6 +116,7 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
     val latestPassword by rememberUpdatedState(password)
     val latestConfirmation by rememberUpdatedState(confirmation)
     val latestNickname by rememberUpdatedState(nickname)
+    val latestInviteCode by rememberUpdatedState(inviteCode)
     val latestCode by rememberUpdatedState(code)
     val latestFlow by rememberUpdatedState(flow)
     LaunchedEffect(pendingSubmit) {
@@ -119,7 +126,7 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
         pendingSubmit = false
         when (latestFlow) {
             AccountFlow.LOGIN -> viewModel.signIn(latestEmail, latestPassword)
-            AccountFlow.SIGN_UP -> viewModel.signUp(latestEmail, latestPassword, latestConfirmation, latestNickname)
+            AccountFlow.SIGN_UP -> viewModel.signUp(latestEmail, latestPassword, latestConfirmation, latestNickname, latestInviteCode)
             AccountFlow.RECOVERY_CODE -> viewModel.recoverWithCode(latestEmail, latestCode, latestPassword, latestConfirmation)
         }
     }
@@ -219,6 +226,7 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
                 OutlinedTextField(value = email, onValueChange = { email = it.take(254) }, label = { Text("邮箱") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (flow == AccountFlow.SIGN_UP) {
                     OutlinedTextField(value = nickname, onValueChange = { nickname = it.take(24) }, label = { Text("昵称（2–24 字）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = inviteCode, onValueChange = { inviteCode = it.uppercase().take(24) }, label = { Text("入驻邀请码（选填）") }, placeholder = { Text("HEIKA-XXXX-XXXX-XXXX") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 if (flow == AccountFlow.RECOVERY_CODE) {
                     OutlinedTextField(value = code, onValueChange = { code = it.take(64) }, label = { Text("账号恢复码") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -359,5 +367,23 @@ private fun NewAccountRecoveryPage(codes: List<String>, onConfirm: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(48.dp),
         ) { Text("进入黑卡") }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun InvitationWelcomePage(invitation: org.json.JSONObject, onContinue: () -> Unit) {
+    val badge = invitation.optJSONObject("badge")?.optString("label").orEmpty().ifBlank { "受邀入驻" }
+    val days = invitation.optInt("rewardDays", 30).coerceAtLeast(1)
+    val batch = invitation.optString("batchLabel").takeIf { it.isNotBlank() && it != "null" }
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 30.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("HEIKA / INVITATION", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.4.sp)
+        Text("谢谢你，受邀而来。", color = MaterialTheme.colorScheme.onBackground, fontSize = 27.sp, fontWeight = FontWeight.SemiBold)
+        Text("黑卡因为愿意分享的人而变得更好。感谢你带着自己的经验与灵感加入这里，也感谢你愿意为社区添上一份优质内容。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, lineHeight = 22.sp)
+        Text("你的账号已获得「$badge」标识，并已开启 Pro $days 天。欢迎在这里慢慢探索，也期待看到你的作品。", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, lineHeight = 22.sp)
+        batch?.let { Text("邀请批次：$it", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("进入黑卡") }
     }
 }

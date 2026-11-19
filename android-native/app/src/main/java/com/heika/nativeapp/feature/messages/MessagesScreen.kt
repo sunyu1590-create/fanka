@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -95,6 +97,7 @@ fun MessagesScreen(
     val conversationListState = rememberLazyListState()
     var peopleMode by remember { mutableStateOf(false) }
     var unreadOnly by remember { mutableStateOf(false) }
+    var officialInboxOpen by remember { mutableStateOf(false) }
     LaunchedEffect(initialConversationId, initialPeerId) {
         if (!initialPeerId.isNullOrBlank()) {
             viewModel.load()
@@ -119,7 +122,8 @@ fun MessagesScreen(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text("消息", color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.sectionTitle, fontWeight = FontWeight.SemiBold, letterSpacing = .2.sp)
                     val unreadCount = state.conversations.sumOf { it.unread }
-                    Text("$unreadCount 条未读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    val totalUnread = unreadCount + state.officialNotices.count { it.readAt == null }
+                    Text("$totalUnread 条未读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 }
                 IconButton(onClick = onNotifications, modifier = Modifier.size(36.dp)) { Icon(HeikaIcons.Notifications, "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp)) }
                 IconButton(onClick = { viewModel.load() }, modifier = Modifier.size(36.dp)) { Icon(HeikaIcons.Retry, "刷新消息", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp)) }
@@ -197,6 +201,47 @@ fun MessagesScreen(
                             )
                         }
                     }
+                }
+                if (!peopleMode && (!unreadOnly || state.officialNotices.any { it.readAt == null })) {
+                    val latestNotice = state.officialNotices.firstOrNull()
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 3.dp).clip(RoundedCornerShape(13.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = .78f)).clickable {
+                                officialInboxOpen = true
+                                state.officialNotices.filter { it.readAt == null }.forEach { viewModel.openOfficialNotice(it.id) }
+                            }.padding(horizontal = 13.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(HeikaIcons.Notifications, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("黑卡官方", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text(latestNotice?.title ?: "公告和重要提醒会出现在这里", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (state.officialNotices.any { it.readAt == null }) Text(state.officialNotices.count { it.readAt == null }.toString(), Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.primary).padding(horizontal = 7.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.onPrimary, fontSize = 9.sp)
+                    }
+                }
+                if (officialInboxOpen) {
+                    HeikaAlertDialog(
+                        onDismissRequest = { officialInboxOpen = false },
+                        title = { Text("黑卡官方") },
+                        text = {
+                            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (state.officialNotices.isEmpty()) Text("暂时没有官方通知。后续公告和提醒会显示在这里。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+                                state.officialNotices.forEach { notice ->
+                                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(notice.publishedAt.take(10), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                                        Text(notice.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(notice.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+                                        notice.actionLabel?.let { label -> Text(label, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { officialInboxOpen = false }) { Text("完成") }
+                        },
+                    )
                 }
                 if (peopleMode && state.query.length >= 2 && state.people.isNotEmpty()) {
                     Text("用户", Modifier.padding(start = 21.dp, top = 14.dp, bottom = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)

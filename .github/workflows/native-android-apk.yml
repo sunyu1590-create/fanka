@@ -1,0 +1,56 @@
+name: HEIKA Native APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android-native/**"
+      - ".github/workflows/native-android-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heika-native-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Install Android SDK platform
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build installable debug APK
+        working-directory: android-native
+        run: ./gradlew assembleDebug --no-daemon --max-workers=1
+      - name: Prepare artifact
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          cp android-native/app/build/outputs/apk/debug/app-debug.apk artifacts/HEIKA-Native-debug.apk
+          cat > artifacts/BUILD-METADATA.txt <<EOF
+          Application: HEIKA Native
+          Version name: 2.8.0
+          Version code: 62
+          Commit SHA: $SOURCE_SHA
+          Signing: Android debug key; installable for preview, not a production upgrade package
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heika-native-v2.8.0-${{ github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14

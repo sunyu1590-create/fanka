@@ -4,7 +4,6 @@ import { adminClient } from "@/lib/server/admin-client";
 import {
   ATTACHMENT_BUCKET,
   ATTACHMENT_MIME,
-  DAILY_ATTACHMENT_QUOTA,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENT_FILES,
   MAX_ATTACHMENT_TOTAL_BYTES,
@@ -30,12 +29,29 @@ async function contextSafe(req: NextRequest) {
 
 type AdminDb = ReturnType<typeof adminClient>;
 
-async function usedToday(db: AdminDb) {
-  const { data, error } = await db.storage.from(ATTACHMENT_BUCKET).list(today(), { limit: 1000 });
+async function usedToday(db: AdminDb, userId: string) {
+  const day = today();
+  const { data, error } = await db.storage.from(ATTACHMENT_BUCKET).list(day, { limit: 1000, search: userId });
   if (error) return { used: 0, error: true as const };
-  // 目录占位对象（0 字节、以 . 开头）不计入名额。
-  const files = (data ?? []).filter((item) => item.name && !item.name.startsWith(".") && item.name !== today());
-  return { used: files.length, error: false as const };
+  const files = (data ?? []).filter((item) => item.name?.startsWith(`${userId}__`));
+  const synced = await db.rpc("sync_daily_attachment_usage", { p_user_id: userId, p_day: day, p_observed_count: files.length });
+  if (synced.error) return { used: 0, error: true as const };
+  return { used: Number(synced.data) || 0, error: false as const };
+}
+
+async function dailyAllowance(db: AdminDb, userId: string) {
+  const [profile, membership] = await Promise.all([
+    db.from("profiles").select("membership_tier").eq("id", userId).maybeSingle(),
+    db.from("user_memberships").select("tier,expires_at,pending_tier,pending_days").eq("user_id", userId).maybeSingle(),
+  ]);
+  if (profile.error || membership.error) throw new ApiError(503, "会员额度暂时无法读取");
+  const row = membership.data;
+  let tier = row?.tier || profile.data?.membership_tier || "free";
+  if (row?.expires_at && Date.parse(row.expires_at) <= Date.now()) tier = row.pending_tier && row.pending_days > 0 ? row.pending_tier : "free";
+  if (!(tier === "plus" || tier === "pro")) tier = "free";
+  const plan = await db.from("membership_plans").select("daily_attachment_allowance").eq("tier", tier).maybeSingle();
+  if (plan.error || !plan.data) throw new ApiError(503, "会员额度暂时无法读取");
+  return { tier, limit: Number(plan.data.daily_attachment_allowance) };
 }
 
 function safeDisplayName(name: string) {
@@ -69,8 +85,9 @@ export async function GET(req: NextRequest) {
       if (error || !data?.signedUrl) throw new ApiError(404, "附件不存在或已过期");
       return { url: data.signedUrl };
     }
-    const { used } = await usedToday(db);
-    return { used, limit: DAILY_ATTACHMENT_QUOTA, remaining: Math.max(0, DAILY_ATTACHMENT_QUOTA - used), max_files: MAX_ATTACHMENT_FILES, max_file_bytes: MAX_ATTACHMENT_BYTES, max_total_bytes: MAX_ATTACHMENT_TOTAL_BYTES };
+    const [usage, entitlement] = await Promise.all([usedToday(db, user.id), dailyAllowance(db, user.id)]);
+    if (usage.error) throw new ApiError(503, "今日附件额度暂时无法读取");
+    return { used: usage.used, limit: entitlement.limit, remaining: Math.max(0, entitlement.limit - usage.used), tier: entitlement.tier, max_files: MAX_ATTACHMENT_FILES, max_file_bytes: MAX_ATTACHMENT_BYTES, max_total_bytes: MAX_ATTACHMENT_TOTAL_BYTES };
   });
 }
 
@@ -86,12 +103,18 @@ export async function POST(req: NextRequest) {
     const ext = attachmentExtension(file.name);
     if (!ATTACHMENT_MIME[ext]) throw new ApiError(400, `不支持 ${ext ? "." + ext : "该"} 格式，可上传 APK、压缩包、PDF、文档或图片`);
 
-    const before = await usedToday(db);
-    if (before.used >= DAILY_ATTACHMENT_QUOTA) {
-      throw new ApiError(409, `今天全服的 ${DAILY_ATTACHMENT_QUOTA} 个附件名额已经用完，明天再来试试`);
-    }
-
     const day = today();
+    const entitlement = await dailyAllowance(db, user.id);
+    const observed = await usedToday(db, user.id);
+    if (observed.error) throw new ApiError(503, "今日附件额度暂时无法读取");
+    const reservation = await db.rpc("reserve_daily_attachment_slot", { p_user_id: user.id, p_day: day, p_limit: entitlement.limit });
+    if (reservation.error) {
+      if (/daily_attachment_limit_reached/i.test(reservation.error.message || "")) {
+        throw new ApiError(409, `今天的 ${entitlement.limit} 个附件名额已用完，明天再来试试`);
+      }
+      throw new ApiError(503, "附件额度暂不可用，请稍后重试");
+    }
+    const used = Number(reservation.data) || observed.used + 1;
     const id = crypto.randomUUID();
     const path = `${day}/${user.id}__${id}.${ext}`;
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -99,13 +122,9 @@ export async function POST(req: NextRequest) {
       contentType: ATTACHMENT_MIME[ext],
       upsert: false,
     });
-    if (error) throw new ApiError(503, "附件上传失败，请稍后重试");
-
-    // 复核：并发下可能同时越过上限，最后一个人回滚自己的文件。
-    const after = await usedToday(db);
-    if (after.used > DAILY_ATTACHMENT_QUOTA) {
-      await db.storage.from(ATTACHMENT_BUCKET).remove([path]);
-      throw new ApiError(409, `名额刚被抢完了（${DAILY_ATTACHMENT_QUOTA}/${DAILY_ATTACHMENT_QUOTA}），请稍后再试`);
+    if (error) {
+      await db.rpc("release_daily_attachment_slot", { p_user_id: user.id, p_day: day });
+      throw new ApiError(503, "附件上传失败，请稍后重试");
     }
 
     return {
@@ -113,7 +132,7 @@ export async function POST(req: NextRequest) {
       name: safeDisplayName(file.name),
       size: file.size,
       mime: ATTACHMENT_MIME[ext],
-      remaining: Math.max(0, DAILY_ATTACHMENT_QUOTA - after.used),
+      remaining: Math.max(0, entitlement.limit - used),
     };
   });
 }
@@ -131,6 +150,9 @@ export async function DELETE(req: NextRequest) {
     }
     const { error } = await db.storage.from(ATTACHMENT_BUCKET).remove([path]);
     dbError(error);
+    const [year, month, day] = path.slice(0, 10).split("-").map(Number);
+    const usageDay = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    await db.rpc("release_daily_attachment_slot", { p_user_id: user.id, p_day: usageDay });
     return { removed: true };
   });
 }

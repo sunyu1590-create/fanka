@@ -75,11 +75,11 @@ fun FeedbackScreen(onBack: () -> Unit, onLogin: () -> Unit, viewModel: NativeAct
     }
 }
 
-private data class MemberPlan(val id: String, val title: String, val quota: Int, val price: String, val details: List<String>, val note: String)
+private data class MemberPlan(val id: String, val title: String, val quota: Int, val attachmentQuota: Int, val price: String, val details: List<String>, val note: String)
 private val memberPlans = listOf(
-    MemberPlan("free", "Free", 5, "免费", listOf("每日基础翻卡额度 5 次", "基础内容浏览、收藏、评论与分享"), "免费基础权益持续可用。"),
-    MemberPlan("plus", "Plus", 9, "方案配置暂不可用", listOf("每日基础翻卡额度 9 次", "保留现有浏览与社区功能", "自愿支持独立开发者"), "购买须通过实际配置的爱发电商品获取激活码。"),
-    MemberPlan("pro", "Pro", 13, "方案配置暂不可用", listOf("每日基础翻卡额度 13 次", "保留现有浏览与社区功能", "支持黑卡持续维护"), "购买须通过实际配置的爱发电商品获取激活码。"),
+    MemberPlan("free", "Free", 5, 20, "免费", listOf("每日基础翻卡额度 5 次", "每日附件额度 20 个", "基础内容浏览、收藏、评论与分享"), "免费基础权益持续可用。"),
+    MemberPlan("plus", "Plus", 9, 23, "方案配置暂不可用", listOf("每日基础翻卡额度 9 次", "每日附件额度 23 个", "保留现有浏览与社区功能", "自愿支持独立开发者"), "购买须通过实际配置的爱发电商品获取激活码。"),
+    MemberPlan("pro", "Pro", 13, 26, "方案配置暂不可用", listOf("每日基础翻卡额度 13 次", "每日附件额度 26 个", "保留现有浏览与社区功能", "支持黑卡持续维护"), "购买须通过实际配置的爱发电商品获取激活码。"),
 )
 
 @Composable
@@ -112,7 +112,7 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, onAbout: () -> Uni
             val details = if (benefits == null) emptyList() else (0 until benefits.length()).mapNotNull { benefits.optString(it).takeIf(String::isNotBlank) }
             val cents = row.optInt("support_price_cents")
             val price = if (id == "free") "免费" else "¥${cents / 100}${if (cents % 100 == 0) "" else ".${(cents % 100).toString().padStart(2, '0')}"} / ${row.optInt("duration_days", 30)} 天"
-            MemberPlan(id, row.optString("display_name", id.uppercase()), row.optInt("daily_flips", 5), price, details.ifEmpty { memberPlans.first { it.id == id }.details }, "会员预览不创建订单或直接修改账号等级。")
+            MemberPlan(id, row.optString("display_name", id.uppercase()), row.optInt("daily_flips", 5), row.optInt("daily_attachments", 20), price, details.ifEmpty { memberPlans.first { it.id == id }.details }, "会员预览不创建订单或直接修改账号等级。")
         }.ifEmpty { memberPlans }
     }
     val selected = configuredPlans.firstOrNull { it.id == previewTier } ?: configuredPlans.first { it.id == actualTier }
@@ -141,6 +141,7 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, onAbout: () -> Uni
                         MemberMetric("每日翻卡额度", if (state.membershipLoaded) "${currentAllowance} 次 / 日" else "暂不可用", Modifier.weight(1f))
                         MemberMetric("今日剩余", if (state.membershipLoaded) "$remainingAllowance 次" else "暂不可用", Modifier.weight(1f))
                     }
+                    MemberMetric("每日附件额度", if (state.membershipLoaded) "${state.membershipData?.optInt("dailyAttachmentAllowance", 20) ?: 20} 个 / 日" else "暂不可用")
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         MemberMetric("经验值", if (state.membershipLoaded) "${state.experience} EXP" else "暂不可用", Modifier.weight(1f))
                         if (actualTier != "free") MemberMetric("会员到期", expiresAt?.take(10) ?: "长期有效", Modifier.weight(1f))
@@ -165,6 +166,7 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, onAbout: () -> Uni
                             Row(verticalAlignment = Alignment.CenterVertically) { Text(plan.title, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); if (active) Icon(HeikaIcons.Check, contentDescription = "已选择${plan.title}预览", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp)) }
                             if (plan.id == actualTier) Text("当前账号", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
                             Text("${plan.quota} 次 / 日", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                            Text("${plan.attachmentQuota} 附件 / 日", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
                             Text(plan.price, color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         }
                     }
@@ -172,7 +174,7 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, onAbout: () -> Uni
             } }
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("${selected.title} 权益", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold); Text("${selected.quota} 次 / 日", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text("${selected.title} 权益", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold); Text("${selected.quota} 次翻卡 · ${selected.attachmentQuota} 个附件 / 日", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) }
                     AnimatedContent(targetState = selected, transitionSpec = { fadeIn(tween(210)) togetherWith fadeOut(tween(170)) }, label = "membership-benefit-preview") { plan ->
                         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             plan.details.take(if (detailsExpanded) plan.details.size else 2).forEach { Text("•  $it", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp) }

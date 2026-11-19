@@ -731,6 +731,22 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/me", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun myAccessCodes(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me/access-codes", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun redeemCertificationCode(code: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/me/access-codes/redeem", method = "POST", body = JSONObject().put("code", code.trim()).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun officialNotices(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/official-notices", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun markOfficialNoticesRead(id: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/official-notices", method = "POST", body = JSONObject().apply { id?.let { put("id", it) } }.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun generateRecoveryCodes(): List<String> = withContext(Dispatchers.IO) {
         val result = request("/api/v1/auth/recovery-codes", method = "POST", authenticated = true) as? JSONObject ?: JSONObject()
         result.optJSONArray("codes")?.let { array -> (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) } }

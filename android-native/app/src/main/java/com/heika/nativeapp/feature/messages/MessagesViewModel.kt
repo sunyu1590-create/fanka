@@ -22,9 +22,11 @@ import org.json.JSONObject
 data class NativePeer(val id: String, val name: String, val avatar: String?, val bio: String)
 data class NativeConversation(val id: String, val peer: NativePeer, val latest: String, val unread: Int, val createdAt: String)
 data class NativeMessage(val id: String, val conversationId: String, val senderId: String, val body: String, val createdAt: String)
+data class NativeOfficialNotice(val id: String, val title: String, val body: String, val imageUrl: String?, val actionLabel: String?, val actionUrl: String?, val publishedAt: String, val readAt: String?)
 data class PendingMessage(val nonce: String, val conversationId: String, val body: String, val failed: Boolean = false)
 data class MessagesState(
     val conversations: List<NativeConversation> = emptyList(),
+    val officialNotices: List<NativeOfficialNotice> = emptyList(),
     val messages: List<NativeMessage> = emptyList(),
     val pendingMessages: List<PendingMessage> = emptyList(),
     val historyHasMore: Boolean = false,
@@ -131,6 +133,11 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
                         mutableState.update { it.copy(loading = false, error = error.message ?: "消息列表加载失败") }
                     }
                 }
+            runCatching { repository.officialNotices() }.onSuccess { data ->
+                if (runCatching { auth.current()?.userId }.getOrNull() == requestUser) {
+                    mutableState.update { if (it.userId == requestUser) it.copy(officialNotices = parseOfficialNotices(data)) else it }
+                }
+            }
         } finally {
             inboxMutex.unlock()
         }
@@ -139,6 +146,13 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
     fun refreshActive() = viewModelScope.launch(HeikaCoroutineGuard) {
         val id = mutableState.value.activeId ?: return@launch
         loadConversation(id)
+    }
+
+    fun openOfficialNotice(id: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        runCatching { repository.markOfficialNoticesRead(id) }.onSuccess {
+            val now = java.time.Instant.now().toString()
+            mutableState.update { state -> state.copy(officialNotices = state.officialNotices.map { notice -> if (notice.id == id) notice.copy(readAt = notice.readAt ?: now) else notice }) }
+        }.onFailure { error -> mutableState.update { it.copy(error = error.message ?: "官方通知读取失败") } }
     }
 
     fun startForegroundSync() {
@@ -345,6 +359,20 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         val peer = parsePeer(row.optJSONObject("peer") ?: JSONObject())
         NativeConversation(row.optString("conversation_id"), peer, row.optString("latest_body"), row.optInt("unread"), row.optString("created_at"))
     }.filter { it.id.isNotBlank() }.distinctBy { it.id }
+
+    private fun parseOfficialNotices(data: JSONObject) = data.optJSONArray("items").jsonObjects().mapNotNull { row ->
+        val id = row.optString("id")
+        if (id.isBlank()) null else NativeOfficialNotice(
+            id = id,
+            title = row.optString("title"),
+            body = row.optString("body"),
+            imageUrl = row.optString("image_url").takeIf(String::isNotBlank),
+            actionLabel = row.optString("action_label").takeIf(String::isNotBlank),
+            actionUrl = row.optString("action_url").takeIf(String::isNotBlank),
+            publishedAt = row.optString("published_at"),
+            readAt = row.optString("read_at").takeIf(String::isNotBlank),
+        )
+    }
 }
 
 /** 撤回窗口：180 秒，和服务端一致。返回剩余秒数，<=0 表示已超时。 */

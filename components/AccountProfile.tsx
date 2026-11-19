@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { Check, Eye, ImagePlus, LockKeyhole, UserRound } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import { cloudRequest } from "@/lib/cloud";
@@ -16,6 +16,7 @@ export type ProfileDetails = {
   hobbies: string[];
   visibility: { gender: boolean; mbti: boolean; birthday: boolean; hobbies: boolean };
 };
+type ProfileBadge = { id: string; label: string; description: string; color: string; awardedAt?: string };
 
 const emptyDetails: ProfileDetails = {
   gender: "", mbti: "", birthday: "", hobbies: [],
@@ -55,6 +56,10 @@ export default function AccountProfile({
     [hobbyInput, setHobbyInput] = useState(""),
     [file, setFile] = useState<File>(),
     [filePreview, setFilePreview] = useState<string>(),
+    [badges, setBadges] = useState<ProfileBadge[]>([]),
+    [certificationCode, setCertificationCode] = useState(""),
+    [badgeBusy, setBadgeBusy] = useState(false),
+    [badgeNotice, setBadgeNotice] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
 
@@ -64,6 +69,31 @@ export default function AccountProfile({
     setFilePreview(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  useEffect(() => {
+    let alive = true;
+    void browserDb().then(async (db) => {
+      const { data } = await db.auth.getUser();
+      if (!alive || !data.user) return;
+      const result = await cloudRequest("/api/v1/me/access-codes") as { badges?: ProfileBadge[] } | null;
+      if (alive) setBadges(result?.badges || []);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const redeemCertificationCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!certificationCode.trim() || badgeBusy) return;
+    setBadgeBusy(true); setBadgeNotice(""); setError("");
+    try {
+      const result = await cloudRequest("/api/v1/me/access-codes/redeem", { code: certificationCode.trim() }) as { badge?: { label?: string } } | null;
+      setCertificationCode("");
+      const refreshed = await cloudRequest("/api/v1/me/access-codes") as { badges?: ProfileBadge[] } | null;
+      setBadges(refreshed?.badges || []);
+      setBadgeNotice(`已获得「${result?.badge?.label || "认证"}」标识。`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "认证码兑换失败"); }
+    finally { setBadgeBusy(false); }
+  };
 
   const visibleFacts = useMemo(() => {
     const facts = [];
@@ -135,7 +165,7 @@ export default function AccountProfile({
       <div className="profile-live-preview-heading"><span className="eyebrow">PUBLIC PROFILE</span><span><Eye size={14}/> 实时预览</span></div>
       <div className="profile-live-preview-identity">
         <Avatar src={filePreview || avatar} label="公开头像预览" className="is-large" />
-        <div><strong>{nickname.trim() || "探索者"}</strong><p>{description.trim() || "还没有填写简介。"}</p></div>
+        <div><strong>{nickname.trim() || "探索者"}</strong><p>{description.trim() || "还没有填写简介。"}</p>{badges.length > 0 && <div className="profile-badge-list">{badges.map((badge) => <span key={badge.id} style={{ "--profile-badge-color": badge.color } as CSSProperties}>{badge.label}</span>)}</div>}</div>
       </div>
       {visibleFacts.length > 0 ? <div className="profile-live-preview-facts">{visibleFacts.map((fact) => <span key={fact.label}><small>{fact.label}</small><strong>{fact.value}</strong></span>)}</div> : <div className="profile-live-preview-private"><LockKeyhole size={14}/> 目前仅公开昵称与简介</div>}
       <div className="profile-live-preview-foot"><span><Eye size={14}/> 仅显示已开启公开的资料</span><span>预览</span></div>
@@ -163,6 +193,13 @@ export default function AccountProfile({
       </label>
       <label className="account-profile-field">昵称<input value={nickname} maxLength={24} onChange={(event) => setNickname(event.target.value)} placeholder="设置公开昵称" /><small className="account-character-count">{nickname.length}/24</small></label>
       <label className="account-profile-field">简介<textarea value={description} maxLength={80} rows={3} onChange={(event) => setDescription(event.target.value)} placeholder="介绍一下自己" /><small className="account-character-count">{description.length}/80</small></label>
+    </section>
+
+    <section className="account-profile-section account-certification-section" aria-labelledby="account-certification-title">
+      <div className="account-profile-section-heading"><span className="account-profile-section-index">认证</span><div><h3 id="account-certification-title">我的认证标识</h3><p>认证完成后，其他用户可以在你的公开主页看到这些标识。</p></div></div>
+      {badges.length ? <div className="profile-badge-list">{badges.map((badge) => <span key={badge.id} title={badge.description} style={{ "--profile-badge-color": badge.color } as CSSProperties}>{badge.label}</span>)}</div> : <p className="account-certification-empty">暂时没有认证标识。</p>}
+      <form className="account-certification-redeem" onSubmit={(event) => void redeemCertificationCode(event)}><label>兑换认证码<input value={certificationCode} maxLength={24} autoComplete="off" onChange={(event) => setCertificationCode(event.target.value.toUpperCase())} placeholder="HEIKA-XXXX-XXXX-XXXX" /></label><button type="submit" disabled={badgeBusy || !certificationCode.trim()}>{badgeBusy ? "兑换中…" : "兑换认证"}</button></form>
+      {badgeNotice && <p className="account-certification-success" role="status">{badgeNotice}</p>}
     </section>
 
     <section className="profile-detail-fields account-profile-section" aria-labelledby="profile-detail-title">
