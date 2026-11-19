@@ -3,7 +3,7 @@ name: HEIKA Android APK
 on:
   push:
     paths:
-      - "android/**"
+      - "android-native/**"
       - ".github/workflows/android-apk.yml"
       - "lib/native-bridge.ts"
       - "components/Community.tsx"
@@ -13,10 +13,11 @@ on:
       - "app/**"
       - "components/**"
       - "lib/**"
+      - "supabase/**"
       - "tests/**"
   pull_request:
     paths:
-      - "android/**"
+      - "android-native/**"
       - ".github/workflows/android-apk.yml"
       - "lib/native-bridge.ts"
       - "components/Community.tsx"
@@ -26,6 +27,7 @@ on:
       - "app/**"
       - "components/**"
       - "lib/**"
+      - "supabase/**"
       - "tests/**"
   workflow_dispatch:
     inputs:
@@ -87,29 +89,30 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Android static and unit checks
-        run: gradle --no-daemon -p android :app:lintDebug :app:testDebugUnitTest
+        run: gradle --no-daemon -p android-native :app:lintDebug :app:testDebugUnitTest
       - name: Android debug compilation check
-        run: gradle --no-daemon -p android :app:compileDebugKotlin :app:compileDebugJavaWithJavac
+        run: gradle --no-daemon -p android-native :app:compileDebugKotlin :app:compileDebugJavaWithJavac
       - name: Assemble debug and release APKs
-        run: gradle --no-daemon -p android :app:assembleDebug :app:assembleRelease
+        run: gradle --no-daemon -p android-native :app:assembleDebug :app:assembleRelease
       - name: Prepare APK artifacts
         id: metadata
         run: |
-          version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' android/app/build.gradle.kts | head -n 1)"
-          version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' android/app/build.gradle.kts | head -n 1)"
+          version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' android-native/app/build.gradle.kts | head -n 1)"
+          version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' android-native/app/build.gradle.kts | head -n 1)"
           test -n "$version_name"
           test -n "$version_code"
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/HEIKA-debug.apk
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk artifacts/HEIKA-release-unsigned.apk
+          cp android-native/app/build/outputs/apk/debug/app-debug.apk artifacts/HEIKA-debug.apk
+          cp android-native/app/build/outputs/apk/release/app-release-unsigned.apk artifacts/HEIKA-release-unsigned.apk
           cat > artifacts/BUILD-METADATA.txt <<EOF
           Application: HEIKA
           Version name: $version_name
           Version code: $version_code
           Commit SHA: $SOURCE_SHA
           Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
-          Release APK: unsigned; for build inspection only, not a signed release package
+          Debug APK: signed with the CI debug key; preview only
+          Release APK: unsigned unless production signing material is supplied; not a production upgrade package
           EOF
       - uses: actions/upload-artifact@v4
         with:

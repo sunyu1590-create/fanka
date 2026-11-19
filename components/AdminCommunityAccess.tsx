@@ -146,7 +146,7 @@ export default function AdminCommunityAccess({ mode = "certification" }: { mode?
         ...(!editingNoticeId && (noticeActionLabel || noticeActionUrl) ? { actionLabel: noticeActionLabel, actionUrl: noticeActionUrl } : {}),
       }, editingNoticeId ? "PATCH" : "POST") as { recipients?: number } | null;
       setNoticeTitle(""); setNoticeBody(""); setNoticeImage(""); setNoticeActionLabel(""); setNoticeActionUrl("");
-      setMessage(editingNoticeId ? "官方通知已更新，收件箱中会显示最新卡片内容。" : `官方通知已发送给 ${Number(result?.recipients || 0).toLocaleString("zh-CN")} 位用户。`);
+      setMessage(editingNoticeId ? "系统公告已更新，通知中心会显示最新内容。" : `系统公告已发送给 ${Number(result?.recipients || 0).toLocaleString("zh-CN")} 位用户。`);
       setEditingNoticeId(null); await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "官方通知发送失败"); }
     finally { setBusy(false); }
@@ -158,7 +158,7 @@ export default function AdminCommunityAccess({ mode = "certification" }: { mode?
   };
 
   return <div className="community-access-admin">
-    <header className="community-access-heading"><div><h2>{mode === "certification" ? "认证与入驻邀请" : "官方私信公告"}</h2><p>{mode === "certification" ? "管理认证标识、手动认证用户和邀请码批次。" : "通过消息中的黑卡官方菌入口发送和管理卡片公告。"}</p></div><button type="button" className="soft-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14}/>刷新</button></header>
+    <header className="community-access-heading"><div><h2>{mode === "certification" ? "认证与入驻邀请" : "系统通知管理"}</h2><p>{mode === "certification" ? "管理认证标识、手动认证用户和邀请码批次。" : "编辑并发布系统公告，用户可在通知中心查看历史与未读状态。"}</p></div><button type="button" className="soft-button" onClick={() => void load()} disabled={loading}><RefreshCw size={14}/>刷新</button></header>
     {error && <p className="moderation-feedback error" role="alert">{error}</p>}{message && <p className="moderation-feedback" role="status">{message}</p>}
     {loading && (mode === "certification" ? !data : !notices.length) ? <p className="moderation-empty">正在读取管理数据…</p> : <>
       {mode === "certification" && <>
@@ -187,7 +187,7 @@ export default function AdminCommunityAccess({ mode = "certification" }: { mode?
       </section>
       </>}
 
-      {mode === "notices" && <section className="community-access-panel"><h3><Bell size={16}/>官方卡片消息</h3><p>用户会在消息列表的「黑卡官方菌」入口收到卡片通知。可按会员档位或全站发送。</p>
+      {mode === "notices" && <section className="community-access-panel"><h3><Bell size={16}/>系统公告卡片</h3><p>用户会在通知中心收到卡片公告并查看历史和未读状态。可按会员档位或全站发送。</p>
         <form className="community-notice-form" onSubmit={(event) => void createNotice(event)}><label>标题<input required value={noticeTitle} onChange={(event) => setNoticeTitle(event.target.value)} maxLength={80}/></label><label>发送对象<select value={noticeAudience} disabled={Boolean(editingNoticeId)} onChange={(event) => setNoticeAudience(event.target.value)}><option value="all">所有用户</option><option value="free">Free 用户</option><option value="plus">Plus 会员</option><option value="pro">Pro 会员</option></select></label><label className="community-notice-body">卡片内容<textarea required value={noticeBody} onChange={(event) => setNoticeBody(event.target.value)} rows={5} maxLength={3000} placeholder="写下公告、活动提醒或重要说明"/></label><label>图片地址（可选）<input type="url" value={noticeImage} onChange={(event) => setNoticeImage(event.target.value)} placeholder="https://…"/></label><label>按钮文字（可选）<input value={noticeActionLabel} onChange={(event) => setNoticeActionLabel(event.target.value)} maxLength={24} placeholder="查看详情"/></label><label>按钮链接（可选）<input value={noticeActionUrl} onChange={(event) => setNoticeActionUrl(event.target.value)} maxLength={2048} placeholder="站内路径或 HTTPS 地址"/></label><button type="submit" disabled={busy || !noticeTitle.trim() || !noticeBody.trim()}>{busy ? "保存中…" : editingNoticeId ? "保存卡片编辑" : "发送官方通知"}</button>{editingNoticeId && <button type="button" className="soft-button" onClick={() => { setEditingNoticeId(null); setNoticeTitle(""); setNoticeBody(""); setNoticeImage(""); setNoticeActionLabel(""); setNoticeActionUrl(""); }}>取消编辑</button>}</form>
         <div className="community-notice-history">{notices.map((notice) => <article key={notice.id}><span>{audienceLabel(notice.audience)} · {new Date(notice.published_at).toLocaleString("zh-CN")}</span><h4>{notice.title}</h4><p>{notice.body}</p><button type="button" onClick={() => { setEditingNoticeId(notice.id); setNoticeTitle(notice.title); setNoticeBody(notice.body); setNoticeAudience(notice.audience); setNoticeImage(notice.image_url || ""); setNoticeActionLabel(notice.action_label || ""); setNoticeActionUrl(notice.action_url || ""); }}>编辑卡片</button></article>)}</div>
       </section>}

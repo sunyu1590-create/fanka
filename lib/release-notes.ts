@@ -7,6 +7,19 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.49.0",
+    date: "2026.11.19",
+    notes: [
+      { category: "新功能", text: "主页卡池统一纳入精选与 AI 内容，兼顾兴趣、质量、时效和近期阅读记录；候选不足时继续提供可用内容，并保留原有每日翻卡额度与开牌状态。" },
+      { category: "体验优化", text: "作者认证标识统一显示在个人主页、探索卡片、作品详情和私信旁，并由服务端有效认证记录驱动。" },
+      { category: "体验优化", text: "系统公告和账号通知进入通知中心，与普通私信分开管理；既有聊天记录继续保留。" },
+      { category: "体验优化", text: "AI 资源的版本、更新记录、相关资源与纠错入口收进详情页「更多」菜单；无图作品改用文字封面承接标题与作者信息。" },
+      { category: "体验优化", text: "邀请欢迎页改为可展开的信封邀请函；探索卡片标签与 AI 卡片、作者身份和详情操作样式同步整理。" },
+      { category: "问题修复", text: "修复 Android 翻卡状态返回后丢失、图片页码位置不连贯等问题；保留原有 3D 翻卡、共享转场与玻璃菜单动画。" },
+      { category: "体验优化", text: "Android 探索频道入口收紧至顶部，搜索与筛选随内容区域折叠；修正图片页码及标签底板间距。" },
+    ],
+  },
+  {
     version: "2.48.0",
     date: "2026.11.19",
     notes: [

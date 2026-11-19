@@ -199,7 +199,7 @@ private val adminModuleGroups = listOf(
         AdminModuleSpec("membership-support", "会员与赞助", "卡密批次、会员状态、订单人工复核", com.heika.nativeapp.ui.HeikaIconRes.Medal),
         AdminModuleSpec("users", "账号管理", "角色、会员与社区发言限制", com.heika.nativeapp.ui.HeikaIconRes.BusinessUser),
         AdminModuleSpec("community-access", "认证与入驻邀请", "认证标识、手动认证与邀请码批次", com.heika.nativeapp.ui.HeikaIconRes.Shield),
-        AdminModuleSpec("official-notices", "官方私信公告", "编辑并发送黑卡官方菌卡片通知", com.heika.nativeapp.ui.HeikaIconRes.Notifications),
+        AdminModuleSpec("official-notices", "系统通知管理", "编辑并发布公告，由用户在通知中心查看", com.heika.nativeapp.ui.HeikaIconRes.Notifications),
         AdminModuleSpec("user-feedback", "用户反馈", "查看并处理用户意见", com.heika.nativeapp.ui.HeikaIconRes.Warning),
     )),
     AdminModuleGroup("AI 内容运营", listOf(
@@ -220,7 +220,7 @@ private val adminSectionNames = mapOf(
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
-    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助", "announcement" to "启动弹窗公告", "community-access" to "认证与入驻邀请", "official-notices" to "官方私信公告",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助", "announcement" to "启动弹窗公告", "community-access" to "认证与入驻邀请", "official-notices" to "系统通知管理",
 )
 private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
 
@@ -274,8 +274,8 @@ private fun AdminCommunityAccessPanel(state: AdminCenterState, viewModel: AdminC
         if (!state.notice.isNullOrBlank()) Text(state.notice.orEmpty(), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
         if (noticesMode) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text(if (editingNotice == null) "发送官方卡片消息" else "编辑官方卡片消息", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text("用户会在「黑卡官方菌」私信入口中收到卡片公告。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                Text(if (editingNotice == null) "发送系统公告" else "编辑系统公告", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("用户会在通知中心收到公告，并可查看历史和未读状态。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 OutlinedTextField(noticeTitle, { noticeTitle = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("标题") }, singleLine = true)
                 if (editingNotice == null) {
                     Text("发送对象", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
@@ -1338,7 +1338,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         repository.disableAdminAccessCode(id)
     }
 
-    fun saveOfficialNotice(id: String?, title: String, body: String, audience: String, imageUrl: String, actionLabel: String, actionUrl: String) = communityAction("official-notice", if (id == null) "官方私信公告已发送" else "公告卡片已更新") {
+    fun saveOfficialNotice(id: String?, title: String, body: String, audience: String, imageUrl: String, actionLabel: String, actionUrl: String) = communityAction("official-notice", if (id == null) "系统通知已发布" else "系统通知已更新") {
         val payload = JSONObject().put("title", title.trim()).put("body", body.trim())
         if (id == null) payload.put("audience", audience)
         if (id != null || imageUrl.isNotBlank()) payload.put("imageUrl", imageUrl.trim().ifBlank { JSONObject.NULL })

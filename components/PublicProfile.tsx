@@ -266,9 +266,8 @@ export default function PublicProfile({
             <section className="public-profile-identity">
               {profile.avatar_url && !avatarFailed ? <img className="public-profile-avatar" src={profile.avatar_url} alt={`${profile.nickname || "探索者"}的头像`} onError={() => setAvatarFailed(true)} /> : <div className="public-profile-avatar public-profile-avatar-placeholder"><UserRound size={29}/></div>}
               <div className="public-profile-name-block">
-                <h1>{profile.nickname || "探索者"}</h1>
+                <h1>{profile.nickname || "探索者"}<ProfileBadgeList badges={badges} compact/></h1>
                 <div className="public-profile-account"><span>黑卡创作者</span><span aria-hidden="true">·</span><span>用户编号 {id.slice(0, 8).toUpperCase()}</span></div>
-                <ProfileBadgeList badges={badges}/>
               </div>
             </section>
             <div className="public-profile-bio-block">

@@ -156,3 +156,31 @@ export async function presentFeedMany(db: SupabaseClient, rows: LibraryRow[]) {
   ].flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
   return rows.map((row) => present(row, urls, true));
 }
+
+export type PresentedBadge = { id: string; label: string; description: string | null; color: string | null };
+
+/** Attach only currently active, server-awarded identity marks to displayed authors. */
+export async function attachAuthorBadges<T extends { authorId?: string }>(db: SupabaseClient, items: T[]) {
+  const userIds = [...new Set(items.flatMap((item) => item.authorId ? [item.authorId] : []))];
+  if (!userIds.length) return items.map((item) => ({ ...item, authorBadges: [] as PresentedBadge[] }));
+  const { data, error } = await db.from("user_badge_awards")
+    .select("user_id,granted_at,profile_badge_types!inner(id,label,description,color,active)")
+    .in("user_id", userIds)
+    .is("revoked_at", null)
+    .eq("profile_badge_types.active", true)
+    .order("granted_at", { ascending: true });
+  // Certification display is optional metadata: an awards-table read issue
+  // must not make otherwise public content disappear.
+  const byUser = new Map<string, PresentedBadge[]>();
+  if (!error) for (const row of data || []) {
+    const raw = row.profile_badge_types;
+    const badge = Array.isArray(raw) ? raw[0] : raw;
+    if (!badge?.active) continue;
+    const badges = byUser.get(row.user_id) || [];
+    if (!badges.some((existing) => existing.id === badge.id)) {
+      badges.push({ id: badge.id, label: badge.label, description: badge.description, color: badge.color });
+      byUser.set(row.user_id, badges);
+    }
+  }
+  return items.map((item) => ({ ...item, authorBadges: item.authorId ? byUser.get(item.authorId) || [] : [] }));
+}

@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +27,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -37,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,8 +55,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.heika.nativeapp.HeikaApplication
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaAvatar
+import com.heika.nativeapp.ui.HeikaAlertDialog
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaPulsePage
+import com.heika.nativeapp.data.toWebUrl
+import coil3.compose.AsyncImage
 
 @Composable
 fun NotificationsScreen(
@@ -65,11 +73,14 @@ fun NotificationsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var permissionRefresh by remember { mutableIntStateOf(0) }
     var selectedFilter by remember { mutableStateOf("all") }
+    var selectedNotice by remember { mutableStateOf<com.heika.nativeapp.data.HeikaNotification?>(null) }
+    val uriHandler = LocalUriHandler.current
     val filteredItems = remember(state.items, selectedFilter) {
         state.items.filter { item ->
             when (selectedFilter) {
                 "social" -> item.type in setOf("comment", "reply", "like", "bookmark")
                 "moderation" -> item.type == "moderation"
+                "system" -> item.type == "system_announcement"
                 "unread" -> item.readAt == null
                 else -> true
             }
@@ -91,7 +102,7 @@ fun NotificationsScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 21.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("${state.unread} 条未读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                Text("最近动态", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                Text("通知消息", color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
             }
             if (state.unread > 0) Text("全部已读", Modifier.clickable(onClick = viewModel::markAllRead).padding(8.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
@@ -99,7 +110,7 @@ fun NotificationsScreen(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            listOf("all" to "全部", "social" to "互动", "moderation" to "审核", "unread" to "未读").forEach { (key, label) ->
+            listOf("all" to "全部", "social" to "互动", "system" to "官方公告", "moderation" to "审核", "unread" to "未读").forEach { (key, label) ->
                 val selected = selectedFilter == key
                 Text(
                     label,
@@ -150,7 +161,8 @@ fun NotificationsScreen(
                     Column {
                         NotificationRow(item, onClick = {
                             if (item.readAt == null) viewModel.markRead(item.id)
-                            item.postId?.let { onContent(it, true) } ?: item.actorId?.let { onContent(it, false) }
+                            if (item.type == "system_announcement") selectedNotice = item
+                            else item.postId?.let { onContent(it, true) } ?: item.actorId?.let { onContent(it, false) }
                         })
                         androidx.compose.material3.HorizontalDivider(Modifier.padding(start = 72.dp, end = 18.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f), thickness = .5.dp)
                     }
@@ -158,6 +170,38 @@ fun NotificationsScreen(
                 item { Text("目前显示 ${filteredItems.size} 条通知", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
             }
         }
+    }
+    selectedNotice?.let { notice ->
+        val target = notice.actionUrl
+        val hasAction = !target.isNullOrBlank() &&
+            (target.startsWith("https://", ignoreCase = true) || (target.startsWith("/") && !target.startsWith("//")))
+        HeikaAlertDialog(
+            onDismissRequest = { selectedNotice = null },
+            title = { Text(notice.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    notice.imageUrl?.let { image ->
+                        AsyncImage(
+                            model = image,
+                            contentDescription = notice.title,
+                            imageLoader = com.heika.nativeapp.ui.LocalHeikaImageLoader.current,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).clip(RoundedCornerShape(10.dp)),
+                        )
+                    }
+                    Text(notice.body ?: notice.title, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 20.sp)
+                }
+            },
+            confirmButton = {
+                if (hasAction) {
+                    TextButton(onClick = {
+                        runCatching { uriHandler.openUri(target!!.toWebUrl()) }
+                        selectedNotice = null
+                    }) { Text(notice.actionLabel ?: "查看详情") }
+                } else TextButton(onClick = { selectedNotice = null }) { Text("关闭") }
+            },
+            dismissButton = if (hasAction) ({ TextButton(onClick = { selectedNotice = null }) { Text("关闭") } }) else null,
+        )
     }
 }
 
@@ -199,6 +243,7 @@ private fun NotificationRow(item: com.heika.nativeapp.data.HeikaNotification, on
         HeikaAvatar(item.actorAvatar, item.actorName, 40.dp, contentDescription = "${item.actorName}头像")
         Column(Modifier.weight(1f)) {
             val action = when (item.type) {
+                "system_announcement" -> "官方公告"
                 "comment" -> "评论了你的作品"
                 "reply" -> "回复了你的评论"
                 "like" -> "赞了你的作品"
@@ -207,7 +252,7 @@ private fun NotificationRow(item: com.heika.nativeapp.data.HeikaNotification, on
                 else -> item.title.ifBlank { "有一条新动态" }
             }
             Text("${item.actorName}　$action", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, lineHeight = 18.sp)
-            Text(item.postTitle ?: item.title.ifBlank { "打开查看动态" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+            Text(item.body ?: item.postTitle ?: item.title.ifBlank { "打开查看动态" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             Text(item.createdAt.take(16).replace('T', ' '), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 10.sp, modifier = Modifier.padding(top = 5.dp))
         }
         if (item.readAt == null) Box(Modifier.padding(top = 5.dp).size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))

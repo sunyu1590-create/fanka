@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, respond } from "@/lib/server/api";
-import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
+import { attachAuthorBadges, libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
 
 type Params = { params: Promise<{ id: string }> };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,8 +35,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     const published = (posts.data || []) as unknown as LibraryRow[];
     const saved = (savedPosts.data || []) as unknown as LibraryRow[];
     const [publishedItems, savedItems] = await Promise.all([
-      presentMany(db, published),
-      presentMany(db, saved),
+      attachAuthorBadges(db, await presentMany(db, published)),
+      attachAuthorBadges(db, await presentMany(db, saved)),
     ]);
     const byId = new Map(savedItems.map((item) => [item.cloudId, item]));
     const orderedBookmarks = bookmarkIds.flatMap((postId) => byId.has(postId) ? [byId.get(postId)!] : []);

@@ -54,6 +54,7 @@ fun BrandHeader(
     onSearch: () -> Unit,
     onNotifications: () -> Unit,
     trailing: @Composable (() -> Unit)? = null,
+    showSearch: Boolean = true,
 ) {
     Box(
         modifier = Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal),
@@ -77,7 +78,7 @@ fun BrandHeader(
             )
         }
         Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onSearch, modifier = Modifier.size(40.dp)) {
+            if (showSearch) IconButton(onClick = onSearch, modifier = Modifier.size(40.dp)) {
                 Icon(HeikaIcons.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
             }
             if (trailing != null) trailing() else IconButton(onClick = onNotifications, modifier = Modifier.size(40.dp)) {

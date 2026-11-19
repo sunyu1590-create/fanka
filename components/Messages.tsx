@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ArrowLeft, ArrowUp, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
-import { cloudRequest } from "@/lib/cloud";
 import { authRedirectUrl } from "@/lib/auth-redirect";
 import { promptInApp } from "@/lib/in-app-dialog";
 import { clearInboxSummary, readInboxSummary } from "@/lib/inbox-summary";
@@ -12,10 +11,9 @@ import RecoveryCodesPage from "./RecoveryCodesPage";
 import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelcomePage";
 import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
-import ProfileBadgeList, { type ProfileBadge } from "./ProfileBadgeList";
+import { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
 type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null; badges?: ProfileBadge[] };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
-type OfficialNotice = { id: string; title: string; body: string; image_url: string | null; action_label: string | null; action_url: string | null; published_at: string; delivered_at: string; read_at: string | null };
 /** 撤回窗口（秒），与服务端 180 秒保持一致。 */
 const RECALL_SECONDS = 180;
 
@@ -73,8 +71,6 @@ export default function Messages({
     [query, setQuery] = useState(""),
     [people, setPeople] = useState<Profile[]>([]),
     [rooms, setRooms] = useState<Room[]>([]),
-    [officialNotices, setOfficialNotices] = useState<OfficialNotice[]>([]),
-    [officialInboxOpen, setOfficialInboxOpen] = useState(false),
     [names, setNames] = useState<Record<string, Profile>>({}),
     [active, setActive] = useState<Room | null>(null),
     [messages, setMessages] = useState<Message[]>([]),
@@ -194,8 +190,6 @@ export default function Messages({
               updateActiveConversation(null);
               setMessages([]);
               setRooms([]);
-              setOfficialNotices([]);
-              setOfficialInboxOpen(false);
               setPeople([]);
             }
             setUser(session?.user ?? null);
@@ -234,13 +228,7 @@ export default function Messages({
     if (refreshing.current) { refreshQueued.current = true; return; }
     refreshing.current = true;
     try {
-      const [summaryResult, noticesResult] = await Promise.allSettled([
-        readInboxSummary(db, user.id),
-        cloudRequest("/api/v1/official-notices") as Promise<{ items?: OfficialNotice[] } | null>,
-      ]);
-      if (summaryResult.status === "rejected") throw summaryResult.reason;
-      const summary = summaryResult.value;
-      if (noticesResult.status === "fulfilled" && userIdRef.current === user.id) setOfficialNotices(noticesResult.value?.items || []);
+      const summary = await readInboxSummary(db, user.id);
       if (userIdRef.current !== user.id) return;
       const rows: Room[] = summary.map((row) => ({ id: row.conversation_id, user_a: row.user_a, user_b: row.user_b, created_at: row.created_at }));
       setRooms(rows);
@@ -282,16 +270,6 @@ export default function Messages({
         window.setTimeout(() => void refresh(), 0);
       }
     }
-  };
-  const openOfficialInbox = async () => {
-    if (!user) return;
-    setOfficialInboxOpen(true);
-    try {
-      await cloudRequest("/api/v1/official-notices", {}, "POST");
-      const now = new Date().toISOString();
-      setOfficialNotices((items) => items.map((item) => ({ ...item, read_at: item.read_at || now })));
-      window.dispatchEvent(new Event("heika-read"));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "官方通知读取失败"); }
   };
   const read = async (room: string) => {
     if (db && user)
@@ -652,6 +630,7 @@ export default function Messages({
       setAuthView("login");
       setAuthMessage("");
       try { window.localStorage.removeItem("heika:pending-invitation"); } catch {}
+      window.dispatchEvent(new Event("heika:pending-invitation"));
     }} />;
   if (!user || authView === "reset")
   if (!user || authView === "reset")
@@ -689,7 +668,7 @@ export default function Messages({
   return (
     <section className={`page messages-page${active ? " is-chat-open" : ""}`}>
       <div className="messages-inbox-pane">
-      <div className="messages-title-row"><div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0) + officialNotices.filter((notice) => !notice.read_at).length} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开社区通知"><Bell size={19}/></button>}</div>
+      <div className="messages-title-row"><div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0)} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开通知中心"><Bell size={19}/></button>}</div>
       {!active && <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />}
       <div className="messages-inbox-switch" role="tablist" aria-label="消息列表类别">
         <button type="button" role="tab" aria-selected={inboxMode === "chats"} className={inboxMode === "chats" ? "selected" : ""} onClick={() => { setInboxMode("chats"); setQuery(""); setPeople([]); }}>会话 <small>{rooms.length}</small></button>
@@ -714,9 +693,6 @@ export default function Messages({
         <button type="button" className={inboxFilter === "all" ? "selected" : ""} aria-pressed={inboxFilter === "all"} onClick={() => setInboxFilter("all")}>全部</button>
         <button type="button" className={inboxFilter === "unread" ? "selected" : ""} aria-pressed={inboxFilter === "unread"} onClick={() => setInboxFilter("unread")}>未读{Object.values(unread).reduce((sum, count) => sum + count, 0) ? ` · ${Object.values(unread).reduce((sum, count) => sum + count, 0)}` : ""}</button>
       </div>}
-      {inboxMode === "chats" && (inboxFilter !== "unread" || officialNotices.some((notice) => !notice.read_at)) && <button type="button" className="official-notice-entry" onClick={() => void openOfficialInbox()}>
-        <span className="official-notice-avatar"><Bell size={18}/></span><span className="official-notice-entry-copy"><strong>黑卡官方菌</strong><small>{officialNotices[0]?.title || "官方公告和重要提醒会出现在这里"}</small></span><span className="official-notice-entry-meta"><small>通知</small>{officialNotices.filter((notice) => !notice.read_at).length > 0 && <i>{officialNotices.filter((notice) => !notice.read_at).length}</i>}</span>
-      </button>}
       {inboxMode === "people" && people.map((p) => (
         <button
           className="conversation-row conversation-person-row"
@@ -725,7 +701,7 @@ export default function Messages({
         >
           <span className="conversation-row-head">
             <span className="conversation-avatar">{(p.nickname || "探").slice(0, 1)}{p.avatar_url && <img src={p.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-            <span className="conversation-row-copy"><strong>{p.nickname || "探索者"}</strong><ProfileBadgeList badges={p.badges || []} compact/><small>{p.bio || "查看主页并开始交流"}</small></span>
+            <span className="conversation-row-copy"><strong>{p.nickname || "探索者"}<ProfileBadgeMarks badges={p.badges || []} compact/></strong><small>{p.bio || "查看主页并开始交流"}</small></span>
             <span className="conversation-row-meta"><small>用户</small></span>
           </span>
         </button>
@@ -746,7 +722,7 @@ export default function Messages({
               <button className="conversation-row" onClick={() => { updateActiveConversation(r); setMessages([]); void load(r); }}>
                 <span className="conversation-row-head">
                   <span className="conversation-avatar">{(names[id]?.nickname || "探").slice(0, 1)}{names[id]?.avatar_url && <img src={names[id].avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-                  <span className="conversation-row-copy"><strong>{names[id]?.nickname || "探索者"}{pinnedRooms.includes(r.id) && <Pin size={11} aria-label="已置顶"/>}</strong><ProfileBadgeList badges={names[id]?.badges || []} compact/><small>{preview[r.id]?.body || "开启一段新的交流"}</small></span>
+                  <span className="conversation-row-copy"><strong>{names[id]?.nickname || "探索者"}{pinnedRooms.includes(r.id) && <Pin size={11} aria-label="已置顶"/>}<ProfileBadgeMarks badges={names[id]?.badges || []} compact/></strong><small>{preview[r.id]?.body || "开启一段新的交流"}</small></span>
                   <span className="conversation-row-meta"><time>{preview[r.id] ? new Date(preview[r.id].created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}</time>{unread[r.id] ? <i className="conversation-unread">{unread[r.id] > 99 ? "99+" : unread[r.id]}</i> : null}</span>
                 </span>
               </button>
@@ -761,20 +737,13 @@ export default function Messages({
         return (inboxFilter !== "unread" || !!unread[room.id]) && (!query.trim() || `${names[peerId]?.nickname || ""} ${preview[room.id]?.body || ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
       }) && <div className="messages-empty compact"><strong>{inboxFilter === "unread" ? "没有未读会话" : "没有匹配的会话"}</strong><span>{inboxFilter === "unread" ? "新消息会出现在这里。" : "试试昵称或最近消息中的关键词。"}</span></div>}
       </div>
-      {officialInboxOpen && <section className="official-inbox-page" aria-label="黑卡官方菌消息">
-          <header><button type="button" aria-label="返回消息列表" onClick={() => setOfficialInboxOpen(false)}><ArrowLeft size={20}/></button><div><h2>黑卡官方菌</h2><p>平台公告与重要提醒</p></div></header>
-          <div className="official-inbox-cards">{officialNotices.length ? officialNotices.map((notice) => <article className="official-notice-card" key={notice.id}>
-            <small>{new Date(notice.published_at).toLocaleString("zh-CN")}</small><h3>{notice.title}</h3><p>{notice.body}</p>{notice.image_url && <img src={notice.image_url} alt="通知图片" loading="lazy"/>}{notice.action_label && notice.action_url && <a href={notice.action_url} target={notice.action_url.startsWith("/") ? undefined : "_blank"} rel={notice.action_url.startsWith("/") ? undefined : "noopener noreferrer"}>{notice.action_label}</a>}
-          </article>) : <div className="messages-empty compact"><strong>暂时没有官方通知</strong><span>后续公告和提醒会出现在这里。</span></div>}</div>
-        </section>}
       {profile && (
         <div className="modal-backdrop">
           <div className="modal">
             <button className="close" onClick={() => setProfile(null)}>
               关闭
             </button>
-            <h2>{profile.nickname}</h2>
-            <ProfileBadgeList badges={profile.badges || []}/>
+            <h2>{profile.nickname}<ProfileBadgeMarks badges={profile.badges || []}/></h2>
             <p>{profile.bio || "这个人还没有写下简介。"}</p>
             <button
               className="primary-button"
@@ -899,7 +868,7 @@ export default function Messages({
               <span className="chat-peer-avatar">
                 {names[peer]?.avatar_url ? <img src={names[peer].avatar_url!} alt="" /> : (names[peer]?.nickname || "探").slice(0, 1)}
               </span>
-              <span className="chat-peer-copy"><strong>{names[peer]?.nickname || "探索者"}</strong><ProfileBadgeList badges={names[peer]?.badges || []} compact/><small>个人主页</small></span>
+              <span className="chat-peer-copy"><strong>{names[peer]?.nickname || "探索者"}<ProfileBadgeMarks badges={names[peer]?.badges || []} compact/></strong><small>个人主页</small></span>
             </button>
             <button className="chat-more" aria-label="会话选项" onClick={() => setProfile(names[peer] || { id: peer, nickname: "探索者", bio: "" })}>
               <MoreHorizontal size={21} />

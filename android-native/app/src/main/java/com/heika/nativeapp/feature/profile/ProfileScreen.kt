@@ -187,7 +187,12 @@ fun ProfileScreen(
                             HeikaAvatar(profile.avatar, profile.nickname, 56.dp, contentDescription = "${profile.nickname}头像")
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Text(profile.nickname, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(profile.nickname, Modifier.weight(1f, fill = false), color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    state.badges.take(3).forEach { badge ->
+                                        val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(MaterialTheme.colorScheme.primary)
+                                        Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(15.dp))
+                                    }
+                                    if (state.badges.size > 3) Text("+${state.badges.size - 3}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
                                     if (userId == null) Text("LV${state.stats.level}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .3.sp)
                                 }
                                 if (profile.bio.isNotBlank()) Text(profile.bio, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
@@ -205,15 +210,6 @@ fun ProfileScreen(
                                 if (visibleDetails.isNotEmpty()) Text(visibleDetails.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .82f), fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
                             }
                             if (userId == null) Icon(HeikaIcons.Edit, "编辑资料", Modifier.size(42.dp).clip(CircleShape).clickable(onClick = onEditProfile).padding(10.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (state.badges.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(bottom = 7.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            state.badges.take(4).forEach { badge ->
-                                Row(Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(com.heika.nativeapp.ui.HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(11.dp))
-                                    Text(badge.label, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                            if (state.badges.size > 4) Text("+${state.badges.size - 4}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(vertical = 5.dp))
                         }
                         if (state.own) {
                             Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceAround) {

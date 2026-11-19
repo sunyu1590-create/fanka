@@ -24,10 +24,11 @@ test("发布图片最多 9 张，超限时整组选图不会加入", () => {
   assert.match(result.error, /最多添加 9 张/);
 });
 
-test("话题只接受官方目录，限制数量且拒绝重复", () => {
+test("话题允许即时创建，仍限制数量、格式并拒绝重复", () => {
   assert.deepEqual(validateTopicNames(["生活", "摄影"], tags).names, ["生活", "摄影"]);
   assert.match(validateTopicNames(["生活", "生活"], tags).error, /不能重复/);
-  assert.match(validateTopicNames(["不存在的话题"], tags).error, /精选话题/);
+  assert.deepEqual(validateTopicNames(["#新话题"], tags).names, ["新话题"]);
+  assert.match(validateTopicNames(["带空格 的话题"], tags).error, /不能包含空格/);
   assert.match(validateTopicNames(Array.from({ length: MAX_POST_TOPICS + 1 }, () => "生活"), tags).error, /最多选择/);
 });
 

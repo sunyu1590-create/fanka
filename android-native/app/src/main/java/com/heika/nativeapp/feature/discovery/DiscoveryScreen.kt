@@ -151,7 +151,7 @@ fun DiscoveryScreen(
     var communityCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var aiCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var extraFiltersExpanded by rememberSaveable { mutableStateOf(false) }
-    val rangeDp = 42.dp + (if (filter.channel == "ai") 96.dp else 0.dp) + if (extraFiltersExpanded) {
+    val rangeDp = 84.dp + (if (filter.channel == "ai") 96.dp else 0.dp) + if (extraFiltersExpanded) {
         (if (tags.isNotEmpty()) 36.dp else 0.dp) + (if (filter.channel == "ai") 36.dp else 0.dp) + 40.dp
     } else 0.dp
     val density = LocalDensity.current
@@ -182,49 +182,24 @@ fun DiscoveryScreen(
             onSearch = onSearch,
             onNotifications = onNotifications,
             trailing = {
-                androidx.compose.material3.IconButton(onClick = onNotifications) {
-                    Icon(HeikaIcons.Notifications, contentDescription = "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                androidx.compose.material3.IconButton(onClick = {
-                    extraFiltersExpanded = !extraFiltersExpanded
-                    if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
-                }) {
-                    Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f)).padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ChannelOption("精选", filter.channel == "community", compact = true) {
+                        viewModel.selectChannel("community")
+                        HeikaNoticeBus.showSelection("已切换到精选")
+                    }
+                    ChannelOption("AI", filter.channel == "ai", compact = true) {
+                        viewModel.selectChannel("ai")
+                        HeikaNoticeBus.showSelection("已切换到 AI")
+                    }
+                    ChannelOption("商城", false, compact = true) { onOpenMall() }
                 }
             },
+            showSearch = false,
         )
-        Row(
-            Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f))
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ChannelOption("精选", filter.channel == "community") {
-                    viewModel.selectChannel("community")
-                    HeikaNoticeBus.showSelection("已切换到精选")
-                }
-                ChannelOption("AI", filter.channel == "ai") {
-                    viewModel.selectChannel("ai")
-                    HeikaNoticeBus.showSelection("已切换到 AI")
-                }
-                ChannelOption("商城", false) { onOpenMall() }
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                "${filter.category?.name ?: if (filter.channel == "community") "推荐" else "AI"} · ${filter.sort}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable {
-                    if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
-                },
-            )
-        }
         Box(
             Modifier.fillMaxWidth()
                 .height(with(density) { (rangePx - collapsedPx).coerceAtLeast(0f).toDp() })
@@ -233,6 +208,31 @@ fun DiscoveryScreen(
             Column(
                 Modifier.fillMaxWidth().height(rangeDp).offset { IntOffset(0, -collapsedPx.toInt()) },
             ) {
+                Row(
+                    Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        Modifier.weight(1f).height(34.dp).clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f))
+                            .clickable(onClick = onSearch).padding(horizontal = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(HeikaIcons.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        Text("搜索精选与 AI 内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    androidx.compose.material3.IconButton(
+                        onClick = {
+                            extraFiltersExpanded = !extraFiltersExpanded
+                            if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
+                        },
+                        modifier = Modifier.size(38.dp),
+                    ) {
+                        Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 if (filter.channel == "ai") AiResourceSpaceEntry(hazeState = badgeHazeState, onClick = onAiResources)
                 LazyRow(
                     Modifier.height(42.dp),
@@ -380,19 +380,19 @@ private fun AiResourceSpaceEntry(hazeState: HazeState, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ChannelOption(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ChannelOption(label: String, selected: Boolean, compact: Boolean = false, onClick: () -> Unit) {
     val color by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         tween(220), label = "discover-channel-color",
     )
     Box(
-        Modifier.width(74.dp).height(34.dp).clip(RoundedCornerShape(50))
+        Modifier.width(if (compact) 58.dp else 74.dp).height(34.dp).clip(RoundedCornerShape(50))
             .background(if (selected) MaterialTheme.colorScheme.surface else Color.Transparent)
             .border(.7.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .58f) else MaterialTheme.colorScheme.outline.copy(alpha = .48f), RoundedCornerShape(50))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = color, fontSize = 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
+        Text(label, color = color, fontSize = if (compact) 10.sp else 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
     }
 }
 
@@ -625,7 +625,7 @@ internal fun FeedCard(
                     hazeState = hazeState,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                     shape = RoundedCornerShape(HeikaRadii.categoryTag),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.5.dp),
                 ) {
                     Text(post.tag, tagSharedModifier, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -661,7 +661,11 @@ internal fun FeedCard(
             }
         }
         Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(post.author, Modifier.weight(1f).then(authorSharedModifier), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(post.author, Modifier.weight(1f, fill = false).then(authorSharedModifier), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            post.authorBadges.take(3).forEach { badge ->
+                val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(MaterialTheme.colorScheme.primary)
+                Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.padding(start = 3.dp).size(13.dp))
+            }
             Icon(HeikaIcons.LikeOutline, contentDescription = "赞", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
             Text(" ${post.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
             Icon(HeikaIcons.OpenInNew, contentDescription = "打开内容详情", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 5.dp).size(12.dp).alpha(.62f))
@@ -681,7 +685,7 @@ private fun RatingTag(
         hazeState = hazeState,
         modifier = modifier,
         shape = RoundedCornerShape(HeikaRadii.ratingTag),
-        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 1.dp),
+        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.5.dp),
     ) {
         Row(contentModifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             Icon(HeikaIcons.StarOutline, contentDescription = null, tint = HeikaGold, modifier = Modifier.size(10.dp))

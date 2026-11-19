@@ -15,6 +15,7 @@ data class HeikaPost(
     val author: String,
     val authorId: String?,
     val authorAvatar: String?,
+    val authorBadges: List<HeikaPostBadge> = emptyList(),
     val date: String,
     val thumbnails: List<String>,
     val images: List<String>,
@@ -53,6 +54,14 @@ data class HeikaPost(
                 author = json.optString("author", "黑卡编辑部"),
                 authorId = json.optString("authorId").takeIf(String::isNotBlank),
                 authorAvatar = json.optString("authorAvatar").takeIf(String::isNotBlank)?.toWebUrl(),
+                authorBadges = json.optJSONArray("authorBadges").jsonObjects().map { badge ->
+                    HeikaPostBadge(
+                        id = badge.optString("id"),
+                        label = badge.optString("label"),
+                        description = badge.optString("description"),
+                        color = badge.optString("color"),
+                    )
+                },
                 date = json.optString("date"),
                 thumbnails = thumbnails.map(String::toWebUrl),
                 images = images.map(String::toWebUrl),
@@ -70,6 +79,8 @@ data class HeikaPost(
         }
     }
 }
+
+data class HeikaPostBadge(val id: String, val label: String, val description: String, val color: String)
 
 data class HeikaCategory(val id: Int, val name: String, val parentId: Int? = null)
 
@@ -109,6 +120,10 @@ data class HeikaNotification(
     val actorAvatar: String?,
     val postTitle: String?,
     val postId: String?,
+    val body: String?,
+    val imageUrl: String?,
+    val actionLabel: String?,
+    val actionUrl: String?,
 ) {
     companion object {
         fun from(json: JSONObject): HeikaNotification {
@@ -126,6 +141,10 @@ data class HeikaNotification(
                 postTitle = post?.optString("title")?.takeIf(String::isNotBlank),
                 // The existing website's share/detail route accepts the numeric client id.
                 postId = post?.optInt("id")?.takeIf { it > 0 }?.toString(),
+                body = json.optString("body").takeIf(String::isNotBlank),
+                imageUrl = json.optString("image_url").takeIf(String::isNotBlank)?.toWebUrl(),
+                actionLabel = json.optString("action_label").takeIf(String::isNotBlank),
+                actionUrl = json.optString("action_url").takeIf(String::isNotBlank),
             )
         }
     }

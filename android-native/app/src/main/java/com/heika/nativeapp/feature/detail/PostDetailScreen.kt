@@ -167,6 +167,7 @@ fun PostDetailScreen(
     var reportReason by remember { mutableStateOf("垃圾营销或重复内容") }
     var reportNote by remember { mutableStateOf("") }
     var moreOpen by remember { mutableStateOf(false) }
+    var aiMoreAction by remember(state.post?.cloudId) { mutableStateOf<String?>(null) }
     var feedbackOpen by remember { mutableStateOf(false) }
     var feedbackText by remember { mutableStateOf("") }
     var feedbackCategory by remember { mutableStateOf("problem") }
@@ -235,6 +236,28 @@ fun PostDetailScreen(
                             viewModel.showNotice("链接已复制")
                         })
                         DropdownMenuItem(text = { Text("分享内容") }, leadingIcon = { Icon(HeikaIcons.Share, null) }, onClick = { moreOpen = false; onShare(current) })
+                        if (current.channel == "ai") {
+                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                            Text("资源与版本", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            val hasVersionData = state.aiVersionsLoading || state.aiVersions.isNotEmpty() || current.resourceData.has("version") || current.resourceData.has("changelog")
+                            if (hasVersionData) DropdownMenuItem(
+                                text = { Text(if (state.aiVersionsLoading) "查看更新记录 · 加载中" else "查看更新记录") },
+                                leadingIcon = { Icon(HeikaIcons.Info, null) },
+                                onClick = { moreOpen = false; aiMoreAction = "versions" },
+                            )
+                            if (current.resourceData.length() > 0) DropdownMenuItem(
+                                text = { Text("相关资源") },
+                                leadingIcon = { Icon(HeikaIcons.Download, null) },
+                                onClick = { moreOpen = false; aiMoreAction = "resources" },
+                            )
+                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                            Text("反馈与操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            DropdownMenuItem(
+                                text = { Text("内容纠错") },
+                                leadingIcon = { Icon(HeikaIcons.Comment, null) },
+                                onClick = { moreOpen = false; aiMoreAction = "feedback" },
+                            )
+                        }
                         androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
                         Text("内容反馈", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                         DropdownMenuItem(text = { Text("内容反馈") }, leadingIcon = { Icon(HeikaIcons.Comment, null) }, onClick = { moreOpen = false; feedbackOpen = true })
@@ -293,25 +316,33 @@ fun PostDetailScreen(
                         }
                         if (item.images.size > 1) {
                             val pagerState = rememberPagerState(pageCount = { item.images.size })
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Box(Modifier.fillMaxWidth().aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                                    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                                        val sharedImageModifier = if (page == 0 && sharedElementsEnabled) with(sharedTransitionScope) {
-                                            Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), isDetail = true, enabled = true)
-                                        } else Modifier
-                                        DetailImage(
-                                            url = item.images[page],
-                                            thumbUrl = item.thumbnail,
-                                            postId = item.cloudId,
-                                            index = page,
-                                            contentDescription = "${item.title}，第 ${page + 1} 张",
-                                            imageLoader = imageLoader,
-                                            contentScale = ContentScale.Fit,
-                                            modifier = Modifier.fillMaxSize().then(sharedImageModifier),
-                                        )
-                                    }
+                            Box(Modifier.fillMaxWidth().aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                                    val sharedImageModifier = if (page == 0 && sharedElementsEnabled) with(sharedTransitionScope) {
+                                        Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), isDetail = true, enabled = true)
+                                    } else Modifier
+                                    DetailImage(
+                                        url = item.images[page],
+                                        thumbUrl = item.thumbnail,
+                                        postId = item.cloudId,
+                                        index = page,
+                                        contentDescription = "${item.title}，第 ${page + 1} 张",
+                                        imageLoader = imageLoader,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize().then(sharedImageModifier),
+                                    )
                                 }
-                                Text("${pagerState.currentPage + 1} / ${item.images.size}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
+                                val counterShape = RoundedCornerShape(50)
+                                HeikaGlassSurface(
+                                    hazeState = hazeState,
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp)
+                                        .border(.6.dp, MaterialTheme.colorScheme.outline.copy(alpha = .5f), counterShape),
+                                    shape = counterShape,
+                                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 5.dp),
+                                    drawTopHighlight = false,
+                                ) {
+                                    Text("${pagerState.currentPage + 1} / ${item.images.size}", color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                }
                             }
                         } else item.images.forEachIndexed { index, image ->
                             val sharedImageModifier = if (index == 0 && sharedElementsEnabled) with(sharedTransitionScope) {
@@ -370,15 +401,23 @@ fun PostDetailScreen(
                         Row(Modifier.fillMaxWidth().clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             HeikaAvatar(item.authorAvatar, item.author, 38.dp, contentDescription = "${item.author}头像")
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                Text(
-                                    item.author,
-                                    if (sharedElementsEnabled) with(sharedTransitionScope) {
-                                        Modifier.heikaSharedPostMeta(sharedTransitionScope, animatedVisibilityScope, item.sharedAuthorKey())
-                                    } else Modifier,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    Text(
+                                        item.author,
+                                        (if (sharedElementsEnabled) with(sharedTransitionScope) {
+                                            Modifier.heikaSharedPostMeta(sharedTransitionScope, animatedVisibilityScope, item.sharedAuthorKey())
+                                        } else Modifier).weight(1f, fill = false),
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    item.authorBadges.take(3).forEach { badge ->
+                                        val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(MaterialTheme.colorScheme.primary)
+                                        Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(14.dp))
+                                    }
+                                }
                                 Text(item.date, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 10.sp)
                             }
                             if (item.authorId != null) androidx.compose.material3.OutlinedButton(onClick = viewModel::toggleFollow, enabled = !state.followSending, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
@@ -407,6 +446,8 @@ fun PostDetailScreen(
                                 onRetryVersions = { viewModel.loadAiVersions(item, force = true) },
                                 onSubmitFeedback = { kind, details -> viewModel.submitAiFeedback(kind, details) },
                                 onOpenAttachment = { path, name -> viewModel.openAttachment(path, name) },
+                                action = aiMoreAction,
+                                onActionClose = { aiMoreAction = null },
                             )
                         }
                         item.tags.takeIf { it.isNotEmpty() }?.let { tags ->

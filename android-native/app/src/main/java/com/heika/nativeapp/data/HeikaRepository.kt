@@ -157,7 +157,17 @@ class HeikaRepository @Inject constructor(
     }
 
     suspend fun publicCardIds(): List<Int> = withContext(Dispatchers.IO) {
-        (request("/api/demo/cards") as? JSONArray).jsonObjects().mapNotNull { it.optInt("id").takeIf { id -> id > 0 } }
+        val mixed = runCatching {
+            (request("/api/v1/deck/candidates") as? JSONArray).jsonObjects()
+                .mapNotNull { it.optInt("id").takeIf { id -> id > 0 } }
+        }.getOrDefault(emptyList())
+        if (mixed.isNotEmpty()) return@withContext mixed
+        // Keep the established community deck available during server rollout,
+        // and when the new mixed candidate pool is temporarily empty.
+        runCatching {
+            (request("/api/demo/cards") as? JSONArray).jsonObjects()
+                .mapNotNull { it.optInt("id").takeIf { id -> id > 0 } }
+        }.getOrDefault(emptyList())
     }
 
     suspend fun revealedCards(ids: List<Int>): List<HeikaPost> = withContext(Dispatchers.IO) {

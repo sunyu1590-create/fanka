@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { ATTACHMENT_BUCKET, normalizeAttachments, readAttachments } from "@/lib/attachments";
 import { adminClient } from "@/lib/server/admin-client";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
-import { libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
+import { attachAuthorBadges, libraryFields, presentMany, type LibraryRow } from "@/lib/server/library";
 import { AI_CONTENT_TYPES, validateAiResourceData, safeResourceLink, type AiContentType } from "@/lib/ai-resources";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
     const ratingMap = new Map((ratings.data || []).map((item) => [item.post_id, item]));
     const likeMap = new Map((likes.data || []).map((item) => [item.post_id, item.like_count]));
     const savedSet = new Set((bookmarks.data || []).map((item) => item.post_id));
-    const presented = await presentMany(db, rows);
+    const presented = await attachAuthorBadges(db, await presentMany(db, rows));
     return {
       items: rows.map((row, index) => {
         const rating = ratingMap.get(row.id);

@@ -3,6 +3,7 @@ package com.heika.nativeapp.auth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +44,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -375,28 +385,89 @@ private fun NewAccountRecoveryPage(codes: List<String>, onConfirm: () -> Unit) {
 @Composable
 private fun InvitationWelcomePage(invitation: org.json.JSONObject, onContinue: () -> Unit) {
     val badge = invitation.optJSONObject("badge")?.optString("label").orEmpty().ifBlank { "受邀入驻" }
-    val days = invitation.optInt("rewardDays", 30).coerceAtLeast(1)
+    val days = invitation.optInt("rewardDays").coerceAtLeast(0)
     val batch = invitation.optString("batchLabel").takeIf { it.isNotBlank() && it != "null" }
+    var opened by rememberSaveable { mutableStateOf(false) }
+    val flapRotation by animateFloatAsState(
+        targetValue = if (opened) 180f else 0f,
+        animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing),
+        label = "invitation-envelope-flap",
+    )
+    val envelopeBase = androidx.compose.ui.graphics.Color(0xFFD2C19B)
+    val envelopeFold = androidx.compose.ui.graphics.Color(0xFFBBA578)
+    val paper = androidx.compose.ui.graphics.Color(0xFFFFFCF3)
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 30.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 22.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
-            Text("✦", color = MaterialTheme.colorScheme.primary, fontSize = 25.sp)
-            Text("一封来自黑卡的欢迎信", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            Text("谢谢你，受邀而来。", color = MaterialTheme.colorScheme.onBackground, fontSize = 27.sp, fontWeight = FontWeight.SemiBold)
-            Text("你好，欢迎来到黑卡。", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text("这封信想先认真地对你说一声谢谢。感谢邀请你的人愿意把黑卡介绍给你，也感谢你愿意接过这份邀请，成为这个社区的新朋友。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
-            Text("黑卡从一个简单的念头开始：让人们在一次次探索里遇见值得停留的内容，也让每一份真诚的分享都被看见。一个社区之所以慢慢长大，靠的不是热闹的口号，而是像你这样愿意加入、愿意交流、愿意留下好内容的人。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
-            Text("你的账号已经获得「$badge」标识。之后，其他用户可以在你的公开主页和私信资料旁看到它，知道你是通过社区邀请加入的。这份标识代表一次友好的引荐，也代表我们欢迎你在这里找到自己的位置。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
-            Text("同时，我们已为你的账号开通 Pro $days 天。希望这段时间能让你更自在地体验黑卡的探索与创作功能。你可以慢慢熟悉这里，不必急着发布什么；当灵感出现时，也期待看到你愿意分享的故事、经验或作品。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
-            Text("如果你是带着创作计划来的，欢迎把这里当作一个认真交流的地方；如果你只是想先四处看看，也完全没关系。无论从哪里开始，我们都希望你能在黑卡里发现一些新的想法，并遇见值得继续交流的人。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
-            Text("再次感谢你的加入。愿你在黑卡的每一次翻阅，都能遇见一点意料之外的惊喜。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
-            androidx.compose.material3.HorizontalDivider()
-            Text("诚挚欢迎", Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-            Text("黑卡官方菌", Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-            batch?.let { Text("邀请批次：$it", Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End) }
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("一封专属于你的邀请", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (opened) "信已展开，慢慢读完这份欢迎。" else "封印已经为你准备好。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
-        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("进入黑卡") }
+        Box(
+            Modifier.fillMaxWidth().height(224.dp).clip(RoundedCornerShape(3.dp)).clickable(enabled = !opened) { opened = true },
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawRect(envelopeBase)
+                val centerX = size.width / 2f
+                val centerY = size.height * .48f
+                val lower = Path().apply {
+                    moveTo(0f, size.height * .32f); lineTo(centerX, size.height * .78f)
+                    lineTo(size.width, size.height * .32f); lineTo(size.width, size.height)
+                    lineTo(0f, size.height); close()
+                }
+                drawPath(lower, envelopeFold)
+                val left = Path().apply { moveTo(0f, 0f); lineTo(centerX, centerY); lineTo(0f, size.height); close() }
+                val right = Path().apply { moveTo(size.width, 0f); lineTo(centerX, centerY); lineTo(size.width, size.height); close() }
+                drawPath(left, envelopeBase.copy(alpha = .62f))
+                drawPath(right, envelopeBase.copy(alpha = .78f))
+                drawRect(paper, topLeft = androidx.compose.ui.geometry.Offset(size.width * .08f, size.height * .06f), size = androidx.compose.ui.geometry.Size(size.width * .84f, size.height * .78f))
+            }
+            Canvas(
+                Modifier.fillMaxWidth().height(111.dp).align(Alignment.TopCenter)
+                    .graphicsLayer {
+                        rotationX = flapRotation
+                        transformOrigin = TransformOrigin(.5f, 0f)
+                        cameraDistance = 30 * density
+                    },
+            ) {
+                val flap = Path().apply { moveTo(0f, 0f); lineTo(size.width, 0f); lineTo(size.width / 2f, size.height * .92f); close() }
+                drawPath(flap, envelopeBase.copy(alpha = if (opened) .88f else 1f))
+            }
+            Text("黑卡邀请函", Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 23.dp), color = androidx.compose.ui.graphics.Color(0xFF56482D), fontSize = 11.sp, letterSpacing = 1.8.sp)
+            Text("✦", Modifier.align(Alignment.Center).padding(top = 2.dp), color = androidx.compose.ui.graphics.Color(0xFFFFF3D0), fontSize = 18.sp)
+            if (!opened) Text("轻触封印，打开这封信", Modifier.align(Alignment.BottomCenter).padding(bottom = 17.dp), color = androidx.compose.ui.graphics.Color(0xFF594B31), fontSize = 11.sp)
+        }
+        AnimatedVisibility(
+            visible = opened,
+            enter = fadeIn(tween(420, delayMillis = 180)) + slideInVertically(tween(560, delayMillis = 100)) { it / 9 },
+        ) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).background(paper).border(1.dp, androidx.compose.ui.graphics.Color(0xFFD6C69F), RoundedCornerShape(4.dp)).padding(horizontal = 23.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text("✦  一封来自黑卡的欢迎信", color = androidx.compose.ui.graphics.Color(0xFF9B7B3E), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+                Text("谢谢你，受邀而来。", color = androidx.compose.ui.graphics.Color(0xFF25231E), fontSize = 27.sp, fontWeight = FontWeight.SemiBold)
+                Text("你好，欢迎来到黑卡。", color = androidx.compose.ui.graphics.Color(0xFF403B31), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Text("这封信想先认真地对你说一声谢谢。感谢愿意邀请你的人把黑卡介绍给你，也感谢你愿意接过这份邀请，成为社区的新朋友。", color = androidx.compose.ui.graphics.Color(0xFF625B4F), fontSize = 13.sp, lineHeight = 21.sp)
+                Text("黑卡从一个简单的念头开始：让人们在一次次探索里遇见值得停留的内容，也让每一份真诚的分享都被看见。一个社区慢慢长大，靠的是愿意加入、愿意交流、愿意留下好内容的人。", color = androidx.compose.ui.graphics.Color(0xFF625B4F), fontSize = 13.sp, lineHeight = 21.sp)
+                Text("你的账号已经获得「$badge」标识。其他用户可以在你的公开主页与私信资料旁看到它，知道你是通过社区邀请加入的。这份标识代表一次友好的引荐，也代表我们欢迎你在这里找到自己的位置。", color = androidx.compose.ui.graphics.Color(0xFF625B4F), fontSize = 13.sp, lineHeight = 21.sp)
+                if (days > 0) Text("邀请码已为你的账号开通专业会员 $days 天。希望这段时间能让你更自在地体验黑卡的探索与创作功能。你可以慢慢熟悉这里；当灵感出现时，我们期待看到你愿意分享的故事、经验或作品。", color = androidx.compose.ui.graphics.Color(0xFF625B4F), fontSize = 13.sp, lineHeight = 21.sp)
+                Text("如果你带着创作计划而来，欢迎把这里当作一个认真交流的地方；如果你想先四处看看，也完全没关系。无论从哪里开始，都希望你能发现新的想法，并遇见值得继续交流的人。", color = androidx.compose.ui.graphics.Color(0xFF625B4F), fontSize = 13.sp, lineHeight = 21.sp)
+                Text("再次感谢你的加入。愿你在黑卡的每一次翻阅，都能遇见一点意料之外的惊喜。", color = androidx.compose.ui.graphics.Color(0xFF625B4F), fontSize = 13.sp, lineHeight = 21.sp)
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(3.dp)).background(androidx.compose.ui.graphics.Color(0xFFF4EEDC)).padding(13.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("本次邀请礼遇", color = androidx.compose.ui.graphics.Color(0xFF756748), fontSize = 10.sp)
+                        Text(if (days > 0) "专业会员 · $days 天" else badge, color = androidx.compose.ui.graphics.Color(0xFF403722), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(badge, color = androidx.compose.ui.graphics.Color(0xFF9B7B3E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+                androidx.compose.material3.HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFFD8CBAE))
+                Text("诚挚欢迎", Modifier.fillMaxWidth(), color = androidx.compose.ui.graphics.Color(0xFF756D60), fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Text("黑卡社区", Modifier.fillMaxWidth(), color = androidx.compose.ui.graphics.Color(0xFF403B31), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                batch?.let { Text("邀请批次：$it", Modifier.fillMaxWidth(), color = androidx.compose.ui.graphics.Color(0xFF756D60), fontSize = 10.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End) }
+            }
+        }
+        if (opened) Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("进入黑卡") }
     }
 }

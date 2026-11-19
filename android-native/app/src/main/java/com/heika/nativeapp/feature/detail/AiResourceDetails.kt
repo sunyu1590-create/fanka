@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -61,15 +63,23 @@ fun AiResourceDetails(
     onRetryVersions: () -> Unit,
     onSubmitFeedback: (String, String) -> Unit,
     onOpenAttachment: (String, String) -> Unit = { _, _ -> },
+    action: String? = null,
+    onActionClose: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    var versionsExpanded by remember { mutableStateOf(false) }
-    var moreExpanded by remember { mutableStateOf(false) }
     var feedbackOpen by remember { mutableStateOf(false) }
     var selectedKind by remember { mutableStateOf("broken_link") }
     var details by remember { mutableStateOf("") }
     var expandedVersion by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(feedbackSubmitted) { if (feedbackSubmitted) { feedbackOpen = false; details = "" } }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(action) {
+        when (action) {
+            "versions" -> bringIntoViewRequester.bringIntoView()
+            "resources" -> { bringIntoViewRequester.bringIntoView(); onActionClose() }
+            "feedback" -> feedbackOpen = true
+        }
+    }
+    LaunchedEffect(feedbackSubmitted) { if (feedbackSubmitted) { feedbackOpen = false; details = ""; onActionClose() } }
     val entries = remember(resourceData.toString()) {
         resourceData.keys().asSequence().filter { it != "attachments" }.mapNotNull { key ->
             val value = resourceData.opt(key)
@@ -82,11 +92,11 @@ fun AiResourceDetails(
         }.toList()
     }
     val typeLabel = when (contentType) {
-        "agent" -> "Agent"; "skill" -> "Skill"; "prompt" -> "Prompt"; "ai_tool" -> "AI 工具"; "tutorial" -> "实战教程"; else -> "AI 知识"
+        "agent" -> "智能体"; "skill" -> "技能"; "prompt" -> "提示词"; "ai_tool" -> "AI 工具"; "tutorial" -> "实战教程"; else -> "AI 知识"
     }
 
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).padding(vertical = 4.dp),
+        Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoViewRequester).clip(RoundedCornerShape(14.dp)).padding(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("$typeLabel · 结构化资源", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -120,7 +130,7 @@ fun AiResourceDetails(
         }
         entries.forEach { (key, value) ->
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).padding(vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(aiFieldLabels[key] ?: key.replace('_', ' '), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                Text(aiFieldLabels[key] ?: "其他信息", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 val url = if (key.endsWith("_url")) safeExternalUrl(value) else null
                 if (url != null) {
                     TextButton(onClick = {
@@ -132,7 +142,7 @@ fun AiResourceDetails(
                     if (key in copyableAiFields) {
                         TextButton(onClick = {
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
-                            clipboard?.setPrimaryClip(ClipData.newPlainText(aiFieldLabels[key] ?: key, value))
+                            clipboard?.setPrimaryClip(ClipData.newPlainText(aiFieldLabels[key] ?: "其他信息", value))
                         HeikaNoticeBus.show(if (clipboard != null) "已复制到剪贴板" else "无法访问系统剪贴板", if (clipboard != null) HeikaNoticeKind.SUCCESS else HeikaNoticeKind.ERROR)
                         }) { Text("复制") }
                     }
@@ -140,34 +150,22 @@ fun AiResourceDetails(
             }
         }
 
-        // 版本记录与纠错属于低频操作，统一收进「更多」，详情页默认只留资源本身的内容。
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface)
-                .clickable { moreExpanded = !moreExpanded }.padding(horizontal = 12.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("更多", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Text("版本记录 · 报告资源失效或纠错", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+        if (action == "versions") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("更新记录${versions.takeIf { it.isNotEmpty() }?.let { " · ${it.size}" }.orEmpty()}", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                TextButton(onClick = onActionClose) { Text("关闭", fontSize = 11.sp) }
             }
-            Text(if (moreExpanded) "收起" else "展开", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-        }
-        if (moreExpanded) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("版本记录${versions.takeIf { it.isNotEmpty() }?.let { " · ${it.size}" }.orEmpty()}", Modifier.weight(1f).clickable { versionsExpanded = !versionsExpanded }, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                if (versionsLoading) Text("加载中…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                else Text(if (versionsExpanded) "收起" else "查看", Modifier.clickable { versionsExpanded = !versionsExpanded }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-            }
+            if (versionsLoading) Text("正在加载版本记录…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             if (versionsError != null) {
                 Row {
                     Text(versionsError, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                     Text("重试", Modifier.clickable(onClick = onRetryVersions), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                 }
             }
-            if (versionsExpanded && versions.isEmpty() && !versionsLoading && versionsError == null) {
+            if (versions.isEmpty() && !versionsLoading && versionsError == null) {
                 Text("暂无已发布的版本记录", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
-            if (versionsExpanded) versions.forEach { version ->
+            versions.forEach { version ->
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(version.optString("version_label").ifBlank { "未标注版本" }, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Text(version.optString("changelog").ifBlank { "资源更新" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 19.sp)
@@ -181,21 +179,18 @@ fun AiResourceDetails(
                             payload.optString("body").takeIf(String::isNotBlank)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 18.sp) }
                             payload.optJSONObject("resourceData")?.let { data ->
                                 data.keys().asSequence().forEach { key ->
-                                    Text("${aiFieldLabels[key] ?: key}: ${data.opt(key)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                    Text("${aiFieldLabels[key] ?: "其他信息"}: ${data.opt(key)}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                                 }
                             }
                         }
                     }
                 }
             }
-            if (!feedbackSubmitted) {
-                TextButton(onClick = { feedbackOpen = true }) { Text("报告资源失效或纠错") }
-            } else Text("反馈已提交", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
         }
     }
 
     if (feedbackOpen) HeikaAlertDialog(
-        onDismissRequest = { if (!feedbackSending) feedbackOpen = false },
+        onDismissRequest = { if (!feedbackSending) { feedbackOpen = false; onActionClose() } },
         title = { Text("AI 资源反馈") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -206,7 +201,7 @@ fun AiResourceDetails(
             }
         },
         confirmButton = { Button(enabled = !feedbackSending && details.trim().length >= 3, onClick = { onSubmitFeedback(selectedKind, details) }) { Text(if (feedbackSending) "提交中…" else "提交反馈") } },
-        dismissButton = { TextButton(onClick = { feedbackOpen = false }, enabled = !feedbackSending) { Text("取消") } },
+        dismissButton = { TextButton(onClick = { feedbackOpen = false; onActionClose() }, enabled = !feedbackSending) { Text("取消") } },
     )
 }
 

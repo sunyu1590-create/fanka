@@ -6,7 +6,7 @@ import {
   respond,
   ApiError,
 } from "@/lib/server/api";
-import { libraryFields, libraryFeedFields, presentMany, presentFeedMany, type LibraryRow } from "@/lib/server/library";
+import { attachAuthorBadges, libraryFields, libraryFeedFields, presentMany, presentFeedMany, type LibraryRow } from "@/lib/server/library";
 import { cardRarityTier } from "@/lib/progression";
 export async function GET(req: NextRequest) {
   const response = await respond(async () => {
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
     const likes = likesResult.data || [];
     const byPost = new Map((stats || []).map((stat) => [stat.post_id, stat]));
     const likesByPost = new Map((likes || []).map((stat) => [stat.post_id, stat.like_count]));
-    const presentations = await presentFeedMany(db, rows);
+    const presentations = await attachAuthorBadges(db, await presentFeedMany(db, rows));
     return {
       items: rows.map((row, index) => {
         const stat = byPost.get(row.id);
@@ -125,8 +125,9 @@ export async function GET(req: NextRequest) {
       limit,
     };
   });
-  if (response.ok && req.nextUrl.searchParams.get("mode") === "discover" && req.nextUrl.searchParams.get("following") !== "1") {
-    response.headers.set("Cache-Control", "public, max-age=0, s-maxage=30, stale-while-revalidate=120");
+  if (response.ok && req.nextUrl.searchParams.get("mode") === "discover") {
+    // Active certification marks must reflect grants and revocations promptly.
+    response.headers.set("Cache-Control", "private, no-store");
   }
   return response;
 }
@@ -141,7 +142,6 @@ export async function POST(req: NextRequest) {
         .from("posts")
         .select(libraryFields)
         .eq("status", "published")
-        .eq("channel", "community")
         .in("client_id", ids);
       dbError(error);
       const rows = (data || []) as unknown as LibraryRow[];
@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
       dbError(likesError);
       const byPost = new Map((stats || []).map((stat) => [stat.post_id, stat]));
       const likesByPost = new Map((likes || []).map((stat) => [stat.post_id, stat.like_count]));
-      const presentations = await presentMany(db, rows);
+      const presentations = await attachAuthorBadges(db, await presentMany(db, rows));
       const items = rows.map((row, index) => {
         const stat = byPost.get(row.id);
         const count = stat?.rating_count || 0;
@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
       .from("posts")
       .select(libraryFields)
       .eq("client_id", id)
-      .eq("channel", "community")
+      .eq("status", "published")
       .single();
     dbError(error);
     const post = data as unknown as LibraryRow;
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
     const count = stats?.rating_count || 0;
     const average = count ? stats!.rating_sum / count : 0;
     return {
-      ...(await presentMany(db, [post]))[0],
+      ...(await attachAuthorBadges(db, await presentMany(db, [post])))[0],
       rarityTier: cardRarityTier(average, count),
       ratingAverage: average,
       ratingCount: count,

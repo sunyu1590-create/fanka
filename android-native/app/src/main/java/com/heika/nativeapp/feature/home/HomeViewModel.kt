@@ -83,7 +83,6 @@ class HomeViewModel @Inject constructor(
             loading = candidates.isEmpty(),
         )
 
-        var interests = emptySet<String>()
         if (userId != HomeUiState.GUEST_ID) {
             val libraryResult = runCatching { repository.myLibraryState() }
             libraryResult.onSuccess { library ->
@@ -124,7 +123,7 @@ class HomeViewModel @Inject constructor(
         if (candidates.size < 50) {
             runCatching { repository.publicCardIds() }
                 .onSuccess { ids ->
-                    val ranked = DailyDeckLogic.rankCandidates(ids, day, interests, posts)
+                    val ranked = DailyDeckLogic.preserveCandidateOrder(ids)
                     candidates = (candidates + ranked).distinct().take(50)
                 }
                 .onFailure { if (posts.isEmpty()) mutableState.value = mutableState.value.copy(error = it.message ?: "连接暂时中断") }

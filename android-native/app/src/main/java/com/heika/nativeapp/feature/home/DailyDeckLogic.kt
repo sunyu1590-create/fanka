@@ -1,7 +1,5 @@
 package com.heika.nativeapp.feature.home
 
-import com.heika.nativeapp.data.HeikaPost
-
 object DailyDeckLogic {
     fun flipIdempotencyKey(day: String, postId: Int): String {
         require(day.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) { "翻卡日期无效" }
@@ -9,19 +7,9 @@ object DailyDeckLogic {
         return "flip:$day:$postId"
     }
 
-    fun rankCandidates(ids: List<Int>, day: String, interests: Set<String>, posts: Map<Int, HeikaPost>): List<Int> =
-        ids.sortedWith { left, right ->
-            val leftInterest = if (posts[left]?.tag?.let(interests::contains) == true) 0 else 1
-            val rightInterest = if (posts[right]?.tag?.let(interests::contains) == true) 0 else 1
-            if (leftInterest != rightInterest) leftInterest.compareTo(rightInterest)
-            else Integer.compareUnsigned(seededRank(left, day), seededRank(right, day))
-        }
-
-    fun seededRank(id: Int, seed: String): Int {
-        var value = 2166136261.toInt()
-        "$seed:$id".forEach { value = (value xor it.code) * 16777619 }
-        return value
-    }
+    /** The server already ranks and balances channels; keep that stable order locally. */
+    fun preserveCandidateOrder(ids: List<Int>): List<Int> =
+        ids.filter { it > 0 }.distinct()
 
     fun allowanceFor(tier: String?): Int = when (tier) {
         "plus" -> 9

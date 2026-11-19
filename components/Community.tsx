@@ -15,7 +15,6 @@ import {
   RefreshCw,
   ArrowUp,
   ArrowUpRight,
-  Send,
   Trash2,
   PenLine,
   ChevronDown,
@@ -36,6 +35,7 @@ import {
   GitBranch,
   CalendarDays,
   History,
+  ExternalLink,
   ImagePlus,
   Video as VideoIcon,
   LayoutGrid,
@@ -94,6 +94,7 @@ import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THR
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 import AccountSwitcher from "./AccountSwitcher";
+import ProfileBadgeList, { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
 import { rememberSession } from "@/lib/saved-accounts";
 import MembershipCenter from "./MembershipCenter";
 import CertificationSettings from "./CertificationSettings";
@@ -107,6 +108,34 @@ const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div classNa
 const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
 const AppealCenter = dynamic(() => import("./AppealCenter"));
 import type { AiContentType } from "@/lib/ai-resources";
+
+async function fetchDailyCardIds() {
+  try {
+    const primary = await cloudFetch("/api/v1/deck/candidates", { cache: "no-store" });
+    const primaryResult = await primary.json();
+    const primaryIds = Array.isArray(primaryResult.data)
+      ? primaryResult.data.map((item: { id: number | string }) => Number(item.id)).filter((id: number) => Number.isSafeInteger(id) && id > 0)
+      : [];
+    if (primary.ok && primaryIds.length) return primaryIds as number[];
+  } catch {}
+
+  // Keep the existing community deck usable if the mixed endpoint is unavailable
+  // during rollout or the AI candidate pool has not been populated yet.
+  const fallback = await cloudFetch("/api/demo/cards", { cache: "no-store" });
+  const fallbackResult = await fallback.json();
+  const fallbackIds = Array.isArray(fallbackResult.data)
+    ? fallbackResult.data.map((item: { id: number | string }) => Number(item.id)).filter((id: number) => Number.isSafeInteger(id) && id > 0)
+    : [];
+  if (!fallback.ok) throw new Error("内容加载失败，请重试");
+  return fallbackIds as number[];
+}
+
+function postShareUrl(post: Post) {
+  const origin = typeof location === "undefined" ? "https://moonclean.shop" : location.origin;
+  return post.channel === "ai" && post.cloudId
+    ? `${origin}/?aiPost=${post.id}&cloudId=${encodeURIComponent(post.cloudId)}`
+    : `${origin}/?post=${post.id}`;
+}
 
 const FLIP_RAIN_PARTICLES = 96;
 const FLIP_RAIN_DURATION_MIN_MS = 2900;
@@ -464,8 +493,17 @@ export default function Community() {
   const [chatConversationOpen, setChatConversationOpen] = useState(false);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [ownBadges, setOwnBadges] = useState<ProfileBadge[]>([]);
   const [accountTimezone, setAccountTimezone] = useState<string | null>(null);
   const [accountReady, setAccountReady] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!accountId) { setOwnBadges([]); return () => { alive = false; }; }
+    void cloudRequest("/api/v1/me/access-codes").then((result) => {
+      if (alive) setOwnBadges(((result as { badges?: ProfileBadge[] } | null)?.badges || []));
+    }).catch(() => { if (alive) setOwnBadges([]); });
+    return () => { alive = false; };
+  }, [accountId]);
   const [isStaff, setIsStaff] = useState(false);
   const [adminRole, setAdminRole] = useState<"member" | "admin" | "content_manager" | "reviewer">("member");
   const adminEntryPending = useRef(false);
@@ -904,6 +942,13 @@ export default function Community() {
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [replyTargetName, setReplyTargetName] = useState<string | undefined>();
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
+  const [aiDetailAction, setAiDetailAction] = useState<"versions" | "feedback" | "resources" | null>(null);
+  const [aiVersionsAvailable, setAiVersionsAvailable] = useState(false);
+  const closeAiDetailAction = useCallback(() => setAiDetailAction(null), []);
+  useEffect(() => {
+    setAiDetailAction(null);
+    setAiVersionsAvailable(false);
+  }, [detail]);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastDraftPayload = useRef("");
   const draftSaveTimer = useRef<number | null>(null);
@@ -968,7 +1013,6 @@ export default function Community() {
     state.interests,
     state.deck[today] || [],
     50,
-    today,
   );
   const visibleCandidates = candidates;
   const openedIds = [
@@ -1065,11 +1109,8 @@ export default function Community() {
     };
     void refreshHistory();
     // Published card IDs are public: fetching them must not wait on auth initialization.
-    void fetch("/api/demo/cards", { cache: "no-store" }).then(async (response) => {
-      const { data } = await response.json();
-      if (response.ok && !cancelled && Array.isArray(data)) {
-        setState((current) => ({ ...current, cardIds: data.map((item: { id: number }) => item.id) }));
-      }
+    void fetchDailyCardIds().then((ids) => {
+      if (!cancelled && ids.length) setState((current) => ({ ...current, cardIds: ids }));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -1291,7 +1332,7 @@ export default function Community() {
   }, [dayTick]);
   useEffect(() => {
     if (!ready || !state.cardIds.length || state.deck[today]?.length) return;
-    const deck = dailyCandidates(candidatePosts, state.interests, [], 50, today).map((post) => post.id);
+    const deck = dailyCandidates(candidatePosts, state.interests, [], 50).map((post) => post.id);
     if (!deck.length) return;
     update((current) => current.deck[today]?.length ? current : {
       ...current,
@@ -3358,10 +3399,9 @@ export default function Community() {
   const refreshFeed = async () => {
     if (tab === "today") {
       try {
-        const response = await cloudFetch("/api/demo/cards", { cache: "no-store" });
-        const result = await response.json();
-        if (!response.ok || !Array.isArray(result.data)) throw new Error();
-        setState((current) => ({ ...current, cardIds: result.data.map((item: { id: number }) => item.id) }));
+        const ids = await fetchDailyCardIds();
+        if (!ids.length) throw new Error();
+        setState((current) => ({ ...current, cardIds: ids }));
       } catch {
         setFeedError("内容加载失败，请重试");
       }
@@ -4603,7 +4643,7 @@ export default function Community() {
           <section className="mine-profile-hero" aria-label="个人资料">
             <div className="profile-card mine-profile-card">
               <div className="avatar">{state.avatar ? <img src={state.avatar} alt="头像" /> : state.name[0]}</div>
-              <div className="mine-profile-copy"><div className="mine-profile-name-row"><h2>{state.name}</h2><button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button></div><p>{state.bio || "记录生活，继续探索。"}</p>{accountId && <small className="mine-account-id">黑卡编号 · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
+              <div className="mine-profile-copy"><div className="mine-profile-name-row"><h2>{state.name}</h2><ProfileBadgeList badges={ownBadges} compact/><button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button></div><p>{state.bio || "记录生活，继续探索。"}</p>{accountId && <small className="mine-account-id">黑卡编号 · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
               <button type="button" aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={18} /></button>
             </div>
             <div className="stats exploration-stats mine-profile-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>
@@ -4911,6 +4951,13 @@ export default function Community() {
                 </button>
                 {detailMoreOpen && (
                   <div className="detail-more-menu">
+                    {post.channel === "ai" && <>
+                      <span className="detail-more-group">资源与版本</span>
+                      {(aiVersionsAvailable || Boolean(post.resourceData?.version || post.resourceData?.changelog)) && <button onClick={() => { setAiDetailAction("versions"); setDetailMoreOpen(false); }}><History size={16} /> 查看更新记录</button>}
+                      {Object.keys(post.resourceData || {}).length > 0 && <button onClick={() => { setAiDetailAction("resources"); setDetailMoreOpen(false); }}><ExternalLink size={16} /> 相关资源</button>}
+                      <span className="detail-more-group">反馈与操作</span>
+                      <button onClick={() => { setAiDetailAction("feedback"); setDetailMoreOpen(false); }}><Flag size={16} /> 内容纠错</button>
+                    </>}
                     <button onClick={() => {
                       update((s) => ({ ...s, dismissed: [...new Set([...(s.dismissed || []), post.id])] }));
                       void cloudRequest("/api/v1/library-state", { action: "dismiss", id: post.id }).catch(() => toast("反馈同步失败"));
@@ -4934,10 +4981,22 @@ export default function Community() {
                       }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
                     }}><ThumbsDown size={16} /> 减少 #{firstTopic}</button>; })()}
                     <button onClick={() => {
-                      const url = `${location.origin}/?post=${post.id}`;
+                      const url = postShareUrl(post);
                       void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
                       setDetailMoreOpen(false);
                     }}><Share2 size={16} /> 复制链接</button>
+                    <button onClick={() => {
+                      const url = postShareUrl(post);
+                      setDetailMoreOpen(false);
+                      void (async () => {
+                        try {
+                          if (navigator.share) await navigator.share({ title: post.title, url });
+                          else { await navigator.clipboard.writeText(url); toast("链接已复制，可粘贴分享"); }
+                        } catch (error) {
+                          if (!(error instanceof DOMException && error.name === "AbortError")) toast("分享失败，请稍后重试");
+                        }
+                      })();
+                    }}><Share2 size={16} /> 分享内容</button>
                     {post.cloudId && post.status === "published" && <button onClick={() => {
                       if (!accountId) { setDetailMoreOpen(false); toast("登录后可以举报内容"); return; }
                       setReportPostId(post.cloudId!); setReportCommentId(null); setReportReason(""); setReportNote(""); setDetailMoreOpen(false); setModal("report");
@@ -4994,9 +5053,12 @@ export default function Community() {
                   </div>
                 )}
                 {detailImages.length === 0 && detailVideo && <div className="detail-video"><video src={detailVideo} controls playsInline preload="metadata" aria-label={`${post.title} 视频`} /></div>}
-                <h1>{post.title}</h1>
+                {detailImages.length === 0 && !detailVideo ? <section className="detail-text-cover" aria-label="文字作品标题区域">
+                  <span>{post.tag || "社区作品"}</span>
+                  <h1>{post.title}</h1>
+                </section> : <h1>{post.title}</h1>}
                 <p className="byline">
-                  {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}>{post.author} ↗</button> : post.author}
+                  {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}><span>{post.author} ↗</span><ProfileBadgeMarks badges={post.authorBadges || []}/></button> : <>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []}/></>}
                   <span> · {post.date}</span>
                 </p>
                 <button className="detail-reading-setting" onClick={() => setModal("reading")}>
@@ -5005,7 +5067,7 @@ export default function Community() {
                 {post.seriesTitle && <div className="detail-series-badge"><span>系列</span><strong>{post.seriesTitle}</strong>{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
                 {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
-                {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}/></Suspense>}
+                {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} action={aiDetailAction} onActionClose={closeAiDetailAction} onVersionsAvailability={setAiVersionsAvailable}/></Suspense>}
                 {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
                 <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
                   <div className="detail-rating-main"><span>内容评分</span>

@@ -5,11 +5,16 @@ import org.junit.Test
 
 class DailyDeckLogicTest {
     @Test
-    fun candidateOrderMatchesWebsiteFnvSeededOrder() {
+    fun candidateOrderKeepsServerBalancedOrder() {
         assertEquals(
-            listOf(2, 3, 1, 4, 5, 42),
-            DailyDeckLogic.rankCandidates(listOf(1, 2, 3, 4, 5, 42), "2026-11-09", emptySet(), emptyMap()),
+            listOf(1, 2, 3, 4, 5, 42),
+            DailyDeckLogic.preserveCandidateOrder(listOf(1, 2, 3, 4, 5, 42)),
         )
+    }
+
+    @Test
+    fun invalidAndDuplicateServerIdsAreIgnoredWithoutReordering() {
+        assertEquals(listOf(4, 2, 7), DailyDeckLogic.preserveCandidateOrder(listOf(4, 0, 2, 4, -1, 7)))
     }
 
     @Test

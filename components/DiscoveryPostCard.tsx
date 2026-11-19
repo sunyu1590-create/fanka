@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowRight, Heart, Star } from "lucide-react";
 import { feedImageSource } from "@/lib/feed-images";
 import type { Post } from "@/lib/content";
+import { ProfileBadgeMarks } from "./ProfileBadgeList";
 
 type DiscoveryPostCardProps = {
   post: Post;
@@ -119,10 +120,12 @@ export default function DiscoveryPostCard({
             aria-label={`查看作者 ${post.author}`}
           >
             <span className="discovery-author-name">{post.author || "探索者"}</span>
+            <ProfileBadgeMarks badges={post.authorBadges || []} compact />
           </button>
         ) : (
           <span className="discovery-author discovery-author-static">
             <span className="discovery-author-name">{post.author || "探索者"}</span>
+            <ProfileBadgeMarks badges={post.authorBadges || []} compact />
           </span>
         )}
         <span className="discovery-post-actions">

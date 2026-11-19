@@ -55,7 +55,7 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
     { id: "users", title: "账号管理", description: "角色、会员与社区发言限制", icon: Users },
     { id: "membership", title: "会员与赞助", description: "卡密、权益期限与爱发电人工核验", icon: CreditCard },
     { id: "community-access", title: "认证与入驻邀请", description: "认证标识、手动认证与邀请码批次", icon: BadgeCheck },
-    { id: "official-notices", title: "官方私信公告", description: "编辑并发送黑卡官方菌卡片通知", icon: Megaphone },
+    { id: "official-notices", title: "系统通知管理", description: "编辑并发布公告，由用户在通知中心查看", icon: Megaphone },
     { id: "ai-settings", title: "AI 工作台", description: "配置创作工作台服务密钥", icon: ShieldCheck },
   ] },
   { title: "AI 内容运营", modules: [
@@ -80,7 +80,7 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   appeals: "申诉处理",
   membership: "会员与赞助",
   "community-access": "认证与入驻邀请",
-  "official-notices": "官方私信公告",
+  "official-notices": "系统通知管理",
   "exploration-ad": "探索中心广告位",
   "app-download": "App 下载入口",
 };

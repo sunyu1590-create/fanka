@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type MouseEv
 import { ArrowLeft, Bookmark, ChevronRight, Code2, Compass, ExternalLink, FileText, Search, Sparkles, Wrench } from "lucide-react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import type { Post } from "@/lib/content";
+import { ProfileBadgeMarks } from "./ProfileBadgeList";
 
 type Category = { id: number; name: string; description: string; sort_order: number; is_featured: boolean; parent_id: number | null };
 type FeedResult = { items: Post[]; total: number; page: number; limit: number };
@@ -15,7 +16,7 @@ type Props = {
   hidden?: boolean;
 };
 
-const typeLabels: Record<string, string> = { knowledge_article: "AI 知识", agent: "Agent", skill: "Skills", prompt: "Prompt", ai_tool: "AI 工具", tutorial: "实战教程" };
+const typeLabels: Record<string, string> = { knowledge_article: "AI 知识", agent: "智能体", skill: "技能", prompt: "提示词", ai_tool: "AI 工具", tutorial: "实战教程" };
 const typeIcons: Record<string, typeof Sparkles> = { knowledge_article: FileText, agent: Sparkles, skill: Code2, prompt: Code2, ai_tool: Wrench, tutorial: Compass };
 type AISpaceView = "home" | "categories" | "feed" | "search";
 
@@ -187,8 +188,8 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     const Icon = typeIcons[post.contentType || "knowledge_article"] || FileText;
     return <article className="ai-resource-card" key={post.id}>
       <button className="ai-resource-open" type="button" data-discover-id={post.id} onClick={(event) => onOpen(post, event.currentTarget)}>
-        <span className="ai-resource-cover">{post.image ? <img src={post.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} /> : <span className="ai-resource-cover-mark"><Icon size={22}/></span>}<span className="ai-resource-kind"><Icon size={13}/>{typeLabels[post.contentType || "knowledge_article"] || "AI 内容"}</span></span>
-        <span className="ai-resource-copy"><small>{post.tag} · {post.author}</small><strong>{post.title}</strong><span>{post.body.replace(/[#*`>_\[\]()]/g, " ").replace(/\s+/g, " ").slice(0, 100)}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
+        <span className="ai-resource-cover">{post.image ? <img src={post.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} /> : <span className="ai-resource-cover-mark"><Icon size={22}/></span>}<span className="ai-resource-cover-labels"><span className="discovery-glass-label"><Icon size={13}/>{typeLabels[post.contentType || "knowledge_article"] || "AI 内容"}</span></span></span>
+        <span className="ai-resource-copy"><small>{post.tag} · {post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/></small><strong>{post.title}</strong><span>{post.body.replace(/[#*`>_\[\]()]/g, " ").replace(/\s+/g, " ").slice(0, 100)}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
       </button>
       <button type="button" className={`ai-resource-save${savedIds.has(post.id) ? " saved" : ""}`} aria-label={savedIds.has(post.id) ? "取消收藏" : "收藏资源"} onClick={(event) => void toggleSaved(post, event)}><Bookmark size={16} fill={savedIds.has(post.id) ? "currentColor" : "none"}/></button>
     </article>;
