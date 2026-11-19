@@ -4,7 +4,7 @@ import { memo } from "react";
 import { ChevronRight } from "lucide-react";
 import { APP_VERSION } from "@/lib/version";
 
-export type SettingsDetail = "theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | "cache" | "feedback" | "announcement";
+export type SettingsDetail = "theme" | "font" | "bottomNav" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | "cache" | "feedback" | "announcement" | "certification";
 type Props = {
   theme: "dark" | "light" | "system";
   fontChoice: "oppo" | "system";
@@ -45,6 +45,7 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
     ] },
     { title: "账号与内容", rows: [
       { label: "个人资料", action: () => onOpenDetail("profile") },
+      { label: "兑换认证码", value: "查看认证标识", action: () => onOpenDetail("certification") },
       { label: "兴趣与话题", value: "我的兴趣 · 关注的话题", action: () => onOpenDetail("interests") },
       { label: "我的作品与草稿", action: onOpenContent },
       { label: "隐私与安全", value: "作品可见范围", action: () => onOpenDetail("security") },
@@ -62,7 +63,7 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
 
   return <section className="page settings-page settings-home-page">
     <button className="back settings-back" type="button" onClick={onBack}><span aria-hidden="true">‹</span> 我的</button>
-    <div className="settings-page-heading"><div className="eyebrow">HEIKA / PREFERENCES</div><h1>设置<span className="red-dot">.</span></h1></div>
+    <div className="settings-page-heading"><h1>设置<span className="red-dot">.</span></h1></div>
     <div className="settings-content-layout">
       <nav className="settings-desktop-nav" aria-label="设置分类">{groups.map((group, index) => <a key={group.title} href={`#settings-group-${index}`}>{group.title}</a>)}</nav>
       <div className="settings-groups">

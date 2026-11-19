@@ -56,10 +56,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -114,10 +117,13 @@ fun MessagesScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer); viewModel.stopForegroundSync() }
     }
     BackHandler(enabled = true) {
-        if (state.activeId != null) viewModel.closeConversation() else onBack()
+        if (officialInboxOpen) officialInboxOpen = false
+        else if (state.activeId != null) viewModel.closeConversation() else onBack()
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (state.activeId == null) {
+        if (officialInboxOpen) {
+            OfficialInboxPage(notices = state.officialNotices, onBack = { officialInboxOpen = false })
+        } else if (state.activeId == null) {
             Row(Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text("消息", color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.sectionTitle, fontWeight = FontWeight.SemiBold, letterSpacing = .2.sp)
@@ -215,33 +221,11 @@ fun MessagesScreen(
                     ) {
                         Icon(HeikaIcons.Notifications, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("黑卡官方", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("黑卡官方菌", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Text(latestNotice?.title ?: "公告和重要提醒会出现在这里", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         if (state.officialNotices.any { it.readAt == null }) Text(state.officialNotices.count { it.readAt == null }.toString(), Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.primary).padding(horizontal = 7.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.onPrimary, fontSize = 9.sp)
                     }
-                }
-                if (officialInboxOpen) {
-                    HeikaAlertDialog(
-                        onDismissRequest = { officialInboxOpen = false },
-                        title = { Text("黑卡官方") },
-                        text = {
-                            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                if (state.officialNotices.isEmpty()) Text("暂时没有官方通知。后续公告和提醒会显示在这里。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
-                                state.officialNotices.forEach { notice ->
-                                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text(notice.publishedAt.take(10), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
-                                        Text(notice.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                        Text(notice.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
-                                        notice.actionLabel?.let { label -> Text(label, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
-                                    }
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(onClick = { officialInboxOpen = false }) { Text("完成") }
-                        },
-                    )
                 }
                 if (peopleMode && state.query.length >= 2 && state.people.isNotEmpty()) {
                     Text("用户", Modifier.padding(start = 21.dp, top = 14.dp, bottom = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
@@ -297,7 +281,8 @@ fun MessagesScreen(
                 if (peer != null) HeikaAvatar(peer.avatar, peer.name, 40.dp)
                 Column(Modifier.weight(1f).clickable(enabled = peer != null) { peer?.let { onProfile(it.id) } }) {
                     Text(peer?.name ?: "私信", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("个人主页", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    if (peer?.badges?.isNotEmpty() == true) BadgeChips(peer.badges)
+                    else Text("个人主页", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 }
                 IconButton(onClick = { peer?.let { onProfile(it.id) } }, enabled = peer != null) { Icon(HeikaIcons.More, "会话选项", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
@@ -475,6 +460,7 @@ private fun ConversationRow(item: NativeConversation, onClick: () -> Unit) {
         PeerAvatar(item.peer)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(item.peer.name, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (item.peer.badges.isNotEmpty()) BadgeChips(item.peer.badges)
             Text(item.latest.ifBlank { "开启一段新的交流" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(messageDate(item.createdAt), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
@@ -499,7 +485,46 @@ private fun PeerRow(peer: NativePeer, onClick: () -> Unit) {
         PeerAvatar(peer)
         Column {
             Text(peer.name, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            if (peer.badges.isNotEmpty()) BadgeChips(peer.badges)
             if (peer.bio.isNotBlank()) Text(peer.bio, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun BadgeChips(badges: List<com.heika.nativeapp.feature.profile.NativeBadge>) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        badges.forEach { badge ->
+            Row(Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Icon(HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(10.dp))
+                Text(badge.label, color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfficialInboxPage(notices: List<NativeOfficialNotice>, onBack: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(onClick = onBack) { Icon(HeikaIcons.Back, "返回消息", tint = MaterialTheme.colorScheme.onBackground) }
+            Text("黑卡官方菌", color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        }
+        if (notices.isEmpty()) {
+            Text("暂时没有官方通知。后续公告和提醒会显示在这里。", Modifier.fillMaxWidth().padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 20.sp)
+        } else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(notices, key = { it.id }) { notice ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(messageDay(notice.publishedAt), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    Text(notice.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    notice.imageUrl?.let { url -> AsyncImage(model = url, contentDescription = notice.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(10.dp))) }
+                    Text(notice.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 20.sp)
+                    if (notice.actionLabel != null && notice.actionUrl != null) {
+                        Button(onClick = { runCatching { uriHandler.openUri(notice.actionUrl) } }) { Text(notice.actionLabel) }
+                    }
+                }
+            }
         }
     }
 }

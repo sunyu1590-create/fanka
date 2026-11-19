@@ -59,10 +59,10 @@ export default function MembershipRedeemPage() {
 
   return <main className="page membership-redeem-page">
     <Link href="/membership" className="membership-route-back"><ArrowLeft size={17}/>会员与支持</Link>
-    <header className="membership-redeem-heading"><span>HEIKA / MEMBERSHIP</span><div className="membership-redeem-icon"><TicketCheck size={24}/></div><h1>{success ? "会员已激活" : "兑换会员激活码"}</h1><p>{success ? "会员权益已写入你的黑卡账号。" : "输入从爱发电或官方活动获得的激活码。"}</p></header>
+    <header className="membership-redeem-heading"><div className="membership-redeem-icon"><TicketCheck size={24}/></div><h1>{success ? "会员已激活" : "兑换会员激活码"}</h1><p>{success ? "会员权益已写入你的黑卡账号。" : "输入从爱发电或官方活动获得的激活码。"}</p></header>
 
     {success ? <section className="membership-redeem-success" aria-live="polite">
-      <div className="membership-success-mark"><Check size={28}/></div><span className="membership-success-eyebrow">ACTIVATION COMPLETE</span>
+      <div className="membership-success-mark"><Check size={28}/></div><span className="membership-success-eyebrow">兑换已完成</span>
       <h2>{tierLabel(success.redeemedTier || success.tier)} 会员</h2>
       <p>{success.activationState === "queued" ? "当前 Pro 会员到期后自动生效" : "会员权益现已生效"}</p>
       <div className="membership-success-details"><div><span>生效日期</span><strong>{dateLabel(success.startsAt)}</strong></div><div><span>到期日期</span><strong>{dateLabel(success.expiresAt)}</strong></div><div><span>每日翻卡</span><strong>{success.dailyFlipAllowance || "—"} 次</strong></div></div>

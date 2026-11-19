@@ -95,6 +95,7 @@ import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 import AccountSwitcher from "./AccountSwitcher";
 import { rememberSession } from "@/lib/saved-accounts";
 import MembershipCenter from "./MembershipCenter";
+import CertificationSettings from "./CertificationSettings";
 import { baseDailyFlipAllowance } from "@/lib/membership-plans";
 const AboutHeika = dynamic(() => import("./AboutHeika"));
 const CacheManager = dynamic(() => import("./CacheManager"));
@@ -4195,7 +4196,6 @@ export default function Community() {
           {state.homeMode === "blackcard" ? (
             <div className="today-heading">
               <div>
-                <div className="eyebrow">LUCENT // BLACK CARD</div>
                 <h1>精选</h1>
                 <p className="lead">轻触菱面 · 翻开今日黑卡</p>
               </div>
@@ -4216,7 +4216,7 @@ export default function Community() {
           ) : (
             <>
               <div className="black-facet-card" aria-label="黑卡菱形切面选择区">
-                <span className="black-facet-brand">HEIKA · BLACK CARD</span>
+                <span className="black-facet-brand">HEIKA · 黑卡</span>
                 <span className="black-facet-hint">选择一个菱面，翻开一张黑卡</span>
                 <svg className="black-facet-matrix" viewBox="0 0 100 125" preserveAspectRatio="none" role="group" aria-label="选择要翻开的黑卡">
                   <defs>
@@ -4320,7 +4320,7 @@ export default function Community() {
           <div className={`discover-community-channel discover-channel-panel${discoverChannel === "community" ? " is-active" : ""}${outgoingDiscoverChannel === "community" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "community" && outgoingDiscoverChannel !== "community"}>
           {explorationAd?.enabled && explorationAd.post_client_id && <button type="button" className={`exploration-ad-card${explorationAd.kind === "image" && explorationAd.image_url ? " has-image" : ""}`} aria-label={`${explorationAd.title}，打开相关作品`} onClick={(event) => void openExplorationAdPost(event.currentTarget)}>
             {explorationAd.kind === "image" && explorationAd.image_url && <img src={explorationAd.image_url} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.remove(); event.currentTarget.closest(".exploration-ad-card")?.classList.remove("has-image"); }}/>}
-            <span className="exploration-ad-card-copy"><small><Megaphone size={12}/> HEIKA · 推荐</small><strong>{explorationAd.title}</strong>{explorationAd.body && <span>{explorationAd.body}</span>}</span>
+                <span className="exploration-ad-card-copy"><small><Megaphone size={12}/> 黑卡 · 推荐</small><strong>{explorationAd.title}</strong>{explorationAd.body && <span>{explorationAd.body}</span>}</span>
             <ArrowRight size={17} aria-hidden="true"/>
           </button>}
           <div className="discover-category-nav" role="tablist" aria-label="发现内容分类">
@@ -4350,7 +4350,7 @@ export default function Community() {
           {sort === "精选" && category === "全部" && latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">
               <div className="recent-flip-heading">
-                <div><small>RECENTLY REVEALED</small><h2 id="recent-flip-title">最近翻开的卡</h2></div>
+                <div><h2 id="recent-flip-title">最近翻开的卡</h2></div>
                 <span>随时回来继续阅读</span>
               </div>
               {renderCandidate(latestOpenedPost, -1, true)}
@@ -4359,7 +4359,7 @@ export default function Community() {
           <div className="discover-topic-list" aria-label="精选话题">
             {topicChoices.slice(0, 8).map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
           </div>
-          {topicEvents.length > 0 && <section className="topic-events-section" aria-labelledby="topic-events-title"><div className="topic-events-heading"><div><small>COMMUNITY / OPEN CALL</small><h2 id="topic-events-title">本期话题共创</h2></div><span>{topicEvents.length} 个进行中</span></div><div className="topic-event-list">{topicEvents.map((event) => <article className="topic-event-card" key={event.id}><div className="topic-event-mark">#{event.topic}</div><div className="topic-event-copy"><h3>{event.title}</h3><p>{event.description}</p><small>{event.participantCount} 人参与 · {event.postCount} 篇内容 · 截止 {new Date(event.ends_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</small></div><button type="button" className={event.joined ? "joined" : ""} onClick={() => void joinTopicEvent(event)}>{event.joined ? "继续创作" : "加入共创"}</button></article>)}</div></section>}
+          {topicEvents.length > 0 && <section className="topic-events-section" aria-labelledby="topic-events-title"><div className="topic-events-heading"><div><h2 id="topic-events-title">本期话题共创</h2></div><span>{topicEvents.length} 个进行中</span></div><div className="topic-event-list">{topicEvents.map((event) => <article className="topic-event-card" key={event.id}><div className="topic-event-mark">#{event.topic}</div><div className="topic-event-copy"><h3>{event.title}</h3><p>{event.description}</p><small>{event.participantCount} 人参与 · {event.postCount} 篇内容 · 截止 {new Date(event.ends_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</small></div><button type="button" className={event.joined ? "joined" : ""} onClick={() => void joinTopicEvent(event)}>{event.joined ? "继续创作" : "加入共创"}</button></article>)}</div></section>}
           <div className="discover-sort" role="group" aria-label="发现排序">
             {["精选", "最新", "高分", "关注"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => { if (sort !== option) { setPublicFeed([]); setFeedPostIds([]); setFeedPage(0); setFeedTotal(0); setFeedHasMore(false); feedCursor.current = null; setFeedLoadedTag(null); setFeedLoadedSort(null); setPage(12); setSort(option); } }}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
           </div>
@@ -4396,7 +4396,6 @@ export default function Community() {
       {tab === "topic" && topicSummary && (
         <section className="page editorial-home topic-detail-page">
           <button className="back settings-back" onClick={closeTopicPage}><ArrowLeft size={18} /> 返回</button>
-          <div className="eyebrow">TOPIC / HEIKA</div>
           <h1>#{topicSummary.name}</h1>
           <p className="lead">{topicSummary.description}</p>
           <div className="topic-detail-stats">
@@ -4452,7 +4451,7 @@ export default function Community() {
       {tab === "settings" && settingsDetail !== null && (
         <section key={settingsDetail} className={`page settings-page settings-detail-page${settingsDetail === "membership" ? " membership-settings-page" : ""}`}>
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
-          {settingsDetail !== "membership" && <><div className="eyebrow">HEIKA / SETTINGS</div><h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理",announcement:"公告管理"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
+          {settingsDetail !== "membership" && <><h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理",announcement:"公告管理",certification:"兑换认证码"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : settingsDetail === "certification" ? "查看已获得的认证标识，兑换管理员发放的认证码。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
@@ -4479,7 +4478,8 @@ export default function Community() {
           {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
           {settingsDetail === "security" && <><AccountSwitcher accountId={accountId} onNotice={toast}/><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
           {settingsDetail === "announcement" && <AnnouncementAdmin onNotice={toast}/>}
-          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} /> }
+          {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} accountId={accountId} experienceTotal={experienceSummary.total} /> }
+          {settingsDetail === "certification" && <CertificationSettings />}
           {settingsDetail === "interests" && <div className="account-interests-page">
             <div className="interest-page-note"><Sparkles size={16}/><span>兴趣保存在此设备，并按账号分别存储。</span></div>
             <div className="account-interest-grid" role="group" aria-label="兴趣偏好">
@@ -4549,7 +4549,6 @@ export default function Community() {
       {tab === "about" && <AboutHeika onBack={closeAboutPage} onFeedback={openFeedbackFromAbout} />}
       {tab === "debug" && (
         <section className="page debug-page">
-          <div className="eyebrow">DEVELOPER TOOLS</div>
           <h1>调试模式<span className="red-dot">.</span></h1>
           <p className="lead">一键清空个人偏好、翻卡与收藏状态，重新开始新人引导。</p>
           <button className="debug-admin-entry" onClick={() => {
@@ -4576,7 +4575,7 @@ export default function Community() {
           <section className="mine-profile-hero" aria-label="个人资料">
             <div className="profile-card mine-profile-card">
               <div className="avatar">{state.avatar ? <img src={state.avatar} alt="头像" /> : state.name[0]}</div>
-              <div className="mine-profile-copy"><div className="mine-profile-name-row"><h2>{state.name}</h2><button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button></div><p>{state.bio || "记录生活，继续探索。"}</p>{accountId && <small className="mine-account-id">HEIKA ID · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
+              <div className="mine-profile-copy"><div className="mine-profile-name-row"><h2>{state.name}</h2><button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button></div><p>{state.bio || "记录生活，继续探索。"}</p>{accountId && <small className="mine-account-id">黑卡编号 · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
               <button type="button" aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={18} /></button>
             </div>
             <div className="stats exploration-stats mine-profile-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>
@@ -4617,7 +4616,6 @@ export default function Community() {
             {mineSection === "works" && (
               <div className="mine-tab-content">
                 <div className="mine-works-heading"><div><span>共 {state.own.filter((post) => post.status === "published" || !post.status).length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
-                {appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="mine-download-card" href={appDownloadUrl} target="_blank" rel="noopener noreferrer"><span className="mine-download-icon"><Smartphone size={17}/></span><span className="mine-download-copy"><strong>下载黑卡 App</strong><small>安卓客户端 · 原生体验，支持消息推送</small></span><span className="mine-download-go">去下载<ChevronRight size={14}/></span></a>}
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
                 {visibleOwnPosts.length ? <div className="masonry mine-works-masonry">{visibleOwnPosts.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
@@ -4657,12 +4655,13 @@ export default function Community() {
       )}
       {tab === "exploration-center" && (
         <section className="page exploration-center-page">
-          <div className="exploration-center-intro"><span>HEIKA / EXPLORE</span><h1>探索中心</h1><p>和朋友一起发现，也回看自己的探索轨迹。</p></div>
+          <div className="exploration-center-intro"><h1>探索中心</h1><p>和朋友一起发现，也回看自己的探索轨迹。</p></div>
           <div className="exploration-center-actions" aria-label="探索功能">
             <button type="button" onClick={() => openCoExplore("exploration-center")}><span><UsersRound size={18}/></span><span><strong>和朋友一起探索</strong><small>共同翻卡，分享发现</small></span><ChevronRight size={17}/></button>
             <button type="button" onClick={() => openMineFeature("monthly-recap", "exploration-center")}><span><Sparkles size={18}/></span><span><strong>探索月报</strong><small>回看本月发现与稀有卡</small></span><ChevronRight size={17}/></button>
             <button type="button" onClick={() => openMineFeature("card-chain", "exploration-center")}><span><GitBranch size={18}/></span><span><strong>卡片接龙</strong><small>从一张卡片续写故事</small></span><ChevronRight size={17}/></button>
           </div>
+          {appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="mine-download-card exploration-download-card" href={appDownloadUrl} target="_blank" rel="noopener noreferrer"><span className="mine-download-icon"><Smartphone size={17}/></span><span className="mine-download-copy"><strong>下载黑卡 App</strong><small>安卓客户端 · 原生体验，支持消息推送</small></span><span className="mine-download-go">去下载<ChevronRight size={14}/></span></a>}
           <section className="exploration-center-section">
             <div className="section-head exploration-calendar-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationCalendarOpen} aria-controls="exploration-calendar-content" onClick={() => setExplorationCalendarOpen((open) => !open)}><h2><CalendarDays size={17}/>探索日历</h2><span>最近 28 天 <ChevronDown size={16}/></span></button></div>
             {explorationCalendarOpen && <div id="exploration-calendar-content"><div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
@@ -4703,11 +4702,10 @@ export default function Community() {
             setTab(myContentReturnTab);
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
-          <div className="eyebrow">CREATOR CENTER / HEIKA</div>
           <h1>创作者中心<span className="red-dot">.</span></h1>
           <p className="lead">查看公开内容表现与本周成长任务。</p>
           <section className="creator-center" aria-label="创作者数据与成长任务">
-            <div className="creator-center-heading"><div><small>CREATOR / INSIGHTS</small><h2>创作数据</h2></div><span>{creatorCenter?.weekStart ? `本周任务 · ${creatorCenter.weekStart}` : "数据仅统计已公开内容"}</span></div>
+            <div className="creator-center-heading"><div><h2>创作数据</h2></div><span>{creatorCenter?.weekStart ? `本周任务 · ${creatorCenter.weekStart}` : "数据仅统计已公开内容"}</span></div>
             {!accountId ? <div className="empty">登录后查看创作数据并领取每周经验。</div> : creatorCenterLoading && !creatorCenter ? <div className="creator-center-loading">正在汇总创作数据…</div> : <>
               <div className="creator-metrics">{[["公开内容", creatorCenter?.insights.posts || 0], ["阅读", creatorCenter?.insights.views || 0], ["点赞", creatorCenter?.insights.likes || 0], ["收藏", creatorCenter?.insights.saves || 0], ["评论", creatorCenter?.insights.comments || 0]].map(([label, value]) => <div key={label}><strong>{Number(value).toLocaleString("zh-CN")}</strong><span>{label}</span></div>)}</div>
               <div className="creator-missions"><div className="creator-subheading"><h3>本周成长任务</h3><span>每项 +20 EXP</span></div>{(creatorCenter?.missions || []).map((mission) => <div className="creator-mission-row" key={mission.key}><div className="creator-mission-copy"><strong>{mission.title}</strong><small>{mission.description}</small><span className="creator-mission-progress"><i><b style={{ width: `${Math.min(100, mission.progress / mission.target * 100)}%` }}/></i>{mission.progress}/{mission.target}</span></div><button type="button" disabled={mission.claimed || mission.progress < mission.target} onClick={() => void claimCreatorMission(mission.key)}>{mission.claimed ? "已领取" : "领取"}</button></div>)}</div>
@@ -4722,7 +4720,6 @@ export default function Community() {
             setTab(myContentReturnTab);
             requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[myContentReturnTab] || 0, behavior: "instant" }));
           }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
-          <div className="eyebrow">MY CONTENT / HEIKA</div>
           <h1>作品管理<span className="red-dot">.</span></h1>
           <p className="lead">整理系列、查看内容状态并管理草稿。</p>
           <div className="series-manager"><div className="series-manager-heading"><strong>作品系列</strong><span>把有关联的内容整理成专栏</span></div><div className="series-create-form"><input aria-label="系列名称" maxLength={48} placeholder="例如：一周城市观察" value={seriesName} onChange={(event) => setSeriesName(event.target.value)}/><input aria-label="系列简介" maxLength={240} placeholder="一句话介绍（可选）" value={seriesDescription} onChange={(event) => setSeriesDescription(event.target.value)}/><button type="button" disabled={!accountId || seriesName.trim().length < 2} onClick={() => void createPostSeries()}><Plus size={15}/>新建</button></div>{creatorSeries.length > 0 && <div className="series-list">{creatorSeries.map((series) => <button type="button" className={selectedSeriesId === series.id ? "active" : ""} key={series.id} onClick={() => setSelectedSeriesId((current) => current === series.id ? "" : series.id)}><strong>{series.title}</strong><span>{series.description || "持续更新中"}</span><small>{series.postCount || 0} 篇</small></button>)}</div>}</div>
@@ -5135,7 +5132,7 @@ export default function Community() {
             </button>}
             {modal === "report" ? (
               <div className="report-dialog">
-                <div className="eyebrow">COMMUNITY / REPORT</div>
+                <div className="eyebrow">社区举报</div>
                 <h2>举报内容</h2>
                 <p>举报信息仅用于平台安全与人工复核，不会公开举报者身份。</p>
                 <fieldset className="report-reasons"><legend>选择原因</legend>{REPORT_REASONS.map((reason) => <label key={reason} className={reportReason === reason ? "selected" : ""}><input type="radio" name="report-reason" value={reason} checked={reportReason === reason} onChange={() => setReportReason(reason)} />{reason}</label>)}</fieldset>
@@ -5144,7 +5141,7 @@ export default function Community() {
               </div>
             ) : modal === "browsing" ? (
               <>
-                <div className="eyebrow">BROWSING / PREFERENCES</div>
+                <div className="eyebrow">浏览偏好</div>
                 <h2>首页浏览模式</h2>
                 <div className="reading-mode-list">
                   {(["waterfall", "blackcard"] as const).map((mode) => (
@@ -5194,7 +5191,7 @@ export default function Community() {
               </>
             ) : modal === "interests" ? (
               <>
-                <div className="eyebrow">YOUR INTERESTS</div>
+                <div className="eyebrow">我的兴趣</div>
                 <h2>选择你的兴趣</h2>
                 <p>这些方向会帮助黑卡排序每日翻卡候选，也会影响首页推荐。</p>
                 <div className="interest-picker">
@@ -5236,7 +5233,7 @@ export default function Community() {
               />
             ) : modal === "notifications" ? (
               <>
-                <div className="eyebrow">PREFERENCES</div>
+                <div className="eyebrow">偏好设置</div>
                 <h2>通知设置</h2>
                 <p className="settings-note">
                   通知偏好会同步到账号。开启浏览器提醒需系统许可；关闭页面后的后台推送暂未提供。
@@ -5285,7 +5282,7 @@ export default function Community() {
               </>
             ) : modal === "reading" ? (
               <>
-                <div className="eyebrow">READING / APPEARANCE</div>
+                <div className="eyebrow">阅读与外观</div>
                 <h2>阅读模式</h2>
                 <p className="settings-note">
                   选择会保存在此浏览器，并应用于完整阅读页。

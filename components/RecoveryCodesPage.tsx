@@ -21,7 +21,6 @@ export default function RecoveryCodesPage({
   const [copied, setCopied] = useState(false);
   return (
     <section className={`page account-page recovery-codes-page${standalone ? " is-standalone" : ""}`}>
-      <div className="eyebrow">HEIKA / ACCOUNT</div>
       <h1>保存你的恢复码<span className="red-dot">.</span></h1>
       <p className="lead">这是目前唯一能找回密码的方式。忘记密码时只有它能救回账号，我们无法代为重置。</p>
       <div className="recovery-codes-sheet">

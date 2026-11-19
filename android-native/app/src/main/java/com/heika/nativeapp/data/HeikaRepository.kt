@@ -514,6 +514,55 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/users?limit=30", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    suspend fun searchAdminUsers(query: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/users?limit=20&query=${encode(query.trim())}", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminCommunityAccess(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/access-codes/batches", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun createAdminAccessCodeBatch(payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/access-codes/batches", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun setAdminAccessCodeBatch(id: String, active: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/access-codes/batches/${encode(id)}", method = "PATCH", body = JSONObject().put("active", active).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun disableAdminAccessCode(id: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/access-codes/${encode(id)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun createAdminProfileBadge(payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/profile-badges", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun updateAdminProfileBadge(id: String, payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/profile-badges/${encode(id)}", method = "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminBadgeAwards(userId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/profile-badges/awards?userId=${encode(userId)}", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun grantAdminBadge(userId: String, badgeId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/profile-badges/awards", method = "POST", body = JSONObject().put("userId", userId).put("badgeId", badgeId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun revokeAdminBadge(awardId: String): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/profile-badges/awards", method = "DELETE", body = JSONObject().put("awardId", awardId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminOfficialNotices(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/official-notices", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun saveAdminOfficialNotice(payload: JSONObject, id: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        val path = if (id.isNullOrBlank()) "/api/v1/admin/official-notices" else "/api/v1/admin/official-notices/${encode(id)}"
+        request(path, method = if (id.isNullOrBlank()) "POST" else "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun setAdminUserRole(id: String, role: String): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(id) && role in setOf("member", "admin", "content_manager", "reviewer"))
         request("/api/v1/admin/users/${encode(id)}", method = "PATCH", body = JSONObject().put("role", role).toString(), authenticated = true) as? JSONObject ?: JSONObject()

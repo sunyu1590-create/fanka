@@ -21,7 +21,7 @@ export default function MembershipRedemptionHistory() {
     }).catch((cause) => { if (active) { setError(cause instanceof Error ? cause.message : "兑换记录暂时不可用"); setLoading(false); } });
     return () => { active = false; };
   }, []);
-  return <main className="page membership-history-page"><Link href="/membership/redeem" className="membership-route-back"><ArrowLeft size={17}/>激活码兑换</Link><header><span>HEIKA / REDEMPTION</span><h1><TicketCheck size={24}/>兑换历史</h1><p>这里只显示当前账号的会员激活记录。</p></header>
+  return <main className="page membership-history-page"><Link href="/membership/redeem" className="membership-route-back"><ArrowLeft size={17}/>激活码兑换</Link><header><h1><TicketCheck size={24}/>兑换历史</h1><p>这里只显示当前账号的会员激活记录。</p></header>
     {loading ? <p className="membership-auth-state">正在读取兑换记录…</p> : error ? <p className="membership-redeem-error" role="alert">{error}</p> : items.length ? <div className="membership-history-list">{items.map((item) => <article key={`${item.created_at}-${item.tier}`}><div><strong>{item.tier.toUpperCase()}</strong><span>{item.duration_days} 天 · {item.activation_state === "queued" ? "到期后生效" : "已生效"}</span></div><small><Clock3 size={13}/>{dateLabel(item.created_at)}</small><p>{item.activation_state === "queued" ? `预计于 ${dateLabel(item.starts_at)} 开始` : `${dateLabel(item.starts_at)} — ${dateLabel(item.expires_at)}`}</p></article>)}</div> : <p className="membership-history-empty">暂无兑换记录</p>}
   </main>;
 }

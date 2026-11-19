@@ -42,6 +42,14 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(63, "2026.11.19", listOf(
+        "认证管理与官方私信公告拆为两个独立后台模块；管理员可直接搜索已注册用户授予或撤销认证，也可生成邀请码和认证码。",
+        "认证标签显示在个人主页与私信资料旁并带认证图标；认证码兑换移入设置，账号管理增加邮箱。",
+        "修复会员中心当前会员状态不刷新的问题；下载页与大陆网络提示明确服务器位于新加坡。",
+        "黑卡官方私信改为完整二级页面，保留公告图片和链接，入口名称改为「黑卡官方菌」。",
+        "受邀欢迎页改为完整欢迎信；帖子详情的更多菜单恢复模糊并收窄。",
+        "个人页下载 App 入口移入探索中心，管理后台加入认证和官方卡片公告管理。",
+    )),
     NativeRelease(61, "2026.11.18", listOf(
         "取消详情页、设置页、我的、个人主页与私聊页的顶栏模糊：滚动时不再出现闪烁和错位。",
         "封面左上角的标签与右上角的评分压缩高度，卡片上留给内容的区域更多。",

@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,6 +51,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,6 +102,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
             state.error?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
             state.notice?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
             if (state.section == "membership-support") AdminMembershipPanel(state, viewModel, onDisableCode = { pendingCodeDisable = it })
+            else if (state.section == "community-access" || state.section == "official-notices") AdminCommunityAccessPanel(state, viewModel)
             else if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) HeikaPulsePage(cards = 4, cardHeight = 84.dp)
             else if (state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text(if (state.error == null) "暂无待处理事项" else "无法读取管理队列", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -193,6 +198,8 @@ private val adminModuleGroups = listOf(
     AdminModuleGroup("账号与工具", listOf(
         AdminModuleSpec("membership-support", "会员与赞助", "卡密批次、会员状态、订单人工复核", com.heika.nativeapp.ui.HeikaIconRes.Medal),
         AdminModuleSpec("users", "账号管理", "角色、会员与社区发言限制", com.heika.nativeapp.ui.HeikaIconRes.BusinessUser),
+        AdminModuleSpec("community-access", "认证与入驻邀请", "认证标识、手动认证与邀请码批次", com.heika.nativeapp.ui.HeikaIconRes.Shield),
+        AdminModuleSpec("official-notices", "官方私信公告", "编辑并发送黑卡官方菌卡片通知", com.heika.nativeapp.ui.HeikaIconRes.Notifications),
         AdminModuleSpec("user-feedback", "用户反馈", "查看并处理用户意见", com.heika.nativeapp.ui.HeikaIconRes.Warning),
     )),
     AdminModuleGroup("AI 内容运营", listOf(
@@ -213,7 +220,7 @@ private val adminSectionNames = mapOf(
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
-    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助", "announcement" to "公告管理",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助", "announcement" to "启动弹窗公告", "community-access" to "认证与入驻邀请", "official-notices" to "官方私信公告",
 )
 private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
 
@@ -238,6 +245,176 @@ private fun AiResourceTypeAdminRow(item: JSONObject, state: AdminCenterState, vi
         ) { Text(if (state.saving == "ai-type-${item.optString("resource_type")}") "保存中…" else "保存类型设置") }
     }
 }
+
+@Composable
+private fun AdminCommunityAccessPanel(state: AdminCenterState, viewModel: AdminCenterViewModel) {
+    val noticesMode = state.section == "official-notices"
+    val clipboard = LocalClipboardManager.current
+    var kind by remember(state.section) { mutableStateOf("invitation") }
+    var batchLabel by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("10") }
+    var expiresAt by remember { mutableStateOf("") }
+    var badgeId by remember(state.communityBadges) { mutableStateOf(state.communityBadges.firstOrNull { it.optString("slug") == "creator-certified" }?.optString("id").orEmpty().ifBlank { state.communityBadges.firstOrNull()?.optString("id").orEmpty() }) }
+    var newSlug by remember { mutableStateOf("") }
+    var newLabel by remember { mutableStateOf("") }
+    var newDescription by remember { mutableStateOf("") }
+    var newColor by remember { mutableStateOf("#78613B") }
+    var userQuery by remember { mutableStateOf("") }
+    var noticeTitle by remember { mutableStateOf("") }
+    var noticeBody by remember { mutableStateOf("") }
+    var audience by remember { mutableStateOf("all") }
+    var imageUrl by remember { mutableStateOf("") }
+    var actionLabel by remember { mutableStateOf("") }
+    var actionUrl by remember { mutableStateOf("") }
+    var editingNotice by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (!state.error.isNullOrBlank()) Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+        if (!state.notice.isNullOrBlank()) Text(state.notice.orEmpty(), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+        if (noticesMode) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text(if (editingNotice == null) "发送官方卡片消息" else "编辑官方卡片消息", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("用户会在「黑卡官方菌」私信入口中收到卡片公告。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                OutlinedTextField(noticeTitle, { noticeTitle = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("标题") }, singleLine = true)
+                if (editingNotice == null) {
+                    Text("发送对象", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("all" to "所有用户", "free" to "Free", "plus" to "Plus", "pro" to "Pro").forEach { item ->
+                            TextButton(onClick = { audience = item.first }) { Text((if (audience == item.first) "✓ " else "") + item.second) }
+                        }
+                    }
+                }
+                OutlinedTextField(noticeBody, { noticeBody = it.take(3000) }, Modifier.fillMaxWidth(), label = { Text("卡片内容") }, minLines = 4, maxLines = 8)
+                OutlinedTextField(imageUrl, { imageUrl = it.take(2048) }, Modifier.fillMaxWidth(), label = { Text("图片地址（可选）") }, singleLine = true)
+                OutlinedTextField(actionLabel, { actionLabel = it.take(24) }, Modifier.fillMaxWidth(), label = { Text("按钮文字（可选）") }, singleLine = true)
+                OutlinedTextField(actionUrl, { actionUrl = it.take(2048) }, Modifier.fillMaxWidth(), label = { Text("按钮链接（可选）") }, singleLine = true)
+                Button(enabled = state.saving == null && noticeTitle.isNotBlank() && noticeBody.isNotBlank() && (actionLabel.isBlank() == actionUrl.isBlank()), onClick = {
+                    viewModel.saveOfficialNotice(editingNotice, noticeTitle, noticeBody, audience, imageUrl, actionLabel, actionUrl)
+                    editingNotice = null; noticeTitle = ""; noticeBody = ""; imageUrl = ""; actionLabel = ""; actionUrl = ""
+                }) { Text(if (editingNotice == null) "发送公告" else "保存编辑") }
+                if (editingNotice != null) TextButton(onClick = { editingNotice = null; noticeTitle = ""; noticeBody = ""; imageUrl = ""; actionLabel = ""; actionUrl = "" }) { Text("取消编辑") }
+            }
+            Text("已发送公告", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            state.communityNotices.forEach { notice ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(noticeAudienceLabel(notice.optString("audience")) + " · " + notice.optString("published_at").take(16).replace('T', ' '), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    Text(notice.optString("title"), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(notice.optString("body"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = {
+                        editingNotice = notice.optString("id"); noticeTitle = notice.optString("title"); noticeBody = notice.optString("body")
+                        audience = notice.optString("audience"); imageUrl = notice.optString("image_url")
+                        actionLabel = notice.optString("action_label"); actionUrl = notice.optString("action_url")
+                    }) { Text("编辑卡片") }
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("认证标识", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("标识可由管理员自定义，并显示在主页和私信资料旁。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                state.communityBadges.forEach { badge ->
+                    AdminBadgeEditorRow(badge, state.saving != null) { label, description, color, active -> viewModel.updateCommunityBadge(badge.optString("id"), label, description, color, active) }
+                }
+                HorizontalDivider()
+                Text("新增认证标识", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                OutlinedTextField(newSlug, { newSlug = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '-' || c == '_' }.take(40) }, Modifier.fillMaxWidth(), label = { Text("内部编号") }, placeholder = { Text("creator-certified") }, singleLine = true)
+                OutlinedTextField(newLabel, { newLabel = it.take(24) }, Modifier.fillMaxWidth(), label = { Text("展示名称") }, placeholder = { Text("创作认证") }, singleLine = true)
+                OutlinedTextField(newDescription, { newDescription = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("说明") }, singleLine = true)
+                OutlinedTextField(newColor, { newColor = it.take(7) }, Modifier.fillMaxWidth(), label = { Text("颜色（#RRGGBB）") }, singleLine = true)
+                Button(enabled = state.saving == null && newSlug.length >= 2 && newLabel.isNotBlank() && newColor.matches(Regex("#[0-9A-Fa-f]{6}")), onClick = { viewModel.createCommunityBadge(newSlug, newLabel, newDescription, newColor); newSlug = ""; newLabel = ""; newDescription = "" }) { Text("创建标识") }
+            }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("直接为用户认证", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("搜索任意已注册用户，可直接授予或撤销认证。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                OutlinedTextField(userQuery, { userQuery = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("昵称或完整用户编号") }, singleLine = true)
+                Button(enabled = state.saving == null && userQuery.trim().length >= 2, onClick = { viewModel.searchCommunityUsers(userQuery) }) { Text("搜索用户") }
+                state.communityUsers.forEach { user ->
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.background).clickable { viewModel.selectCommunityUser(user) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(user.optString("nickname").ifBlank { "探索者" }, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(user.optString("email").ifBlank { user.optString("id") }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        }
+                        Icon(HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    }
+                }
+                state.communitySelectedUser?.let { user ->
+                    HorizontalDivider()
+                    Text(user.optString("nickname").ifBlank { "探索者" } + " · " + user.optString("email").ifBlank { user.optString("id") }, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    state.communityAwards.forEach { award ->
+                        val badge = award.optJSONObject("badge") ?: JSONObject()
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                            Text(badge.optString("label"), Modifier.weight(1f).padding(start = 6.dp), color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
+                            TextButton(enabled = state.saving == null, onClick = { viewModel.revokeCommunityBadge(award.optString("id")) }) { Text("撤销") }
+                        }
+                    }
+                    Text("授予认证标识", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    state.communityBadges.filter { badge -> badge.optBoolean("active") && state.communityAwards.none { (it.optJSONObject("badge") ?: JSONObject()).optString("id") == badge.optString("id") } }.forEach { badge ->
+                        TextButton(enabled = state.saving == null, onClick = { viewModel.grantCommunityBadge(badge.optString("id")) }) { Text("＋ " + badge.optString("label")) }
+                    }
+                }
+            }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("生成邀请码或认证码", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("邀请码用于新用户入驻并赠送 Pro 30 天；认证码供已注册用户兑换标签。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { kind = "invitation" }) { Text((if (kind == "invitation") "✓ " else "") + "入驻邀请码") }
+                    TextButton(onClick = { kind = "certification" }) { Text((if (kind == "certification") "✓ " else "") + "认证码") }
+                }
+                if (kind == "certification") state.communityBadges.filter { it.optBoolean("active") }.forEach { badge ->
+                    TextButton(onClick = { badgeId = badge.optString("id") }) { Text((if (badgeId == badge.optString("id")) "✓ " else "") + badge.optString("label")) }
+                }
+                OutlinedTextField(batchLabel, { batchLabel = it.take(100) }, Modifier.fillMaxWidth(), label = { Text("批次名称") }, singleLine = true)
+                OutlinedTextField(quantity, { quantity = it.filter(Char::isDigit).take(3) }, Modifier.fillMaxWidth(), label = { Text("生成数量（1–500）") }, singleLine = true)
+                OutlinedTextField(expiresAt, { expiresAt = it.take(35) }, Modifier.fillMaxWidth(), label = { Text("有效期（可选，ISO 时间）") }, placeholder = { Text("2026-12-31T00:00:00Z") }, singleLine = true)
+                Button(enabled = state.saving == null && batchLabel.isNotBlank() && (quantity.toIntOrNull() ?: 0) in 1..500 && (kind == "invitation" || badgeId.isNotBlank()), onClick = { viewModel.createCommunityBatch(batchLabel, kind, badgeId, quantity.toInt(), expiresAt); batchLabel = "" }) { Text(if (kind == "invitation") "生成入驻邀请码" else "生成认证码") }
+                state.communityGeneratedCodes?.let { codes ->
+                    Text("明文只显示这一次，请复制并安全保存。", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    OutlinedTextField(codes, {}, Modifier.fillMaxWidth(), readOnly = true, minLines = 3, maxLines = 8)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { clipboard.setText(AnnotatedString(codes)); viewModel.clearCommunityGeneratedCodes() }) { Icon(HeikaIcons.Copy, null, modifier = Modifier.size(15.dp)); Text("复制并收起", Modifier.padding(start = 5.dp)) }
+                        TextButton(onClick = viewModel::clearCommunityGeneratedCodes) { Text("已安全保存") }
+                    }
+                }
+            }
+            Text("邀请码与认证码批次", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            state.communityBatches.forEach { batch ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(batch.optString("label"), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text((if (batch.optString("code_kind") == "invitation") "入驻邀请" else "认证码") + " · " + batch.optInt("unused") + " 未使用 · " + batch.optInt("redeemed") + " 已兑换 · " + batch.optInt("disabled") + " 已停用", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    TextButton(enabled = state.saving == null, onClick = { viewModel.toggleCommunityBatch(batch.optString("id"), !batch.optBoolean("active")) }) { Text(if (batch.optBoolean("active")) "停用整个批次" else "恢复批次") }
+                    (batch.optJSONArray("codes") ?: JSONArray()).toJSONObjectList().forEach { code ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(when (code.optString("status")) { "unused" -> "未使用"; "redeemed" -> "已兑换"; else -> "已停用" }, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            if (code.optString("status") == "unused") TextButton(enabled = state.saving == null, onClick = { viewModel.disableCommunityCode(code.optString("id")) }) { Text("停用") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminBadgeEditorRow(badge: JSONObject, saving: Boolean, onSave: (String, String, String, Boolean) -> Unit) {
+    var label by remember(badge) { mutableStateOf(badge.optString("label")) }
+    var description by remember(badge) { mutableStateOf(badge.optString("description")) }
+    var color by remember(badge) { mutableStateOf(badge.optString("color", "#78613B")) }
+    var active by remember(badge) { mutableStateOf(badge.optBoolean("active")) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.background).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(badge.optString("slug"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+        OutlinedTextField(label, { label = it.take(24) }, Modifier.fillMaxWidth(), label = { Text("展示名称") }, singleLine = true)
+        OutlinedTextField(description, { description = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("说明") }, singleLine = true)
+        OutlinedTextField(color, { color = it.take(7) }, Modifier.fillMaxWidth(), label = { Text("颜色（#RRGGBB）") }, singleLine = true)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("启用", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+            androidx.compose.material3.Switch(checked = active, onCheckedChange = { active = it })
+        }
+        Button(enabled = !saving && label.isNotBlank() && color.matches(Regex("#[0-9A-Fa-f]{6}")), onClick = { onSave(label, description, color, active) }) { Text("保存标识") }
+    }
+}
+
+private fun noticeAudienceLabel(value: String) = when (value) { "free" -> "Free 用户"; "plus" -> "Plus 会员"; "pro" -> "Pro 会员"; else -> "所有用户" }
 
 @Composable
 private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, onRefresh: () -> Unit) {
@@ -432,7 +609,7 @@ private fun MembershipOrderIntake(state: AdminCenterState, viewModel: AdminCente
         Text("登记平台订单", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Text("登记后仍为待核验。核对订单、账号与方案后确认，系统才会按此订单发放会员权益。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         OutlinedTextField(orderId, { orderId = it.take(120) }, Modifier.fillMaxWidth(), label = { Text("爱发电订单号") }, singleLine = true)
-        OutlinedTextField(userId, { userId = it.take(36) }, Modifier.fillMaxWidth(), label = { Text("HEIKA 用户 UUID") }, singleLine = true)
+        OutlinedTextField(userId, { userId = it.take(36) }, Modifier.fillMaxWidth(), label = { Text("用户编号") }, singleLine = true)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("方案", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             listOf("plus", "pro").forEach { value -> TextButton(onClick = { plan = value }) { Text(value.uppercase(), color = if (plan == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) } }
@@ -922,6 +1099,13 @@ data class AdminCenterState(
     val generatedCodeText: String? = null,
     val membershipError: String? = null,
     val membershipNotice: String? = null,
+    val communityBadges: List<JSONObject> = emptyList(),
+    val communityBatches: List<JSONObject> = emptyList(),
+    val communityNotices: List<JSONObject> = emptyList(),
+    val communityUsers: List<JSONObject> = emptyList(),
+    val communitySelectedUser: JSONObject? = null,
+    val communityAwards: List<JSONObject> = emptyList(),
+    val communityGeneratedCodes: String? = null,
 )
 
 @dagger.hilt.android.lifecycle.HiltViewModel
@@ -932,7 +1116,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var adPostsGeneration = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "announcement", "membership-support") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "announcement", "membership-support", "community-access", "official-notices") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
     fun refresh() = viewModelScope.launch(HeikaCoroutineGuard) {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, membershipLoading = mutableState.value.section == "membership-support", error = null, notice = null, membershipError = if (mutableState.value.section == "membership-support") null else mutableState.value.membershipError)
@@ -953,6 +1137,25 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
                     membershipLoading = false,
                     loading = false,
                     membershipError = null,
+                )
+                return@launch
+            }
+            if (mutableState.value.section == "community-access") {
+                val data = repository.adminCommunityAccess()
+                if (requestId == generation) mutableState.value = mutableState.value.copy(
+                    overview = overview,
+                    communityBadges = (data.optJSONArray("badges") ?: JSONArray()).toJSONObjectList(),
+                    communityBatches = (data.optJSONArray("batches") ?: JSONArray()).toJSONObjectList(),
+                    loading = false,
+                )
+                return@launch
+            }
+            if (mutableState.value.section == "official-notices") {
+                val data = repository.adminOfficialNotices()
+                if (requestId == generation) mutableState.value = mutableState.value.copy(
+                    overview = overview,
+                    communityNotices = (data.optJSONArray("items") ?: JSONArray()).toJSONObjectList(),
+                    loading = false,
                 )
                 return@launch
             }
@@ -1060,6 +1263,99 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         try { repository.recordAdminMembershipOrder(orderId, userId, tier, days, amountCents, providerUserRef.trim().ifBlank { null }); mutableState.value = mutableState.value.copy(saving = null, membershipNotice = "订单已登记为待核验；核验通过后将按方案发放会员权益"); onSaved(); refresh() }
         catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, membershipError = error.message ?: "订单登记失败") }
     }
+
+    fun searchCommunityUsers(query: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (query.trim().length < 2) { mutableState.value = mutableState.value.copy(communityUsers = emptyList(), communitySelectedUser = null, communityAwards = emptyList()); return@launch }
+        mutableState.value = mutableState.value.copy(saving = "community-search", error = null, notice = null)
+        try {
+            val result = repository.searchAdminUsers(query)
+            mutableState.value = mutableState.value.copy(saving = null, communityUsers = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList())
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "搜索用户失败") }
+    }
+
+    fun selectCommunityUser(user: JSONObject) = viewModelScope.launch(HeikaCoroutineGuard) {
+        val id = user.optString("id")
+        mutableState.value = mutableState.value.copy(communitySelectedUser = user, communityAwards = emptyList(), error = null)
+        try {
+            val result = repository.adminBadgeAwards(id)
+            mutableState.value = mutableState.value.copy(communityAwards = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList())
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(error = error.message ?: "读取认证记录失败") }
+    }
+
+    fun createCommunityBatch(label: String, kind: String, badgeId: String, quantity: Int, expiresAt: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "community-batch", error = null, notice = null, communityGeneratedCodes = null)
+        try {
+            val payload = JSONObject().put("label", label.trim()).put("kind", kind).put("quantity", quantity)
+            if (kind == "certification") payload.put("badgeId", badgeId)
+            if (expiresAt.isNotBlank()) payload.put("expiresAt", expiresAt)
+            val result = repository.createAdminAccessCodeBatch(payload)
+            val codes = result.optJSONArray("codes") ?: throw IllegalStateException("服务器未返回明文码")
+            if (codes.length() == 0) throw IllegalStateException("服务器返回的明文码为空")
+            val codeText = (0 until codes.length()).joinToString("\n") { codes.optString(it) }
+            mutableState.value = mutableState.value.copy(saving = null, communityGeneratedCodes = codeText, notice = if (kind == "invitation") "邀请码已生成，兑换后附带 Pro 30 天。明文只显示这一次，请复制保存。" else "认证码已生成并绑定认证标识。明文只显示这一次，请复制保存。")
+            refresh()
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "邀请码或认证码生成失败") }
+    }
+
+    fun clearCommunityGeneratedCodes() { mutableState.value = mutableState.value.copy(communityGeneratedCodes = null) }
+
+    fun updateCommunityBadge(id: String, label: String, description: String, color: String, active: Boolean) = communityAction("badge-$id", "认证标识已保存") {
+        repository.updateAdminProfileBadge(id, JSONObject().put("label", label.trim()).put("description", description.trim()).put("color", color).put("active", active))
+    }
+
+    fun createCommunityBadge(slug: String, label: String, description: String, color: String) = communityAction("badge-create", "认证标识已创建") {
+        repository.createAdminProfileBadge(JSONObject().put("slug", slug.trim().lowercase()).put("label", label.trim()).put("description", description.trim()).put("color", color))
+    }
+
+    fun grantCommunityBadge(badgeId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        val user = mutableState.value.communitySelectedUser ?: return@launch
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "badge-grant", error = null, notice = null)
+        try {
+            repository.grantAdminBadge(user.optString("id"), badgeId)
+            val result = repository.adminBadgeAwards(user.optString("id"))
+            mutableState.value = mutableState.value.copy(saving = null, communityAwards = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), notice = "认证标识已授予")
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "授予认证失败") }
+    }
+
+    fun revokeCommunityBadge(awardId: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        val user = mutableState.value.communitySelectedUser ?: return@launch
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "badge-revoke", error = null, notice = null)
+        try {
+            repository.revokeAdminBadge(awardId)
+            val result = repository.adminBadgeAwards(user.optString("id"))
+            mutableState.value = mutableState.value.copy(saving = null, communityAwards = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), notice = "认证标识已撤销")
+        } catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "撤销认证失败") }
+    }
+
+    fun toggleCommunityBatch(id: String, active: Boolean) = communityAction("batch-$id", if (active) "批次已启用" else "批次已停用") {
+        repository.setAdminAccessCodeBatch(id, active)
+    }
+
+    fun disableCommunityCode(id: String) = communityAction("code-$id", "未使用的认证码已停用") {
+        repository.disableAdminAccessCode(id)
+    }
+
+    fun saveOfficialNotice(id: String?, title: String, body: String, audience: String, imageUrl: String, actionLabel: String, actionUrl: String) = communityAction("official-notice", if (id == null) "官方私信公告已发送" else "公告卡片已更新") {
+        val payload = JSONObject().put("title", title.trim()).put("body", body.trim())
+        if (id == null) payload.put("audience", audience)
+        if (id != null || imageUrl.isNotBlank()) payload.put("imageUrl", imageUrl.trim().ifBlank { JSONObject.NULL })
+        if (id != null || actionLabel.isNotBlank() || actionUrl.isNotBlank()) {
+            payload.put("actionLabel", actionLabel.trim().ifBlank { JSONObject.NULL })
+            payload.put("actionUrl", actionUrl.trim().ifBlank { JSONObject.NULL })
+        }
+        repository.saveAdminOfficialNotice(payload, id)
+    }
+
+    private fun communityAction(key: String, success: String, action: suspend () -> Unit) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = key, error = null, notice = null)
+        try { action(); mutableState.value = mutableState.value.copy(saving = null, notice = success); refresh() }
+        catch (error: Exception) { mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "管理操作失败") }
+    }
+
     fun process(id: String, accepted: Boolean, note: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = id, error = null)
@@ -1293,6 +1589,7 @@ private fun CompactUserRow(
 ) {
     val id = item.optString("id")
     val nickname = item.optString("nickname").ifBlank { "探索者" }
+    val email = item.optString("email")
     val role = item.optString("role").ifBlank { "member" }
     val tier = item.optString("membership_tier").ifBlank { "free" }
     val restricted = item.optJSONObject("community_restriction")?.optBoolean("active") == true
@@ -1315,6 +1612,7 @@ private fun CompactUserRow(
         ) { Text(nickname.take(1), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(nickname, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (email.isNotBlank()) Text(email, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 "$roleLabel · $tierLabel" + if (restricted) " · 发言受限" else "",
                 color = if (restricted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,

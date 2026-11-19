@@ -23,14 +23,14 @@ type Report = {
   target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[]; videos?: string[] };
 };
 type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; videos?: string[]; kind?: "new" | "revision"; originalTitle?: string | null };
-type AdminUser = { id: string; nickname: string; bio: string; role: "member" | "admin" | "content_manager" | "reviewer"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null; community_restriction: { active: boolean; restricted_until: string | null; reason: string } | null };
+type AdminUser = { id: string; nickname: string; email: string; bio: string; role: "member" | "admin" | "content_manager" | "reviewer"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null; community_restriction: { active: boolean; restricted_until: string | null; reason: string } | null };
 type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string; review_note?: string | null; reviewed_at?: string | null };
 type TopicTag = { id: number; name: string };
 type TopicEventAdmin = { id: string; topic_id: number; title: string; description: string; starts_at: string; ends_at: string; is_active: boolean; interest_tags?: { name: string } | { name: string }[] | null };
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access";
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
@@ -54,7 +54,8 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
   { title: "账号与工具", modules: [
     { id: "users", title: "账号管理", description: "角色、会员与社区发言限制", icon: Users },
     { id: "membership", title: "会员与赞助", description: "卡密、权益期限与爱发电人工核验", icon: CreditCard },
-    { id: "community-access", title: "认证与官方消息", description: "入驻邀请码、认证标识与官方卡片通知", icon: BadgeCheck },
+    { id: "community-access", title: "认证与入驻邀请", description: "认证标识、手动认证与邀请码批次", icon: BadgeCheck },
+    { id: "official-notices", title: "官方私信公告", description: "编辑并发送黑卡官方菌卡片通知", icon: Megaphone },
     { id: "ai-settings", title: "AI 工作台", description: "配置创作工作台服务密钥", icon: ShieldCheck },
   ] },
   { title: "AI 内容运营", modules: [
@@ -78,7 +79,8 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   "ai-space": "AI 专区管理",
   appeals: "申诉处理",
   membership: "会员与赞助",
-  "community-access": "认证与官方消息",
+  "community-access": "认证与入驻邀请",
+  "official-notices": "官方私信公告",
   "exploration-ad": "探索中心广告位",
   "app-download": "App 下载入口",
 };
@@ -388,7 +390,6 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
 
   return <section className="page moderation-page">
     <button className="back settings-back" onClick={onBack}><ArrowLeft size={18} /> 设置</button>
-    <div className="eyebrow">HEIKA / ADMINISTRATION</div>
     <h1>{section === "overview" ? "管理后台" : adminSectionTitles[section]}<span className="red-dot">.</span></h1>
     <p className="lead">{section === "overview" ? "按工作模块进入审核与管理，待处理事项优先显示。" : `管理后台 / ${adminSectionTitles[section]}`}</p>
     {section === "overview" ? <>
@@ -405,11 +406,11 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         <div><strong>{overview?.comments?.toLocaleString("zh-CN") ?? "—"}</strong><span>可见评论</span></div>
       </div>
       <div className="admin-module-groups">
-        <div className="admin-module-heading"><div><small>WORKSPACE</small><strong>管理模块</strong></div><button type="button" className="soft-button" onClick={refreshCurrent} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
+        <div className="admin-module-heading"><div><strong>管理模块</strong></div><button type="button" className="soft-button" onClick={refreshCurrent} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
         {adminModuleGroups.map((group) => {
           const modules = group.modules.filter((module) => {
             if (role === "admin") return true;
-            if (["users", "membership", "community-access", "ai-settings", "topic-events", "exploration-ad", "app-download"].includes(module.id)) return false;
+            if (["users", "membership", "community-access", "official-notices", "ai-settings", "topic-events", "exploration-ad", "app-download"].includes(module.id)) return false;
             if (module.id === "keywords" && role !== "content_manager") return false;
             return true;
           });
@@ -437,9 +438,9 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
+    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
-        <div className="admin-topic-event-form-heading"><div><small>AI / PROVIDER</small><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
+        <div className="admin-topic-event-form-heading"><div><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}
         <p>密钥使用 AES-256-GCM 加密后保存在 Vercel 私有云存储。只有服务端可读取明文，页面不会回显密钥。</p>
         <label>API 密钥<input type="password" autoComplete="new-password" value={aiKey} onChange={(event) => setAiKey(event.target.value)} placeholder={aiConfigured ? "已配置，输入新密钥可替换" : "粘贴 DeepSeek API 密钥"} /></label>
@@ -464,7 +465,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       } catch (e) { setError(userMessage(e, "广告位保存失败，请检查目标作品编号与管理员权限。")); }
       finally { setExplorationAdBusy(false); }
     }}>
-      <div className="admin-topic-event-form-heading"><div><small>EXPLORE / PROMOTION</small><h2>探索中心广告位</h2></div><span className={`admin-ai-status${explorationAd?.enabled ? " configured" : ""}`}>{explorationAdBusy ? "同步中" : explorationAd?.enabled ? "展示中" : "已关闭"}</span></div>
+      <div className="admin-topic-event-form-heading"><div><h2>探索中心广告位</h2></div><span className={`admin-ai-status${explorationAd?.enabled ? " configured" : ""}`}>{explorationAdBusy ? "同步中" : explorationAd?.enabled ? "展示中" : "已关闭"}</span></div>
       {!explorationAd && explorationAdBusy ? <p>正在读取服务端配置…</p> : explorationAd ? <>
         <p>广告显示在网页端探索页顶部，可展示文字或图片，并跳转至一篇已发布作品。关闭后用户端不显示。</p>
         <label className="admin-exploration-ad-switch"><input type="checkbox" checked={explorationAd.enabled} onChange={(event) => setExplorationAd({ ...explorationAd, enabled: event.target.checked })}/>启用广告位</label>
@@ -491,7 +492,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       } catch (e) { setError(userMessage(e, "App 下载入口保存失败，请检查链接和管理员权限。")); }
       finally { setAppDownloadBusy(false); }
     }}>
-      <div className="admin-topic-event-form-heading"><div><small>APP / DOWNLOAD</small><h2>网页端 App 下载入口</h2></div><span className={`admin-ai-status${appDownload?.enabled ? " configured" : ""}`}>{appDownloadBusy ? "同步中" : appDownload?.enabled ? "展示中" : "已关闭"}</span></div>
+      <div className="admin-topic-event-form-heading"><div><h2>网页端 App 下载入口</h2></div><span className={`admin-ai-status${appDownload?.enabled ? " configured" : ""}`}>{appDownloadBusy ? "同步中" : appDownload?.enabled ? "展示中" : "已关闭"}</span></div>
       {!appDownload && appDownloadBusy ? <p>正在读取服务端配置…</p> : appDownload ? <>
         <p>启用后，网页首页、探索页及个人页顶栏会显示“下载 App”。Android 原生应用内会自动隐藏此入口。</p>
         <label className="admin-exploration-ad-switch"><input type="checkbox" checked={appDownload.enabled} onChange={(event) => setAppDownload({ ...appDownload, enabled: event.target.checked })}/>启用网页端下载入口</label>
@@ -501,7 +502,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       </> : <p>无法读取 App 下载配置，请刷新重试。</p>}
     </form> : section === "topic-events" ? <>
       <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
-        <div className="admin-topic-event-form-heading"><div><small>COMMUNITY / OPEN CALL</small><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
+        <div className="admin-topic-event-form-heading"><div><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
         <label>关联话题<ChoiceSelect label="关联话题" value={eventTopic} onChange={setEventTopic} placeholder="选择一个话题" options={[{value:"",label:"选择一个话题"},...topicTags.map((topic) => ({value:String(topic.id),label:`#${topic.name}`}))]}/></label>
         <label>活动标题<input required minLength={4} maxLength={80} value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="例如：本月共创 · 给生活留一点空白" /></label>
         <label>活动说明<textarea required minLength={8} maxLength={500} value={eventDescription} onChange={(event) => setEventDescription(event.target.value)} placeholder="说明创作方向与参与方式" /></label>
@@ -524,7 +525,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         const restrictionActive = Boolean(restriction?.active && (!restriction.restricted_until || Date.parse(restriction.restricted_until) > Date.now()));
         return <article className="admin-user-row" key={account.id}>
           <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
-          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{(["admin", "content_manager", "reviewer"].includes(account.role) && <span className="admin-role-badge">{account.role === "admin" ? "超级管理员" : account.role === "content_manager" ? "内容管理员" : "审核员"}</span>)}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><time>{new Date(account.created_at).toLocaleDateString("zh-CN")} 加入{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
+          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{(["admin", "content_manager", "reviewer"].includes(account.role) && <span className="admin-role-badge">{account.role === "admin" ? "超级管理员" : account.role === "content_manager" ? "内容管理员" : "审核员"}</span>)}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><small className="admin-user-email">{account.email || "未取得邮箱"}</small><time>{new Date(account.created_at).toLocaleDateString("zh-CN")} 加入{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
           <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{value:"free",label:"普通"},{value:"plus",label:"Plus"},{value:"pro",label:"Pro"}]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])}/></div>
           <div className="admin-user-role-select"><span>权限角色</span><ChoiceSelect label={`${account.nickname || "探索者"}的管理角色`} value={account.role} disabled={saving === account.id} options={[{value:"member",label:"普通用户"},{value:"reviewer",label:"审核员"},{value:"content_manager",label:"内容管理员"},{value:"admin",label:"超级管理员"}]} onChange={(role) => void changeUserRole(account, role as AdminUser["role"])}/></div>
           <div className="admin-user-actions">

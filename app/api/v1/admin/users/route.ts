@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, respond } from "@/lib/server/api";
+import { adminClient } from "@/lib/server/admin-client";
 
 export async function GET(req: NextRequest) {
   return respond(async () => {
@@ -11,15 +12,25 @@ export async function GET(req: NextRequest) {
     const query = (req.nextUrl.searchParams.get("query") || "").trim().replace(/[%,_]/g, "").slice(0, 40);
     const limit = Math.max(1, Math.min(50, Number(req.nextUrl.searchParams.get("limit")) || 50));
     let request = db.from("profiles").select("id,nickname,bio,role,membership_tier,created_at,role_updated_at", { count: "exact" }).order("created_at", { ascending: false }).limit(limit);
-    if (query) request = request.ilike("nickname", `%${query}%`);
+    if (query) {
+      if (/^[0-9a-f-]{36}$/i.test(query)) request = request.eq("id", query);
+      else request = request.ilike("nickname", `%${query}%`);
+    }
     const { data, error, count } = await request;
     dbError(error);
     const rows = data || [];
+    const authAdmin = adminClient().auth.admin;
+    const emails = await Promise.all(rows.map(async (row) => {
+      const result = await authAdmin.getUserById(row.id);
+      if (result.error) return [row.id, ""] as const;
+      return [row.id, result.data.user?.email || ""] as const;
+    }));
+    const emailById = new Map(emails);
     const restrictions = rows.length ? await db.from("community_restrictions")
       .select("user_id,active,restricted_until,reason,updated_at")
       .in("user_id", rows.map((row) => row.id)) : { data: [], error: null };
     dbError(restrictions.error);
     const byUser = new Map((restrictions.data || []).map((item) => [item.user_id, item]));
-    return { items: rows.map((row) => ({ ...row, community_restriction: byUser.get(row.id) || null })), total: count || 0, limit };
+    return { items: rows.map((row) => ({ ...row, email: emailById.get(row.id) || "", community_restriction: byUser.get(row.id) || null })), total: count || 0, limit };
   });
 }

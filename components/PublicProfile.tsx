@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, ChevronRight, LockKeyhole, MessageCircle, MoreHorizontal, Share2, UserRound } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import AnimatedNotice from "./AnimatedNotice";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
+import ProfileBadgeList, { type ProfileBadge } from "./ProfileBadgeList";
 
 type PublicInfo = { nickname: string | null; bio: string | null; avatar_url: string | null; show_bookmarks: boolean };
-type PublicBadge = { id: string; label: string; description: string; color: string };
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
 type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; video_url?: string | null; created_at?: string; post_media?: { storage_path: string; sort_order: number }[] };
 type ProfileLayout = "masonry" | "list";
@@ -108,7 +108,7 @@ export default function PublicProfile({
 }) {
   const [profile, setProfile] = useState<PublicInfo>();
   const [attributes, setAttributes] = useState<PublicAttribute[]>([]);
-  const [badges, setBadges] = useState<PublicBadge[]>([]);
+  const [badges, setBadges] = useState<ProfileBadge[]>([]);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [bookmarks, setBookmarks] = useState<ProfilePost[]>([]);
   const [following, setFollowing] = useState(false);
@@ -153,7 +153,7 @@ export default function PublicProfile({
         if (badgeResponse.ok) {
           const badgePayload = await badgeResponse.json();
           if (!alive) return;
-          setBadges((badgePayload.data?.badges || []) as PublicBadge[]);
+          setBadges((badgePayload.data?.badges || []) as ProfileBadge[]);
         }
         if (c.error) { setError("暂时无法加载公开内容。"); return; }
         const signedPosts = await withSignedPostImages(db, (c.data || []) as ProfilePost[]);
@@ -267,8 +267,8 @@ export default function PublicProfile({
               {profile.avatar_url && !avatarFailed ? <img className="public-profile-avatar" src={profile.avatar_url} alt={`${profile.nickname || "探索者"}的头像`} onError={() => setAvatarFailed(true)} /> : <div className="public-profile-avatar public-profile-avatar-placeholder"><UserRound size={29}/></div>}
               <div className="public-profile-name-block">
                 <h1>{profile.nickname || "探索者"}</h1>
-                <div className="public-profile-account"><span>HEIKA 创作者</span><span aria-hidden="true">·</span><span>UID {id.slice(0, 8).toUpperCase()}</span></div>
-                {badges.length > 0 && <div className="profile-badge-list">{badges.map((badge) => <span key={badge.id} title={badge.description} style={{ "--profile-badge-color": badge.color } as CSSProperties}>{badge.label}</span>)}</div>}
+                <div className="public-profile-account"><span>黑卡创作者</span><span aria-hidden="true">·</span><span>用户编号 {id.slice(0, 8).toUpperCase()}</span></div>
+                <ProfileBadgeList badges={badges}/>
               </div>
             </section>
             <div className="public-profile-bio-block">

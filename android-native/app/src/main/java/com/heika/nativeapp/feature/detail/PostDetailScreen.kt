@@ -123,6 +123,7 @@ import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.sharedRatingKey
 import com.heika.nativeapp.ui.sharedTagKey
 import com.heika.nativeapp.ui.HeikaPulsePage
+import dev.chrisbanes.haze.HazeState
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -136,6 +137,7 @@ fun PostDetailScreen(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedElementsEnabled: Boolean,
+    hazeState: HazeState? = null,
     viewModel: PostDetailViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -218,8 +220,8 @@ fun PostDetailScreen(
                     HeikaDropdownFade(visible = moreOpen) {
                     val menuShape = RoundedCornerShape(24.dp)
                     HeikaGlassSurface(
-                        hazeState = null,
-                        modifier = Modifier.widthIn(min = 220.dp, max = 250.dp).heightIn(max = 480.dp)
+                        hazeState = hazeState,
+                        modifier = Modifier.widthIn(min = 188.dp, max = 218.dp).heightIn(max = 480.dp)
                             .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .55f), menuShape),
                         shape = menuShape,
                         contentPadding = PaddingValues(0.dp),

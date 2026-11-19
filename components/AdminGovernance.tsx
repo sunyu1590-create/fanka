@@ -104,7 +104,7 @@ export default function AdminGovernance({ mode }: Props) {
 
   return <section className="admin-governance">
     <div className="admin-governance-heading">
-      <div><small>COMMUNITY / TRUST & SAFETY</small><h2>{mode === "keywords" ? "关键词规则" : mode === "comments" ? "评论管理" : "操作记录"}</h2>
+      <div><h2>{mode === "keywords" ? "关键词规则" : mode === "comments" ? "评论管理" : "操作记录"}</h2>
       <p>{mode === "keywords" ? "拦截作品、评论、私信和公开资料中的指定词语；规则只在服务端执行。" : mode === "comments" ? `统一搜索、隐藏和恢复评论 · 共 ${total} 条` : `记录管理员的内容处置、账号限制和规则变更 · 共 ${total} 条`}</p></div>
       <button type="button" className="moderation-refresh" aria-label="刷新管理数据" onClick={() => void load()} disabled={loading}><RefreshCw size={16}/></button>
     </div>

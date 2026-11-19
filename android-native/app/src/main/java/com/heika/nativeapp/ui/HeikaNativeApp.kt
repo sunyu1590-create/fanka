@@ -308,6 +308,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
+                        hazeState = hazeState,
                     )
                 }
                 composable("mall") {
@@ -612,7 +613,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     ),
                     title = { Text("网络环境提示") },
                     text = {
-                        Text("检测到您当前的网络可能位于中国大陆。黑卡服务目前部署在境外，跨境连接可能不稳定，造成登录状态异常、内容加载失败或数据更新不同步，少数情况下也可能导致应用异常退出。\n\n建议切换至稳定的境外网络（例如连接 VPN）后重新打开 App。您也可以继续访问，但部分功能可能无法正常使用。")
+                        Text("检测到您当前的网络可能位于中国大陆。黑卡服务器位于新加坡，跨境连接可能不稳定，造成登录状态异常、内容加载失败或数据更新不同步。\n\n建议切换到能够稳定连接新加坡地区的网络后重新打开 App，访问速度通常会更快、更稳定。您也可以继续访问，但部分功能可能无法正常使用。")
                     },
                     confirmButton = {
                         TextButton(

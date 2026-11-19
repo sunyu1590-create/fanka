@@ -7,6 +7,20 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.48.0",
+    date: "2026.11.19",
+    notes: [
+      { category: "新功能", text: "认证管理与官方私信公告拆为两个独立后台模块；管理员可直接搜索已注册用户授予或撤销认证，也可继续生成邀请码和认证码。" },
+      { category: "体验优化", text: "认证标签统一显示在公开主页和私信资料旁，并带认证图标；认证码兑换已移入设置。" },
+      { category: "问题修复", text: "修复会员中心未带账号身份导致当前会员状态不刷新的问题。" },
+      { category: "体验优化", text: "下载页和大陆网络提示明确说明黑卡服务器位于新加坡，并给出连接新加坡地区网络的建议。" },
+      { category: "体验优化", text: "黑卡官方私信改为完整二级页面，保留公告卡片图片与链接，入口名称统一为「黑卡官方菌」。" },
+      { category: "新功能", text: "Android 管理后台补齐认证标识、邀请码批次、直接认证用户和官方私信公告管理。" },
+      { category: "体验优化", text: "受邀欢迎页改为完整欢迎信；账号管理显示邮箱；帖子详情的更多菜单恢复模糊并收窄。" },
+      { category: "体验优化", text: "个人页下载 App 入口移入探索中心，界面栏目统一使用中文。" },
+    ],
+  },
+  {
     version: "2.47.0",
     date: "2026.11.18",
     notes: [

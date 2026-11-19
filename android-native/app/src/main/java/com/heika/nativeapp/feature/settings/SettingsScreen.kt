@@ -28,8 +28,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -64,14 +66,39 @@ import com.heika.nativeapp.ui.HeikaAlertDialog
 import com.heika.nativeapp.ui.HeikaGlassDialog
 import com.heika.nativeapp.ui.HeikaIconRes
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.feature.profile.ProfileViewModel
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
 import java.util.Locale
 
 data class SettingsEntry(val key: String, val title: String, val iconRes: Int)
 
+@Composable
+private fun CertificationSettingsContent() {
+    val profileViewModel: ProfileViewModel = hiltViewModel()
+    val state by profileViewModel.state.collectAsStateWithLifecycle()
+    var code by remember { mutableStateOf("") }
+    LaunchedEffect(profileViewModel) { profileViewModel.load(null, force = true) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("输入管理员发放的认证码。兑换成功后，认证标识会显示在你的公开主页和私信资料旁。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+        OutlinedTextField(code, { code = it.uppercase().take(24) }, Modifier.fillMaxWidth(), label = { Text("认证码") }, placeholder = { Text("HEIKA-XXXX-XXXX-XXXX") }, singleLine = true)
+        Button(enabled = !state.saving && code.isNotBlank(), onClick = { profileViewModel.redeemCertificationCode(code); code = "" }) { Text(if (state.saving) "兑换中…" else "兑换认证") }
+        state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+        HorizontalDivider()
+        Text("我的认证标识", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        if (state.badges.isEmpty()) Text("暂时没有认证标识。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        state.badges.forEach { badge ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Icon(HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                Text(badge.label, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
 private val SettingGroups = listOf(
-    "账号" to listOf(SettingsEntry("account", "账号与安全", HeikaIconRes.Profile), SettingsEntry("membership", "会员与支持", HeikaIconRes.StarOutline)),
+    "账号" to listOf(SettingsEntry("account", "账号与安全", HeikaIconRes.Profile), SettingsEntry("certification", "兑换认证码", HeikaIconRes.Shield), SettingsEntry("membership", "会员与支持", HeikaIconRes.StarOutline)),
     "偏好" to listOf(SettingsEntry("appearance", "外观与阅读", HeikaIconRes.Magic), SettingsEntry("notifications", "通知与消息", HeikaIconRes.Notifications), SettingsEntry("storage", "存储与缓存", HeikaIconRes.Storage)),
     "其他" to listOf(SettingsEntry("privacy", "隐私与权限", HeikaIconRes.Privacy), SettingsEntry("about", "关于黑卡", HeikaIconRes.Info)),
 )
@@ -263,6 +290,7 @@ fun SettingsDetailScreen(
         "layout" -> "内容布局"
         "reading" -> "阅读模式"
         "cache-capacity" -> "缓存容量"
+        "certification" -> "兑换认证码"
         else -> "设置"
     }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -272,6 +300,7 @@ fun SettingsDetailScreen(
             contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp),
         ) {
             when (section) {
+                "certification" -> item { CertificationSettingsContent() }
                 "account" -> {
                     item {
                         SettingsGroup {

@@ -12,7 +12,7 @@ export default function AboutHeika({ onBack, onFeedback }: { onBack: () => void;
     <button className="back settings-back" onClick={onBack}><ArrowLeft size={18}/> 设置</button>
     <header className="about-brand-block">
       <Image src="/icons/heika-192.png" alt="黑卡品牌标识" width={72} height={72} priority />
-      <p className="eyebrow">HEIKA · VERSION {APP_VERSION}</p>
+      <p className="eyebrow">版本 {APP_VERSION}</p>
       <h1>黑卡 HEIKA</h1>
       <p className="about-slogan">翻开未知，遇见新的想法。</p>
       <span>探索 · 阅读 · 连接</span>

@@ -132,7 +132,7 @@ fun MembershipScreen(onBack: () -> Unit, onLogin: () -> Unit, onAbout: () -> Uni
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text("HEIKA MEMBER", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium); Text(if (state.membershipLoaded) actualTier.uppercase() else "等级暂不可用", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
+                        Column(Modifier.weight(1f)) { Text("当前会员状态", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium); Text(if (state.membershipLoaded) actualTier.uppercase() else "等级暂不可用", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
                         MemberTierBadge(if (state.membershipLoaded) actualTier.uppercase() else "HEIKA")
                     }
                     Text("探索未知，发现更多。", color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Medium)

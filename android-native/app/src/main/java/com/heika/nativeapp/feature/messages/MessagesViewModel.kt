@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.data.HeikaRepository
+import com.heika.nativeapp.feature.profile.NativeBadge
 import com.heika.nativeapp.data.jsonObjects
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
@@ -19,7 +20,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
-data class NativePeer(val id: String, val name: String, val avatar: String?, val bio: String)
+data class NativePeer(val id: String, val name: String, val avatar: String?, val bio: String, val badges: List<NativeBadge> = emptyList())
 data class NativeConversation(val id: String, val peer: NativePeer, val latest: String, val unread: Int, val createdAt: String)
 data class NativeMessage(val id: String, val conversationId: String, val senderId: String, val body: String, val createdAt: String)
 data class NativeOfficialNotice(val id: String, val title: String, val body: String, val imageUrl: String?, val actionLabel: String?, val actionUrl: String?, val publishedAt: String, val readAt: String?)
@@ -353,7 +354,13 @@ class MessagesViewModel @Inject constructor(private val repository: HeikaReposit
         }
     }
 
-    private fun parsePeer(json: JSONObject) = NativePeer(json.optString("id"), json.optString("nickname").ifBlank { "探索者" }, json.optString("avatar_url").takeIf(String::isNotBlank), json.optString("bio"))
+    private fun parsePeer(json: JSONObject) = NativePeer(
+        json.optString("id"),
+        json.optString("nickname").ifBlank { "探索者" },
+        json.optString("avatar_url").takeIf(String::isNotBlank),
+        json.optString("bio"),
+        json.optJSONArray("badges").jsonObjects().map { row -> NativeBadge(row.optString("id"), row.optString("label"), row.optString("description"), row.optString("color")) },
+    )
 
     private fun parseInbox(data: JSONObject): List<NativeConversation> = data.optJSONArray("items").jsonObjects().map { row ->
         val peer = parsePeer(row.optJSONObject("peer") ?: JSONObject())

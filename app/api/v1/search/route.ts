@@ -39,7 +39,22 @@ export async function GET(req: NextRequest) {
         .order("id", { ascending: true })
         .range((page - 1) * limit, page * limit - 1);
       dbError(error);
-      return { kind, items: data || [], total: count || 0, has_more: false, next_cursor: null, page, limit };
+      const people = data || [];
+      const awards = people.length ? await db.from("user_badge_awards")
+        .select("user_id,profile_badge_types!inner(id,label,description,color,active)")
+        .in("user_id", people.map((person) => person.id))
+        .is("revoked_at", null)
+        .eq("profile_badge_types.active", true) : { data: [], error: null };
+      dbError(awards.error);
+      const badgesByUser = new Map<string, Array<{ id: string; label: string; description: string; color: string }>>();
+      for (const award of awards.data || []) {
+        const badge = Array.isArray(award.profile_badge_types) ? award.profile_badge_types[0] : award.profile_badge_types;
+        if (!badge?.active) continue;
+        const badges = badgesByUser.get(award.user_id) || [];
+        badges.push({ id: badge.id, label: badge.label, description: badge.description, color: badge.color });
+        badgesByUser.set(award.user_id, badges);
+      }
+      return { kind, items: people.map((person) => ({ ...person, badges: badgesByUser.get(person.id) || [] })), total: count || 0, has_more: false, next_cursor: null, page, limit };
     }
 
     const cursor = decodeCursor(params.get("cursor"));

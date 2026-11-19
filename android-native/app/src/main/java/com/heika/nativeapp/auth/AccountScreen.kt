@@ -381,11 +381,22 @@ private fun InvitationWelcomePage(invitation: org.json.JSONObject, onContinue: (
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 30.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("HEIKA / INVITATION", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.4.sp)
-        Text("谢谢你，受邀而来。", color = MaterialTheme.colorScheme.onBackground, fontSize = 27.sp, fontWeight = FontWeight.SemiBold)
-        Text("黑卡因为愿意分享的人而变得更好。感谢你带着自己的经验与灵感加入这里，也感谢你愿意为社区添上一份优质内容。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, lineHeight = 22.sp)
-        Text("你的账号已获得「$badge」标识，并已开启 Pro $days 天。欢迎在这里慢慢探索，也期待看到你的作品。", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, lineHeight = 22.sp)
-        batch?.let { Text("邀请批次：$it", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) }
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 22.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+            Text("✦", color = MaterialTheme.colorScheme.primary, fontSize = 25.sp)
+            Text("一封来自黑卡的欢迎信", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+            Text("谢谢你，受邀而来。", color = MaterialTheme.colorScheme.onBackground, fontSize = 27.sp, fontWeight = FontWeight.SemiBold)
+            Text("你好，欢迎来到黑卡。", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("这封信想先认真地对你说一声谢谢。感谢邀请你的人愿意把黑卡介绍给你，也感谢你愿意接过这份邀请，成为这个社区的新朋友。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
+            Text("黑卡从一个简单的念头开始：让人们在一次次探索里遇见值得停留的内容，也让每一份真诚的分享都被看见。一个社区之所以慢慢长大，靠的不是热闹的口号，而是像你这样愿意加入、愿意交流、愿意留下好内容的人。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
+            Text("你的账号已经获得「$badge」标识。之后，其他用户可以在你的公开主页和私信资料旁看到它，知道你是通过社区邀请加入的。这份标识代表一次友好的引荐，也代表我们欢迎你在这里找到自己的位置。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
+            Text("同时，我们已为你的账号开通 Pro $days 天。希望这段时间能让你更自在地体验黑卡的探索与创作功能。你可以慢慢熟悉这里，不必急着发布什么；当灵感出现时，也期待看到你愿意分享的故事、经验或作品。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
+            Text("如果你是带着创作计划来的，欢迎把这里当作一个认真交流的地方；如果你只是想先四处看看，也完全没关系。无论从哪里开始，我们都希望你能在黑卡里发现一些新的想法，并遇见值得继续交流的人。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
+            Text("再次感谢你的加入。愿你在黑卡的每一次翻阅，都能遇见一点意料之外的惊喜。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 21.sp)
+            androidx.compose.material3.HorizontalDivider()
+            Text("诚挚欢迎", Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            Text("黑卡官方菌", Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            batch?.let { Text("邀请批次：$it", Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End) }
+        }
         Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("进入黑卡") }
     }
 }

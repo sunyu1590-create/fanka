@@ -86,7 +86,7 @@ export default function AdminMembership() {
   const stats = data?.stats || {};
 
   return <div className="membership-admin">
-    <div className="membership-admin-heading"><div><span className="heika-membership-eyebrow">MEMBERSHIP / SPONSOR</span><h2>会员与赞助管理</h2></div><button className="soft-button" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
+    <div className="membership-admin-heading"><div><h2>会员与赞助管理</h2></div><button className="soft-button" type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
     {error && <p className="moderation-feedback error" role="alert">{error}</p>}{notice && <p className="moderation-feedback" role="status">{notice}</p>}
     {loading && !data ? <p className="moderation-empty">正在读取会员数据…</p> : <>
       <div className="membership-admin-stats">{[[stats.free,"Free 用户"],[stats.plus,"Plus 会员"],[stats.pro,"Pro 会员"],[stats.active,"当前有效会员"],[stats.redemptionsThisMonth,"本月兑换"],[stats.unusedCodes,"未兑换卡密"],[stats.verifiedOrders,`已核验订单 · ¥${((stats.verifiedAmountCents || 0)/100).toFixed(2)}`],[stats.exceptionOrders,"异常订单"]].map(([value,labelText]) => <div key={String(labelText)}><strong>{Number(value || 0).toLocaleString("zh-CN")}</strong><span>{labelText}</span></div>)}</div>

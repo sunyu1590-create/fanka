@@ -195,20 +195,20 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
   };
 
   return <section className="ai-space" hidden={hidden} aria-label="AI 空间">
-    <header className="ai-space-heading"><div><span>HEIKA / AI</span><h1>AI 空间</h1><p>智能体、工具与实战经验，汇集成可复用的知识。</p></div></header>
+    <header className="ai-space-heading"><div><h1>AI 空间</h1><p>智能体、工具与实战经验，汇集成可复用的知识。</p></div></header>
 
     {view === "home" && <>
       <div className="ai-space-home-actions"><button type="button" onClick={() => setView("search")}><Search size={15}/>搜索 AI 内容</button><button type="button" onClick={() => setView("categories")}><Compass size={15}/>浏览分类</button></div>
       <div className="ai-space-editorial-home">
-        {!!featured.length && <section className="ai-space-section ai-space-featured"><div className="ai-space-section-head"><div><small>CURATED</small><h2>精选推荐</h2></div><button type="button" onClick={() => openTypeFeed("")}>查看全部 <ChevronRight size={15}/></button></div><div className="ai-resource-grid">{featured.slice(0, 3).map(card)}</div></section>}
-        {!!popular.length && <section className="ai-space-section"><div className="ai-space-section-head"><div><small>POPULAR</small><h2>热门资源</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}
-        {!!tutorials.length && <section className="ai-space-section"><div className="ai-space-section-head"><div><small>BUILD</small><h2>实用教程</h2></div><button type="button" onClick={() => openTypeFeed("tutorial")}>更多教程 <ChevronRight size={15}/></button></div><div className="ai-resource-grid">{tutorials.slice(0, 3).map(card)}</div></section>}
+        {!!featured.length && <section className="ai-space-section ai-space-featured"><div className="ai-space-section-head"><div><h2>精选推荐</h2></div><button type="button" onClick={() => openTypeFeed("")}>查看全部 <ChevronRight size={15}/></button></div><div className="ai-resource-grid">{featured.slice(0, 3).map(card)}</div></section>}
+        {!!popular.length && <section className="ai-space-section"><div className="ai-space-section-head"><div><h2>热门资源</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}
+        {!!tutorials.length && <section className="ai-space-section"><div className="ai-space-section-head"><div><h2>实用教程</h2></div><button type="button" onClick={() => openTypeFeed("tutorial")}>更多教程 <ChevronRight size={15}/></button></div><div className="ai-resource-grid">{tutorials.slice(0, 3).map(card)}</div></section>}
       </div>
-      <ResultsSection heading="最新发布" eyebrow="LATEST" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} />
+      <ResultsSection heading="最新发布" eyebrow="近期内容" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} />
     </>}
 
     {view === "categories" && <section className="ai-space-secondary" aria-labelledby="ai-space-categories-title">
-      <div className="ai-space-secondary-heading"><button type="button" className="ai-space-back" onClick={() => setView("home")}><ArrowLeft size={16}/>返回 AI 空间</button><div><small>AI LIBRARY</small><h2 id="ai-space-categories-title">浏览分类</h2><p>选择一个方向，查看相关知识、工具与资源。</p></div></div>
+      <div className="ai-space-secondary-heading"><button type="button" className="ai-space-back" onClick={() => setView("home")}><ArrowLeft size={16}/>返回 AI 空间</button><div><small>AI 内容分类</small><h2 id="ai-space-categories-title">浏览分类</h2><p>选择一个方向，查看相关知识、工具与资源。</p></div></div>
       <div className="ai-space-category-list">
         <button type="button" className="ai-space-category-row" onClick={() => changeCategory(null)}><span className="ai-space-category-icon"><Sparkles size={17}/></span><span><strong>全部 AI 内容</strong><small>浏览所有分类的最新发布</small></span><ChevronRight size={16}/></button>
         {categoriesByRoot.map((item, index) => {
@@ -219,20 +219,20 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     </section>}
 
     {view === "feed" && <section className="ai-space-secondary ai-space-results-view" aria-labelledby="ai-space-feed-title">
-      <div className="ai-space-secondary-heading"><button type="button" className="ai-space-back" onClick={() => setView(feedReturnView)}><ArrowLeft size={16}/>{feedReturnView === "categories" ? "返回分类" : "返回 AI 空间"}</button><div><small>{categoryId ? "AI CATEGORY" : "AI CONTENT"}</small><h2 id="ai-space-feed-title">{selectedCategory?.name || typeLabels[contentType] || "全部 AI 内容"}</h2></div></div>
+      <div className="ai-space-secondary-heading"><button type="button" className="ai-space-back" onClick={() => setView(feedReturnView)}><ArrowLeft size={16}/>{feedReturnView === "categories" ? "返回分类" : "返回 AI 空间"}</button><div><small>{categoryId ? "内容分类" : "AI 内容"}</small><h2 id="ai-space-feed-title">{selectedCategory?.name || typeLabels[contentType] || "全部 AI 内容"}</h2></div></div>
       {categoryChildren.length > 0 && <div className="ai-space-subcategories" role="group" aria-label={`${selectedCategory?.name}子分类`}><button className="selected" onClick={() => changeCategory(selectedCategory?.id || null)}>全部{selectedCategory ? ` ${selectedCategory.name}` : ""}</button>{categoryChildren.map((item) => <button key={item.id} className={categoryId === item.id ? "selected" : ""} onClick={() => changeCategory(item.id)}>{item.name}</button>)}</div>}
-      <ResultsSection heading={selectedCategory?.name || typeLabels[contentType] || "最新发布"} eyebrow="LATEST" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} />
+      <ResultsSection heading={selectedCategory?.name || typeLabels[contentType] || "最新发布"} eyebrow="近期内容" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} />
     </section>}
 
     {view === "search" && <section className="ai-space-secondary ai-space-search-view" aria-labelledby="ai-space-search-title">
-      <div className="ai-space-secondary-heading"><button type="button" className="ai-space-back" onClick={() => setView("home")}><ArrowLeft size={16}/>返回 AI 空间</button><div><small>AI SEARCH</small><h2 id="ai-space-search-title">搜索 AI 内容</h2><p>搜索 Agent、Skills、Prompt、工具和教程。</p></div></div>
+      <div className="ai-space-secondary-heading"><button type="button" className="ai-space-back" onClick={() => setView("home")}><ArrowLeft size={16}/>返回 AI 空间</button><div><small>搜索内容</small><h2 id="ai-space-search-title">搜索 AI 内容</h2><p>搜索智能体、技能、提示词、工具和教程。</p></div></div>
       <form className="ai-space-search" role="search" onSubmit={submitSearch}><Search size={17}/><input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="输入关键词" maxLength={60}/>{searchDraft && <button type="button" onClick={() => { setSearchDraft(""); setSearchTerm(""); }}>清除</button>}<button type="submit" aria-label="搜索"><Search size={16}/></button></form>
-      {searchTerm ? <ResultsSection heading={`“${searchTerm}”的结果`} eyebrow="SEARCH RESULTS" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} /> : <>
+      {searchTerm ? <ResultsSection heading={`“${searchTerm}”的结果`} eyebrow="搜索结果" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} /> : <>
         <section className="ai-search-suggestions" aria-label="AI 内容搜索推荐">
           <div className="ai-search-suggestions-head"><strong>{popular.length ? "热门搜索" : "分类快捷搜索"}</strong><span>{popular.length ? "来自近期热门内容" : "从 AI 分类开始探索"}</span></div>
           {searchSuggestions.length ? <div className="ai-search-suggestion-list">{searchSuggestions.map((term) => <button type="button" key={term} onClick={() => searchFor(term)}><Search size={13}/>{term}</button>)}</div> : <p className="ai-space-search-hint">输入关键词后可查找知识文章、结构化资源与实战教程。</p>}
         </section>
-        {popular.length > 0 && <section className="ai-search-recommended"><div className="ai-space-section-head"><div><small>POPULAR</small><h2>大家正在关注</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}
+        {popular.length > 0 && <section className="ai-search-recommended"><div className="ai-space-section-head"><div><small>热门</small><h2>大家正在关注</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}
       </>}
     </section>}
   </section>;

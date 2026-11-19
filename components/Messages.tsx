@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { ArrowLeft, ArrowUp, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Users } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import { cloudRequest } from "@/lib/cloud";
 import { authRedirectUrl } from "@/lib/auth-redirect";
@@ -11,7 +11,8 @@ import AnimatedNotice from "./AnimatedNotice";
 import RecoveryCodesPage from "./RecoveryCodesPage";
 import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
-type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null };
+import ProfileBadgeList, { type ProfileBadge } from "./ProfileBadgeList";
+type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null; badges?: ProfileBadge[] };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
 type OfficialNotice = { id: string; title: string; body: string; image_url: string | null; action_label: string | null; action_url: string | null; published_at: string; delivered_at: string; read_at: string | null };
 /** 撤回窗口（秒），与服务端 180 秒保持一致。 */
@@ -223,9 +224,21 @@ export default function Messages({
       setRooms(rows);
       const peers = [...new Set(rows.map((room) => room.user_a === user.id ? room.user_b : room.user_a))];
       if (peers.length) {
-        const { data: profiles, error } = await db.from("profiles").select("id,nickname,bio,avatar_url").in("id", peers);
+        const [{ data: profiles, error }, awards] = await Promise.all([
+          db.from("profiles").select("id,nickname,bio,avatar_url").in("id", peers),
+          db.from("user_badge_awards").select("user_id,profile_badge_types!inner(id,label,description,color,active)").in("user_id", peers).is("revoked_at", null).eq("profile_badge_types.active", true),
+        ]);
         if (error) setError(error.message);
-        if (userIdRef.current === user.id) setNames(Object.fromEntries((profiles || []).map((profile) => [profile.id, profile])));
+        if (awards.error) setError(awards.error.message);
+        const badgesByUser = new Map<string, ProfileBadge[]>();
+        for (const award of awards.data || []) {
+          const badge = Array.isArray(award.profile_badge_types) ? award.profile_badge_types[0] : award.profile_badge_types;
+          if (!badge?.active) continue;
+          const items = badgesByUser.get(award.user_id) || [];
+          items.push({ id: badge.id, label: badge.label, description: badge.description, color: badge.color });
+          badgesByUser.set(award.user_id, items);
+        }
+        if (userIdRef.current === user.id) setNames(Object.fromEntries((profiles || []).map((item) => [item.id, { ...item, badges: badgesByUser.get(item.id) || [] }])));
       } else setNames({});
       setPreview(Object.fromEntries(summary.flatMap((row) => row.latest_message_id && row.latest_created_at
         ? [[row.conversation_id, {
@@ -504,9 +517,16 @@ export default function Messages({
       .select("id,nickname,bio,avatar_url")
       .eq("id", initialPeer)
       .single()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (error) setError(error.message);
-        else if (data) void open(data);
+        else if (data) {
+          const result = await db.from("user_badge_awards").select("user_id,profile_badge_types!inner(id,label,description,color,active)").eq("user_id", data.id).is("revoked_at", null).eq("profile_badge_types.active", true);
+          const badges = (result.data || []).flatMap((award) => {
+            const badge = Array.isArray(award.profile_badge_types) ? award.profile_badge_types[0] : award.profile_badge_types;
+            return badge?.active ? [{ id: badge.id, label: badge.label, description: badge.description, color: badge.color }] : [];
+          });
+          void open({ ...data, badges });
+        }
         onPeerOpened?.();
       });
   }, [db, user?.id, initialPeer]);
@@ -547,8 +567,19 @@ export default function Messages({
       .neq("id", user.id)
       .ilike("nickname", `%${query.replace(/[%_,]/g, "")}%`)
       .limit(20);
-    if (error) setError(error.message);
-    setPeople(data || []);
+    if (error) { setError(error.message); return; }
+    const rows = data || [];
+    const awards = rows.length ? await db.from("user_badge_awards").select("user_id,profile_badge_types!inner(id,label,description,color,active)").in("user_id", rows.map((row) => row.id)).is("revoked_at", null).eq("profile_badge_types.active", true) : { data: [], error: null };
+    if (awards.error) setError(awards.error.message);
+    const badgesByUser = new Map<string, ProfileBadge[]>();
+    for (const award of awards.data || []) {
+      const badge = Array.isArray(award.profile_badge_types) ? award.profile_badge_types[0] : award.profile_badge_types;
+      if (!badge?.active) continue;
+      const items = badgesByUser.get(award.user_id) || [];
+      items.push({ id: badge.id, label: badge.label, description: badge.description, color: badge.color });
+      badgesByUser.set(award.user_id, items);
+    }
+    setPeople(rows.map((item) => ({ ...item, badges: badgesByUser.get(item.id) || [] })));
   };
   const report = async (message?: Message) => {
     if (!db || !user) return;
@@ -584,12 +615,11 @@ export default function Messages({
       try { window.localStorage.removeItem("heika:pending-recovery-codes"); } catch {}
     }} />;
   if (authView === "invite-welcome" && pendingInvitation)
-    return <section className="page invite-welcome-page"><div className="eyebrow">HEIKA / INVITATION</div><div className="invite-welcome-letter"><span className="invite-welcome-mark">✦</span><p className="eyebrow">给新加入黑卡的创作者</p><h1>谢谢你，受邀而来。</h1><p>黑卡因为愿意分享的人而变得更好。感谢你带着自己的经验与灵感加入这里，也感谢你愿意为社区添上一份优质内容。</p><p>你的账号已获得 <strong>{pendingInvitation.badge?.label || "受邀入驻"}</strong> 标识，并已开启 <strong>Pro {pendingInvitation.rewardDays || 30} 天</strong>。欢迎在这里慢慢探索，也期待看到你的作品。</p><small>{pendingInvitation.batchLabel ? `邀请批次：${pendingInvitation.batchLabel}` : "黑卡官方"}</small><button type="button" className="primary-button" onClick={() => { setAuthView("login"); setAuthMessage(""); }}>进入黑卡</button></div></section>;
+    return <section className="page invite-welcome-page"><article className="invite-welcome-letter"><span className="invite-welcome-mark">✦</span><p className="invite-welcome-kicker">一封来自黑卡的欢迎信</p><h1>谢谢你，受邀而来。</h1><p>你好，欢迎来到黑卡。</p><p>这封信想先认真地对你说一声谢谢。感谢邀请你的人愿意把黑卡介绍给你，也感谢你愿意接过这份邀请，成为这个社区的新朋友。</p><p>黑卡从一个简单的念头开始：让人们在一次次探索里遇见值得停留的内容，也让每一份真诚的分享都被看见。一个社区之所以慢慢长大，靠的不是热闹的口号，而是像你这样愿意加入、愿意交流、愿意留下好内容的人。</p><p>你的账号已经获得 <strong>{pendingInvitation.badge?.label || "受邀入驻"}</strong> 标识。之后，其他用户可以在你的公开主页和私信资料旁看到它，知道你是通过社区邀请加入的。这份标识代表一次友好的引荐，也代表我们欢迎你在这里找到自己的位置。</p><p>同时，我们已为你的账号开通 <strong>Pro {pendingInvitation.rewardDays || 30} 天</strong>。希望这段时间能让你更自在地体验黑卡的探索与创作功能。你可以慢慢熟悉这里，不必急着发布什么；当灵感出现时，也期待看到你愿意分享的故事、经验或作品。</p><p>如果你是带着创作计划来的，欢迎把这里当作一个认真交流的地方；如果你只是想先四处看看，也完全没关系。无论从哪里开始，我们都希望你能在黑卡里发现一些新的想法，并遇见值得继续交流的人。</p><p>再次感谢你的加入。愿你在黑卡的每一次翻阅，都能遇见一点意料之外的惊喜。</p><div className="invite-welcome-signature"><span>诚挚欢迎</span><strong>黑卡官方菌</strong>{pendingInvitation.batchLabel && <small>邀请批次：{pendingInvitation.batchLabel}</small>}</div><button type="button" className="primary-button" onClick={() => { setAuthView("login"); setAuthMessage(""); }}>进入黑卡</button></article></section>;
   if (!user || authView === "reset")
   if (!user || authView === "reset")
     return (
       <section className="page account-page">
-        <div className="eyebrow">HEIKA / ACCOUNT</div>
         <h1>{authView === "signup" ? "加入黑卡。" : authView === "forgot" || authView === "verify-otp" ? "找回密码。" : authView === "reset" ? "设置新密码。" : authView === "confirm" ? "查看邮箱。" : "让交流发生。"}</h1>
         <p className="lead">{authView === "signup" ? "建立你的账号，保存发现并开启交流。" : authView === "reset" ? "为账号设置一个新的登录密码。" : authView === "verify-otp" ? "输入邮件中的验证码，或打开邮件里的登录链接返回此页设置新密码。" : authView === "recover-code" ? "输入邮箱和一枚未使用的账号恢复码。" : authView === "confirm" ? "完成邮箱验证后，即可继续使用黑卡。" : "登录后，收藏、消息与个人资料会安全保存在账号中。"}</p>
         <form
@@ -648,7 +678,7 @@ export default function Messages({
         <button type="button" className={inboxFilter === "unread" ? "selected" : ""} aria-pressed={inboxFilter === "unread"} onClick={() => setInboxFilter("unread")}>未读{Object.values(unread).reduce((sum, count) => sum + count, 0) ? ` · ${Object.values(unread).reduce((sum, count) => sum + count, 0)}` : ""}</button>
       </div>}
       {inboxMode === "chats" && (inboxFilter !== "unread" || officialNotices.some((notice) => !notice.read_at)) && <button type="button" className="official-notice-entry" onClick={() => void openOfficialInbox()}>
-        <span className="official-notice-avatar"><Bell size={18}/></span><span className="official-notice-entry-copy"><strong>黑卡官方</strong><small>{officialNotices[0]?.title || "官方公告和重要提醒会出现在这里"}</small></span><span className="official-notice-entry-meta"><small>通知</small>{officialNotices.filter((notice) => !notice.read_at).length > 0 && <i>{officialNotices.filter((notice) => !notice.read_at).length}</i>}</span>
+        <span className="official-notice-avatar"><Bell size={18}/></span><span className="official-notice-entry-copy"><strong>黑卡官方菌</strong><small>{officialNotices[0]?.title || "官方公告和重要提醒会出现在这里"}</small></span><span className="official-notice-entry-meta"><small>通知</small>{officialNotices.filter((notice) => !notice.read_at).length > 0 && <i>{officialNotices.filter((notice) => !notice.read_at).length}</i>}</span>
       </button>}
       {inboxMode === "people" && people.map((p) => (
         <button
@@ -658,7 +688,7 @@ export default function Messages({
         >
           <span className="conversation-row-head">
             <span className="conversation-avatar">{(p.nickname || "探").slice(0, 1)}{p.avatar_url && <img src={p.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-            <span className="conversation-row-copy"><strong>{p.nickname || "探索者"}</strong><small>{p.bio || "查看主页并开始交流"}</small></span>
+            <span className="conversation-row-copy"><strong>{p.nickname || "探索者"}</strong><ProfileBadgeList badges={p.badges || []} compact/><small>{p.bio || "查看主页并开始交流"}</small></span>
             <span className="conversation-row-meta"><small>用户</small></span>
           </span>
         </button>
@@ -679,7 +709,7 @@ export default function Messages({
               <button className="conversation-row" onClick={() => { updateActiveConversation(r); setMessages([]); void load(r); }}>
                 <span className="conversation-row-head">
                   <span className="conversation-avatar">{(names[id]?.nickname || "探").slice(0, 1)}{names[id]?.avatar_url && <img src={names[id].avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-                  <span className="conversation-row-copy"><strong>{names[id]?.nickname || "探索者"}{pinnedRooms.includes(r.id) && <Pin size={11} aria-label="已置顶"/>}</strong><small>{preview[r.id]?.body || "开启一段新的交流"}</small></span>
+                  <span className="conversation-row-copy"><strong>{names[id]?.nickname || "探索者"}{pinnedRooms.includes(r.id) && <Pin size={11} aria-label="已置顶"/>}</strong><ProfileBadgeList badges={names[id]?.badges || []} compact/><small>{preview[r.id]?.body || "开启一段新的交流"}</small></span>
                   <span className="conversation-row-meta"><time>{preview[r.id] ? new Date(preview[r.id].created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}</time>{unread[r.id] ? <i className="conversation-unread">{unread[r.id] > 99 ? "99+" : unread[r.id]}</i> : null}</span>
                 </span>
               </button>
@@ -694,14 +724,12 @@ export default function Messages({
         return (inboxFilter !== "unread" || !!unread[room.id]) && (!query.trim() || `${names[peerId]?.nickname || ""} ${preview[room.id]?.body || ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
       }) && <div className="messages-empty compact"><strong>{inboxFilter === "unread" ? "没有未读会话" : "没有匹配的会话"}</strong><span>{inboxFilter === "unread" ? "新消息会出现在这里。" : "试试昵称或最近消息中的关键词。"}</span></div>}
       </div>
-      {officialInboxOpen && <div className="modal-backdrop official-inbox-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setOfficialInboxOpen(false); }}>
-        <section className="official-inbox-panel" role="dialog" aria-modal="true" aria-label="黑卡官方通知">
-          <header><div><span className="eyebrow">HEIKA / OFFICIAL</span><h2>黑卡官方</h2><p>平台公告与重要提醒</p></div><button type="button" className="close" aria-label="关闭官方通知" onClick={() => setOfficialInboxOpen(false)}><X size={18}/></button></header>
+      {officialInboxOpen && <section className="official-inbox-page" aria-label="黑卡官方菌消息">
+          <header><button type="button" aria-label="返回消息列表" onClick={() => setOfficialInboxOpen(false)}><ArrowLeft size={20}/></button><div><h2>黑卡官方菌</h2><p>平台公告与重要提醒</p></div></header>
           <div className="official-inbox-cards">{officialNotices.length ? officialNotices.map((notice) => <article className="official-notice-card" key={notice.id}>
             <small>{new Date(notice.published_at).toLocaleString("zh-CN")}</small><h3>{notice.title}</h3><p>{notice.body}</p>{notice.image_url && <img src={notice.image_url} alt="通知图片" loading="lazy"/>}{notice.action_label && notice.action_url && <a href={notice.action_url} target={notice.action_url.startsWith("/") ? undefined : "_blank"} rel={notice.action_url.startsWith("/") ? undefined : "noopener noreferrer"}>{notice.action_label}</a>}
           </article>) : <div className="messages-empty compact"><strong>暂时没有官方通知</strong><span>后续公告和提醒会出现在这里。</span></div>}</div>
-        </section>
-      </div>}
+        </section>}
       {profile && (
         <div className="modal-backdrop">
           <div className="modal">
@@ -709,6 +737,7 @@ export default function Messages({
               关闭
             </button>
             <h2>{profile.nickname}</h2>
+            <ProfileBadgeList badges={profile.badges || []}/>
             <p>{profile.bio || "这个人还没有写下简介。"}</p>
             <button
               className="primary-button"
@@ -833,7 +862,7 @@ export default function Messages({
               <span className="chat-peer-avatar">
                 {names[peer]?.avatar_url ? <img src={names[peer].avatar_url!} alt="" /> : (names[peer]?.nickname || "探").slice(0, 1)}
               </span>
-              <span className="chat-peer-copy"><strong>{names[peer]?.nickname || "探索者"}</strong><small>个人主页</small></span>
+              <span className="chat-peer-copy"><strong>{names[peer]?.nickname || "探索者"}</strong><ProfileBadgeList badges={names[peer]?.badges || []} compact/><small>个人主页</small></span>
             </button>
             <button className="chat-more" aria-label="会话选项" onClick={() => setProfile(names[peer] || { id: peer, nickname: "探索者", bio: "" })}>
               <MoreHorizontal size={21} />

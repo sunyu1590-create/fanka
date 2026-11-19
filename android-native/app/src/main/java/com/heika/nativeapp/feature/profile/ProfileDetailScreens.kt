@@ -187,7 +187,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
                         ProfileAttributeVisibility("公开兴趣爱好", visibility["hobbies"] == true) { visibility = visibility + ("hobbies" to it) }
                     }
                 }
-                item { Text("HEIKA ID · ${profile.id}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
+                item { Text("用户编号 · ${profile.id}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) }
                 item { state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) } }
                 item { state.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp) } }
                 item {

@@ -59,7 +59,8 @@ export async function GET(req: NextRequest) {
     if (!list.length) return { items: [] };
 
     const ids = list.map((row) => row.id);
-    const [{ data: messages }, { data: reads }, { data: profiles }] = await Promise.all([
+    const peerIds = [...new Set(list.map((row) => peerOf(row, me)))];
+    const [{ data: messages }, { data: reads }, { data: profiles }, { data: awards }] = await Promise.all([
       db
         .from("dm_messages")
         .select("conversation_id,sender_id,body,created_at")
@@ -69,7 +70,12 @@ export async function GET(req: NextRequest) {
       db
         .from("profiles")
         .select("id,nickname,avatar_url,bio")
-        .in("id", [...new Set(list.map((row) => peerOf(row, me)))])
+        .in("id", peerIds),
+      db.from("user_badge_awards")
+        .select("user_id,profile_badge_types!inner(id,label,description,color,active)")
+        .in("user_id", peerIds)
+        .is("revoked_at", null)
+        .eq("profile_badge_types.active", true)
     ]);
 
     const readAt = new Map((reads ?? []).map((row) => [row.conversation_id, row.read_at as string]));
@@ -87,6 +93,14 @@ export async function GET(req: NextRequest) {
     }
 
     const profileById = new Map((profiles ?? []).map((row) => [row.id, row]));
+    const badgesByUser = new Map<string, Array<{ id: string; label: string; description: string; color: string }>>();
+    for (const award of awards ?? []) {
+      const badge = Array.isArray(award.profile_badge_types) ? award.profile_badge_types[0] : award.profile_badge_types;
+      if (!badge || !badge.active) continue;
+      const items = badgesByUser.get(award.user_id) || [];
+      items.push({ id: badge.id, label: badge.label, description: badge.description, color: badge.color });
+      badgesByUser.set(award.user_id, items);
+    }
     const items = list
       .map((row) => {
         const peerId = peerOf(row, me);
@@ -98,7 +112,8 @@ export async function GET(req: NextRequest) {
             id: peerId,
             nickname: peer?.nickname || "探索者",
             avatar_url: peer?.avatar_url ?? null,
-            bio: peer?.bio ?? ""
+            bio: peer?.bio ?? "",
+            badges: badgesByUser.get(peerId) || [],
           },
           latest_body: last?.body ?? "",
           unread: unread.get(row.id) ?? 0,

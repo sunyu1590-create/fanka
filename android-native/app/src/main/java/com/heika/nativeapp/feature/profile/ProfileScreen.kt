@@ -101,7 +101,6 @@ fun ProfileScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var selected by remember(userId) { mutableStateOf("works") }
-    var certificationCode by rememberSaveable(userId) { mutableStateOf("") }
     var hasResumedOnce by remember(userId) { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val worksState = rememberLazyStaggeredGridState()
@@ -192,7 +191,7 @@ fun ProfileScreen(
                                     if (userId == null) Text("LV${state.stats.level}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .3.sp)
                                 }
                                 if (profile.bio.isNotBlank()) Text(profile.bio, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                                Text("HEIKA ID · ${profile.id.take(8).uppercase()}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
+                                Text("用户编号 · ${profile.id.take(8).uppercase()}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
                                 val attributes = state.profileAttributes
                                 val visibleDetails = buildList {
                                     if (attributes.visibility["gender"] == true && attributes.gender.isNotBlank()) {
@@ -208,11 +207,13 @@ fun ProfileScreen(
                             if (userId == null) Icon(HeikaIcons.Edit, "编辑资料", Modifier.size(42.dp).clip(CircleShape).clickable(onClick = onEditProfile).padding(10.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (state.badges.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(bottom = 7.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            state.badges.take(4).forEach { badge -> Text(badge.label, Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 9.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium) }
+                            state.badges.take(4).forEach { badge ->
+                                Row(Modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .12f)).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(com.heika.nativeapp.ui.HeikaIcons.Shield, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(11.dp))
+                                    Text(badge.label, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
                             if (state.badges.size > 4) Text("+${state.badges.size - 4}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(vertical = 5.dp))
-                        }
-                        if (state.own) {
-                            OutlinedTextField(value = certificationCode, onValueChange = { certificationCode = it.uppercase().take(24) }, label = { Text("兑换认证码") }, placeholder = { Text("HEIKA-XXXX-XXXX-XXXX") }, singleLine = true, modifier = Modifier.fillMaxWidth(), trailingIcon = { TextButton(enabled = !state.saving && certificationCode.isNotBlank(), onClick = { viewModel.redeemCertificationCode(certificationCode); certificationCode = "" }) { Text(if (state.saving) "兑换中" else "兑换") } })
                         }
                         if (state.own) {
                             Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceAround) {

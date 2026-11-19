@@ -61,7 +61,7 @@ export default function AIResourceDetails({ preview = false, postId, contentType
 
   if (contentType === "knowledge_article" && fields.length === 0 && attachments.length === 0) return null;
   return <section className="ai-resource-detail" aria-label="AI 资源信息">
-    <div className="ai-resource-detail-heading"><div><small>HEIKA / AI RESOURCE</small><h2>资源信息</h2></div><span>{contentType.replaceAll("_", " ")}</span></div>
+    <div className="ai-resource-detail-heading"><div><h2>资源信息</h2></div><span>{contentType.replaceAll("_", " ")}</span></div>
     {!!attachments.length && <div className="ai-resource-attachments">
       <div className="ai-resource-attachments-head"><strong>附件</strong><span>{attachments.length} 个 · 由作者上传</span></div>
       <ul>{attachments.map((item) => <li key={item.path}>
