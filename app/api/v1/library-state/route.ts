@@ -190,7 +190,8 @@ export async function POST(req: NextRequest) {
         .from("posts")
         .select(libraryFields)
         .eq("client_id", clientId)
-        .eq("channel", "community")
+        // 每日卡池已合并社区与 AI 两个渠道，翻开时不再只认社区内容。
+        .in("channel", ["community", "ai"])
         .eq("status", "published")
         .maybeSingle();
       dbError(postError);
