@@ -1,6 +1,8 @@
 # API v1
 
-All routes return `{ "data": ... }` or `{ "error": "..." }`. Authenticated routes require `Authorization: Bearer <Supabase access_token>`. The server validates the token with Supabase Auth and forwards it to Supabase; RLS is the final authorization boundary. No service role key is used.
+All routes return `{ "data": ... }` or `{ "error": "..." }`. Authenticated routes require `Authorization: Bearer <Supabase access_token>`. The server validates the token with Supabase Auth and forwards it to Supabase; RLS is the final authorization boundary for user-scoped reads.
+
+> **更正（2026-11-19）**：本文档早期声称“不使用 service role”，与现状不符。`/api/v1/admin/*`、`/api/v1/attachments`、私信、媒体与通知等路由确实使用 service role 客户端（`lib/server/admin-client.ts`）以绕过 RLS 完成跨用户读写。使用 service role 的路由必须自行完成身份与权限校验（`require-admin` / `require-permission` / 属主校验），不能依赖 RLS。
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -38,7 +40,7 @@ Database migrations are in `supabase/migrations/`. The topic directory reuses th
 
 1. Create a Supabase project and obtain a database connection URL with migration privileges from its dashboard. Project name or public project URL alone cannot apply schema changes.
 2. Set `SUPABASE_DB_URL` securely in the execution environment. Run `npx supabase db push --db-url "$SUPABASE_DB_URL"` from the repository root, then review migration output. Alternatively authenticate the CLI, link with `npx supabase link --project-ref <project-ref>`, and run `npx supabase db push`.
-3. Add `SUPABASE_URL` and `SUPABASE_ANON_KEY` to the Next.js server environment. Keep them out of source control. A service role key is not required by these routes.
+3. Add `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` to the Next.js server environment. Keep them out of source control. Service role is required by admin, attachment, messaging and notification routes; never expose it to the client.
 4. Configure the desired Supabase Auth providers and allowed redirect URLs. Deploy Next.js, then validate an authenticated API request and the daily deck RPC against the deployed project.
 
 The publishing path has no automated image moderation provider. User submissions and edits therefore enter `pending_review`, remain private, and become public only after an administrator approves them. Report and moderation endpoints verify the access token, check the administrator role server-side, and rely on RLS for row access. A partial unique index prevents duplicate open reports by the same user for the same target.

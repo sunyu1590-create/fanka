@@ -23,6 +23,6 @@ Native 3.0 is the Kotlin and Jetpack Compose Android application in this directo
 ## Version and build
 
 - Application ID: `com.heika.community`
-- App version: `2.3.6` (`versionCode` 40 in the checked-in Gradle config); website version `3.0.0` is independent.
+- App version: `2.7.0` (`versionCode` 61). `android-native/app/build.gradle.kts` is the single source of truth; if this line and the Gradle file disagree, the Gradle file wins. Website version is tracked separately in `package.json`.
 - Build from this directory with `./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease`.
 - The HEIKA Native 3.0 Actions workflow runs Android checks and uploads versioned APK artifacts. Debug is signed with the CI debug key. Release output remains unsigned until the production signing certificate is supplied through GitHub Secrets; it is not a production upgrade package.

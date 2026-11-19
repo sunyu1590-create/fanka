@@ -17,12 +17,20 @@ echo "== 1/6 同步源码 =="
 cd "$REPO"
 git pull --ff-only origin main
 
-echo "== 2/6 编译 release =="
+echo "== 2/6 清理缓存并编译 release =="
 cd "$SRC"
+# Hilt 的注解处理在增量构建下会漏掉新增的 @HiltViewModel，运行时表现为
+# NoSuchMethodException: <init>[] 并直接把 App 崩在启动路径上（2.5.0/2.6.0 事故）。
+# 发布包一律全量编译，宁可多花两分钟，也不让漏项进包。
+rm -rf app/build
+# 口令不进仓库：放在 $KEYS/keystore.env（权限 600），缺失就中止，绝不用默认值兜底。
+KEYENV="$KEYS/keystore.env"
+test -f "$KEYENV" || { echo "缺少签名配置文件 $KEYENV，构建中止"; exit 1; }
+set -a; . "$KEYENV"; set +a
+: "${HEIKA_KEYSTORE_PASSWORD:?签名口令未配置}"
+: "${HEIKA_KEY_PASSWORD:?签名口令未配置}"
 export HEIKA_KEYSTORE_PATH="$KEYS/heika-release.jks"
-export HEIKA_KEYSTORE_PASSWORD="Heika2026App"
-export HEIKA_KEY_ALIAS="heika"
-export HEIKA_KEY_PASSWORD="Heika2026App"
+export HEIKA_KEY_ALIAS="${HEIKA_KEY_ALIAS:-heika}"
 ./gradlew assembleRelease -x lintVitalRelease --no-daemon --max-workers=1
 
 APK="$SRC/app/build/outputs/apk/release/app-release.apk"
@@ -37,6 +45,24 @@ SIZE=$(stat -c %s "$APK")
 SHA=$(sha256sum "$APK" | cut -d' ' -f1)
 echo "版本 $NAME (code $CODE)  $((SIZE / 1024 / 1024)) MB"
 "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$APK"
+
+# 逐个核对 @HiltViewModel 是否都生成了 Hilt 模块；少一个就不发布。
+/usr/bin/python3 - <<'PY'
+import pathlib, re, sys
+src = pathlib.Path('app/src/main/java')
+gen = pathlib.Path('app/build/generated/ksp/release/java/hilt_aggregated_deps')
+# 两种写法都算：@HiltViewModel 与全限定 @dagger.hilt.android.lifecycle.HiltViewModel。
+pattern = re.compile(r'@(?:dagger\.hilt\.android\.lifecycle\.)?HiltViewModel\b[\s\S]{0,240}?class\s+(\w+)')
+names = set()
+for f in src.rglob('*.kt'):
+    names.update(pattern.findall(f.read_text(encoding='utf-8')))
+modules = list(gen.glob('*_HiltModules_KeyModule.java')) if gen.exists() else []
+missing = sorted(n for n in names if not any(p.name.endswith(f'_{n}_HiltModules_KeyModule.java') for p in modules))
+print(f'Hilt 校验：源码 {len(names)} 个 ViewModel，生成 {len(modules)} 个模块')
+if missing:
+    print('缺失：' + ', '.join(missing))
+    sys.exit(1)
+PY
 
 echo "== 4/6 发布安装包 =="
 mkdir -p "$DL"
