@@ -7,7 +7,11 @@ android/**/build/
 android/**/release.keystore
 android/**/signing.properties
 .npm-cache/
-.env.local
+# 环境变量文件含 service role key / DB 口令，只允许提交示例文件
+.env
+.env.*
+!.env.example
+*.bak
 *.tsbuildinfo
 playwright-report/
 test-results/
