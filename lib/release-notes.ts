@@ -7,6 +7,17 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.50.0",
+    date: "2026.11.19",
+    notes: [
+      { category: "体验优化", text: "全局视觉改为 HEIKA Solid Glass 固态磨砂体系：取消液态玻璃的流光、色散与过度透明，深浅模式分别定义颜色令牌。" },
+      { category: "体验优化", text: "无图文章改用专属阅读模板（分类 → 标题 → 作者 → 正文），正文排版与长内容换行更舒展。" },
+      { category: "体验优化", text: "AI 空间资源卡图片改为 4:3 比例，无图资源使用纯文字布局，顶部留白更紧凑。" },
+      { category: "体验优化", text: "发布页 Markdown 工具栏改为统一图标栏，图片与视频入口尺寸一致，各模块左右边距统一。" },
+      { category: "体验优化", text: "设置页改为圆角分组与语义图标，管理员功能独立分组并继续由权限控制显隐。" },
+    ],
+  },
+  {
     version: "2.49.0",
     date: "2026.11.19",
     notes: [

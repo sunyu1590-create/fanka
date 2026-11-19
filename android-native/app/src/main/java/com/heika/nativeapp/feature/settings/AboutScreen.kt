@@ -42,6 +42,13 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(65, "2026.11.19", listOf(
+        "全局视觉改为 Solid Glass 固态磨砂：取消流光、色散与过度透明，弹窗和菜单不再出现文字穿透。",
+        "发现页卡片底部改为左侧作者与认证、右侧点赞与分享，两列瀑布流对齐统一，分享可直接唤起系统分享。",
+        "私信中心整理为标题行、搜索与「全部消息 / 未读 / 找人」三段结构，会话列表对齐更清晰。",
+        "详情页更多菜单按常用操作、内容反馈、内容偏好分组，超高菜单可在安全区域内滚动。",
+        "底部导航改固态磨砂视觉，保留原有 3D 翻卡与共享转场动画。",
+    )),
     NativeRelease(64, "2026.11.19", listOf(
         "主页卡池纳入精选与 AI 内容，按兴趣、质量、时效和近期阅读记录平衡排序；沿用每日翻卡额度并保存已翻卡状态。",
         "作者认证图标统一显示在个人主页、探索卡片、作品详情与私信资料旁，并读取服务端有效认证记录。",
