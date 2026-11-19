@@ -9,7 +9,7 @@ class NativeUiOptionsTest {
     fun allPageTransitionOptionsArePersistableAndInvalidValuesFallBack() {
         assertEquals(setOf("lift", "crossfade", "shared"), HeikaPageTransitions.choices)
         HeikaPageTransitions.choices.forEach { assertEquals(it, HeikaPageTransitions.normalize(it)) }
-        assertEquals("crossfade", HeikaPageTransitions.normalize("unknown"))
+        assertEquals("shared", HeikaPageTransitions.normalize("unknown"))
     }
 
     @Test
