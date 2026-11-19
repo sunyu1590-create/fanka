@@ -77,8 +77,10 @@ fun AccountScreen(onBack: () -> Unit, onSignedIn: () -> Unit, viewModel: Account
         NewAccountRecoveryPage(state.pendingRecoveryCodes, viewModel::acknowledgeRecoveryCodes)
         return
     }
-    if (state.invitationWelcomePending && state.pendingInvitation != null) {
-        InvitationWelcomePage(state.pendingInvitation, viewModel::acknowledgeInvitationWelcome)
+    // state 是委托属性，直接读 state.pendingInvitation 无法智能转换，先取局部变量。
+    val pendingInvitation = state.pendingInvitation
+    if (state.invitationWelcomePending && pendingInvitation != null) {
+        InvitationWelcomePage(pendingInvitation, viewModel::acknowledgeInvitationWelcome)
         return
     }
     val focusManager = LocalFocusManager.current
