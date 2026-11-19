@@ -201,15 +201,15 @@ fun GlassNavigationBar(
                     if (blurEnabled) Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeStyle(
-                            backgroundColor = surface,
-                            tint = HazeTint(surface.copy(alpha = if (previewBackdropActive) .08f else if (dark) .20f else .30f)),
-                            blurRadius = if (previewBackdropActive) 20.dp else 24.dp,
-                            fallbackTint = HazeTint(surface.copy(alpha = if (dark) .82f else .90f)),
+                            backgroundColor = surface.copy(alpha = if (previewBackdropActive) .88f else if (dark) .93f else .96f),
+                            tint = HazeTint(surface.copy(alpha = if (previewBackdropActive) .10f else if (dark) .06f else .08f)),
+                            blurRadius = 18.dp,
+                            fallbackTint = HazeTint(surface.copy(alpha = if (dark) .96f else .98f)),
                         ),
                     ) else Modifier,
                 )
-                .background(surface.copy(alpha = if (previewBackdropActive) { if (dark) .24f else .36f } else if (dark) .34f else .48f), tabShape)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .56f else .46f), tabShape)
+                .background(surface.copy(alpha = if (previewBackdropActive) { if (dark) .88f else .92f } else if (dark) .93f else .96f), tabShape)
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .38f else .42f), tabShape)
                 .padding(horizontal = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

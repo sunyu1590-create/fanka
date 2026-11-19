@@ -32,16 +32,17 @@ object HeikaRadii {
     val dialog = 16.dp
 }
 
-/** Shared material and motion values for transient HEIKA glass surfaces. */
+/** Shared material and motion values for transient HEIKA solid-glass surfaces. */
 object HeikaGlassTokens {
-    val dialogRadius = 28.dp
-    val menuRadius = 24.dp
+    val dialogRadius = 16.dp
+    val menuRadius = 14.dp
     val capsuleRadius = 26.dp
-    val borderWidth = .7.dp
-    val dialogBlurRadius = 24.dp
-    val menuBlurRadius = 18.dp
-    const val darkDialogTintAlpha = .38f
-    const val lightDialogTintAlpha = .30f
+    val borderWidth = .5.dp
+    val dialogBlurRadius = 20.dp
+    val menuBlurRadius = 20.dp
+    /** 固态磨砂底板不透明度：深色 90%、浅色 94%，文字绝不穿透。 */
+    const val darkDialogTintAlpha = .90f
+    const val lightDialogTintAlpha = .94f
     const val backdropDimAmount = .16f
 }
 

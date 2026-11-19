@@ -112,11 +112,10 @@ fun ForegroundNoticeHost(
                 .then(if (hazeState != null) Modifier.hazeEffect(
                     state = hazeState,
                     HazeStyle(
-                        backgroundColor = surface.copy(alpha = if (isDark) .64f else .74f),
-                        tint = HazeTint(surface.copy(alpha = if (isDark) .16f else .10f)),
+                        backgroundColor = surface.copy(alpha = if (isDark) .90f else .94f),
+                        tint = HazeTint(surface.copy(alpha = if (isDark) .06f else .08f)),
                         blurRadius = blurRadius,
-                        noiseFactor = .01f,
-                        fallbackTint = HazeTint(surface.copy(alpha = .94f)),
+                        fallbackTint = HazeTint(surface.copy(alpha = .96f)),
                     ),
                 ) else Modifier)
                 .graphicsLayer { alpha = surfaceAlpha }

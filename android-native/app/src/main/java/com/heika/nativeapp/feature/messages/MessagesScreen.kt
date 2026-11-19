@@ -72,7 +72,6 @@ import com.heika.nativeapp.ui.HeikaSpacing
 import com.heika.nativeapp.ui.HeikaType
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaGlassSurface
-import com.heika.nativeapp.ui.HeikaLiquidGlassSurface
 import dev.chrisbanes.haze.HazeState
 import com.heika.nativeapp.ui.HeikaPulseDot
 import com.heika.nativeapp.ui.HeikaPulsePage
@@ -122,7 +121,7 @@ fun MessagesScreen(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text("消息", color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.sectionTitle, fontWeight = FontWeight.SemiBold, letterSpacing = .2.sp)
                     val unreadCount = state.conversations.sumOf { it.unread }
-                    Text("$unreadCount 条未读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    if (unreadCount > 0) Text("$unreadCount 条未读", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 }
                 IconButton(onClick = onNotifications, modifier = Modifier.size(36.dp)) { Icon(HeikaIcons.Notifications, "通知", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp)) }
                 IconButton(onClick = { viewModel.load() }, modifier = Modifier.size(36.dp)) { Icon(HeikaIcons.Retry, "刷新消息", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp)) }
@@ -133,26 +132,13 @@ fun MessagesScreen(
                     Button(onClick = onLogin) { Text("登录") }
                 }
             } else {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("会话 ${state.conversations.size}" to false, "找人" to true).forEach { (label, isPeople) ->
-                        val active = peopleMode == isPeople
-                        Text(
-                            label,
-                            Modifier.clip(RoundedCornerShape(20.dp))
-                                .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = .14f) else MaterialTheme.colorScheme.surface.copy(alpha = .40f))
-                                .clickable { peopleMode = isPeople; viewModel.setQuery("") }
-                                .padding(horizontal = 15.dp, vertical = 8.dp),
-                            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp,
-                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    }
-                }
+                // 第二层：搜索框（固态磨砂，非玻璃胶囊）。
                 HeikaGlassSurface(
                     hazeState = hazeState,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+                    drawTopHighlight = false,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Icon(if (peopleMode) HeikaIcons.Profile else HeikaIcons.Search, null, modifier = Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -175,30 +161,35 @@ fun MessagesScreen(
                         }
                     }
                 }
+                // 第三层：全部消息 / 未读 / 找人，单行分段切换，计数仅作轻量角标。
+                Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val unreadCount = state.conversations.sumOf { it.unread }
+                    val tabs = listOf(
+                        Triple("全部消息", !peopleMode && !unreadOnly, { peopleMode = false; unreadOnly = false }),
+                        Triple(if (unreadCount > 0) "未读 · $unreadCount" else "未读", !peopleMode && unreadOnly, { peopleMode = false; unreadOnly = true }),
+                        Triple("找人", peopleMode, { peopleMode = true }),
+                    )
+                    tabs.forEach { (label, active, select) ->
+                        Text(
+                            label,
+                            Modifier.weight(1f, fill = false).clip(RoundedCornerShape(10.dp))
+                                .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = .13f) else androidx.compose.ui.graphics.Color.Transparent)
+                                .clickable { select(); viewModel.setQuery("") }
+                                .padding(horizontal = 13.dp, vertical = 7.dp),
+                            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 state.error?.let { message ->
                     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(message, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                         TextButton(onClick = {
                             if (state.query.trim().length >= 2) viewModel.search(state.query) else viewModel.load()
                         }) { Text("重试") }
-                    }
-                }
-                if (!peopleMode) {
-                    Row(Modifier.fillMaxWidth().padding(start = 19.dp, end = 19.dp, top = 3.dp, bottom = 5.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        val unreadCount = state.conversations.sumOf { it.unread }
-                        listOf("全部" to false, "未读${if (unreadCount > 0) " · $unreadCount" else ""}" to true).forEach { (label, unread) ->
-                            val active = unreadOnly == unread
-                            Text(
-                                label,
-                                Modifier.clip(RoundedCornerShape(18.dp))
-                                    .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = .13f) else MaterialTheme.colorScheme.surface.copy(alpha = .40f))
-                                    .clickable { unreadOnly = unread }
-                                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp,
-                                fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
-                            )
-                        }
                     }
                 }
                 if (peopleMode && state.query.length >= 2 && state.people.isNotEmpty()) {
@@ -432,17 +423,20 @@ fun MessagesScreen(
 
 @Composable
 private fun ConversationRow(item: NativeConversation, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+    val unread = item.unread > 0
+    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
         PeerAvatar(item.peer)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(item.peer.name, Modifier.weight(1f, fill = false), color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(item.peer.name, Modifier.weight(1f, fill = false), color = if (unread) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp, fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 BadgeMarks(item.peer.badges)
             }
-            Text(item.latest.ifBlank { "开启一段新的交流" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.latest.ifBlank { "开启一段新的交流" }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, lineHeight = 16.sp)
         }
-        Text(messageDate(item.createdAt), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-        if (item.unread > 0) Text(item.unread.coerceAtMost(99).toString(), Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.primary).padding(horizontal = 6.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.onPrimary, fontSize = 9.sp)
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(messageDate(item.createdAt), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1)
+            if (unread) Text(item.unread.coerceAtMost(99).toString(), Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.primary).padding(horizontal = 6.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onPrimary, fontSize = 9.sp, lineHeight = 11.sp)
+        }
     }
 }
 

@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ImagePlus, Paperclip, X } from "lucide-react";
+import { ArrowLeft, Bold, Code, Heading2, ImagePlus, Link2, List, ListOrdered, Minus, Paperclip, Quote, X } from "lucide-react";
 import { ATTACHMENT_ACCEPT, MAX_ATTACHMENT_FILES, formatAttachmentSize, type PostAttachment } from "@/lib/attachments";
 import { MarkdownContent } from "./MarkdownContent";
 
@@ -33,15 +33,16 @@ export function ComposerSheet({ title, children, onClose, full = false }: { titl
   return createPortal(<div className={`composer-sheet-backdrop${full ? " is-full" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}><div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={label} className="composer-sheet"><header><button type="button" aria-label={`返回编辑，当前：${title}`} onClick={onClose}><ArrowLeft size={19}/></button><h2 id={label}>{title}</h2><button type="button" onClick={onClose}>完成</button></header><div className="composer-sheet-scroll">{children}</div></div></div>, document.body);
 }
 
-const MD_TOOLS: [string, string, string][] = [
-  ["粗体", "**", "**"],
-  ["标题", "\n## ", ""],
-  ["引用", "\n> ", ""],
-  ["列表", "\n- ", ""],
-  ["编号", "\n1. ", ""],
-  ["链接", "[", "](https://)"],
-  ["代码", "`", "`"],
-  ["分割线", "\n\n---\n\n", ""]
+/** 图标化 Markdown 工具栏：统一 Lucide 图标 + 可访问名称，支持横向滚动。 */
+const MD_TOOLS: { label: string; before: string; after: string; Icon: typeof Bold }[] = [
+  { label: "粗体", before: "**", after: "**", Icon: Bold },
+  { label: "标题", before: "\n## ", after: "", Icon: Heading2 },
+  { label: "引用", before: "\n> ", after: "", Icon: Quote },
+  { label: "列表", before: "\n- ", after: "", Icon: List },
+  { label: "编号", before: "\n1. ", after: "", Icon: ListOrdered },
+  { label: "链接", before: "[", after: "](https://)", Icon: Link2 },
+  { label: "代码", before: "`", after: "`", Icon: Code },
+  { label: "分割线", before: "\n\n---\n\n", after: "", Icon: Minus },
 ];
 
 export const ComposerTextEditor = memo(function ComposerTextEditor({ title, body, error, onTitle, onBody }: { title: string; body: string; error: "" | "title" | "body"; onTitle: (value: string) => void; onBody: (value: string) => void }) {
@@ -114,7 +115,7 @@ export const ComposerTextEditor = memo(function ComposerTextEditor({ title, body
 
       {mode === "write" ? <>
         <div className="composer-md-toolbar" role="toolbar" aria-label="Markdown 格式工具" onMouseDown={(event) => event.preventDefault()}>
-          {MD_TOOLS.map(([label, before, after]) => <button type="button" key={label} onClick={() => insert(before, after)} tabIndex={-1}>{label}</button>)}
+          {MD_TOOLS.map(({ label, before, after, Icon }) => <button type="button" key={label} aria-label={label} title={label} onClick={() => insert(before, after)} tabIndex={-1}><Icon size={16} aria-hidden="true" /></button>)}
         </div>
         <label className="composer-body-field">
           <span className="sr-only">正文</span>

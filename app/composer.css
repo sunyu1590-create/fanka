@@ -2,7 +2,7 @@
 html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floating-count,html.is-composing .topline{display:none}
 .composer-backdrop{position:fixed;inset:0;z-index:240;padding:0;background:var(--bg);backdrop-filter:none}
 .composer-backdrop>.composer-modal{position:absolute;inset:var(--composer-top,0px) 0 auto;width:100%;max-width:none;height:var(--composer-height,100dvh);max-height:none;margin:0;padding:0;display:flex;flex-direction:column;overflow:hidden;border:0;border-radius:0;background:var(--bg);box-shadow:none;animation:none}
-.composer-modal .composer-topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;flex:none;width:100%;min-height:52px;height:auto;padding: max(6px,env(safe-area-inset-top)) 16px 6px;background:var(--bg);border-bottom:1px solid var(--line);backdrop-filter:none}
+.composer-modal .composer-topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;flex:none;width:100%;min-height:52px;height:auto;padding: max(6px,env(safe-area-inset-top)) 20px 6px;background:var(--bg);border-bottom:1px solid var(--line);backdrop-filter:none}
 .composer-topbar>strong{font-size:14px;font-weight:600}.composer-topbar button{min-height:40px;padding:0 6px;border:0;background:none;color:var(--ink);font-size:13px}.composer-topbar .composer-back{justify-self:start}.composer-preview-button{justify-self:end;color:var(--action)!important}
 .composer-modal .composer-workspace{display:block;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .composer-modal .composer-scroll{display:flex;flex-direction:column;gap:0;width:min(100%,760px);max-width:760px;margin:auto;padding:18px 20px 28px;overflow:visible}
@@ -44,9 +44,10 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
 .composer-mode-switch button{min-height:28px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;transition:background 140ms ease,color 140ms ease}
 .composer-mode-switch button.selected{background:var(--bg);color:var(--ink);font-weight:600;box-shadow:0 1px 2px #00000012}
 .composer-body-stat{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.composer-md-toolbar{display:flex;gap:6px;flex:none;padding:8px 10px;border-bottom:1px solid var(--line);overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
+.composer-md-toolbar{display:flex;gap:4px;flex:none;padding:6px 8px;border-bottom:1px solid var(--line);overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
 .composer-md-toolbar::-webkit-scrollbar{display:none}
-.composer-md-toolbar button{flex:none;min-height:30px;padding:0 11px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font-size:12px;white-space:nowrap;transition:background 140ms ease,border-color 140ms ease}
+.composer-md-toolbar button{flex:none;display:grid;place-items:center;min-width:40px;min-height:40px;padding:0;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--ink);transition:background 140ms ease,border-color 140ms ease}
+.composer-md-toolbar button:hover{background:var(--surface)}
 .composer-md-toolbar button:active{background:var(--surface);border-color:var(--action)}
 .composer-writing .composer-body-field{display:block;margin:0;padding:0}
 .composer-writing .composer-body-field textarea{min-height:190px;padding:14px 14px 10px;font-size:15px;line-height:1.72;background:transparent!important}

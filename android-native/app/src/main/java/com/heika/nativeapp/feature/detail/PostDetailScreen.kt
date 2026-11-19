@@ -113,6 +113,7 @@ import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.LocalHeikaBodyTextScale
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaGlassSurface
+import com.heika.nativeapp.ui.HeikaGlassTokens
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.heikaSharedPostImage
@@ -219,13 +220,14 @@ fun PostDetailScreen(
                     properties = PopupProperties(focusable = moreOpen, dismissOnBackPress = true, dismissOnClickOutside = true),
                 ) {
                     HeikaDropdownFade(visible = moreOpen) {
-                    val menuShape = RoundedCornerShape(24.dp)
+                    val menuShape = RoundedCornerShape(HeikaGlassTokens.menuRadius)
                     HeikaGlassSurface(
                         hazeState = hazeState,
                         modifier = Modifier.widthIn(min = 188.dp, max = 218.dp).heightIn(max = 480.dp)
-                            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .55f), menuShape),
+                            .border(.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), menuShape),
                         shape = menuShape,
                         contentPadding = PaddingValues(0.dp),
+                        drawTopHighlight = false,
                     ) {
                     Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
                         Text("常用操作", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
@@ -263,7 +265,7 @@ fun PostDetailScreen(
                         DropdownMenuItem(text = { Text("内容反馈") }, leadingIcon = { Icon(HeikaIcons.Comment, null) }, onClick = { moreOpen = false; feedbackOpen = true })
                         DropdownMenuItem(text = { Text("举报内容") }, leadingIcon = { Icon(HeikaIcons.Report, null) }, onClick = { moreOpen = false; commentReport = null; reportOpen = true })
                         androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
-                        Text("个性化推荐", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        Text("内容偏好", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                         current.tags.firstOrNull()?.let { topic -> DropdownMenuItem(
                             text = { Column { Text("减少话题推荐"); Text("#$topic", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } },
                             leadingIcon = { Icon(HeikaIcons.Block, null) },

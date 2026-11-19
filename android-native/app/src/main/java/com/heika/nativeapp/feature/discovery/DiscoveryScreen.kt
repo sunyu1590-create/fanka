@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -87,7 +88,7 @@ import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaMotion
-import com.heika.nativeapp.ui.HeikaLiquidBadgeSurface
+import com.heika.nativeapp.ui.HeikaSolidBadgeSurface
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaIcons
@@ -348,14 +349,13 @@ private fun AiResourceSpaceEntry(hazeState: HazeState, onClick: () -> Unit) {
             .hazeEffect(
                 state = hazeState,
                 style = dev.chrisbanes.haze.HazeStyle(
-                    backgroundColor = MaterialTheme.colorScheme.surface,
-                    tint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .22f)),
+                    backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = .93f),
+                    tint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .06f)),
                     blurRadius = 18.dp,
-                    noiseFactor = 0f,
-                    fallbackTint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .92f)),
+                    fallbackTint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .96f)),
                 ),
             )
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = .72f))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = .93f))
             .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), RoundedCornerShape(15.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -621,7 +621,7 @@ internal fun FeedCard(
                         )
                     }
                 }
-                HeikaLiquidBadgeSurface(
+                HeikaSolidBadgeSurface(
                     hazeState = hazeState,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
                     shape = RoundedCornerShape(HeikaRadii.categoryTag),
@@ -660,15 +660,35 @@ internal fun FeedCard(
                 Text(post.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(post.author, Modifier.weight(1f, fill = false).then(authorSharedModifier), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            post.authorBadges.take(3).forEach { badge ->
-                val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(MaterialTheme.colorScheme.primary)
-                Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.padding(start = 3.dp).size(13.dp))
+        // 底部操作区：左侧作者与认证标识，右侧点赞与分享，两列卡片统一规则。
+        Row(
+            Modifier.fillMaxWidth().padding(top = 9.dp).heightIn(min = 40.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(post.author, Modifier.then(authorSharedModifier), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                post.authorBadges.take(3).forEach { badge ->
+                    val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(MaterialTheme.colorScheme.primary)
+                    Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(13.dp))
+                }
             }
-            Icon(HeikaIcons.LikeOutline, contentDescription = "赞", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-            Text(" ${post.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-            Icon(HeikaIcons.OpenInNew, contentDescription = "打开内容详情", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 5.dp).size(12.dp).alpha(.62f))
+            Icon(HeikaIcons.LikeOutline, contentDescription = "赞", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Text("${post.likeCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            val shareContext = LocalContext.current
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).clickable {
+                    val url = if (post.channel == "ai") "https://moonclean.shop/?aiPost=${post.id}&cloudId=${android.net.Uri.encode(post.cloudId)}" else "https://moonclean.shop/?post=${post.id}"
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, "${post.title}\n$url")
+                    }
+                    shareContext.startActivity(android.content.Intent.createChooser(intent, "分享内容"))
+                },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(HeikaIcons.Share, contentDescription = "分享", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }
@@ -681,7 +701,7 @@ private fun RatingTag(
     contentColor: Color = Color.White,
     contentModifier: Modifier = Modifier,
 ) {
-    HeikaLiquidBadgeSurface(
+    HeikaSolidBadgeSurface(
         hazeState = hazeState,
         modifier = modifier,
         shape = RoundedCornerShape(HeikaRadii.ratingTag),

@@ -186,10 +186,18 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
 
   const card = (post: Post) => {
     const Icon = typeIcons[post.contentType || "knowledge_article"] || FileText;
-    return <article className="ai-resource-card" key={post.id}>
+    const typeLabel = typeLabels[post.contentType || "knowledge_article"] || "AI 内容";
+    const textOnly = !post.image;
+    return <article className={`ai-resource-card${textOnly ? " is-text-only" : ""}`} key={post.id}>
       <button className="ai-resource-open" type="button" data-discover-id={post.id} onClick={(event) => onOpen(post, event.currentTarget)}>
-        <span className="ai-resource-cover">{post.image ? <img src={post.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} /> : <span className="ai-resource-cover-mark"><Icon size={22}/></span>}<span className="ai-resource-cover-labels"><span className="discovery-glass-label"><Icon size={13}/>{typeLabels[post.contentType || "knowledge_article"] || "AI 内容"}</span></span></span>
-        <span className="ai-resource-copy"><small>{post.tag} · {post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/></small><strong>{post.title}</strong><span>{post.body.replace(/[#*`>_\[\]()]/g, " ").replace(/\s+/g, " ").slice(0, 100)}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
+        {textOnly ? <>
+          <span className="ai-resource-text-type"><Icon size={13}/>{typeLabel}</span>
+          <span className="ai-resource-copy"><strong>{post.title}</strong><span>{post.body.replace(/[#*`>_\[\]()]/g, " ").replace(/\s+/g, " ").slice(0, 100)}</span></span>
+          <span className="ai-resource-text-meta">{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
+        </> : <>
+          <span className="ai-resource-cover"><img src={post.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} /><span className="ai-resource-cover-labels"><span className="discovery-glass-label"><Icon size={13}/>{typeLabel}</span></span></span>
+          <span className="ai-resource-copy"><small>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/></small><strong>{post.title}</strong><span>{post.body.replace(/[#*`>_\[\]()]/g, " ").replace(/\s+/g, " ").slice(0, 100)}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
+        </>}
       </button>
       <button type="button" className={`ai-resource-save${savedIds.has(post.id) ? " saved" : ""}`} aria-label={savedIds.has(post.id) ? "取消收藏" : "收藏资源"} onClick={(event) => void toggleSaved(post, event)}><Bookmark size={16} fill={savedIds.has(post.id) ? "currentColor" : "none"}/></button>
     </article>;

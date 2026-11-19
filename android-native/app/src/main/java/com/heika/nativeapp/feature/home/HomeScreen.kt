@@ -99,7 +99,7 @@ import com.heika.nativeapp.ui.sharedImageKey
 import com.heika.nativeapp.ui.sharedRatingKey
 import com.heika.nativeapp.ui.sharedTagKey
 import com.heika.nativeapp.ui.heikaGaussianBlur
-import com.heika.nativeapp.ui.HeikaLiquidBadgeSurface
+import com.heika.nativeapp.ui.HeikaSolidBadgeSurface
 import com.heika.nativeapp.ui.HeikaImageRatioCache
 import com.heika.nativeapp.ui.heikaPhotoTextShadow
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -663,7 +663,7 @@ private fun PreviewCardFront(
                 Spacer(Modifier.weight(1f))
                 Box(ratingSharedModifier) {
                     if (post?.hasRating == true) {
-                        HeikaLiquidBadgeSurface(hazeState = hazeState, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp)) {
+                        HeikaSolidBadgeSurface(hazeState = hazeState, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Icon(com.heika.nativeapp.ui.HeikaIcons.StarOutline, null, tint = HeikaPalette.Gold, modifier = Modifier.size(12.dp))
                                 Text(String.format(java.util.Locale.US, "%.1f", post.ratingAverage), color = HeikaPalette.Gold, fontSize = 10.sp)
@@ -776,7 +776,7 @@ private fun CardFront(
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(post?.tag ?: "黑卡内容", style = androidx.compose.ui.text.TextStyle(shadow = photoShadow), color = Color.White.copy(alpha = .82f), fontSize = 10.sp, maxLines = 1)
             Text(post?.title ?: "已翻开的卡片", style = androidx.compose.ui.text.TextStyle(shadow = photoShadow), color = Color.White, fontSize = 16.sp * titleScale, lineHeight = 22.sp * titleScale, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (post?.hasRating == true) HeikaLiquidBadgeSurface(
+            if (post?.hasRating == true) HeikaSolidBadgeSurface(
                 hazeState = hazeState,
                 modifier = Modifier.align(Alignment.Start),
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp),
