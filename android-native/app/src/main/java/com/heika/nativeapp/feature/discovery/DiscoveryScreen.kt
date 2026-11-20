@@ -152,6 +152,7 @@ fun DiscoveryScreen(
     var communityCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var aiCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var extraFiltersExpanded by rememberSaveable { mutableStateOf(false) }
+    var categoryExpanded by rememberSaveable { mutableStateOf(false) }
     val rangeDp = 84.dp + (if (filter.channel == "ai") 96.dp else 0.dp) + if (extraFiltersExpanded) {
         (if (tags.isNotEmpty()) 36.dp else 0.dp) + (if (filter.channel == "ai") 36.dp else 0.dp) + 40.dp
     } else 0.dp
@@ -235,6 +236,10 @@ fun DiscoveryScreen(
                     }
                 }
                 if (filter.channel == "ai") AiResourceSpaceEntry(hazeState = badgeHazeState, onClick = onAiResources)
+                // 分类由 AI 自动打，长尾分类默认收进「更多」；与网页端保持同一套交互。
+                val primaryCategories = categories.take(3)
+                val extraCategories = categories.drop(3)
+                val selectedExtraCategory = filter.category?.takeIf { current -> extraCategories.any { it.id == current.id } }
                 LazyRow(
                     Modifier.height(42.dp),
                     contentPadding = PaddingValues(horizontal = 19.dp),
@@ -247,10 +252,40 @@ fun DiscoveryScreen(
                             HeikaNoticeBus.showSelection("已显示推荐内容")
                         }
                     }
-                    items(categories, key = { "category-${it.id}" }) { category ->
+                    items(primaryCategories, key = { "category-${it.id}" }) { category ->
                         CategoryTab(category.name, selected = filter.category?.id == category.id) {
                             viewModel.selectCategory(category)
                             HeikaNoticeBus.showSelection("分类：${category.name}")
+                        }
+                    }
+                    // 收起的选中项仍然显示，避免用户看不到自己选了什么。
+                    if (selectedExtraCategory != null && !categoryExpanded) {
+                        item(key = "category-selected-extra") {
+                            CategoryTab(selectedExtraCategory.name, selected = true) {
+                                viewModel.selectCategory(selectedExtraCategory)
+                            }
+                        }
+                    }
+                    if (extraCategories.isNotEmpty()) {
+                        item(key = "category-more") {
+                            CategoryTab(if (categoryExpanded) "收起" else "更多 ${extraCategories.size}", selected = false) {
+                                categoryExpanded = !categoryExpanded
+                            }
+                        }
+                    }
+                }
+                if (categoryExpanded && extraCategories.isNotEmpty()) {
+                    LazyRow(
+                        Modifier.height(38.dp),
+                        contentPadding = PaddingValues(horizontal = 19.dp),
+                        horizontalArrangement = Arrangement.spacedBy(22.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        items(extraCategories, key = { "category-extra-${it.id}" }) { category ->
+                            CategoryTab(category.name, selected = filter.category?.id == category.id) {
+                                viewModel.selectCategory(category)
+                                HeikaNoticeBus.showSelection("分类：${category.name}")
+                            }
                         }
                     }
                 }
