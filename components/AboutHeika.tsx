@@ -30,6 +30,6 @@ export default function AboutHeika({ onBack, onFeedback }: { onBack: () => void;
     </section>
     <section className="about-links"><Link href="/" className="about-link"><span>访问网页版</span><ArrowUpRight size={17}/></Link><button type="button" className="about-link" onClick={onFeedback}><span>意见反馈</span><ArrowUpRight size={17}/></button><div className="about-legal-status"><strong>用户协议与隐私政策</strong><span>正式文本正在准备，完成审核后开放查看。</span></div></section>
     <section className="about-thanks"><p>感谢你愿意来到这里。</p><p>希望黑卡能为你的日常生活带来一点新的发现，也希望你能在这里留下自己的故事。</p><p>好奇心不会停止，探索也不会。</p></section>
-    <footer className="about-footer"><strong>HEIKA · 黑卡</strong><span>SunYu 与 WangXiangYu 共同开发与维护</span></footer>
+    <footer className="about-footer"><strong>HEIKA · 黑卡</strong><span>由个人开发者创造，SunYu 与 WangXiangYu 共同开发与维护</span></footer>
   </section>;
 }

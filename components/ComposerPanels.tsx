@@ -114,7 +114,7 @@ export const ComposerTextEditor = memo(function ComposerTextEditor({ title, body
       </div>
 
       {mode === "write" ? <>
-        <div className="composer-md-toolbar" role="toolbar" aria-label="Markdown 格式工具" onMouseDown={(event) => event.preventDefault()}>
+        <div className="composer-md-toolbar" role="toolbar" aria-label="Markdown 工具栏" onMouseDown={(event) => event.preventDefault()}>
           {MD_TOOLS.map(({ label, before, after, Icon }) => <button type="button" key={label} aria-label={label} title={label} onClick={() => insert(before, after)} tabIndex={-1}><Icon size={16} aria-hidden="true" /></button>)}
         </div>
         <label className="composer-body-field">

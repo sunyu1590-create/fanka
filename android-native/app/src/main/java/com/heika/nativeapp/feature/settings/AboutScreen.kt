@@ -42,6 +42,11 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(67, "2026.11.20", listOf(
+        "附件上传增加文件内容校验，扩展名与文件头不一致时会被拒绝。",
+        "AI 智能总结、自动分类与辅助审核接入新的后台任务队列，需管理员在后台启动。",
+        "修复发布页格式工具栏、设置页隐私状态与关于页品牌说明的细节问题。",
+    )),
     NativeRelease(66, "2026.11.19", listOf(
         "发布页附件上传增加真实进度和失败重试，精选内容与 AI 内容均可添加经服务端校验的附件。",
         "作品详情标题下展示版本匹配的 AI 摘要；详情页增加系统分享，分享前检查作品公开状态。",

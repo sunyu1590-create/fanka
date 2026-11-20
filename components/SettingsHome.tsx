@@ -53,7 +53,7 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
       { label: "兑换认证码", value: "认证标识", icon: BadgeCheck, action: () => onOpenDetail("certification") },
       { label: "兴趣与话题", icon: Hash, action: () => onOpenDetail("interests") },
       { label: "我的作品与草稿", icon: FileText, action: onOpenContent },
-      { label: "隐私与安全", icon: Shield, action: () => onOpenDetail("security") },
+      { label: "隐私与安全", value: "作品可见范围", icon: Shield, action: () => onOpenDetail("security") },
       { label: "创作者中心", icon: PenLine, action: onOpenCreator },
     ] },
     { title: "应用与支持", rows: [

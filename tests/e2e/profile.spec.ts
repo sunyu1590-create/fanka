@@ -73,6 +73,7 @@ test("profile keeps its compact layout, discovery tools, and theme controls", as
   await expect(page.locator(".my-content-page").getByRole("button", { name: "新建" })).toBeVisible();
   await expect(page.locator(".my-content-page").getByRole("button", { name: "发布内容" })).toHaveCount(0);
   await page.getByRole("button", { name: "返回，当前页面：我的" }).click();
+  await expect(page.locator(".mine-works-masonry")).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 900 });
   const desktopLayout = await page.evaluate(() => ({
     columns: getComputedStyle(document.querySelector(".mine-works-masonry")!).gridTemplateColumns.split(" ").length,

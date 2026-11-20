@@ -314,6 +314,8 @@ test("text-only today reveal fills the card, omits image placeholders, and opens
   await expect(reveal.locator(".flip-window-image-error,.flip-window-visual-fallback")).toHaveCount(0);
   await expect(reveal.locator(".window-more")).toHaveText("查看详情");
   await expect(reveal.locator(".window-quota")).toHaveCount(0);
+  // 等揭示层的淡入/位移过渡结束再量高度，否则会量到动画中间帧。
+  await page.waitForTimeout(400);
   const [revealBox, copyBox] = await Promise.all([reveal.boundingBox(), reveal.locator(".window-reveal-copy").boundingBox()]);
   expect(revealBox).not.toBeNull();
   expect(copyBox).not.toBeNull();
@@ -360,7 +362,7 @@ test("discovery, image detail, and publish composer remain responsive with soft 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 
-  await page.getByRole("button", { name: "返回" }).click();
+  await page.locator(".detail-back").click();
   await page.getByRole("button", { name: "发布内容" }).click();
   await expect(page.locator(".composer-modal")).toBeVisible();
   await page.getByRole("textbox", { name: "标题" }).fill("浏览器验收草稿");
@@ -452,9 +454,21 @@ test("Glass Editorial discovery keeps live feed controls, media states, rating, 
   await expect(firstCard.locator(".discovery-like-count")).toHaveText("12");
   const coverImage = firstCard.locator(".discovery-cover-open img");
   await expect.poll(() => coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
-  const naturalRatio = await coverImage.evaluate((image: HTMLImageElement) => image.naturalWidth / image.naturalHeight);
-  const renderedRatio = await coverImage.evaluate((image: HTMLImageElement) => image.getBoundingClientRect().width / image.getBoundingClientRect().height);
-  expect(Math.abs(renderedRatio - naturalRatio)).toBeLessThan(0.03);
+  // 封面按稳定散列比例裁切（3 档错落），不使用原始比例；这里验证裁切不拉伸：
+  // 图片必须铺满容器且 object-fit 为 cover，否则会被压扁或留黑边。
+  const coverFit = await firstCard.locator(".discovery-cover").evaluate((cover) => {
+    const image = cover.querySelector("img") as HTMLImageElement;
+    const box = cover.getBoundingClientRect();
+    const imageBox = image.getBoundingClientRect();
+    return {
+      objectFit: getComputedStyle(image).objectFit,
+      widthDelta: Math.abs(box.width - imageBox.width),
+      heightDelta: Math.abs(box.height - imageBox.height),
+    };
+  });
+  expect(coverFit.objectFit).toBe("cover");
+  expect(coverFit.widthDelta).toBeLessThan(1);
+  expect(coverFit.heightDelta).toBeLessThan(1);
   const textCard = page.locator('.heika-discovery-card[data-discover-id="2"]');
   await expect(textCard.locator(".discovery-cover.is-text-only")).toContainText("用于本地浏览器验收的内容正文");
   const brokenCard = page.locator('.heika-discovery-card[data-discover-id="3"]');

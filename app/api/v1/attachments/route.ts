@@ -9,6 +9,7 @@ import {
   MAX_ATTACHMENT_TOTAL_BYTES,
   attachmentExtension,
   attachmentOwner,
+  attachmentContentMatches,
   isPreviewableAttachment,
 } from "@/lib/attachments";
 
@@ -110,6 +111,8 @@ export async function POST(req: NextRequest) {
     if (file.size > MAX_ATTACHMENT_BYTES) throw new ApiError(400, "单个附件不能超过 30 MB");
     const ext = attachmentExtension(file.name);
     if (!ATTACHMENT_MIME[ext]) throw new ApiError(400, `不支持 ${ext ? "." + ext : "该"} 格式，可上传 APK、压缩包、PDF、文档或图片`);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!attachmentContentMatches(ext, bytes)) throw new ApiError(400, "文件内容与扩展名不一致，请确认文件完整后重新上传");
 
     const day = today();
     const uploadId = String(form.get("uploadId") || "");
@@ -137,7 +140,6 @@ export async function POST(req: NextRequest) {
       throw new ApiError(503, "附件额度暂不可用，请稍后重试");
     }
     const used = Number(reservation.data) || observed.used + 1;
-    const bytes = new Uint8Array(await file.arrayBuffer());
     const { error } = await db.storage.from(ATTACHMENT_BUCKET).upload(path, bytes, {
       contentType: ATTACHMENT_MIME[ext],
       upsert: false,

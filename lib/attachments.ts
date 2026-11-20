@@ -63,6 +63,68 @@ export function isPreviewableAttachment(name: string) {
   return PREVIEWABLE_ATTACHMENT_EXTENSIONS.includes(attachmentExtension(name) as typeof PREVIEWABLE_ATTACHMENT_EXTENSIONS[number]);
 }
 
+const ZIP_BASED_ATTACHMENT_EXTENSIONS = new Set(["apk", "zip", "docx", "xlsx", "pptx", "ipa", "msix"]);
+
+function asciiAt(bytes: Uint8Array, offset: number, length: number) {
+  if (offset < 0 || offset + length > bytes.length) return "";
+  return String.fromCharCode(...bytes.subarray(offset, offset + length));
+}
+
+function hasSignature(bytes: Uint8Array, signature: number[]) {
+  if (bytes.length < signature.length) return false;
+  for (let index = 0; index < signature.length; index += 1) {
+    if (bytes[index] !== signature[index]) return false;
+  }
+  return true;
+}
+
+/**
+ * 文件内容特征校验：扩展名可以随便改，但文件头改不了。
+ * 只做"是否与该扩展名匹配"的判定，不做杀毒；解码文本时限制前 64 KB，
+ * 避免大文件整份读入内存。
+ */
+export function attachmentContentMatches(extension: string, bytes: Uint8Array) {
+  const ext = extension.toLowerCase();
+  if (ZIP_BASED_ATTACHMENT_EXTENSIONS.has(ext)) return hasSignature(bytes, [0x50, 0x4b]);
+  switch (ext) {
+    case "rar": return hasSignature(bytes, [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07]);
+    case "7z": return hasSignature(bytes, [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]);
+    case "gz":
+    case "tgz": return hasSignature(bytes, [0x1f, 0x8b]);
+    case "tar": return asciiAt(bytes, 257, 5) === "ustar";
+    case "pdf": return asciiAt(bytes, 0, 5) === "%PDF-";
+    case "png": return hasSignature(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    case "jpg":
+    case "jpeg": return hasSignature(bytes, [0xff, 0xd8, 0xff]);
+    case "webp": return asciiAt(bytes, 0, 4) === "RIFF" && asciiAt(bytes, 8, 4) === "WEBP";
+    case "exe": return asciiAt(bytes, 0, 2) === "MZ";
+    case "deb": return asciiAt(bytes, 0, 7) === "!<arch>";
+    case "appimage": return hasSignature(bytes, [0x7f, 0x45, 0x4c, 0x46]);
+    case "dmg": return bytes.length > 512 && asciiAt(bytes, bytes.length - 512, 4) === "koly";
+    case "txt":
+    case "md":
+    case "json":
+    case "yml":
+    case "yaml":
+    case "csv":
+    case "py":
+    case "js":
+    case "ts":
+    case "sh": {
+      const head = bytes.subarray(0, 64 * 1024);
+      if (head.includes(0)) return false;
+      try {
+        new TextDecoder("utf-8", { fatal: true }).decode(head);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    default: return false;
+  }
+}
+
+
 export function formatAttachmentSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;

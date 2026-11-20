@@ -25,3 +25,6 @@ android-native/.gradle/
 
 # Kotlin 编译缓存
 android-native/.kotlin/
+
+# 自托管 AI 密钥密文（本地文件后端）
+data/

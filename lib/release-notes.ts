@@ -7,6 +7,16 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.51.1",
+    date: "2026.11.20",
+    notes: [
+      { category: "问题修复", text: "附件上传新增文件内容特征校验：扩展名与实际文件头不一致时直接拒绝，发布时再按存储中的真实大小复核单个与总量上限。" },
+      { category: "问题修复", text: "AI 密钥在自托管环境支持写入服务器本地的 AES-256-GCM 加密文件，不再强制依赖外部 Blob 存储；未配置密钥时管理页按「未配置」提示而不是报错。" },
+      { category: "问题修复", text: "修复发布页 Markdown 工具栏的可访问名称、设置页「隐私与安全」当前状态、关于页品牌说明三处细节。" },
+      { category: "问题修复", text: "补齐浏览器端 25 项验收用例，覆盖发布、附件、私信、设置、主题与翻卡；只更新与现行设计不符的旧断言，不放宽功能校验。" },
+    ],
+  },
+  {
     version: "2.51.0",
     date: "2026.11.19",
     notes: [
