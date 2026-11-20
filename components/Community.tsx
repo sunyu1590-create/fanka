@@ -2854,8 +2854,9 @@ export default function Community() {
     setAttachmentError("");
     setAiResourceFields(Object.fromEntries(Object.entries(initialResourceData).filter(([key]) => key !== "attachments").map(([key, value]) => [key, Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : ""]).filter(([, value]) => Boolean(value))));
     setEditing(initialPost?.id ?? null);
-    // 打开已有草稿/作品时保留原分类，不再自动重判；只有全新内容才让 AI 判断。
-    setComposerRouteLocked(Boolean(initialPost));
+    // 只有编辑「已发布/审核中」的作品才锁定原分类；草稿仍允许 AI 重新判断，
+    // 否则草稿首次保存时若还没判断完，就会永远停在默认分类。
+    setComposerRouteLocked(Boolean(post && post.status !== "draft"));
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
     setComposerRevisionMode(Boolean(post && (post.status === "published" || post.pendingRevision)));
     setTitle(revisionPayload?.title || initialPost?.title || "");
@@ -3659,7 +3660,14 @@ export default function Community() {
     const source = (summary || plain).replace(/\s+/g, " ").trim();
     // 摘要控制在一句话、十多个字：太短像标签，太长会被各平台折叠。
     const firstSentence = source.split(/[。！？!?；;\n]/).map((item) => item.trim()).find(Boolean) || "";
-    const blurb = firstSentence.length >= 12 ? firstSentence.slice(0, 26) : `${(target.title || "这篇内容").slice(0, 18)}，值得花两分钟读完`;
+    // 十几字最合适：太长会被平台折叠，太短像标签；优先在「｜，、空格」处断开，避免半句硬切。
+    const clipBlurb = (text: string) => {
+      if (text.length <= 26) return text.replace(/[｜|，,、\s]+$/, "");
+      const head = text.slice(0, 26);
+      const boundary = Math.max(head.lastIndexOf("｜"), head.lastIndexOf("|"), head.lastIndexOf("，"), head.lastIndexOf("、"), head.lastIndexOf(" "));
+      return boundary >= 10 ? head.slice(0, boundary) : head;
+    };
+    const blurb = firstSentence.length >= 12 ? clipBlurb(firstSentence) : `${(target.title || "这篇内容").slice(0, 18)}，值得花两分钟读完`;
     return {
       title: target.title,
       blurb,
