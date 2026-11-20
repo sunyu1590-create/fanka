@@ -3316,7 +3316,10 @@ export default function Community() {
   const openAiPost = (item: Post, source: Element | null) => {
     setPublicFeed((current) => current.some((post) => post.id === item.id) ? current : [...current, item]);
     setFeedPostIds((current) => current.includes(item.id) ? current : [...current, item.id]);
-    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source)));
+    // 直接把条目作为 resolvedPost 传入：rAF 回调里的 openPost 闭包可能仍是旧的
+    // （all 尚未包含本条），不带 resolvedPost 会被 openPost 的存在性守卫拦下，
+    // 表现为点击 AI 空间卡片后详情打不开。
+    requestAnimationFrame(() => requestAnimationFrame(() => openPost(item.id, "discover", source, item)));
   };
   useEffect(() => {
     const isDiscover = tab === "discover" && discoverChannel === "community" && modal !== "write";

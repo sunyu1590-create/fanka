@@ -83,3 +83,11 @@ test("安卓 AI 入口随内容滚动，详情页顶栏纯黑且无图不占位"
   // 双悬浮栏统一 54dp 胶囊
   assert.match(detail, /heightIn\(min = 54\.dp\)/);
 });
+
+test("AI 空间卡片首开详情不再被存在性守卫拦截", async () => {
+  const community = await read("components/Community.tsx");
+  // openAiPost 必须把条目作为 resolvedPost 传给 openPost：
+  // rAF 闭包里的 all 可能尚未包含该条，不带 resolvedPost 会被直接 return。
+  assert.match(community, /requestAnimationFrame\(\(\) => requestAnimationFrame\(\(\) => openPost\(item\.id, "discover", source, item\)\)\)/);
+  assert.match(community, /openPost = \(id: number, source\?: "today" \| "discover", sourceElement\?: Element \| null, resolvedPost\?: Post\)/);
+});
