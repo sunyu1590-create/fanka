@@ -6,6 +6,7 @@ import { attachAuthorBadges, libraryFields, presentMany, type LibraryRow } from 
 import { AI_CONTENT_TYPES, validateAiResourceData, safeResourceLink, type AiContentType } from "@/lib/ai-resources";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
+import { enqueuePostClassification } from "@/lib/server/ai-classification-queue";
 import { cardRarityTier } from "@/lib/progression";
 
 const safeQuery = (value: string) => value.replace(/[%,_()."\\*]/g, "").slice(0, 60);
@@ -218,6 +219,7 @@ export async function POST(req: NextRequest) {
         dbError(topicRows.error);
         const replaced = await db.rpc("replace_post_topics", { p_post_id: postId, p_topic_ids: (topicRows.data || []).map((item) => item.id) }); dbError(replaced.error);
       }
+      await enqueuePostClassification(postId);
     }
     const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single(); dbError(refreshed.error);
     return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];
