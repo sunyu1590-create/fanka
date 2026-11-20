@@ -532,7 +532,8 @@ as $$
     'recent', (select rows from recent),
     'pricingConfigured', exists(select 1 from public.ai_usage_events where estimated_cost is not null)
   )
-  from bounds b left join public.ai_usage_events e on true;
+  from bounds b left join public.ai_usage_events e on true
+  group by b.today, b.yesterday, b.week_start, b.month_start;
 $$;
 revoke all on function public.get_ai_resource_summary() from public, anon, authenticated;
 grant execute on function public.get_ai_resource_summary() to service_role;
