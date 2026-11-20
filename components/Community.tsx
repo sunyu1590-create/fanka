@@ -4611,7 +4611,7 @@ export default function Community() {
                 {t === "全部" ? "推荐" : t}
               </button>
             ))}
-            {hiddenCategoryCount > 0 && <button type="button" className="discover-category-more" aria-expanded={categoryOverflowOpen} onClick={() => setCategoryOverflowOpen((open) => !open)}>{categoryOverflowOpen ? "收起" : `更多 ${hiddenCategoryCount}`}<ChevronDown size={13} aria-hidden="true"/></button>}
+            {hiddenCategoryCount > 0 && <button type="button" className="discover-category-more" aria-expanded={categoryOverflowOpen} onClick={() => setCategoryOverflowOpen((open) => !open)}>{categoryOverflowOpen ? "收起分类" : `更多分类${hiddenCategoryCount ? ` ${hiddenCategoryCount}` : ""}`}<ChevronDown size={13} aria-hidden="true"/></button>}
           </div>
           {sort === "精选" && category === "全部" && latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">

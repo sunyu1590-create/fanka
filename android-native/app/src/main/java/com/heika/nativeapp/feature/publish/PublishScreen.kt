@@ -476,7 +476,6 @@ fun PublishScreen(
                                 }
                             }
                         }
-                        }
                         if (state.pendingDeletePaths.isNotEmpty()) TextButton(onClick = viewModel::retryRemovedImageCleanup) { Text("重试清理已移除图片（${state.pendingDeletePaths.size}）", color = MaterialTheme.colorScheme.error, fontSize = 10.sp) }
                     }
                 }

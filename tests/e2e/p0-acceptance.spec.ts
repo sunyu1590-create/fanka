@@ -314,11 +314,12 @@ test("text-only today reveal fills the card, omits image placeholders, and opens
   await expect(reveal.locator(".flip-window-image-error,.flip-window-visual-fallback")).toHaveCount(0);
   await expect(reveal.locator(".window-more")).toHaveText("查看详情");
   await expect(reveal.locator(".window-quota")).toHaveCount(0);
-  // 等揭示层所有过渡动画真正结束再量高度，避免量到动画中间帧（固定等待在负载高时会失效）。
-  await reveal.evaluate(async (el) => {
-    await Promise.all(el.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
-  });
-  await page.waitForTimeout(80);
+  // 揭示层的淡入带缩放过渡：必须等 copy 的 transform 归位后再量，
+  // 否则会量到动画中间帧（getAnimations 在过渡尚未创建时拿不到）。
+  await expect.poll(
+    () => reveal.locator(".window-reveal-copy").evaluate((el) => getComputedStyle(el).transform),
+    { timeout: 5_000 },
+  ).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
   const [revealBox, copyBox] = await Promise.all([reveal.boundingBox(), reveal.locator(".window-reveal-copy").boundingBox()]);
   expect(revealBox).not.toBeNull();
   expect(copyBox).not.toBeNull();
