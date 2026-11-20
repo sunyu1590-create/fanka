@@ -42,6 +42,12 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(69, "2026.11.20", listOf(
+        "发布页重写：AI 自动判断投社区精选还是 AI 空间，AI 内容类型也由 AI 决定，不用手选。",
+        "图片与视频入口改成等宽等高的两张卡片，不再一大一小。",
+        "发现页分类默认只显示常用的几个，其余收进「更多」。",
+        "管理后台补齐 AI 资源中心（批量总结、一键 AI 审核）与 App 下载入口。",
+    )),
     NativeRelease(68, "2026.11.20", listOf(
         "AI 创作助手移到发布页正文下方，社区作品与 AI 内容都能直接用，不必再进二级面板。",
         "Markdown 优化改为发布按钮左侧的独立按钮：打开助手完成后先预览，确认才替换正文，可撤回。",

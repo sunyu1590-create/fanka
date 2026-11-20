@@ -53,10 +53,10 @@ test("editor preserves immediate exits, Markdown preview, channel drafts and res
   await expect(page.locator(".composer-modal")).toHaveCount(0);
   await page.getByRole("button",{name:"发布内容",exact:true}).click();
   await expect(page.getByRole("textbox",{name:"标题",exact:true})).toHaveValue("退出前最后输入");
-  await page.getByRole("button",{name:"AI 空间",exact:true}).click();
-  await page.getByRole("button",{name:"切换目标",exact:true}).click();
+  // 发布去向改由 AI 判断，不再有手选频道与手选内容类型；重开草稿后标题必须原样保留。
+  await expect(page.locator(".composer-route")).toBeVisible();
   await expect(page.getByRole("textbox",{name:"标题",exact:true})).toHaveValue("退出前最后输入");
-  await expect(page.getByRole("combobox",{name:"AI 内容类型"})).toBeVisible();
+  await expect(page.getByRole("combobox",{name:"AI 内容类型"})).toHaveCount(0);
   await page.getByRole("button",{name:/更多发布设置/}).click();
   await expect(page.getByRole("dialog",{name:"更多发布设置"})).toBeVisible();
   await page.getByRole("button",{name:"返回编辑，当前：更多发布设置"}).click();
@@ -158,10 +158,15 @@ test("topics, poll and AI resource fields remain functional behind progressive c
   await page.getByRole("button",{name:"预览",exact:true}).click();
   await expect(page.locator(".composer-preview-poll")).toContainText("图文");
   await page.getByRole("button",{name:"返回编辑，当前：内容预览"}).click();
-  await page.getByRole("button",{name:"AI 空间",exact:true}).click();
-  await page.getByRole("button",{name:"切换目标",exact:true}).click();
-  await page.getByRole("combobox",{name:"AI 内容类型"}).click();
-  await page.getByRole("option",{name:"Prompt 提示词",exact:true}).click();
+});
+
+test("AI 判断发布去向并自动带出对应的资源字段",async({page})=>{
+  await enter(page);
+  await page.getByRole("textbox",{name:"标题",exact:true}).fill("一套可直接复用的写作提示词");
+  await page.getByRole("textbox",{name:"正文",exact:true}).fill("这是我最常用的系统提示词，复制到对话框就能用：你是一位中文编辑，请保留原意，只优化结构和标点。");
+  // 未登录时走本地规则判断，仍然要能识别出 Prompt 类型。
+  await expect(page.locator(".composer-route-copy strong")).toContainText("Prompt 提示词",{timeout:15000});
+  await expect(page.locator(".composer-ai-type")).toHaveCount(0);
   await page.getByRole("textbox",{name:/适用模型/}).fill("通用模型");
   await page.getByRole("textbox",{name:/应用场景/}).fill("内容创作");
   await page.getByRole("textbox",{name:/完整提示词/}).fill("请根据主题整理一份阅读提纲。");

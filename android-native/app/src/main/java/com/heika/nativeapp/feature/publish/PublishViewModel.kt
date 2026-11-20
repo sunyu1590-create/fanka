@@ -59,6 +59,7 @@ data class PublishState(
     val draftId: Int? = null, val draftCloudId: String? = null, val accountId: String? = null, val revisionMode: Boolean = false,
     val serverStatus: String = "draft",
     val loading: Boolean = true, val saving: Boolean = false, val publishing: Boolean = false,
+    val routeReason: String = "", val routeChecking: Boolean = false,
     val error: String? = null, val notice: String? = null, val showLeaveDialog: Boolean = false,
     val publishedPost: JSONObject? = null,
 )
@@ -180,6 +181,49 @@ class PublishViewModel @Inject constructor(
     }
 
     fun currentTopics(): List<String> = parseTopics(mutableState.value.topicText)
+
+    /**
+     * 软切换频道：只改去向与分类，不重建 state。
+     * 原来 switchChannel 会清空标题正文，AI 判断在作者写作过程中触发时会把草稿弄丢。
+     */
+    private suspend fun applyRoute(channel: String, category: String, contentType: String) {
+        val current = mutableState.value
+        val target = if (channel == "ai") "ai" else "community"
+        val categories = if (current.channel == target && current.categories.isNotEmpty()) current.categories
+            else runCatching { repository.loadCategories(target, "category") }.getOrDefault(emptyList())
+        val aiTypes = if (target == "ai" && current.aiResourceTypes.isEmpty()) runCatching { repository.loadAiResourceTypes() }.getOrDefault(emptyList()) else current.aiResourceTypes
+        mutableState.update {
+            it.copy(
+                channel = target,
+                categories = categories,
+                aiResourceTypes = aiTypes,
+                category = category.takeIf { name -> categories.any { item -> item.name == name } } ?: categories.firstOrNull()?.name ?: it.category,
+                contentType = if (target == "ai") contentType else "knowledge_article",
+            )
+        }
+    }
+
+    /** AI 判断这条内容投精选还是 AI 空间；AI 内容类型也由它决定，作者不需要手选。 */
+    fun detectRoute(force: Boolean = false) = viewModelScope.launch(HeikaCoroutineGuard) {
+        val current = mutableState.value
+        if (current.revisionMode || current.publishing || current.loading) return@launch
+        if (current.title.isBlank() && current.body.isBlank()) return@launch
+        if (!force && current.routeReason.isNotBlank() && current.routeChecking) return@launch
+        mutableState.update { it.copy(routeChecking = true) }
+        try {
+            val community = runCatching { repository.loadCategories("community", "category") }.getOrDefault(emptyList()).map { it.name }
+            val ai = runCatching { repository.loadCategories("ai", "category") }.getOrDefault(emptyList()).map { it.name }
+            val route = repository.composerRoute(current.title, current.body, community, ai)
+            val channel = route.optString("channel").ifBlank { "community" }
+            val contentType = route.optString("contentType").ifBlank { "knowledge_article" }
+            val category = route.optString("category")
+            val reason = route.optString("reason").take(90)
+            applyRoute(channel, category, contentType)
+            mutableState.update { it.copy(routeReason = reason, routeChecking = false) }
+        } catch (error: Exception) {
+            mutableState.update { it.copy(routeChecking = false, routeReason = it.routeReason.ifBlank { "暂时无法判断，已按内容主题放入社区精选" }) }
+        }
+    }
 
     fun switchChannel(channel: String) = viewModelScope.launch(HeikaCoroutineGuard) {
         val target = if (channel == "ai") "ai" else "community"

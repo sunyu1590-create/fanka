@@ -73,6 +73,7 @@ import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.heika.nativeapp.ui.HeikaPulseDot
@@ -167,19 +168,48 @@ fun PublishScreen(
             }
         })
         if (!state.loading && state.error != "登录后可以发布内容") {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                FilterChip("社区作品", state.channel == "community", {
-                    if (state.channel != "community") {
-                        viewModel.switchChannel("community")
-                        HeikaNoticeBus.showSelection("发布类型：社区作品")
+            // 标题或正文停下 1.2 秒后自动判断去向；判断只改分类，不动内容。
+            LaunchedEffect(state.title, state.body) {
+                if (state.title.isBlank() && state.body.isBlank()) return@LaunchedEffect
+                delay(1200)
+                if (!state.revisionMode) viewModel.detectRoute()
+            }
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp).clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("发布去向", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        if (state.revisionMode) "沿用原分类" else if (state.routeChecking) "AI 正在判断…" else "AI 已判断",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                    )
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(
+                        if (state.channel == "ai") HeikaIcons.Robot else HeikaIcons.Discovery,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(routeLabel(state), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            state.routeReason.ifBlank { "写完标题和正文会自动判断；AI 内容类型也由 AI 定。" },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 10.sp,
+                            lineHeight = 15.sp,
+                        )
                     }
-                })
-                FilterChip("AI 资源", state.channel == "ai", {
-                    if (state.channel != "ai") {
-                        viewModel.switchChannel("ai")
-                        HeikaNoticeBus.showSelection("发布类型：AI 资源")
+                    if (!state.revisionMode) {
+                        TextButton(enabled = !state.routeChecking, onClick = { viewModel.detectRoute(true) }) {
+                            Text(if (state.routeChecking) "判断中" else "重新判断", fontSize = 10.sp)
+                        }
                     }
-                })
+                }
             }
         }
         if (state.error == "登录后可以发布内容") {
@@ -387,27 +417,26 @@ fun PublishScreen(
                 }
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("添加图片", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${state.images.size}/9 · 首张图片作为封面", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
-                            }
-                            TextButton(onClick = { showVideoBeta = true }) { Icon(HeikaIcons.Video, null); Text("视频 Beta") }
+                        Text("图片与视频", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ComposerMediaCard(
+                                icon = HeikaIcons.Image,
+                                title = "图片",
+                                detail = if (state.images.isEmpty()) "最多 9 张 · JPG / PNG" else "已选 ${state.images.size}/9 · 继续添加",
+                                selected = state.images.isNotEmpty(),
+                                modifier = Modifier.weight(1f),
+                                onClick = { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            )
+                            ComposerMediaCard(
+                                icon = HeikaIcons.Video,
+                                title = "视频 Beta",
+                                detail = "MP4 / WebM · 50 MB",
+                                selected = false,
+                                modifier = Modifier.weight(1f),
+                                onClick = { showVideoBeta = true },
+                            )
                         }
-                        if (state.images.isEmpty()) {
-                            Column(
-                                Modifier.fillMaxWidth().height(164.dp).clip(RoundedCornerShape(14.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                            ) {
-                                Icon(HeikaIcons.Image, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
-                                Text("选择图片", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp))
-                                Text("JPG、PNG 或 WebP，最多 9 张", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
-                            }
-                        } else {
+                        if (state.images.isNotEmpty()) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 state.images.forEach { image ->
                                     androidx.compose.foundation.layout.Box(Modifier.size(width = 124.dp, height = 158.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface)) {
@@ -446,6 +475,7 @@ fun PublishScreen(
                                     Text("添加图片", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                                 }
                             }
+                        }
                         }
                         if (state.pendingDeletePaths.isNotEmpty()) TextButton(onClick = viewModel::retryRemovedImageCleanup) { Text("重试清理已移除图片（${state.pendingDeletePaths.size}）", color = MaterialTheme.colorScheme.error, fontSize = 10.sp) }
                     }
@@ -750,4 +780,42 @@ private fun friendlySize(bytes: Long): String = when {
     bytes >= 1024L * 1024 -> String.format("%.1f MB", bytes / 1024.0 / 1024.0)
     bytes >= 1024 -> "${bytes / 1024} KB"
     else -> "$bytes B"
+}
+
+private fun routeLabel(state: PublishState): String {
+    if (state.channel != "ai") return "社区精选 · ${state.category.ifBlank { "生活" }}"
+    val label = when (state.contentType) {
+        "agent" -> "Agent 智能体"
+        "skill" -> "Skills 技能"
+        "prompt" -> "Prompt 提示词"
+        "ai_tool" -> "AI 工具"
+        "tutorial" -> "实战教程"
+        else -> "AI 知识文章"
+    }
+    return "AI 空间 · $label"
+}
+
+/** 图片与视频入口必须等宽等高：原来一个是整块空态、一个是小按钮，视觉上明显失衡。 */
+@Composable
+private fun ComposerMediaCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    detail: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier
+            .height(92.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .10f) else MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+        Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+        Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
+    }
 }

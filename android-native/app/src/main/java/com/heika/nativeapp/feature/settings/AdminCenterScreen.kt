@@ -204,6 +204,7 @@ private val adminModuleGroups = listOf(
     )),
     AdminModuleGroup("AI 内容运营", listOf(
         AdminModuleSpec("ai", "AI 资源审核", "审核 AI 专区内容", com.heika.nativeapp.ui.HeikaIconRes.Robot),
+        AdminModuleSpec("ai-resource-center", "AI 资源中心", "批量总结、分类与一键审核", com.heika.nativeapp.ui.HeikaIconRes.Robot),
         AdminModuleSpec("ai-resource-types", "AI 资源类型", "管理类型目录与展示状态", com.heika.nativeapp.ui.HeikaIconRes.Blocks),
         AdminModuleSpec("ai-feedback", "AI 资源反馈", "处理资源失效与内容反馈", com.heika.nativeapp.ui.HeikaIconRes.Warning),
         AdminModuleSpec("categories", "分类管理", "维护社区与 AI 分类", com.heika.nativeapp.ui.HeikaIconRes.Tag),
@@ -213,6 +214,7 @@ private val adminModuleGroups = listOf(
         AdminModuleSpec("recommendation-settings", "推荐配置", "设置每日内容来源配比", com.heika.nativeapp.ui.HeikaIconRes.Settings),
         AdminModuleSpec("exploration-ad", "发现页广告位", "管理精选信息流顶部的图文推广入口", com.heika.nativeapp.ui.HeikaIconRes.Image),
         AdminModuleSpec("announcement", "公告管理", "编辑并发布打开 App 时弹出的公告", com.heika.nativeapp.ui.HeikaIconRes.Report),
+        AdminModuleSpec("app-download", "App 下载入口", "控制下载页是否开放与下载地址", com.heika.nativeapp.ui.HeikaIconRes.Download),
     )),
 )
 
@@ -220,7 +222,7 @@ private val adminSectionNames = mapOf(
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
-    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助", "announcement" to "启动弹窗公告", "community-access" to "认证与入驻邀请", "official-notices" to "系统通知管理",
+    "topic-events" to "话题共创", "recommendation-settings" to "推荐配置", "ai-settings" to "AI 工作台", "ai-resource-types" to "AI 资源类型", "ai-resource-center" to "AI 资源中心", "app-download" to "App 下载入口", "exploration-ad" to "发现页广告位", "membership-support" to "会员与赞助", "announcement" to "启动弹窗公告", "community-access" to "认证与入驻邀请", "official-notices" to "系统通知管理",
 )
 private fun adminSectionTitle(key: String) = adminSectionNames[key] ?: "管理员中心"
 
@@ -513,7 +515,7 @@ private fun AdminModuleRow(module: AdminModuleSpec, overview: JSONObject?, onCli
     }
 }
 
-private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "announcement")
+private val adminConfigSections = setOf("categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "ai-resource-center", "exploration-ad", "app-download", "announcement")
 
 @Composable
 private fun AdminMembershipPanel(state: AdminCenterState, viewModel: AdminCenterViewModel, onDisableCode: (JSONObject) -> Unit) {
@@ -737,6 +739,8 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
     var eventEnds by remember { mutableStateOf(java.time.Instant.now().plusSeconds(30L * 24 * 60 * 60).toString()) }
     var aiKey by remember { mutableStateOf("") }
     val meta = state.metadata ?: JSONObject()
+    var appDownloadEnabled by remember(meta) { mutableStateOf(meta.optBoolean("enabled")) }
+    var appDownloadUrl by remember(meta) { mutableStateOf(meta.optString("download_url").takeUnless { it == "null" }.orEmpty()) }
     val topics = meta.optJSONArray("topics")
     var announcementTitle by remember(meta) { mutableStateOf(meta.optString("title")) }
     var announcementBody by remember(meta) { mutableStateOf(meta.optString("body")) }
@@ -933,6 +937,81 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
                     Text("密钥只发送到服务端加密存储，不保存在本机。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 }
             }
+            "ai-resource-center" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("批量任务", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("任务由服务端 worker 处理，可随时暂停或中止；复审结果会回到作品审核队列。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = state.saving == null, onClick = { viewModel.createAiTask("summary_incremental") }, modifier = Modifier.weight(1f)) { Text("增量总结", fontSize = 11.sp) }
+                        OutlinedButton(enabled = state.saving == null, onClick = { viewModel.createAiTask("summary_all") }, modifier = Modifier.weight(1f)) { Text("全量总结", fontSize = 11.sp) }
+                    }
+                    Button(enabled = state.saving == null, onClick = { viewModel.createAiTask("review_pending") }, modifier = Modifier.fillMaxWidth()) { Text(if (state.saving == "ai-task-create") "正在创建…" else "一键 AI 审核待审内容", fontSize = 12.sp) }
+                    val metrics = meta.optJSONObject("metrics")
+                    val period = metrics?.optJSONObject("periods")?.optJSONObject("month")
+                    Text(
+                        "本月调用 ${period?.optInt("requests") ?: 0} 次 · ${period?.optLong("tokens") ?: 0} tokens",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                    )
+                    val batches = meta.optJSONArray("batches")
+                    Text("最近任务（${batches?.length() ?: 0}）", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+                    if (batches == null || batches.length() == 0) {
+                        Text("还没有批量任务。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    } else {
+                        (0 until batches.length()).forEach { index ->
+                            val batch = batches.optJSONObject(index) ?: return@forEach
+                            val total = batch.optInt("total_count")
+                            val done = batch.optInt("completed_count")
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(taskTypeLabel(batch.optString("task_type")), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(Modifier.weight(1f))
+                                    Text(taskStatusLabel(batch.optString("status")), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                }
+                                if (total > 0) LinearProgressIndicator(progress = { done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
+                                Text("完成 $done/$total · 待复审 ${batch.optInt("review_count")} · 失败 ${batch.optInt("failed_count")}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                batch.optString("current_post_title").takeIf(String::isNotBlank)?.let { Text("正在处理：$it", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1) }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val id = batch.optString("id")
+                                    val status = batch.optString("status")
+                                    if (status == "queued" || status == "paused") OutlinedButton(enabled = state.saving == null, onClick = { viewModel.aiTaskAction(id, "resume") }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)) { Text(if (status == "queued") "启动" else "继续", fontSize = 10.sp) }
+                                    if (status == "running") OutlinedButton(enabled = state.saving == null, onClick = { viewModel.aiTaskAction(id, "pause") }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)) { Text("暂停", fontSize = 10.sp) }
+                                    if (status == "running" || status == "queued" || status == "paused") TextButton(enabled = state.saving == null, onClick = { viewModel.aiTaskAction(id, "cancel") }) { Text("中止", color = MaterialTheme.colorScheme.error, fontSize = 10.sp) }
+                                    if (status == "failed") TextButton(enabled = state.saving == null, onClick = { viewModel.aiTaskAction(id, "retry") }) { Text("重试", fontSize = 10.sp) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "app-download" -> item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("开放下载", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text(if (meta.optBoolean("enabled")) "下载页当前对外开放" else "下载页当前关闭", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        }
+                        androidx.compose.material3.Switch(checked = appDownloadEnabled, enabled = state.saving == null, onCheckedChange = { appDownloadEnabled = it })
+                    }
+                    OutlinedTextField(
+                        appDownloadUrl,
+                        { appDownloadUrl = it.take(2048) },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("APK 下载地址（HTTPS）") },
+                        singleLine = true,
+                        supportingText = { Text("留空时使用站点默认的 /dl/heika-native-latest.apk", fontSize = 10.sp) },
+                    )
+                    Button(
+                        enabled = state.saving == null && (!appDownloadEnabled || appDownloadUrl.trim().startsWith("https://")),
+                        onClick = { viewModel.saveAppDownload(appDownloadEnabled, appDownloadUrl) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (state.saving == "app-download") "保存中…" else "保存下载设置", fontSize = 12.sp) }
+                    Text("保存后立即生效，网页下载页与 App 内更新提示都会读取这里的地址。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+            }
         }
         items(state.items, key = { "${state.section}-${it.optString("id")}" }) { item ->
             when (state.section) {
@@ -1116,7 +1195,7 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var adPostsGeneration = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "exploration-ad", "announcement", "membership-support", "community-access", "official-notices") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "ai-resource-center", "exploration-ad", "app-download", "announcement", "membership-support", "community-access", "official-notices") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
     fun refresh() = viewModelScope.launch(HeikaCoroutineGuard) {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, membershipLoading = mutableState.value.section == "membership-support", error = null, notice = null, membershipError = if (mutableState.value.section == "membership-support") null else mutableState.value.membershipError)
@@ -1165,11 +1244,54 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
                 "user-feedback" -> repository.adminUserFeedback(); "keywords" -> repository.adminKeywordRules(); "audit" -> repository.adminAudit()
                 "categories" -> repository.adminCategories(); "topic-events" -> repository.adminTopicEvents(); "ai-resource-types" -> repository.adminAiResourceTypes()
                 "recommendation-settings" -> repository.adminRecommendationSettings(); "ai-settings" -> repository.adminAiSettings(); "exploration-ad" -> repository.adminExplorationAd(); "announcement" -> repository.adminAnnouncement()
+                "ai-resource-center" -> repository.adminAiTasks(); "app-download" -> repository.adminAppDownload()
                 else -> repository.adminReports()
             }
             if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, items = (result.optJSONArray("items") ?: JSONArray()).toJSONObjectList(), metadata = result, loading = false)
         } catch (error: Exception) {
             if (requestId == generation) mutableState.value = mutableState.value.copy(loading = false, membershipLoading = false, error = if (mutableState.value.section == "membership-support") null else "管理员权限不足或队列加载失败，请重试", membershipError = if (mutableState.value.section == "membership-support") error.message ?: "会员管理数据加载失败，请检查权限或服务端配置" else mutableState.value.membershipError)
+        }
+    }
+
+    fun createAiTask(taskType: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "ai-task-create", error = null, notice = null)
+        try {
+            val created = repository.createAdminAiTask(taskType)
+            mutableState.value = mutableState.value.copy(
+                saving = null,
+                notice = "任务已创建，共 ${created.optInt("totalCount")} 条内容进入队列",
+            )
+            refresh()
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "创建 AI 任务失败，请重试")
+        }
+    }
+
+    fun aiTaskAction(batchId: String, action: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "ai-task-$batchId", error = null, notice = null)
+        try {
+            repository.adminAiTaskAction(batchId, action)
+            mutableState.value = mutableState.value.copy(saving = null, notice = "任务状态已更新")
+            refresh()
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "任务操作失败，请重试")
+        }
+    }
+
+    fun saveAppDownload(enabled: Boolean, url: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "app-download", error = null, notice = null)
+        try {
+            val saved = repository.saveAdminAppDownload(enabled, url)
+            mutableState.value = mutableState.value.copy(
+                saving = null,
+                metadata = saved,
+                notice = if (saved.optBoolean("enabled")) "下载入口已开启" else "下载入口已关闭",
+            )
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "保存下载入口失败，请重试")
         }
     }
 
@@ -1652,4 +1774,22 @@ private fun CompactUserRow(
         onConfirm = { onDelete(id); deleteConfirm = false },
         onCancel = { deleteConfirm = false },
     )
+}
+
+private fun taskTypeLabel(type: String) = when (type) {
+    "summary_all" -> "全量 AI 总结"
+    "summary_incremental" -> "增量 AI 总结"
+    "review_pending" -> "一键 AI 审核"
+    "classification" -> "自动分类"
+    else -> type
+}
+
+private fun taskStatusLabel(status: String) = when (status) {
+    "queued" -> "等待启动"
+    "running" -> "处理中"
+    "paused" -> "已暂停"
+    "completed" -> "已完成"
+    "cancelled" -> "已中止"
+    "failed" -> "失败"
+    else -> status
 }

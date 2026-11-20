@@ -6310,9 +6310,9 @@ img, video, canvas, iframe { max-width:100%; }
 .profile-badge-marks.is-compact{gap:2px;margin-left:4px}
 /* 无图文章专属阅读模板：分类 → 标题 → 作者及日期 → 分隔线 → 正文。
    不再使用巨大空白标题封面矩形；标题左对齐、自然文本高度。 */
-.detail-text-cover{display:grid;gap:6px;margin:6px 0 4px;padding:0;border:0;border-radius:0;background:none;}
+.detail-text-cover{display:grid;gap:8px;margin:4px 0 8px;padding:0;border:0;border-radius:0;background:none;}
 .detail-text-cover>span{width:max-content;max-width:100%;overflow:hidden;color:var(--muted);font-size:11px;letter-spacing:.08em;text-overflow:ellipsis;white-space:nowrap}
-.detail-text-cover h1{margin:0;color:var(--ink);font-size:clamp(19px,4.6vw,23px);line-height:1.42;font-weight:650;letter-spacing:-.01em;overflow-wrap:anywhere}
+.detail-text-cover h1{margin:0;color:var(--ink);font-size:clamp(24px,6.4vw,31px);line-height:1.34;font-weight:660;letter-spacing:-.02em;overflow-wrap:anywhere}
 /* 无图正文：16–18px、行高约 1.8，长段落/代码块/引用均不溢出 */
 .detail-body .detail-text-cover~.byline{margin:10px 0 0}
 .detail-body:has(.detail-text-cover) .detail-article-column>.byline{padding-bottom:12px;border-bottom:1px solid var(--line);margin:10px 0 4px}
@@ -6532,3 +6532,9 @@ img, video, canvas, iframe { max-width:100%; }
 :root[data-theme="dark"] .detail-more-menu { background:rgba(22,24,28,.78);-webkit-backdrop-filter:blur(var(--blur-glass)) saturate(var(--glass-saturation));backdrop-filter:blur(var(--blur-glass)) saturate(var(--glass-saturation));border-color:rgba(220,224,230,.18); }
 :root[data-theme="light"] .detail-more-menu { background:rgba(250,249,246,.82);-webkit-backdrop-filter:blur(var(--blur-glass)) saturate(var(--glass-saturation));backdrop-filter:blur(var(--blur-glass)) saturate(var(--glass-saturation));border-color:rgba(70,66,55,.16); }
 @media(max-width:1199px){:root[data-theme="dark"] .bottom-nav-shell{background:var(--glass-surface-dark);-webkit-backdrop-filter:blur(22px) saturate(var(--glass-saturation));backdrop-filter:blur(22px) saturate(var(--glass-saturation))}:root[data-theme="light"] .bottom-nav-shell{background:var(--glass-surface-light);-webkit-backdrop-filter:blur(22px) saturate(var(--glass-saturation));backdrop-filter:blur(22px) saturate(var(--glass-saturation))}:root[data-theme="dark"] .bottom-nav{background:var(--glass-panel-dark);-webkit-backdrop-filter:blur(12px) saturate(var(--glass-saturation));backdrop-filter:blur(12px) saturate(var(--glass-saturation))}:root[data-theme="light"] .bottom-nav{background:var(--glass-panel-light);-webkit-backdrop-filter:blur(12px) saturate(var(--glass-saturation));backdrop-filter:blur(12px) saturate(var(--glass-saturation))}}
+
+/* 分类栏：默认只露 AI 常分的几类，长尾分类收进「更多」 */
+.discover-category-nav>button.discover-category-more{display:inline-flex;align-items:center;gap:4px;min-width:0;padding:0 10px;color:var(--muted);font-size:11px}
+.discover-category-nav>button.discover-category-more svg{transition:transform 180ms ease}
+.discover-category-nav.is-expanded{flex-wrap:wrap;overflow:visible;row-gap:0;padding-bottom:2px}
+.discover-category-nav.is-expanded>button.discover-category-more svg{transform:rotate(180deg)}

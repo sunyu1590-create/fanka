@@ -656,6 +656,32 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/moderation-rules/${encode(id)}", method = "DELETE", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    /** AI 资源中心：批次、待复审记录与用量摘要。 */
+    suspend fun adminAiTasks(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/ai-tasks", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun createAdminAiTask(taskType: String, includeExisting: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
+        require(taskType in setOf("summary_all", "summary_incremental", "review_pending")) { "AI 任务类型无效" }
+        val payload = JSONObject().put("taskType", taskType).put("includeExisting", includeExisting)
+        request("/api/v1/admin/ai-tasks", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAiTaskAction(batchId: String, action: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(batchId)) { "AI 任务编号无效" }
+        require(action in setOf("start", "pause", "resume", "cancel", "retry")) { "AI 任务操作无效" }
+        request("/api/v1/admin/ai-tasks/${encode(batchId)}", method = "POST", body = JSONObject().put("action", action).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAppDownload(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/app-download", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun saveAdminAppDownload(enabled: Boolean, downloadUrl: String): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("enabled", enabled).put("download_url", downloadUrl.trim())
+        request("/api/v1/admin/app-download", method = "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun adminCategories(): JSONObject = withContext(Dispatchers.IO) {
         request("/api/v1/admin/categories", authenticated = true) as? JSONObject ?: JSONObject()
     }
@@ -974,6 +1000,17 @@ class HeikaRepository @Inject constructor(
         val result = request("/api/v1/ai/workbench", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject
             ?: throw IOException("AI 工作台暂不可用")
         result.optString("output").takeIf(String::isNotBlank) ?: throw IOException("AI 没有返回内容，请重试")
+    }
+
+    /** 发布去向判断：服务端先给规则结果，再让模型复核，客户端只负责展示。 */
+    suspend fun composerRoute(title: String, body: String, communityCategories: List<String>, aiCategories: List<String>): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("title", title.take(200))
+            .put("body", body.take(8000))
+            .put("communityCategories", JSONArray(communityCategories.take(30)))
+            .put("aiCategories", JSONArray(aiCategories.take(30)))
+        val result = request("/api/v1/composer", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject
+        result?.optJSONObject("route") ?: JSONObject()
     }
 
     suspend fun searchTopics(query: String? = null, featured: Boolean = false): JSONArray = withContext(Dispatchers.IO) {

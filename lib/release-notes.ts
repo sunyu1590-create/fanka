@@ -7,6 +7,17 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.52.0",
+    date: "2026.11.20",
+    notes: [
+      { category: "新功能", text: "发布页彻底重写：写完标题正文，AI 自动判断投社区精选还是 AI 空间，AI 内容类型也由 AI 决定，不用再手选。" },
+      { category: "体验优化", text: "图片与视频入口改成等宽等高的两张卡片，不再一大一小；图片正文标题字号加大，纯文字阅读更清楚。" },
+      { category: "体验优化", text: "分享文案包含标题、一句话摘要和「这是黑卡的链接，打开后可以进入黑卡探索更多内容」的说明。" },
+      { category: "体验优化", text: "发现页分类默认只显示常用的几个，其余收进「更多」，首屏不再被长尾分类挤满。" },
+      { category: "新功能", text: "安卓管理后台补齐 AI 资源中心（批量总结、一键 AI 审核）与 App 下载入口，功能与网页端对齐。" },
+    ],
+  },
+  {
     version: "2.51.3",
     date: "2026.11.20",
     notes: [
