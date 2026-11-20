@@ -42,6 +42,16 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(72, "2026.11.21", listOf(
+        "发布不再要求填写资源信息，只保留标题、正文、图片附件与分类话题，必填提示改为具体原因。",
+        "AI 专区的「探索 AI 资源」随内容滚动，回到顶部才重新出现；顶部改为紧凑双行，分类横滑、搜索与筛选固定右侧。",
+        "内容详情页顶栏改为纯黑，双悬浮栏统一 54dp 胶囊尺寸；无封面的作品不再显示灰色图片占位。",
+    )),
+    NativeRelease(71, "2026.11.20", listOf(
+        "固态玻璃调亮：降低材质不透明度，提高亮度与饱和度，背景真正透出颜色，不再是深灰实心卡片。",
+        "详情页改为左右两个独立悬浮模块：左侧评论入口，右侧点赞、收藏、分享；选中态统一为香槟金。",
+        "新增应用内分享面板，微信、朋友圈、Telegram、X、QQ 使用统一尺寸的品牌图标，未安装时自动复制文案。",
+    )),
     NativeRelease(70, "2026.11.20", listOf(
         "AI 资源中心的调用次数改为近 30 天口径，不再固定显示 0。",
     )),

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { ApiError, context, jsonBody, respond } from "@/lib/server/api";
+import { ApiError, context, dbError, jsonBody, respond } from "@/lib/server/api";
 import { completeAiChat } from "@/lib/server/ai-provider";
-import { describeRoute, normalizeAiRoute, routeByRules, type ComposerRoute } from "@/lib/composer-routing";
+import { describeRoute, normalizeAiRoute, normalizeTopicSuggestions, pickTopicsByRules, routeByRules, type ComposerRoute } from "@/lib/composer-routing";
 
 export const runtime = "nodejs";
 export const maxDuration = 20;
@@ -24,12 +24,13 @@ const SYSTEM = `你是黑卡 HEIKA 的发布向导。作者只写标题和正文
 3. category 必须从给出的候选分类里原样选择，不要自造新分类。没有合适的就选第一个。
 4. reason 用一句不超过 40 字的中文说明依据，写给作者看，不要提到"模型""分类器"这类词。
 5. confidence 是 0-1 的小数，表示你对自己的判断有多确定。
+6. topics 从「候选话题」里挑 3-5 个与内容最相关的，必须原样使用候选列表里的名称，按相关度从高到低排列。没有合适的话题就返回空数组，不要硬凑。
 
 只返回 JSON，不要代码块、不要解释。`;
 
 export async function POST(req: NextRequest) {
   return respond(async () => {
-    const { user } = await context(req, false);
+    const { db, user } = await context(req, false);
     const body = await jsonBody(req);
     const title = typeof body.title === "string" ? body.title.trim().slice(0, 200) : "";
     const content = typeof body.body === "string" ? body.body.trim().slice(0, 8000) : "";
@@ -41,23 +42,29 @@ export async function POST(req: NextRequest) {
       : [];
 
     const fallback = routeByRules({ title, body: content, communityCategories, aiCategories });
-    if (!title && !content) return { route: fallback, source: "rule" as const };
+    // 话题候选来自 Supabase 里已收录的话题，优先复用，不凭空造词。
+    const topicResult = await db.from("interest_tags").select("name").eq("kind", "tag").eq("active", true).is("merged_into_id", null).order("sort_order");
+    dbError(topicResult.error);
+    const topicCandidates = (topicResult.data || []).map((row) => row.name).filter((name): name is string => typeof name === "string" && Boolean(name.trim()));
+    const ruleTopics = pickTopicsByRules(`${title}\n${content}`, topicCandidates);
+    if (!title && !content) return { route: fallback, topics: [], source: "rule" as const };
     // 未登录时不消耗模型额度：本地规则足够给出合理去向，也避免匿名请求刷接口。
-    if (!user) return { route: fallback, source: "rule" as const };
+    if (!user) return { route: fallback, topics: ruleTopics, source: "rule" as const };
 
     const prompt = [
       `候选社区分类：${communityCategories.join("、") || "（暂无）"}`,
       `候选 AI 分类：${aiCategories.join("、") || "（暂无）"}`,
       `标题：${title || "（未填写）"}`,
       `正文：${content.slice(0, 6000) || "（未填写）"}`,
+      `候选话题：${topicCandidates.join("、") || "（暂无）"}`,
       `本地规则的初判是「${describeRoute(fallback)}」，如果你判断一致可以直接沿用，不一致请给出你的理由。`,
-      `返回格式：{"channel":"community|ai","contentType":"...","category":"...","confidence":0.0,"reason":"..."}`,
+      `返回格式：{"channel":"community|ai","contentType":"...","category":"...","confidence":0.0,"reason":"...","topics":["..."]}`,
     ].join("\n");
 
     try {
       const result = await completeAiChat({
         purpose: "classification",
-        maxTokens: 300,
+        maxTokens: 500,
         temperature: 0.2,
         jsonObject: true,
         messages: [
@@ -67,11 +74,12 @@ export async function POST(req: NextRequest) {
       });
       const parsed = JSON.parse(result.output.replace(/^```(?:json)?\s*|\s*```$/g, "").trim());
       const route: ComposerRoute = normalizeAiRoute(parsed, fallback, { title, body: content, communityCategories, aiCategories });
-      return { route, source: route.source, model: result.model, requestId: result.requestId };
+      const topics = normalizeTopicSuggestions((parsed as { topics?: unknown }).topics, topicCandidates, ruleTopics);
+      return { route, topics, source: route.source, model: result.model, requestId: result.requestId };
     } catch (error) {
       // 模型不可用、额度用尽、返回不是 JSON —— 都不该让作者卡在发布页。
       if (error instanceof ApiError && error.status === 401) throw error;
-      return { route: fallback, source: "rule" as const, degraded: true };
+      return { route: fallback, topics: ruleTopics, source: "rule" as const, degraded: true };
     }
   });
 }

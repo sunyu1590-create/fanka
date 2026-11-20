@@ -151,50 +151,6 @@ const FLIP_RAIN_JITTER_MS = 90;
 const FLIP_RAIN_CLEANUP_MS = FLIP_RAIN_LEAD_MS + FLIP_RAIN_STAGGER_WINDOW_MS + FLIP_RAIN_JITTER_MS + FLIP_RAIN_DURATION_MIN_MS + FLIP_RAIN_DURATION_SPREAD_MS + 180;
 const RATING_COLORS = ["#ff5d78", "#ff9452", "#edbd36", "#65b95e", "#34aeb5"];
 type PublicExplorationAd = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string; post_client_id: number | null };
-const AI_EDITOR_FIELDS: Record<AiContentType, { key: string; label: string; hint: string; multiline?: boolean; required?: boolean }[]> = {
-  knowledge_article: [],
-  agent: [
-    { key: "functionality", label: "主要功能", hint: "这个 Agent 能解决什么问题", multiline: true, required: true },
-    { key: "platforms", label: "兼容平台", hint: "例如：OpenAI API、Claude、Dify", required: true },
-    { key: "run_mode", label: "运行方式", hint: "云端 / 本地 / 工作流", required: true },
-    { key: "source_url", label: "项目来源", hint: "公开的 HTTPS 项目地址", required: true },
-    { key: "use_cases", label: "适用场景", hint: "补充推荐使用场景", multiline: true },
-    { key: "tutorial", label: "使用教程", hint: "安装和使用步骤", multiline: true },
-    { key: "version", label: "版本", hint: "例如：1.0.0", required: true },
-    { key: "changelog", label: "更新记录", hint: "本次版本变更", multiline: true },
-  ],
-  skill: [
-    { key: "functionality", label: "功能说明", hint: "这个 Skill 扩展了什么能力", multiline: true, required: true },
-    { key: "environments", label: "兼容环境", hint: "例如：Claude Code、Cursor", required: true },
-    { key: "installation", label: "安装步骤", hint: "安装命令或配置步骤", multiline: true, required: true },
-    { key: "configuration", label: "配置内容", hint: "可选配置或环境变量", multiline: true },
-    { key: "example", label: "使用示例", hint: "展示典型调用方式", multiline: true },
-    { key: "version", label: "版本", hint: "例如：1.0.0", required: true },
-    { key: "changelog", label: "更新记录", hint: "本次版本变更", multiline: true },
-    { key: "source_url", label: "来源地址", hint: "公开的 HTTPS 项目地址", required: true },
-  ],
-  prompt: [
-    { key: "model", label: "适用模型", hint: "例如：GPT-5、Claude、通用模型", required: true },
-    { key: "scenario", label: "应用场景", hint: "说明适用任务", required: true },
-    { key: "prompt", label: "完整提示词", hint: "请粘贴可直接使用的提示词", multiline: true, required: true },
-    { key: "variables", label: "可替换变量", hint: "例如：主题、语气、受众", multiline: true },
-    { key: "example", label: "使用示例", hint: "补充输入和输出示例", multiline: true },
-  ],
-  ai_tool: [
-    { key: "functionality", label: "功能说明", hint: "工具核心能力", multiline: true, required: true },
-    { key: "platforms", label: "支持平台", hint: "Web、iOS、Android、桌面端等", required: true },
-    { key: "source_url", label: "工具地址", hint: "公开的网站或项目地址", required: true },
-    { key: "pricing", label: "价格信息", hint: "免费方案或订阅价格" },
-    { key: "experience", label: "使用体验", hint: "优缺点与适合人群", multiline: true },
-  ],
-  tutorial: [
-    { key: "difficulty", label: "难度", hint: "入门 / 进阶 / 高级", required: true },
-    { key: "requirements", label: "准备条件", hint: "账号、模型、软件或素材", required: true },
-    { key: "steps", label: "实战步骤", hint: "按顺序说明如何完成任务", multiline: true, required: true },
-    { key: "source_url", label: "参考来源", hint: "可选公开资料地址" },
-  ],
-};
-
 function discoverCoverRatio(postId: number) {
   const shape = Math.abs(postId) % 8;
   if (shape === 0) return "1 / 1.45";
@@ -708,7 +664,8 @@ export default function Community() {
     [writeContentType, setWriteContentType] = useState<AiContentType>("knowledge_article"),
     [composerRoute, setComposerRoute] = useState<ComposerRoute | null>(null),
     [composerRouteLocked, setComposerRouteLocked] = useState(false),
-    [composerRouteChecking, setComposerRouteChecking] = useState(false),
+    [composerSuggestion, setComposerSuggestion] = useState<{ key: string; route: ComposerRoute | null; topics: string[]; degraded: boolean; checking: boolean } | null>(null),
+    [composerTagTouched, setComposerTagTouchedState] = useState(false),
     [composerRouteReason, setComposerRouteReason] = useState(""),
     [aiResourceFields, setAiResourceFields] = useState<Record<string, string>>({}),
     [writeTopics, setWriteTopics] = useState<string[]>([]),
@@ -977,6 +934,9 @@ export default function Community() {
   const draftCloudQueue = useRef<Promise<void>>(Promise.resolve());
   const composerSession = useRef(0);
   const composerRouteSeq = useRef(0);
+  const composerSuggestionRef = useRef<{ key: string; route: ComposerRoute | null; topics: string[]; degraded: boolean; checking: boolean } | null>(null);
+  const composerTagTouchedRef = useRef(false);
+  const markComposerTagTouched = () => { composerTagTouchedRef.current = true; setComposerTagTouchedState(true); };
   const draftRevision = useRef(0);
   const composerDraftRef = useRef<Post | null>(null);
   const composerCloudDrafts = useRef(new Map<string, Post>());
@@ -2607,11 +2567,20 @@ export default function Community() {
     if (composerVideo.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
     setComposerVideo(null);
   };
-  const publish = async () => {
+  const publish = async (options?: { confirmed?: boolean }) => {
     if (publishInFlight.current) return;
     if (!title.trim()) { setComposerValidation("title"); toast("请先填写标题"); document.querySelector<HTMLTextAreaElement>(".composer-title-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!body.trim()) { setComposerValidation("body"); toast("请先填写正文"); document.querySelector<HTMLTextAreaElement>(".composer-body-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     setComposerValidation("");
+    // AI 智能检测只在点击「发布」后触发一次；确认面板出现后由用户确认再提交。
+    if (!options?.confirmed && !composerEditingPublished && !composerRouteLocked) {
+      if (composerSuggestionRef.current?.checking) return;
+      const key = `${title.trim()}\u0000${body.trim()}`;
+      const cached = composerSuggestionRef.current;
+      if (cached && cached.key === key) { setComposerSuggestion(cached); return; }
+      await runComposerSuggest(key);
+      return;
+    }
     const pollDraft = writeChannel === "community" ? { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) } : { question:"", options:[] as string[] };
     if ((pollDraft.question || pollDraft.options.length) && (!pollDraft.question || pollDraft.options.length < 2 || pollDraft.options.length > 4)) return toast("投票需要填写问题，并设置 2–4 个选项");
     if (composerMediaLoadFailed) return toast("附件列表尚未恢复，请先重试读取附件");
@@ -2698,6 +2667,10 @@ export default function Community() {
       setComposerAttachments([]);
       setAttachmentError("");
       setComposerValidation("");
+      composerSuggestionRef.current = null;
+      setComposerSuggestion(null);
+      setComposerTagTouchedState(false);
+      composerTagTouchedRef.current = false;
       const owner = accountId || "guest";
       if (writeChannel === "community") localStorage.removeItem(`heika-compose-${owner}`);
       localStorage.removeItem(`heika-compose-${writeChannel}-${owner}`);
@@ -2860,6 +2833,10 @@ export default function Community() {
     // 只有编辑「已发布/审核中」的作品才锁定原分类；草稿仍允许 AI 重新判断，
     // 否则草稿首次保存时若还没判断完，就会永远停在默认分类。
     setComposerRouteLocked(Boolean(post && post.status !== "draft"));
+    composerSuggestionRef.current = null;
+    setComposerSuggestion(null);
+    composerTagTouchedRef.current = false;
+    setComposerTagTouchedState(false);
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
     setComposerRevisionMode(Boolean(post && (post.status === "published" || post.pendingRevision)));
     setTitle(revisionPayload?.title || initialPost?.title || "");
@@ -3096,8 +3073,8 @@ export default function Community() {
       if (!consumed && history.state?.heikaComposer) { window.addEventListener("popstate",event=>event.stopImmediatePropagation(),{capture:true,once:true}); history.back(); }
     };
   }, [modal]);
-  // 发布去向由 AI 判断：先给本地规则结果，再用服务端模型复核。
-  // 作者不需要手选频道，判断错了可以点「重新判断」，或在更多设置里改分类。
+  // AI 发布检测：只在点击「发布」后触发（以及建议面板里的「重新检测」）。
+  // 输入、切焦、正文变化都不调用模型；同一稿内容重复点击发布直接复用上次结果。
   const applyComposerRoute = (route: ComposerRoute, keepTag = false) => {
     setComposerRoute(route);
     setComposerRouteReason(route.reason);
@@ -3105,38 +3082,47 @@ export default function Community() {
     setWriteContentType(route.contentType);
     if (!keepTag) setWriteTag(route.category);
   };
-  const detectComposerRoute = async (force = false) => {
-    if (composerEditingPublished || composerRouteLocked) return;
+  const runComposerSuggest = async (cacheKey?: string) => {
     const titleText = title.trim();
     const bodyText = body.trim();
-    if (!titleText && !bodyText) { setComposerRoute(null); setComposerRouteReason(""); return; }
+    const key = cacheKey ?? `${titleText}\u0000${bodyText}`;
     const communityList = communityCategories.length ? communityCategories : [...tags];
     const aiList = aiCategories.filter((item) => item.kind === "category").map((item) => item.name);
     const local = routeByRules({ title: titleText, body: bodyText, communityCategories: communityList, aiCategories: aiList });
-    const sameChannel = composerRoute?.channel === local.channel;
-    applyComposerRoute(local, sameChannel && !force);
-    if (!accountId) return;
-    const seq = ++composerRouteSeq.current;
-    setComposerRouteChecking(true);
+    const pending = { key, route: local, topics: [] as string[], degraded: false, checking: true };
+    composerSuggestionRef.current = pending;
+    setComposerSuggestion(pending);
+    if (!accountId) {
+      // 未登录不消耗模型额度：给规则结果，确认后面板仍可手动调整。
+      const done = { ...pending, checking: false };
+      composerSuggestionRef.current = done;
+      setComposerSuggestion(done);
+      return;
+    }
     try {
-      const result = await cloudRequest("/api/v1/composer", { title: titleText, body: bodyText, communityCategories: communityList, aiCategories: aiList }) as { route?: ComposerRoute } | null;
-      if (seq !== composerRouteSeq.current || !result?.route) return;
-      const next = result.route;
-      applyComposerRoute(next, (composerRoute?.channel || local.channel) === next.channel && !force);
+      const result = await cloudRequest("/api/v1/composer", { title: titleText, body: bodyText, communityCategories: communityList, aiCategories: aiList }) as { route?: ComposerRoute; topics?: string[]; degraded?: boolean } | null;
+      if (!result?.route) throw new Error("检测结果为空");
+      const done = { key, route: result.route, topics: Array.isArray(result.topics) ? result.topics.slice(0, 5) : [], degraded: Boolean(result.degraded), checking: false };
+      composerSuggestionRef.current = done;
+      setComposerSuggestion(done);
+      // 用户手动改过分类就不再覆盖，只展示建议。
+      if (!composerTagTouchedRef.current) applyComposerRoute(result.route, false);
     } catch {
-      // 模型不可用就沿用规则结果，发布流程不阻塞。
-    } finally {
-      if (seq === composerRouteSeq.current) setComposerRouteChecking(false);
+      // AI 服务异常：保留全部内容，给规则去向并允许手动选择，发布流程不中断。
+      const done = { key, route: local, topics: [], degraded: true, checking: false };
+      composerSuggestionRef.current = done;
+      setComposerSuggestion(done);
     }
   };
-  const detectComposerRouteRef = useRef(detectComposerRoute);
-  detectComposerRouteRef.current = detectComposerRoute;
-  useEffect(() => {
-    if (modal !== "write" || composerEditingPublished || composerRouteLocked) return;
-    if (!title.trim() && !body.trim()) return;
-    const timer = window.setTimeout(() => { void detectComposerRouteRef.current(); }, 1100);
-    return () => window.clearTimeout(timer);
-  }, [modal, title, body, composerEditingPublished, composerRouteLocked]);
+  const confirmComposerPublish = () => {
+    composerSuggestionRef.current = null;
+    setComposerSuggestion(null);
+    void publish({ confirmed: true });
+  };
+  const handlePublishClick = () => {
+    if (composerSuggestion && !composerSuggestion.checking) { confirmComposerPublish(); return; }
+    void publish();
+  };
   const reorderComposerImages = (from: number, to: number) => {
     if (isPublishing || from === to || from < 0 || to < 0 || to >= composerImages.length) return;
     const coverId = composerImages[coverIndex]?.id;
@@ -5614,13 +5600,38 @@ export default function Community() {
               <div className="composer-workspace">
               <div className="composer-scroll">
                 {!composerEditingPublished && <section className="composer-route" aria-label="发布去向">
-                  <div className="composer-route-head"><span>发布去向</span><small>{composerEditingPublished || composerRouteLocked ? "沿用内容的原分类" : composerRouteChecking ? "AI 正在判断…" : composerRoute?.source === "ai" ? "AI 已判断" : "按内容自动判断"}</small></div>
+                  <div className="composer-route-head"><span>发布去向</span><small>{composerRouteLocked ? "沿用内容的原分类" : composerSuggestion ? (composerSuggestion.checking ? "AI 正在检测…" : composerSuggestion.degraded ? "AI 检测失败，已按规则判断" : composerSuggestion.route?.source === "ai" ? "AI 已判断" : "按内容规则判断") : "发布时由 AI 判断"}</small></div>
                   <div className={`composer-route-target${writeChannel === "ai" ? " is-ai" : ""}`}>
                     <span className="composer-route-icon">{writeChannel === "ai" ? <Sparkles size={17}/> : <Compass size={17}/>}</span>
-                    <div className="composer-route-copy"><strong>{composerRoute ? describeRoute(composerRoute) : writeChannel === "ai" ? `AI 空间 · ${AI_CONTENT_TYPE_LABELS[writeContentType]}` : `社区精选 · ${writeTag}`}</strong><small>{composerRouteReason || "写完标题和正文，会自动判断是投到社区精选还是 AI 空间；AI 内容类型也由 AI 定。"}</small></div>
-                    {!composerEditingPublished && !composerRouteLocked && <button type="button" className="composer-route-refresh" disabled={composerRouteChecking || (!title.trim() && !body.trim())} onClick={() => void detectComposerRoute(true)}>{composerRouteChecking ? "判断中…" : "重新判断"}</button>}
+                    <div className="composer-route-copy"><strong>{composerRoute ? describeRoute(composerRoute) : writeChannel === "ai" ? `AI 空间 · ${AI_CONTENT_TYPE_LABELS[writeContentType]}` : `社区精选 · ${writeTag}`}</strong><small>{composerRouteReason || "点击「发布内容」后由 AI 判断去向、分类与话题，确认或调整后再提交。"}</small></div>
                   </div>
                   {writeChannel === "ai" && <p className="composer-route-hint">AI 内容类型由 AI 判断，需要修改分类可到「更多发布设置」。</p>}
+                </section>}
+                {composerSuggestion && !composerEditingPublished && !composerRouteLocked && <section className="composer-suggest" aria-label="AI 发布建议">
+                  <div className="composer-suggest-head"><span><Sparkles size={16}/> AI 发布建议</span><small>{composerSuggestion.checking ? "AI 正在分析标题与正文…" : composerSuggestion.degraded ? "AI 分析失败，可手动调整分类和话题后继续发布" : "请确认或调整后提交"}</small></div>
+                  {composerSuggestion.route && <div className={`composer-route-target${composerSuggestion.route.channel === "ai" ? " is-ai" : ""}`}>
+                    <span className="composer-route-icon">{composerSuggestion.route.channel === "ai" ? <Sparkles size={17}/> : <Compass size={17}/>}</span>
+                    <div className="composer-route-copy"><strong>{describeRoute(composerSuggestion.route)}</strong><small>{composerSuggestion.route.reason}</small></div>
+                    <button type="button" className="composer-route-refresh" disabled={composerSuggestion.checking} onClick={() => void runComposerSuggest(composerSuggestion.key)}>{composerSuggestion.checking ? "检测中…" : "重新检测"}</button>
+                  </div>}
+                  {composerTagTouched && <p className="composer-suggest-note">你已手动改过分类，AI 建议不会覆盖你的选择。</p>}
+                  <ChoiceSelect label={composerSuggestion.route?.channel === "ai" ? "AI 分类" : "分类"} value={composerSuggestion.route && !composerTagTouched ? composerSuggestion.route.category : writeTag} onChange={(value) => { markComposerTagTouched(); setWriteTag(value); }} options={(composerSuggestion.route?.channel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({ value: tag, label: tag }))}/>
+                  <div className="composer-suggest-topics">
+                    <div className="composer-section-heading"><span><strong>话题建议</strong><small>点选加入或移除，AI 只推荐已有话题</small></span><span>{writeTopics.length}/5</span></div>
+                    {composerSuggestion.topics.length || writeTopics.length ? <div className="composer-suggest-chips">{[...new Set([...composerSuggestion.topics, ...writeTopics])].map((topic) => {
+                      const selected = writeTopics.includes(topic);
+                      return <button type="button" key={topic} className={selected ? "selected" : ""} onClick={() => {
+                        if (selected) { setWriteTopics((current) => current.filter((item) => item !== topic)); return; }
+                        if (writeTopics.length >= 5) { toast("最多选择 5 个话题"); return; }
+                        setWriteTopics((current) => [...new Set([...current, topic])].slice(0, 5));
+                      }}>#{topic}</button>;
+                    })}</div> : <p className="composer-suggest-empty">AI 没有找到合适的话题，可以在下面「# 话题」里手动添加。</p>}
+                  </div>
+                  {composerSuggestion.degraded && <button type="button" className="soft-button" onClick={() => setComposerPanel("topics")}>手动选择话题</button>}
+                  <div className="composer-suggest-actions">
+                    <button type="button" className="soft-button" onClick={() => setComposerSuggestion(null)}>返回修改</button>
+                    <button type="button" className="primary-button" disabled={composerSuggestion.checking} onClick={confirmComposerPublish}>{composerSuggestion.checking ? "检测中…" : "确认发布"}</button>
+                  </div>
                 </section>}
                 <ComposerTextEditor title={title} body={body} error={composerValidation} onTitle={changeComposerTitle} onBody={changeComposerBody}/>
                 <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
@@ -5668,7 +5679,7 @@ export default function Community() {
                 </section>
                 {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
                 <ComposerAttachments items={composerAttachments} quota={attachmentQuota} busy={attachmentBusy} error={attachmentError} progress={attachmentProgress} retryAvailable={attachmentRetryFiles.length > 0} onAdd={(files) => void addComposerAttachments(files)} onRetry={() => void retryComposerAttachments()} onRemove={(path) => void removeComposerAttachment(path)}/>
-                {writeChannel === "ai" && AI_EDITOR_FIELDS[writeContentType].length > 0 && <section className="composer-ai-resource-fields" aria-label="AI 资源信息"><div className="composer-section-heading"><span><strong>资源信息</strong><small>代码、安装命令和 Prompt 仅展示与复制，不会在服务器执行</small></span><span>{AI_EDITOR_FIELDS[writeContentType].filter((field) => field.required).length} 项必填</span></div>{AI_EDITOR_FIELDS[writeContentType].map((field) => <label key={field.key}>{field.label}{field.required && <i>必填</i>}{field.multiline ? <textarea value={aiResourceFields[field.key] || ""} maxLength={12000} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint} rows={field.key === "prompt" || field.key === "installation" || field.key === "steps" ? 6 : 3}/> : <input type={field.key.endsWith("_url") ? "url" : "text"} value={aiResourceFields[field.key] || ""} maxLength={1200} onChange={(event) => setAiResourceFields((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.hint}/>}</label>)}</section>}
+                
                 <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("topics")}><span># 话题</span><small>{writeTopics.length ? writeTopics.map(topic=>`#${topic}`).join(" ") : "添加话题"}</small><ChevronRight size={16}/></button>
                 <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("settings")}><span>更多发布设置</span><small>{writeTag}{writeSeriesId ? " · 已选系列" : ""}{pollQuestion.trim() ? " · 已加投票" : ""}</small><ChevronRight size={16}/></button>
                 {!composerEditingPublished && (composerImages.length > 0 || title || body || state.own.some((item) => item.id === editing && item.status === "draft")) && <button type="button" className="composer-discard" onClick={() => void discardComposerDraft()}>删除草稿</button>}
@@ -5698,7 +5709,7 @@ export default function Community() {
                 </section>
 </> : composerPanel === "settings" ? <>                <label className="composer-category-field">
                   {writeChannel === "ai" ? "AI 分类" : "分类"}
-                  <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={setWriteTag} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
+                  <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={(value) => { markComposerTagTouched(); setWriteTag(value); }} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
                 </label>
                 {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<ChoiceSelect label="加入作品系列" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入系列"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
                 <div className="composer-advanced">
@@ -5722,7 +5733,7 @@ export default function Community() {
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && markdownPreviousBody !== null && <div className="composer-markdown-applied" role="status"><span>已应用 Markdown 优化</span><button type="button" onClick={undoMarkdownOptimize}>撤回</button></div>}
-            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : composerSuggestion && !composerSuggestion.checking ? "确认发布" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}

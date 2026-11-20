@@ -135,3 +135,37 @@ export function describeRoute(route: ComposerRoute) {
   if (route.channel === "community") return `社区精选 · ${route.category}`;
   return `AI 空间 · ${AI_CONTENT_TYPE_LABELS[route.contentType]}`;
 }
+
+/** 话题建议：从已有话题里挑出与正文真正相关的，宁缺毋滥，不硬凑数量。 */
+export function pickTopicsByRules(text: string, candidates: string[]): string[] {
+  const content = (text || "").trim();
+  if (!content || !candidates.length) return [];
+  const scored = candidates.map((name) => {
+    const clean = name.trim();
+    if (!clean) return { name, score: 0 };
+    let score = 0;
+    if (content.includes(clean)) score += 10;
+    // 两字以上的话题按字符二元组与正文重合度打分，避免单字误命中。
+    if (clean.length >= 2) {
+      for (let i = 0; i + 1 < clean.length; i += 1) {
+        if (content.includes(clean.slice(i, i + 2))) score += 2;
+      }
+    }
+    return { name: clean, score };
+  });
+  return scored
+    .filter((entry) => entry.score >= 4)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.name)
+    .slice(0, 5);
+}
+
+/** 校验模型给的话题建议：只保留候选列表里的名字，去重、限量。 */
+export function normalizeTopicSuggestions(raw: unknown, candidates: string[], fallback: string[] = []): string[] {
+  const allowed = new Set(candidates.map((name) => name.trim()).filter(Boolean));
+  const picked = Array.isArray(raw)
+    ? raw.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter((item) => allowed.has(item))
+    : [];
+  const merged = [...new Set([...picked, ...fallback])];
+  return merged.slice(0, 5);
+}

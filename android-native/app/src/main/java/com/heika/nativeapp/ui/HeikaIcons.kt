@@ -79,6 +79,7 @@ object HeikaIconRes {
     val Wrench = R.drawable.ic_lucide_wrench
     val BrainCircuit = R.drawable.ic_lucide_brain_circuit
     val ArrowUpRight = R.drawable.ic_lucide_arrow_up_right
+    val Sparkles = R.drawable.ic_lucide_sparkles
 }
 
 object HeikaIcons {
@@ -108,6 +109,7 @@ object HeikaIcons {
     val Share: ImageVector @Composable get() = icon(HeikaIconRes.Share)
     val Report: ImageVector @Composable get() = icon(HeikaIconRes.Report)
     val Settings: ImageVector @Composable get() = icon(HeikaIconRes.Settings)
+    val Sparkles: ImageVector @Composable get() = icon(HeikaIconRes.Sparkles)
     val More: ImageVector @Composable get() = icon(HeikaIconRes.More)
     val Copy: ImageVector @Composable get() = icon(HeikaIconRes.Copy)
     val Block: ImageVector @Composable get() = icon(HeikaIconRes.Block)

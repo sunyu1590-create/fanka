@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeAiRoute, routeByRules, describeRoute } from "../lib/composer-routing.ts";
+import { normalizeAiRoute, normalizeTopicSuggestions, pickTopicsByRules, routeByRules, describeRoute } from "../lib/composer-routing.ts";
 
 const community = ["生活", "摄影", "设计", "科技"];
 const ai = ["AI 知识", "AI 工具", "开发"];
@@ -64,4 +64,21 @@ test("模型返回结构不可信时整体回退", () => {
   for (const value of [null, "ai", { channel: "unknown" }, { channel: 1 }]) {
     assert.equal(normalizeAiRoute(value, fallback, input).source, fallback.source);
   }
+});
+
+test("话题建议优先复用已有话题，不硬凑数量", () => {
+  const candidates = ["AI 编程", "旅行", "美食", "提示词技巧", "家居", "摄影"];
+  const picked = pickTopicsByRules("整理了一份旅行摄影的装备清单，海边旅行怎么拍。", candidates);
+  assert.ok(picked.includes("旅行"), `期望命中旅行，实际 ${picked}`);
+  assert.ok(picked.includes("摄影"), `期望命中摄影，实际 ${picked}`);
+  assert.ok(!picked.includes("AI 编程"), "无关话题不应凑数");
+  // 没有明显相关词时不硬凑推荐
+  assert.deepEqual(pickTopicsByRules("随便写点什么", candidates), []);
+});
+
+test("话题建议只接受候选列表里的名字，去重限量", () => {
+  const candidates = ["AI 编程", "旅行", "美食", "提示词技巧", "家居", "摄影", "电影"];
+  assert.deepEqual(normalizeTopicSuggestions(["AI 编程", "不存在的话题", "AI 编程", "旅行", "美食", "摄影", "电影"], candidates), ["AI 编程", "旅行", "美食", "摄影", "电影"]);
+  assert.deepEqual(normalizeTopicSuggestions("not-an-array", candidates, ["美食"]), ["美食"]);
+  assert.deepEqual(normalizeTopicSuggestions([], candidates), []);
 });

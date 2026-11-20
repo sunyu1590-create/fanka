@@ -113,7 +113,6 @@ import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.LocalHeikaBodyTextScale
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaGlassSurface
-import com.heika.nativeapp.ui.HeikaGlassTopBar
 import com.heika.nativeapp.ui.NativeShareSheet
 import androidx.compose.foundation.layout.navigationBarsPadding
 import com.heika.nativeapp.ui.HeikaGlassTokens
@@ -228,21 +227,11 @@ fun PostDetailScreen(
             ) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (item.images.isEmpty()) {
-                            val sharedPlaceholderModifier = if (sharedElementsEnabled) with(sharedTransitionScope) {
-                                Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), isDetail = true, enabled = true)
-                            } else Modifier
-                            Box(
-                                Modifier.fillMaxWidth().heightIn(min = 180.dp).background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .then(sharedPlaceholderModifier),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("暂无图片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            }
-                        }
+                        // 无封面时不生成虚假的图片区，标题自然上移；正文里的真实图片仍照常展示。
                         if (item.images.size > 1) {
                             val pagerState = rememberPagerState(pageCount = { item.images.size })
-                            Box(Modifier.fillMaxWidth().aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                            val pagedRatio = (HeikaImageRatioCache.get(item.cloudId) ?: 0.8f).coerceIn(0.62f, 1.78f)
+                            Box(Modifier.fillMaxWidth().aspectRatio(pagedRatio).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                                     val sharedImageModifier = if (page == 0 && sharedElementsEnabled) with(sharedTransitionScope) {
                                         Modifier.heikaSharedPostImage(sharedTransitionScope, animatedVisibilityScope, item.sharedImageKey(), isDetail = true, enabled = true)
@@ -488,19 +477,21 @@ fun PostDetailScreen(
             }
             // 双悬浮操作栏：左侧评论入口，右侧点赞 / 收藏 / 分享。
             // 两个模块共用同一个 HazeState，真实模糊背后的正文，而不是叠一层灰黑实心。
+            // 尺寸规范：两模块休息态高度 54dp、间距 8dp、左右边距 12dp、底部安全区 + 12dp，
+            // 右下角统一胶囊圆角，图标 22dp，热区不小于 44dp，基线对齐。
             Row(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 HeikaGlassSurface(
                     hazeState = dockHaze,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(22.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 54.dp),
+                    shape = RoundedCornerShape(27.dp),
                     contentPadding = PaddingValues(4.dp),
                     drawTopHighlight = false,
                 ) {
@@ -522,14 +513,14 @@ fun PostDetailScreen(
                             IconButton(
                                 enabled = !state.sending,
                                 onClick = { if (draft.isBlank()) { commentFocusRequester.requestFocus(); keyboardController?.show() } else viewModel.comment(draft, replyTo) },
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(44.dp),
                             ) {
                                 if (state.sending) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                                 else Icon(
                                     if (draft.isBlank()) HeikaIcons.Comment else HeikaIcons.Send,
                                     if (draft.isBlank()) "评论" else "发送评论",
                                     tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(19.dp),
+                                    modifier = Modifier.size(22.dp),
                                 )
                             }
                         }
@@ -537,16 +528,17 @@ fun PostDetailScreen(
                 }
                 HeikaGlassSurface(
                     hazeState = dockHaze,
-                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.heightIn(min = 54.dp),
+                    shape = RoundedCornerShape(27.dp),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
                     drawTopHighlight = false,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         InteractionIconButton(selected = state.liked, sending = state.likeSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
-                        Text("${state.likeCount ?: state.post?.likeCount ?: 0}", color = if (state.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        Text("${state.likeCount ?: state.post?.likeCount ?: 0}", Modifier.padding(start = 0.dp), color = if (state.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                         InteractionIconButton(selected = state.saved, sending = state.saveSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
-                        if (item.status == "published") IconButton(onClick = { shareOpen = true }, modifier = Modifier.size(38.dp)) {
-                            Icon(HeikaIcons.Share, contentDescription = "分享内容", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+                        if (item.status == "published") IconButton(onClick = { shareOpen = true }, modifier = Modifier.size(44.dp)) {
+                            Icon(HeikaIcons.Share, contentDescription = "分享内容", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
@@ -554,7 +546,13 @@ fun PostDetailScreen(
             }
         }
     }
-    HeikaGlassTopBar(hazeState = dockHaze, modifier = Modifier.align(Alignment.TopCenter)) {
+    // 详情页顶栏：玻璃模糊渲染不稳定，改为纯黑实色（#0B0B0D），不做任何取样与半透明。
+    Box(
+        Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .background(Color(0xFF0B0B0D)),
+    ) {
         BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, modifier = Modifier.zIndex(1f), trailing = {
             Box {
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
@@ -762,7 +760,7 @@ private fun InteractionIconButton(selected: Boolean, sending: Boolean, outline: 
     val tint by animateColorAsState(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, tween(180), label = "${description}-tint")
     IconButton(onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }, enabled = !sending, interactionSource = source) {
         if (sending) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 1.8.dp)
-        else Icon(if (selected) filled else outline, description, tint = tint, modifier = Modifier.graphicsLayer { scaleX = scale * selectedScale.value; scaleY = scale * selectedScale.value })
+        else Icon(if (selected) filled else outline, description, tint = tint, modifier = Modifier.size(22.dp).graphicsLayer { scaleX = scale * selectedScale.value; scaleY = scale * selectedScale.value })
     }
 }
 

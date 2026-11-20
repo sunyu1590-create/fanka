@@ -153,7 +153,7 @@ fun DiscoveryScreen(
     var aiCollapsePx by rememberSaveable { mutableFloatStateOf(0f) }
     var extraFiltersExpanded by rememberSaveable { mutableStateOf(false) }
     var categoryExpanded by rememberSaveable { mutableStateOf(false) }
-    val rangeDp = 84.dp + (if (filter.channel == "ai") 96.dp else 0.dp) + if (extraFiltersExpanded) {
+    val rangeDp = 42.dp + (if (categoryExpanded && categories.size > 3) 38.dp else 0.dp) + if (extraFiltersExpanded) {
         (if (tags.isNotEmpty()) 36.dp else 0.dp) + (if (filter.channel == "ai") 36.dp else 0.dp) + 40.dp
     } else 0.dp
     val density = LocalDensity.current
@@ -193,7 +193,7 @@ fun DiscoveryScreen(
                         viewModel.selectChannel("community")
                         HeikaNoticeBus.showSelection("已切换到精选")
                     }
-                    ChannelOption("AI", filter.channel == "ai", compact = true) {
+                    ChannelOption("AI", filter.channel == "ai", compact = true, leadingIcon = HeikaIcons.Sparkles, goldAccent = true) {
                         viewModel.selectChannel("ai")
                         HeikaNoticeBus.showSelection("已切换到 AI")
                     }
@@ -210,42 +210,22 @@ fun DiscoveryScreen(
             Column(
                 Modifier.fillMaxWidth().height(rangeDp).offset { IntOffset(0, -collapsedPx.toInt()) },
             ) {
-                Row(
-                    Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Row(
-                        Modifier.weight(1f).height(34.dp).clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f))
-                            .clickable(onClick = onSearch).padding(horizontal = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(HeikaIcons.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                        Text("搜索精选与 AI 内容", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    androidx.compose.material3.IconButton(
-                        onClick = {
-                            extraFiltersExpanded = !extraFiltersExpanded
-                            if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
-                        },
-                        modifier = Modifier.size(38.dp),
-                    ) {
-                        Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                if (filter.channel == "ai") AiResourceSpaceEntry(hazeState = badgeHazeState, onClick = onAiResources)
                 // 分类由 AI 自动打，长尾分类默认收进「更多」；与网页端保持同一套交互。
                 val primaryCategories = categories.take(3)
                 val extraCategories = categories.drop(3)
                 val selectedExtraCategory = filter.category?.takeIf { current -> extraCategories.any { it.id == current.id } }
-                LazyRow(
-                    Modifier.height(42.dp),
-                    contentPadding = PaddingValues(horizontal = 19.dp),
-                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                // 第二行：分类导航横向滚动，搜索与筛选按钮固定在右侧。
+                // 「探索 AI 资源」不放在这里，改作内容流首项随正文滚动（仅回到顶部才再次出现）。
+                Row(
+                    Modifier.fillMaxWidth().height(42.dp).padding(start = 16.dp, end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    LazyRow(
+                        Modifier.weight(1f).height(42.dp),
+                        contentPadding = PaddingValues(end = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(22.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                     item(key = "all-categories") {
                         CategoryTab("推荐", selected = filter.category == null) {
                             viewModel.selectCategory(null)
@@ -272,6 +252,22 @@ fun DiscoveryScreen(
                                 categoryExpanded = !categoryExpanded
                             }
                         }
+                    }
+                    }
+                    androidx.compose.material3.IconButton(
+                        onClick = onSearch,
+                        modifier = Modifier.size(38.dp),
+                    ) {
+                        Icon(HeikaIcons.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    androidx.compose.material3.IconButton(
+                        onClick = {
+                            extraFiltersExpanded = !extraFiltersExpanded
+                            if (filter.channel == "community") communityCollapsePx = 0f else aiCollapsePx = 0f
+                        },
+                        modifier = Modifier.size(38.dp),
+                    ) {
+                        Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (categoryExpanded && extraCategories.isNotEmpty()) {
@@ -367,6 +363,9 @@ fun DiscoveryScreen(
                 sharedElementsEnabled = sharedElementsEnabled,
                 ad = if (filter.channel == "community") adState.ad else null,
                 adUnavailable = filter.channel == "community" && adState.unavailable,
+                aiEntry = if (filter.channel == "ai") {
+                    { AiResourceSpaceEntry(hazeState = badgeHazeState, onClick = onAiResources) }
+                } else null,
             )
         }
     }
@@ -415,18 +414,24 @@ private fun AiResourceSpaceEntry(hazeState: HazeState, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ChannelOption(label: String, selected: Boolean, compact: Boolean = false, onClick: () -> Unit) {
+private fun ChannelOption(label: String, selected: Boolean, compact: Boolean = false, leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null, goldAccent: Boolean = false, onClick: () -> Unit) {
+    val accent = if (goldAccent) com.heika.nativeapp.ui.HeikaPalette.Gold else MaterialTheme.colorScheme.primary
     val color by animateColorAsState(
-        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
         tween(220), label = "discover-channel-color",
     )
-    Box(
-        Modifier.width(if (compact) 58.dp else 74.dp).height(34.dp).clip(RoundedCornerShape(50))
+    Row(
+        Modifier.width(if (compact) if (leadingIcon != null) 72.dp else 58.dp else 74.dp).height(34.dp).clip(RoundedCornerShape(50))
             .background(if (selected) MaterialTheme.colorScheme.surface else Color.Transparent)
-            .border(.7.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .58f) else MaterialTheme.colorScheme.outline.copy(alpha = .48f), RoundedCornerShape(50))
+            .border(.7.dp, if (selected) accent.copy(alpha = .58f) else MaterialTheme.colorScheme.outline.copy(alpha = .48f), RoundedCornerShape(50))
             .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (leadingIcon != null) {
+            Icon(leadingIcon, contentDescription = null, tint = color, modifier = Modifier.size(11.dp))
+            Spacer(Modifier.width(3.dp))
+        }
         Text(label, color = color, fontSize = if (compact) 10.sp else 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
     }
 }
@@ -529,6 +534,7 @@ internal fun FeedGrid(
     sharedElementsEnabled: Boolean,
     ad: DiscoveryAd? = null,
     adUnavailable: Boolean = false,
+    aiEntry: (@Composable () -> Unit)? = null,
 ) {
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(columns.coerceIn(1, 2)),
@@ -538,6 +544,11 @@ internal fun FeedGrid(
         horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalItemSpacing = 18.dp,
     ) {
+        // 「探索 AI 资源」是内容流的普通首项：随正文滚出视野，只有回到顶部才会再次出现，
+        // 不做滚动方向判断的强制显隐。
+        if (aiEntry != null) item(key = "ai-resource-entry", span = StaggeredGridItemSpan.FullLine) {
+            aiEntry()
+        }
         if (ad != null) item(key = "discovery-ad", span = StaggeredGridItemSpan.FullLine) {
             DiscoveryAdCard(ad, onClick = { onPost(ad.post) })
         }

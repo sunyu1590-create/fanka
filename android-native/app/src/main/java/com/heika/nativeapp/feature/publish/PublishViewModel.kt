@@ -368,23 +368,6 @@ class PublishViewModel @Inject constructor(
         scheduleSave(); scheduleSnapshot()
     }
 
-    fun toggleAiUsageScenario(scenario: String) {
-        if (scenario !in AiResourceRules.usageScenarios.map { it.first }) return
-        needsServerSync = true
-        mutableState.update { current ->
-            val next = if (scenario in current.usageScenarios) current.usageScenarios - scenario else current.usageScenarios + scenario
-            current.copy(usageScenarios = next, error = null)
-        }
-        scheduleSave()
-    }
-
-    fun editAiField(key: String, value: String) {
-        if (!key.matches(Regex("^[a-z][a-z0-9_]{0,39}$"))) return
-        mutableState.update { it.copy(resourceData = it.resourceData + (key to value.take(12000)), error = null) }
-        needsServerSync = true
-        scheduleSave(); scheduleSnapshot()
-    }
-
     fun reportError(message: String) = mutableState.update { it.copy(error = message) }
 
     private fun scheduleSave() {
@@ -665,16 +648,6 @@ class PublishViewModel @Inject constructor(
         }
     }
 
-    private fun validateAiResource(current: PublishState) {
-        if (current.channel != "ai") return
-        val missing = AiResourceRules.missingRequiredFields(current.contentType, current.resourceData)
-        if (current.contentType !in AiResourceRules.contentTypes || missing.isNotEmpty()) {
-            throw IllegalArgumentException(if (missing.isNotEmpty()) "请补全必填资源字段：${missing.joinToString("、") { AiResourceRules.labels[it] ?: it }}" else "AI 资源类型无效")
-        }
-        val link = current.resourceData["source_url"].orEmpty().trim()
-        if (link.isNotEmpty() && !AiResourceRules.isSafeSourceUrl(link)) throw IllegalArgumentException("资源链接仅支持公开 HTTPS 地址")
-    }
-
     private suspend fun saveDraftInternal(announce: Boolean = false): Boolean = saveMutex.withLock {
         mutableState.update { it.copy(saving = true, error = null) }
         val saved = persistLocalSnapshot()
@@ -797,9 +770,19 @@ class PublishViewModel @Inject constructor(
                     return@launch
                 }
             }
-            if (current.title.isBlank() || current.body.isBlank() || current.category.isBlank()) {
-                mutableState.update { it.copy(error = "请填写标题、正文并选择分类") }
-                return@launch
+            when {
+                current.title.isBlank() -> {
+                    mutableState.update { it.copy(error = "标题不能为空") }
+                    return@launch
+                }
+                current.body.isBlank() -> {
+                    mutableState.update { it.copy(error = "正文内容不能为空") }
+                    return@launch
+                }
+                current.category.isBlank() -> {
+                    mutableState.update { it.copy(error = "请选择内容分类") }
+                    return@launch
+                }
             }
             if (current.images.any { it.error != null && it.localFilePath == null }) {
                 mutableState.update { it.copy(error = "请移除无法读取的图片后重试") }
@@ -815,7 +798,6 @@ class PublishViewModel @Inject constructor(
                 }
                 val latest = mutableState.value
                 if (latest.images.any { it.path == null }) throw IOException("图片上传未完成，请检查网络后重试")
-                if (latest.channel == "ai") validateAiResource(latest)
                 submitContent(latest)
             }
                 .onSuccess { result ->

@@ -164,10 +164,10 @@ export async function POST(req: NextRequest) {
         if (error && !/已存在|刚刚被创建/i.test(error.message)) throw new ApiError(400, error.message || "话题创建失败，请换一个名称");
       }
     }
-    let current: { id: string; status: string; resource_data?: unknown } | null = null;
+    let current: { id: string; status: string; resource_data?: unknown; usage_scenarios?: string[] | null } | null = null;
     if (body.id) {
       const id = uuid(body.id);
-      const result = await db.from("posts").select("id,status,resource_data").eq("id", id).eq("author_id", user!.id).eq("channel", "ai").maybeSingle();
+      const result = await db.from("posts").select("id,status,resource_data,usage_scenarios").eq("id", id).eq("author_id", user!.id).eq("channel", "ai").maybeSingle();
       dbError(result.error);
       current = result.data;
       if (!current) throw new ApiError(404, "AI 内容不存在");
@@ -176,12 +176,22 @@ export async function POST(req: NextRequest) {
       const kept = readAttachments(current.resource_data);
       if (kept.length) resourceData = { ...resourceData, attachments: kept };
     }
+    // 取消「资源信息」表单后，编辑历史作品不能把当年填过的使用场景清空。
+    const finalScenarios = body.usageScenarios === undefined && current ? (current.usage_scenarios || []) : usageScenarios;
+    if (current) {
+      // 取消「资源信息」表单后，编辑历史作品不能把当年填过的字段清空。
+      const existing = current.resource_data && typeof current.resource_data === "object" && !Array.isArray(current.resource_data)
+        ? current.resource_data as Record<string, unknown>
+        : {};
+      const keptFields = Object.fromEntries(Object.entries(existing).filter(([key]) => key !== "attachments"));
+      resourceData = { ...keptFields, ...resourceData };
+    }
     if (current?.status === "published") {
       if (action !== "submit") throw new ApiError(409, "已发布内容的修改需要提交审核");
       const oldMedia = Array.isArray(body.mediaPaths) ? mediaPaths : await db.from("post_media").select("storage_path").eq("post_id", current.id).order("sort_order").then((result) => {
         dbError(result.error); return (result.data || []).map((item) => item.storage_path);
       });
-      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: null, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData, usageScenarios };
+      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: null, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData, usageScenarios: finalScenarios };
       const revision = await db.from("post_revisions").upsert({ post_id: current.id, author_id: user!.id, payload, status: "pending", review_note: null, reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString() }, { onConflict: "post_id" }).select("status,review_note").single();
       dbError(revision.error);
       if (!revision.data) throw new ApiError(500, "修改已提交但审核记录读取失败，请刷新后重试");
@@ -191,7 +201,7 @@ export async function POST(req: NextRequest) {
       return { ...post, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload } };
     }
     if (current && current.status !== "draft" && current.status !== "pending_review") throw new ApiError(409, "此 AI 內容目前不可編輯");
-    const values = { channel: "ai", content_type: contentType, resource_data: resourceData, usage_scenarios: usageScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString() };
+    const values = { channel: "ai", content_type: contentType, resource_data: resourceData, usage_scenarios: finalScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString() };
     const saved = current
       ? await db.from("posts").update(values).eq("id", current.id).eq("author_id", user!.id).select(libraryFields).single()
       : await db.from("posts").insert({ ...values, author_id: user!.id, is_demo: false }).select(libraryFields).single();

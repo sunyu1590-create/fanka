@@ -517,33 +517,6 @@ fun PublishScreen(
                             }
                         }
                     }
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("使用场景 · 可多选", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                AiResourceRules.usageScenarios.forEach { (key, label) ->
-                                    FilterChip(label, key in state.usageScenarios, {
-                                        val adding = key !in state.usageScenarios
-                                        viewModel.toggleAiUsageScenario(key)
-                                        HeikaNoticeBus.showSelection(if (adding) "已添加场景：$label" else "已移除场景：$label")
-                                    })
-                                }
-                            }
-                        }
-                    }
-                    aiResourceFields(state.contentType).forEach { field ->
-                        item(key = "ai-resource-${field.first}") {
-                            OutlinedTextField(
-                                value = state.resourceData[field.first].orEmpty(),
-                                onValueChange = { viewModel.editAiField(field.first, it) },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = { Text(field.second + if (field.third) " · 必填" else "") },
-                                placeholder = { Text(if (field.first in setOf("platforms", "environments", "use_cases", "variables")) "每行一项" else "填写${field.second.lowercase()}") },
-                                minLines = if (field.first in setOf("prompt", "installation", "steps", "functionality", "scenario")) 3 else 1,
-                                maxLines = 8,
-                            )
-                        }
-                    }
                 }
                 item {
                     val topics = viewModel.currentTopics()
@@ -691,32 +664,6 @@ private fun VideoBetaScreen(selectedVideo: Uri?, onBack: () -> Unit, onChooseVid
             Button(onClick = {}, enabled = false) { Text("上传功能筹备中") }
         }
     }
-}
-
-private fun aiResourceFields(type: String): List<Triple<String, String, Boolean>> {
-    val required = when (type) {
-        "agent" -> listOf("functionality", "platforms", "run_mode", "source_url", "version")
-        "skill" -> listOf("functionality", "environments", "installation", "version", "source_url")
-        "prompt" -> listOf("model", "scenario", "prompt")
-        "ai_tool" -> listOf("functionality", "platforms", "source_url")
-        "tutorial" -> listOf("difficulty", "requirements", "steps")
-        else -> emptyList()
-    }
-    val optional = when (type) {
-        "agent" -> listOf("use_cases", "tutorial")
-        "skill" -> listOf("configuration", "example", "use_cases")
-        "prompt" -> listOf("variables", "use_cases", "example")
-        "ai_tool" -> listOf("use_cases", "pricing", "version")
-        "tutorial" -> listOf("use_cases", "example")
-        else -> emptyList()
-    }
-    val labels = mapOf(
-        "functionality" to "功能说明", "platforms" to "兼容平台", "run_mode" to "运行方式", "use_cases" to "适用场景",
-        "environments" to "兼容环境", "installation" to "安装步骤", "configuration" to "配置内容", "example" to "使用示例",
-        "model" to "适用模型", "scenario" to "应用场景", "prompt" to "完整 Prompt", "variables" to "可替换变量",
-        "version" to "版本", "source_url" to "资源链接", "difficulty" to "难度", "requirements" to "准备条件", "steps" to "使用步骤", "pricing" to "价格信息",
-    )
-    return (required + optional).distinct().map { Triple(it, labels[it] ?: it, it in required) }
 }
 
 private suspend fun prepareImage(context: Context, uri: Uri): Triple<String, String, ByteArray> = withContext(Dispatchers.IO) {

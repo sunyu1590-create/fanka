@@ -127,16 +127,20 @@ test("submit sends the existing review action once and never claims public publi
   await page.getByRole("textbox",{name:"标题",exact:true}).fill("正确提交审核");
   await page.getByRole("textbox",{name:"正文",exact:true}).fill("内容提交后仍需审核，不应被标记为公开发布成功。");
   const submit=page.locator(".composer-footer>.primary-button");
+  // 点击发布先出现 AI 建议面板，确认后才真正提交；AI 失败也不能卡住发布。
   await submit.click();
+  await expect(page.locator(".composer-suggest")).toBeVisible();
+  await expect(page.locator(".composer-suggest-actions .primary-button")).toHaveText("确认发布");
+  await page.locator(".composer-suggest-actions .primary-button").click();
   await expect(page.locator(".composer-modal")).toHaveCount(0);
   await expect(page.getByText("内容已提交人工审核，通过后将公开展示",{exact:true})).toBeVisible();
   expect(submits).toBe(1);
 });
 
-test("topics, poll and AI resource fields remain functional behind progressive controls",async({page})=>{
+test("topics and poll remain functional behind progressive controls",async({page})=>{
   await enter(page);
   await page.getByRole("textbox",{name:"标题",exact:true}).fill("组合创作测试");
-  await page.getByRole("textbox",{name:"正文",exact:true}).fill("Markdown 与资源信息将在真实内容预览中展示。");
+  await page.getByRole("textbox",{name:"正文",exact:true}).fill("Markdown 与投票将在真实内容预览中展示。");
   await page.getByRole("button",{name:/# 话题/}).click();
   const topics=page.getByRole("dialog",{name:"选择话题"});
   await topics.getByRole("button",{name:"#科技",exact:true}).click();
@@ -160,18 +164,26 @@ test("topics, poll and AI resource fields remain functional behind progressive c
   await page.getByRole("button",{name:"返回编辑，当前：内容预览"}).click();
 });
 
-test("AI 判断发布去向并自动带出对应的资源字段",async({page})=>{
+test("AI 检测只在点击发布后触发，给出去向建议且不再要求资源信息",async({page})=>{
   await enter(page);
   await page.getByRole("textbox",{name:"标题",exact:true}).fill("一套可直接复用的写作提示词");
   await page.getByRole("textbox",{name:"正文",exact:true}).fill("这是我最常用的系统提示词，复制到对话框就能用：你是一位中文编辑，请保留原意，只优化结构和标点。");
+  // 输入过程中不触发 AI 检测；点击发布后才出现建议面板。
+  await expect(page.locator(".composer-suggest")).toHaveCount(0);
+  await page.locator(".composer-footer>.primary-button").click();
+  await expect(page.locator(".composer-suggest")).toBeVisible();
   // 未登录时走本地规则判断，仍然要能识别出 Prompt 类型。
-  await expect(page.locator(".composer-route-copy strong")).toContainText("Prompt 提示词",{timeout:15000});
-  await expect(page.locator(".composer-ai-type")).toHaveCount(0);
-  await page.getByRole("textbox",{name:/适用模型/}).fill("通用模型");
-  await page.getByRole("textbox",{name:/应用场景/}).fill("内容创作");
-  await page.getByRole("textbox",{name:/完整提示词/}).fill("请根据主题整理一份阅读提纲。");
-  await page.getByRole("button",{name:"预览",exact:true}).click();
-  await expect(page.locator(".composer-preview .ai-resource-detail")).toContainText("请根据主题整理一份阅读提纲。");
+  await expect(page.locator(".composer-suggest .composer-route-copy strong")).toContainText("Prompt 提示词");
+  await expect(page.locator(".composer-suggest")).toContainText("话题建议");
+  // 资源信息表单已全平台取消，标题 + 正文即可发布。
+  await expect(page.getByRole("textbox",{name:/适用模型/})).toHaveCount(0);
+  await expect(page.getByRole("textbox",{name:/应用场景/})).toHaveCount(0);
+  await expect(page.getByRole("textbox",{name:/完整提示词/})).toHaveCount(0);
+  await expect(page.getByRole("textbox",{name:/资源名称|资源介绍|资源地址/})).toHaveCount(0);
+  // 返回修改后面板收起，正文保留。
+  await page.locator(".composer-suggest-actions .soft-button").click();
+  await expect(page.locator(".composer-suggest")).toHaveCount(0);
+  await expect(page.getByRole("textbox",{name:"正文",exact:true})).toContainText("系统提示词");
 });
 
 test("unavailable signed previews never remove persisted media associations",async({page})=>{
