@@ -42,6 +42,11 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(68, "2026.11.20", listOf(
+        "AI 创作助手移到发布页正文下方，社区作品与 AI 内容都能直接用，不必再进二级面板。",
+        "Markdown 优化改为发布按钮左侧的独立按钮：打开助手完成后先预览，确认才替换正文，可撤回。",
+        "发布页底部按钮在小屏下重新排列，状态文案与按钮不再互相挤压。",
+    )),
     NativeRelease(67, "2026.11.20", listOf(
         "附件上传增加文件内容校验，扩展名与文件头不一致时会被拒绝。",
         "AI 智能总结、自动分类与辅助审核接入新的后台任务队列，需管理员在后台启动。",

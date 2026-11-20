@@ -311,18 +311,18 @@ fun PublishScreen(
                         }
                     }
                 }
-                if (state.channel == "ai") item {
+                item {
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("AI 创作助手", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text(if (aiAssistantOpen) "当前正文会作为上下文；确认后才会写入" else "多轮润色、标题建议、续写与 Markdown 整理", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+                                Text(if (aiAssistantOpen) "当前正文会作为上下文；确认后才会写入" else "多轮润色、标题建议、续写与话题推荐", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
                             }
                             TextButton(onClick = { aiAssistantOpen = !aiAssistantOpen }) { Text(if (aiAssistantOpen) "收起" else "开始") }
                         }
                         if (aiAssistantOpen) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf("polish" to "润色", "title" to "标题", "continue" to "续写", "outline" to "提纲", "markdown" to "Markdown 优化", "topics" to "话题").forEach { (mode, label) ->
+                                listOf("polish" to "润色", "title" to "标题", "continue" to "续写", "outline" to "提纲", "topics" to "话题").forEach { (mode, label) ->
                                     FilterChip(label, aiMode == mode, { aiMode = mode; aiOutput = ""; aiMessages = emptyList(); aiPreApply = null })
                                 }
                             }
@@ -571,6 +571,29 @@ fun PublishScreen(
             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 17.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (state.saving) "正在保存到本机" else "草稿自动保存到本机", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 Spacer(Modifier.weight(1f))
+                OutlinedButton(
+                    onClick = {
+                        aiAssistantOpen = true
+                        aiMode = "markdown"
+                        aiOutput = ""; aiMessages = emptyList(); aiPreApply = null
+                        if (state.body.isBlank()) {
+                            HeikaNoticeBus.show("先写下正文，再做 Markdown 优化", HeikaNoticeKind.ERROR)
+                        } else if (!aiBusy) {
+                            aiBusy = true
+                            scope.launch(HeikaCoroutineGuard) {
+                                try {
+                                    aiOutput = viewModel.generateAiWorkbench("markdown", "", emptyList())
+                                } catch (error: Exception) {
+                                    HeikaNoticeBus.show(error.message ?: "Markdown 优化失败，请重试", HeikaNoticeKind.ERROR)
+                                } finally { aiBusy = false }
+                            }
+                        }
+                    },
+                    enabled = !state.publishing && !aiBusy,
+                    shape = RoundedCornerShape(999.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(end = 8.dp),
+                ) { Text(if (aiBusy && aiMode == "markdown") "优化中…" else "Markdown 优化", fontSize = 11.sp) }
                 Button(
                     onClick = viewModel::publish,
                     enabled = !state.publishing && !state.saving && !state.attachmentBusy && state.categories.isNotEmpty(),
