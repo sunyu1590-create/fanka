@@ -146,9 +146,15 @@ test("topics, poll and AI resource fields remain functional behind progressive c
   await page.getByRole("textbox",{name:"投票问题",exact:true}).fill("你更喜欢哪种内容？");
   await page.getByRole("textbox",{name:"投票选项 1",exact:true}).fill("图文");
   await page.getByRole("textbox",{name:"投票选项 2",exact:true}).fill("教程");
-  await page.getByRole("button",{name:/AI 创作工作台/}).click();
-  await expect(page.getByRole("button",{name:"润色正文",exact:true})).toBeVisible();
+  // AI 工作台现在直接展示在发布页，不再收进「更多发布设置」；Markdown 优化改为底部独立按钮。
+  await expect(page.locator(".composer-sheet .ai-workbench-demo")).toHaveCount(0);
   await page.getByRole("button",{name:"返回编辑，当前：更多发布设置"}).click();
+  await expect(page.locator(".ai-workbench-demo")).toBeVisible();
+  await page.locator(".ai-workbench-trigger").click();
+  await expect(page.getByRole("button",{name:"润色正文",exact:true})).toBeVisible();
+  await expect(page.locator(".ai-workbench-modes").getByRole("button",{name:"Markdown 优化",exact:true})).toHaveCount(0);
+  await expect(page.locator(".composer-markdown-optimize")).toBeVisible();
+  await page.locator(".ai-workbench-trigger").click();
   await page.getByRole("button",{name:"预览",exact:true}).click();
   await expect(page.locator(".composer-preview-poll")).toContainText("图文");
   await page.getByRole("button",{name:"返回编辑，当前：内容预览"}).click();

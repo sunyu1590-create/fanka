@@ -28,6 +28,7 @@ import {
   MoreHorizontal,
   Flag,
   Sparkles,
+  Wand2,
   UsersRound,
   Crown,
   ShieldCheck,
@@ -691,6 +692,11 @@ export default function Community() {
     [aiPreviousTitle, setAiPreviousTitle] = useState<string | null>(null),
     [aiPreviousTopics, setAiPreviousTopics] = useState<string[] | null>(null),
     [aiResultApplied, setAiResultApplied] = useState(false),
+    [markdownOptimizeOpen, setMarkdownOptimizeOpen] = useState(false),
+    [markdownOptimizeBusy, setMarkdownOptimizeBusy] = useState(false),
+    [markdownOptimizeOutput, setMarkdownOptimizeOutput] = useState(""),
+    [markdownOptimizeError, setMarkdownOptimizeError] = useState(""),
+    [markdownPreviousBody, setMarkdownPreviousBody] = useState<string | null>(null),
     [writeTag, setWriteTag] = useState<string>(tags[0]),
     [communityCategories, setCommunityCategories] = useState<string[]>([...tags]),
     [aiCategories, setAiCategories] = useState<{id:number;name:string;description?:string;kind?:string;moderation_status?:string}[]>([]),
@@ -3375,6 +3381,36 @@ export default function Community() {
     try { await navigator.clipboard.writeText(aiWorkbenchOutput); toast("AI 建议已复制"); }
     catch { toast("复制失败，请检查剪贴板权限"); }
   };
+  const optimizeMarkdown = async () => {
+    if (!accountId) { toast("登录后可以使用 Markdown 优化"); return; }
+    if (!body.trim()) { toast("先写下正文，再做 Markdown 优化"); return; }
+    setMarkdownOptimizeOpen(true);
+    setMarkdownOptimizeBusy(true);
+    setMarkdownOptimizeError("");
+    setMarkdownOptimizeOutput("");
+    try {
+      const result = await cloudRequest("/api/v1/ai/workbench", { mode: "markdown", title, content: body, category: writeTag, prompt: "", messages: [] }) as { output?: unknown } | null;
+      if (typeof result?.output !== "string" || !result.output.trim()) throw new Error("登录状态已失效或 AI 没有返回内容，请重试");
+      setMarkdownOptimizeOutput(result.output.trim());
+    } catch (error) { setMarkdownOptimizeError(error instanceof Error ? error.message : "Markdown 优化失败，请稍后重试"); }
+    finally { setMarkdownOptimizeBusy(false); }
+  };
+  const applyMarkdownOptimize = () => {
+    if (!markdownOptimizeOutput.trim()) return;
+    setMarkdownPreviousBody(body);
+    setBody(markdownOptimizeOutput.trim());
+    setMarkdownOptimizeOpen(false);
+    toast("已使用优化后的 Markdown 版本");
+  };
+  const undoMarkdownOptimize = () => {
+    if (markdownPreviousBody !== null) setBody(markdownPreviousBody);
+    setMarkdownPreviousBody(null);
+    toast("已撤回 Markdown 优化");
+  };
+  const copyMarkdownOptimize = async () => {
+    try { await navigator.clipboard.writeText(markdownOptimizeOutput); toast("已复制优化结果"); }
+    catch { toast("复制失败，请检查剪贴板权限"); }
+  };
   const secondaryTitle = modal === "write"
     ? "取消"
     : tab === "settings"
@@ -5532,6 +5568,20 @@ export default function Community() {
                 {!composerEditingPublished && <section className="composer-channel-picker" role="group" aria-label="发布内容类型"><strong>发布到</strong><div>{([["community", "社区作品"], ["ai", "AI 空间"]] as const).map(([value, label]) => <button type="button" key={value} className={writeChannel === value ? "selected" : ""} aria-pressed={writeChannel === value} onClick={() => void switchComposerChannel(value)}>{label}</button>)}</div></section>}
                 {writeChannel === "ai" && <section className="composer-ai-type"><label>AI 内容类型<ChoiceSelect label="AI 内容类型" value={writeContentType} onChange={(value) => setWriteContentType(value as AiContentType)} options={([["knowledge_article", "AI 知识文章"], ["agent", "Agent 智能体"], ["skill", "Skills 技能"], ["prompt", "Prompt 提示词"], ["ai_tool", "AI 工具"], ["tutorial", "实战教程"]] as const).map(([value,label]) => ({value,label}))}/></label><small>{writeContentType === "knowledge_article" ? "使用标准图文文章格式，支持 Markdown。" : "按类型填写结构化字段；发布后由管理员审核，并保留已发布版本。"}</small></section>}
                 <ComposerTextEditor title={title} body={body} error={composerValidation} onTitle={changeComposerTitle} onBody={changeComposerBody}/>
+                <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
+                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong></span><small>{aiWorkbenchOpen ? "收起工作台" : "润色、扩写、标题与话题建议"}</small><ChevronDown size={17}/></button>
+                  {aiWorkbenchOpen && <div className="ai-workbench-body">
+                    <div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["continue", "续写正文"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiWorkbenchMessages([]); setAiWorkbenchPrompt(""); setAiResultApplied(false); }}>{label}</button>)}</div>
+                    <p className="ai-workbench-guidance">当前标题与正文会作为上下文。你可以继续提出修改意见；原稿只有点击“使用此版本”后才会改变。整理正文排版请用底部的「Markdown 优化」。</p>
+                    {aiWorkbenchMessages.length > 2 && <div className="ai-workbench-conversation" aria-label="此前的修改对话">{aiWorkbenchMessages.slice(0, -2).map((message, index) => <div className={`ai-workbench-turn ${message.role}`} key={`${index}-${message.role}`}><small>{message.role === "user" ? "你的要求" : "AI 修改结果"}</small><p>{message.content}</p></div>)}</div>}
+                    {aiWorkbenchMessages.length >= 2 && <div className="ai-workbench-last-request"><small>本轮要求</small><p>{aiWorkbenchMessages.at(-2)?.content}</p></div>}
+                    <label className="ai-workbench-prompt"><span>你希望怎么修改</span><textarea value={aiWorkbenchPrompt} onChange={(event) => setAiWorkbenchPrompt(event.target.value)} maxLength={2000} rows={3} placeholder="例如：保留原意，语气更自然一些；再补充一个具体步骤。" /></label>
+                    <div className="ai-workbench-prompt-actions"><button type="button" className="soft-button" onClick={() => { setAiWorkbenchMessages([]); setAiWorkbenchOutput(""); setAiWorkbenchPrompt("请从当前正文开始，保留原意和事实，给出一版润色结果。"); setAiWorkbenchMode("polish"); }}>从当前正文开始润色</button><button type="button" className="soft-button" disabled={!aiWorkbenchMessages.length} onClick={() => { setAiWorkbenchMessages([]); setAiWorkbenchOutput(""); setAiWorkbenchPrompt(""); }}>清空对话</button></div>
+                    <button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim() && !aiWorkbenchPrompt.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "正在整理…" : aiWorkbenchMessages.length ? "继续修改" : "生成建议"}</button>
+                    {aiWorkbenchOutput && <><div className="ai-workbench-result"><small>生成结果 · 尚未写入正文</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" ? "使用此版本" : aiWorkbenchMode === "continue" ? "使用续写内容" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}
+                    {!aiWorkbenchOutput && <div className="ai-workbench-placeholder">可直接输入修改要求，或从当前正文开始；生成结果会先预览，不会自动覆盖原稿。</div>}
+                  </div>}
+                </section>
                 <section className="composer-media-picker" aria-label="选择图片或视频">
                   <div className="composer-media-choices" role="group" aria-label="媒体类型">
                     <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerVideo || composerImages.length >= 9 ? " disabled" : ""}`}>
@@ -5604,26 +5654,20 @@ export default function Community() {
                   <div className="composer-poll-options">{pollOptions.map((option, index) => <div key={index}><span>{index + 1}</span><input value={option} maxLength={80} onChange={(event) => setPollOptions((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} placeholder={`选项 ${index + 1}`} aria-label={`投票选项 ${index + 1}`} />{pollOptions.length > 2 && <button type="button" aria-label={`删除选项 ${index + 1}`} onClick={() => setPollOptions((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={15}/></button>}</div>)}</div>
                   {pollOptions.length < 4 && <button type="button" className="composer-poll-add" onClick={() => setPollOptions((current) => [...current, ""])}><Plus size={14}/>添加选项</button>}
                 </section>}
-                <section className={`ai-workbench-demo${aiWorkbenchOpen ? " is-open" : ""}`} aria-label="AI 创作工作台">
-                  <button type="button" className="ai-workbench-trigger" aria-expanded={aiWorkbenchOpen} onClick={() => setAiWorkbenchOpen((open) => !open)}><span><Sparkles size={17}/><strong>AI 创作工作台</strong></span><small>{aiWorkbenchOpen ? "收起工作台" : "润色、扩写、标题与 Markdown 整理"}</small><ChevronDown size={17}/></button>
-                  {aiWorkbenchOpen && <div className="ai-workbench-body">
-                    <div className="ai-workbench-modes">{([["outline", "生成提纲"], ["title", "标题建议"], ["polish", "润色正文"], ["continue", "续写正文"], ["markdown", "Markdown 优化"], ["topics", "推荐话题"]] as const).map(([mode, label]) => <button type="button" className={aiWorkbenchMode === mode ? "selected" : ""} key={mode} onClick={() => { setAiWorkbenchMode(mode); setAiWorkbenchOutput(""); setAiWorkbenchMessages([]); setAiWorkbenchPrompt(""); setAiResultApplied(false); }}>{label}</button>)}</div>
-                    <p className="ai-workbench-guidance">当前标题与正文会作为上下文。你可以继续提出修改意见；原稿只有点击“使用此版本”后才会改变。</p>
-                    {aiWorkbenchMessages.length > 2 && <div className="ai-workbench-conversation" aria-label="此前的修改对话">{aiWorkbenchMessages.slice(0, -2).map((message, index) => <div className={`ai-workbench-turn ${message.role}`} key={`${index}-${message.role}`}><small>{message.role === "user" ? "你的要求" : "AI 修改结果"}</small><p>{message.content}</p></div>)}</div>}
-                    {aiWorkbenchMessages.length >= 2 && <div className="ai-workbench-last-request"><small>本轮要求</small><p>{aiWorkbenchMessages.at(-2)?.content}</p></div>}
-                    <label className="ai-workbench-prompt"><span>你希望怎么修改</span><textarea value={aiWorkbenchPrompt} onChange={(event) => setAiWorkbenchPrompt(event.target.value)} maxLength={2000} rows={3} placeholder="例如：保留原意，语气更自然一些；再补充一个具体步骤。" /></label>
-                    <div className="ai-workbench-prompt-actions"><button type="button" className="soft-button" onClick={() => { setAiWorkbenchMessages([]); setAiWorkbenchOutput(""); setAiWorkbenchPrompt("请从当前正文开始，保留原意和事实，给出一版润色结果。"); setAiWorkbenchMode("polish"); }}>从当前正文开始润色</button><button type="button" className="soft-button" disabled={!aiWorkbenchMessages.length} onClick={() => { setAiWorkbenchMessages([]); setAiWorkbenchOutput(""); setAiWorkbenchPrompt(""); }}>清空对话</button></div>
-                    <button type="button" className="primary-button full ai-workbench-generate" disabled={aiWorkbenchBusy || (!title.trim() && !body.trim() && !aiWorkbenchPrompt.trim())} onClick={() => void generateAiWorkbench()}><Sparkles size={15}/>{aiWorkbenchBusy ? "正在整理…" : aiWorkbenchMessages.length ? "继续修改" : "生成建议"}</button>
-                    {aiWorkbenchOutput && <><div className="ai-workbench-result"><small>生成结果 · 尚未写入正文</small><MarkdownContent source={aiWorkbenchOutput} className="ai-workbench-markdown"/></div><div className="ai-workbench-result-actions"><button type="button" className="ai-workbench-apply" onClick={applyAiWorkbenchResult}>{aiWorkbenchMode === "title" ? "使用首条标题" : aiWorkbenchMode === "topics" ? "添加有效话题" : aiWorkbenchMode === "polish" || aiWorkbenchMode === "markdown" ? "使用此版本" : aiWorkbenchMode === "continue" ? "使用续写内容" : "插入写作提纲"}</button><button type="button" className="soft-button" onClick={() => void copyAiWorkbenchResult()}>复制</button>{aiResultApplied && <button type="button" className="soft-button" onClick={undoAiWorkbenchResult}>撤回</button>}</div></>}
-                    {!aiWorkbenchOutput && <div className="ai-workbench-placeholder">可直接输入修改要求，或从当前正文开始；生成结果会先预览，不会自动覆盖原稿。</div>}
-                  </div>}
-                </section>
                   </div>
                 </div>
 </> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<PostAttachmentsPanel resourceData={{ attachments: composerAttachments }} onNotice={toast}/><div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
             </ComposerSheet>}
+            {modal === "write" && markdownOptimizeOpen && <ComposerSheet title="Markdown 优化" full onClose={() => { if (!markdownOptimizeBusy) setMarkdownOptimizeOpen(false); }}>
+              {markdownOptimizeBusy ? <section className="composer-markdown-state" aria-live="polite"><strong>正在整理 Markdown 结构…</strong><small>保持原意与事实，只调整标题层级、列表、引用和代码块。</small></section> : markdownOptimizeError ? <section className="composer-markdown-state"><p role="alert">{markdownOptimizeError}</p><div className="composer-markdown-actions"><button type="button" className="primary-button" onClick={() => void optimizeMarkdown()}>重试</button><button type="button" className="soft-button" onClick={() => setMarkdownOptimizeOpen(false)}>关闭</button></div></section> : <>
+                <p className="composer-markdown-hint">确认这版结构后再替换正文，原稿会保留撤回入口。</p>
+                <article className="composer-preview detail-body"><MarkdownContent source={markdownOptimizeOutput} className="article"/></article>
+                <div className="composer-markdown-actions"><button type="button" className="primary-button" onClick={applyMarkdownOptimize}>使用此版本</button><button type="button" className="soft-button" onClick={() => void copyMarkdownOptimize()}>复制</button><button type="button" className="soft-button" onClick={() => setMarkdownOptimizeOpen(false)}>取消</button></div>
+              </>}
+            </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
-            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && markdownPreviousBody !== null && <div className="composer-markdown-applied" role="status"><span>已应用 Markdown 优化</span><button type="button" onClick={undoMarkdownOptimize}>撤回</button></div>}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={publish}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}

@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.51.3",
+    date: "2026.11.20",
+    notes: [
+      { category: "体验优化", text: "AI 创作工作台从「更多发布设置」移到发布页正文下方，打开就能用，不用再进二级面板。" },
+      { category: "体验优化", text: "Markdown 优化从工作台模式改为发布按钮左侧的独立按钮，先预览再替换正文，替换后可一键撤回。" },
+    ],
+  },
+  {
     version: "2.51.2",
     date: "2026.11.20",
     notes: [
