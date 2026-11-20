@@ -484,11 +484,11 @@ test("Glass Editorial discovery keeps live feed controls, media states, rating, 
   expect(Math.abs((brokenSizeBefore?.height || 0) - (brokenSizeAfter?.height || 0))).toBeLessThanOrEqual(1);
 
   const requestsBeforeLayout = discoveryRequests.length;
-  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("button", { name: "更多", exact: true }).click();
   await page.getByRole("button", { name: "单列浏览" }).click();
   await expect(feed).toHaveClass(/single-column/);
   expect(discoveryRequests.length).toBe(requestsBeforeLayout);
-  await page.getByRole("button", { name: "更多" }).click();
+  await page.getByRole("button", { name: "更多", exact: true }).click();
   await page.getByRole("button", { name: "双列瀑布流" }).click();
   await expect(feed).not.toHaveClass(/single-column/);
   expect(discoveryRequests.length).toBe(requestsBeforeLayout);
@@ -497,9 +497,14 @@ test("Glass Editorial discovery keeps live feed controls, media states, rating, 
     const url = new URL(request.url());
     return url.pathname === "/api/demo/cards" && url.searchParams.get("mode") === "discover" && url.searchParams.get("tag") === "科技";
   });
+  // 长尾分类默认收进「更多分类」，展开后才可选；这正是本次改动要保证的交互。
+  await expect(page.getByRole("tab", { name: "科技" })).toHaveCount(0);
+  await page.getByRole("button", { name: /更多分类/ }).click();
   await page.getByRole("tab", { name: "科技" }).click();
   await categoryRequest;
   await page.getByRole("tab", { name: "推荐" }).click();
+  await page.getByRole("button", { name: "收起分类" }).click();
+  await expect(page.getByRole("tab", { name: "科技" })).toHaveCount(0);
   await expect(firstCard).toBeVisible();
 
   await firstCard.getByRole("button", { name: "点赞" }).click();
