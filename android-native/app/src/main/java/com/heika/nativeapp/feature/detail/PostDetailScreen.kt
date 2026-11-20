@@ -113,6 +113,9 @@ import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.LocalHeikaBodyTextScale
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.HeikaGlassSurface
+import com.heika.nativeapp.ui.HeikaGlassTopBar
+import com.heika.nativeapp.ui.NativeShareSheet
+import androidx.compose.foundation.layout.navigationBarsPadding
 import com.heika.nativeapp.ui.HeikaGlassTokens
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaIcons
@@ -125,6 +128,8 @@ import com.heika.nativeapp.ui.sharedRatingKey
 import com.heika.nativeapp.ui.sharedTagKey
 import com.heika.nativeapp.ui.HeikaPulsePage
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -168,6 +173,7 @@ fun PostDetailScreen(
     var reportReason by remember { mutableStateOf("垃圾营销或重复内容") }
     var reportNote by remember { mutableStateOf("") }
     var moreOpen by remember { mutableStateOf(false) }
+    var shareOpen by remember { mutableStateOf(false) }
     var aiMoreAction by remember(state.post?.cloudId) { mutableStateOf<String?>(null) }
     var feedbackOpen by remember { mutableStateOf(false) }
     var feedbackText by remember { mutableStateOf("") }
@@ -200,92 +206,9 @@ fun PostDetailScreen(
     // Keep the destination image composed on its first frame so the shared element can
     // pair with the tapped card before the detail request starts or refreshes.
     val visiblePost = if (post != null && state.post?.sharedImageKey() != post.sharedImageKey()) post else state.post ?: post
+    val dockHaze = rememberHazeState()
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, modifier = Modifier.zIndex(1f), trailing = {
-            Box {
-                androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
-                BackHandler(enabled = moreOpen) { moreOpen = false }
-                val current = state.post
-                // 菜单淡入并轻微放大，收起时反向播放。Popup 在退出动画结束后才移除，
-                // 否则关闭的一瞬间会整块消失，观感是"闪了一下"。
-                var menuMounted by remember { mutableStateOf(false) }
-                LaunchedEffect(moreOpen) {
-                    if (moreOpen) menuMounted = true else { kotlinx.coroutines.delay(150); menuMounted = false }
-                }
-                if (menuMounted && current != null) Popup(
-                    alignment = Alignment.TopEnd,
-                    offset = IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
-                    onDismissRequest = { moreOpen = false },
-                    properties = PopupProperties(focusable = moreOpen, dismissOnBackPress = true, dismissOnClickOutside = true),
-                ) {
-                    HeikaDropdownFade(visible = moreOpen) {
-                    val menuShape = RoundedCornerShape(HeikaGlassTokens.menuRadius)
-                    HeikaGlassSurface(
-                        hazeState = hazeState,
-                        modifier = Modifier.widthIn(min = 188.dp, max = 218.dp).heightIn(max = 480.dp)
-                            .border(.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), menuShape),
-                        shape = menuShape,
-                        contentPadding = PaddingValues(0.dp),
-                        drawTopHighlight = false,
-                    ) {
-                    Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
-                        Text("常用操作", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                        DropdownMenuItem(text = { Text("复制链接") }, leadingIcon = { Icon(HeikaIcons.Copy, null) }, onClick = {
-                            moreOpen = false
-                            val url = if (current.channel == "ai") "https://moonclean.shop/?aiPost=${current.id}&cloudId=${android.net.Uri.encode(current.cloudId)}" else "https://moonclean.shop/?post=${current.id}"
-                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("HEIKA 内容链接", url))
-                            viewModel.showNotice("链接已复制")
-                        })
-                        if (current.status == "published") DropdownMenuItem(text = { Text("分享内容") }, leadingIcon = { Icon(HeikaIcons.Share, null) }, onClick = { moreOpen = false; onShare(current) })
-                        if (current.channel == "ai") {
-                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
-                            Text("资源与版本", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                            val hasVersionData = state.aiVersionsLoading || state.aiVersions.isNotEmpty() || current.resourceData.has("version") || current.resourceData.has("changelog")
-                            if (hasVersionData) DropdownMenuItem(
-                                text = { Text(if (state.aiVersionsLoading) "查看更新记录 · 加载中" else "查看更新记录") },
-                                leadingIcon = { Icon(HeikaIcons.Info, null) },
-                                onClick = { moreOpen = false; aiMoreAction = "versions" },
-                            )
-                            if (current.resourceData.length() > 0) DropdownMenuItem(
-                                text = { Text("相关资源") },
-                                leadingIcon = { Icon(HeikaIcons.Download, null) },
-                                onClick = { moreOpen = false; aiMoreAction = "resources" },
-                            )
-                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
-                            Text("反馈与操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                            DropdownMenuItem(
-                                text = { Text("内容纠错") },
-                                leadingIcon = { Icon(HeikaIcons.Comment, null) },
-                                onClick = { moreOpen = false; aiMoreAction = "feedback" },
-                            )
-                        }
-                        androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
-                        Text("内容反馈", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                        DropdownMenuItem(text = { Text("内容反馈") }, leadingIcon = { Icon(HeikaIcons.Comment, null) }, onClick = { moreOpen = false; feedbackOpen = true })
-                        DropdownMenuItem(text = { Text("举报内容") }, leadingIcon = { Icon(HeikaIcons.Report, null) }, onClick = { moreOpen = false; commentReport = null; reportOpen = true })
-                        androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
-                        Text("内容偏好", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                        current.tags.firstOrNull()?.let { topic -> DropdownMenuItem(
-                            text = { Column { Text("减少话题推荐"); Text("#$topic", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } },
-                            leadingIcon = { Icon(HeikaIcons.Block, null) },
-                            onClick = { moreOpen = false; viewModel.muteTopic(topic) },
-                        ) }
-                        if (current.authorId != null) {
-                            DropdownMenuItem(text = { Column { Text("不感兴趣"); Text("减少此作者推荐", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.muteAuthor() })
-                            DropdownMenuItem(text = { Text("屏蔽作者") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.blockAuthor() })
-                        }
-                        if (state.currentUserId != null && (state.currentUserId == current.authorId || state.canAdminDelete)) {
-                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
-                            Text(if (state.currentUserId != current.authorId) "管理员操作" else "危险操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.error.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                            DropdownMenuItem(text = { Text("删除内容", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(HeikaIcons.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { moreOpen = false; postDeleteConfirm = true })
-                        }
-                    }
-                    }
-                    }
-                }
-            }
-        })
         if (state.loading && visiblePost == null) {
             HeikaPulsePage(cards = 2, cardHeight = 132.dp)
         } else if (visiblePost == null) {
@@ -294,12 +217,13 @@ fun PostDetailScreen(
                 Button(onClick = viewModel::reload) { Icon(HeikaIcons.Retry, null); Text("重试") }
             }
         } else {
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             val item = visiblePost
             val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+                modifier = Modifier.fillMaxSize().hazeSource(dockHaze),
+                contentPadding = PaddingValues(top = 62.dp, bottom = 124.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
             ) {
                 item {
@@ -562,27 +486,168 @@ fun PostDetailScreen(
                 }
                 if (state.comments.isEmpty() && !state.loading && !state.commentsLoading && state.commentsError == null) item { Text("暂无评论", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp)) }
             }
-            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Column(Modifier.weight(1f)) {
-                    if (replyTo != null) Row(Modifier.fillMaxWidth().padding(start = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("回复 ${state.comments.firstOrNull { it.id == replyTo }?.author ?: "评论"}", Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
-                        Text("取消", Modifier.clickable(enabled = !state.sending) { replyTo = null }.padding(5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                    }
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surface).padding(start = 13.dp, end = 3.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        BasicTextField(value = draft, onValueChange = { draft = it.take(1000) }, modifier = Modifier.weight(1f).focusRequester(commentFocusRequester).heightIn(min = 36.dp, max = 96.dp).padding(vertical = 7.dp), enabled = !state.sending, maxLines = 4, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), decorationBox = { inner -> Box { if (draft.isEmpty()) Text("说点什么…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp); inner() } })
-                        IconButton(enabled = !state.sending, onClick = { if (draft.isBlank()) { commentFocusRequester.requestFocus(); keyboardController?.show() } else viewModel.comment(draft, replyTo) }, modifier = Modifier.size(38.dp)) {
-                            if (state.sending) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp) else Icon(if (draft.isBlank()) HeikaIcons.Comment else HeikaIcons.Send, if (draft.isBlank()) "评论" else "发送评论", tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            // 双悬浮操作栏：左侧评论入口，右侧点赞 / 收藏 / 分享。
+            // 两个模块共用同一个 HazeState，真实模糊背后的正文，而不是叠一层灰黑实心。
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                HeikaGlassSurface(
+                    hazeState = dockHaze,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(22.dp),
+                    contentPadding = PaddingValues(4.dp),
+                    drawTopHighlight = false,
+                ) {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        if (replyTo != null) Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("回复 ${state.comments.firstOrNull { it.id == replyTo }?.author ?: "评论"}", Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                            Text("取消", Modifier.clickable(enabled = !state.sending) { replyTo = null }.padding(horizontal = 6.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        }
+                        Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            BasicTextField(
+                                value = draft,
+                                onValueChange = { draft = it.take(1000) },
+                                modifier = Modifier.weight(1f).focusRequester(commentFocusRequester).heightIn(min = 34.dp, max = 92.dp).padding(vertical = 6.dp),
+                                enabled = !state.sending,
+                                maxLines = 4,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp),
+                                decorationBox = { inner -> Box { if (draft.isEmpty()) Text("说说你的想法…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp); inner() } },
+                            )
+                            IconButton(
+                                enabled = !state.sending,
+                                onClick = { if (draft.isBlank()) { commentFocusRequester.requestFocus(); keyboardController?.show() } else viewModel.comment(draft, replyTo) },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                if (state.sending) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                else Icon(
+                                    if (draft.isBlank()) HeikaIcons.Comment else HeikaIcons.Send,
+                                    if (draft.isBlank()) "评论" else "发送评论",
+                                    tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp),
+                                )
+                            }
                         }
                     }
                 }
-                InteractionIconButton(selected = state.liked, sending = state.likeSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
-                Text("${state.likeCount ?: state.post?.likeCount ?: 0}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                InteractionIconButton(selected = state.saved, sending = state.saveSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
-                if (state.post?.status == "published") IconButton(onClick = { state.post?.let(onShare) }) {
-                    Icon(HeikaIcons.Share, contentDescription = "分享内容", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+                HeikaGlassSurface(
+                    hazeState = dockHaze,
+                    shape = RoundedCornerShape(999.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                    drawTopHighlight = false,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        InteractionIconButton(selected = state.liked, sending = state.likeSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
+                        Text("${state.likeCount ?: state.post?.likeCount ?: 0}", color = if (state.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        InteractionIconButton(selected = state.saved, sending = state.saveSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
+                        if (item.status == "published") IconButton(onClick = { shareOpen = true }, modifier = Modifier.size(38.dp)) {
+                            Icon(HeikaIcons.Share, contentDescription = "分享内容", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
+                        }
+                    }
                 }
             }
+            }
         }
+    }
+    HeikaGlassTopBar(hazeState = dockHaze, modifier = Modifier.align(Alignment.TopCenter)) {
+        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, modifier = Modifier.zIndex(1f), trailing = {
+            Box {
+                androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
+                BackHandler(enabled = moreOpen) { moreOpen = false }
+                val current = state.post
+                // 菜单淡入并轻微放大，收起时反向播放。Popup 在退出动画结束后才移除，
+                // 否则关闭的一瞬间会整块消失，观感是"闪了一下"。
+                var menuMounted by remember { mutableStateOf(false) }
+                LaunchedEffect(moreOpen) {
+                    if (moreOpen) menuMounted = true else { kotlinx.coroutines.delay(150); menuMounted = false }
+                }
+                if (menuMounted && current != null) Popup(
+                    alignment = Alignment.TopEnd,
+                    offset = IntOffset(0, with(androidx.compose.ui.platform.LocalDensity.current) { 48.dp.roundToPx() }),
+                    onDismissRequest = { moreOpen = false },
+                    properties = PopupProperties(focusable = moreOpen, dismissOnBackPress = true, dismissOnClickOutside = true),
+                ) {
+                    HeikaDropdownFade(visible = moreOpen) {
+                    val menuShape = RoundedCornerShape(HeikaGlassTokens.menuRadius)
+                    HeikaGlassSurface(
+                        hazeState = hazeState,
+                        modifier = Modifier.widthIn(min = 188.dp, max = 218.dp).heightIn(max = 480.dp)
+                            .border(.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), menuShape),
+                        shape = menuShape,
+                        contentPadding = PaddingValues(0.dp),
+                        drawTopHighlight = false,
+                    ) {
+                    Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                        Text("常用操作", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        DropdownMenuItem(text = { Text("复制链接") }, leadingIcon = { Icon(HeikaIcons.Copy, null) }, onClick = {
+                            moreOpen = false
+                            val url = if (current.channel == "ai") "https://moonclean.shop/?aiPost=${current.id}&cloudId=${android.net.Uri.encode(current.cloudId)}" else "https://moonclean.shop/?post=${current.id}"
+                            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("HEIKA 内容链接", url))
+                            viewModel.showNotice("链接已复制")
+                        })
+                        if (current.status == "published") DropdownMenuItem(text = { Text("分享内容") }, leadingIcon = { Icon(HeikaIcons.Share, null) }, onClick = { moreOpen = false; shareOpen = true })
+                        if (current.channel == "ai") {
+                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                            Text("资源与版本", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            val hasVersionData = state.aiVersionsLoading || state.aiVersions.isNotEmpty() || current.resourceData.has("version") || current.resourceData.has("changelog")
+                            if (hasVersionData) DropdownMenuItem(
+                                text = { Text(if (state.aiVersionsLoading) "查看更新记录 · 加载中" else "查看更新记录") },
+                                leadingIcon = { Icon(HeikaIcons.Info, null) },
+                                onClick = { moreOpen = false; aiMoreAction = "versions" },
+                            )
+                            if (current.resourceData.length() > 0) DropdownMenuItem(
+                                text = { Text("相关资源") },
+                                leadingIcon = { Icon(HeikaIcons.Download, null) },
+                                onClick = { moreOpen = false; aiMoreAction = "resources" },
+                            )
+                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                            Text("反馈与操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            DropdownMenuItem(
+                                text = { Text("内容纠错") },
+                                leadingIcon = { Icon(HeikaIcons.Comment, null) },
+                                onClick = { moreOpen = false; aiMoreAction = "feedback" },
+                            )
+                        }
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                        Text("内容反馈", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        DropdownMenuItem(text = { Text("内容反馈") }, leadingIcon = { Icon(HeikaIcons.Comment, null) }, onClick = { moreOpen = false; feedbackOpen = true })
+                        DropdownMenuItem(text = { Text("举报内容") }, leadingIcon = { Icon(HeikaIcons.Report, null) }, onClick = { moreOpen = false; commentReport = null; reportOpen = true })
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                        Text("内容偏好", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        current.tags.firstOrNull()?.let { topic -> DropdownMenuItem(
+                            text = { Column { Text("减少话题推荐"); Text("#$topic", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } },
+                            leadingIcon = { Icon(HeikaIcons.Block, null) },
+                            onClick = { moreOpen = false; viewModel.muteTopic(topic) },
+                        ) }
+                        if (current.authorId != null) {
+                            DropdownMenuItem(text = { Column { Text("不感兴趣"); Text("减少此作者推荐", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp) } }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.muteAuthor() })
+                            DropdownMenuItem(text = { Text("屏蔽作者") }, leadingIcon = { Icon(HeikaIcons.Block, null) }, onClick = { moreOpen = false; viewModel.blockAuthor() })
+                        }
+                        if (state.currentUserId != null && (state.currentUserId == current.authorId || state.canAdminDelete)) {
+                            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .28f))
+                            Text(if (state.currentUserId != current.authorId) "管理员操作" else "危险操作", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.error.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            DropdownMenuItem(text = { Text("删除内容", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(HeikaIcons.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { moreOpen = false; postDeleteConfirm = true })
+                        }
+                    }
+                    }
+                    }
+                }
+            }
+        })
+    }
+    if (shareOpen) {
+        val sharePost = state.post ?: visiblePost
+        if (sharePost != null) NativeShareSheet(
+            post = sharePost,
+            hazeState = dockHaze,
+            onDismiss = { shareOpen = false },
+            onRecord = { platform -> viewModel.recordShare(sharePost.id, platform) },
+        )
     }
     }
     if (reportOpen) {

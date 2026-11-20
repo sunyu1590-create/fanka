@@ -5,20 +5,23 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
 
 /**
  * HEIKA Solid Glass 基元。
@@ -42,9 +45,11 @@ fun HeikaGlassSurface(
 ) {
     val dark = LocalHeikaDark.current
     val surface = glassColor ?: MaterialTheme.colorScheme.surface
-    val neutralSurface = if (dark) lerp(surface, Color(0xFF090B0E), .24f) else lerp(surface, Color(0xFFFFFEFC), .16f)
-    val alpha = ((if (hazeState != null) { if (dark) .74f else .82f } else { if (dark) .92f else .94f }) * emphasis)
-        .coerceIn(if (hazeState != null) .66f else .88f, .98f)
+    // 材质底色向中性灰偏一点，避免直接取 #1C1D21 造成「深灰实心卡片」。
+    val glassBase = if (dark) lerp(Color(0xFF2B2D35), surface, .18f) else lerp(Color(0xFFFFFEFA), surface, .22f)
+    val luminous = lerp(glassBase, Color.White, if (dark) .05f else .02f)
+    val alpha = ((if (hazeState != null) { if (dark) HeikaGlassTokens.darkDialogTintAlpha else HeikaGlassTokens.lightDialogTintAlpha } else { if (dark) .93f else .94f }) * emphasis)
+        .coerceIn(if (hazeState != null) .50f else .88f, .98f)
     val clipped = modifier.clip(shape)
     Box(
         clipped
@@ -52,15 +57,22 @@ fun HeikaGlassSurface(
                 if (hazeState != null) Modifier.hazeEffect(
                     state = hazeState,
                     style = HazeStyle(
-                        backgroundColor = neutralSurface.copy(alpha = alpha),
-                        tint = HazeTint(if (dark) Color.Black.copy(alpha = .14f) else Color.White.copy(alpha = .12f)),
-                        blurRadius = 20.dp,
-                        fallbackTint = HazeTint(neutralSurface.copy(alpha = if (dark) .94f else .96f)),
+                        backgroundColor = luminous.copy(alpha = alpha),
+                        // 深色模式用极淡的白 tint 提亮透出的背景，而不是压黑。
+                        tint = HazeTint(if (dark) Color.White.copy(alpha = .10f) else Color.White.copy(alpha = .28f)),
+                        blurRadius = HeikaGlassTokens.menuBlurRadius,
+                        fallbackTint = HazeTint(luminous.copy(alpha = if (dark) .94f else .96f)),
                     ),
                 ) else Modifier,
             )
-            .background(neutralSurface.copy(alpha = alpha), shape)
-            .border(.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .38f else .45f), shape)
+            .shadow(6.dp, shape)
+            .background(luminous.copy(alpha = alpha), shape)
+            .border(
+                HeikaGlassTokens.borderWidth,
+                if (dark) Color.White.copy(alpha = HeikaGlassTokens.glassBorderAlphaDark)
+                else Color(0xFF3A362B).copy(alpha = HeikaGlassTokens.glassBorderAlphaLight),
+                shape,
+            )
             .padding(contentPadding),
         content = content,
     )
@@ -169,3 +181,39 @@ fun HeikaLiquidGlassSurface(
     drawTopHighlight: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) = HeikaSolidNavSurface(hazeState, modifier, shape, contentPadding, drawTopHighlight, content)
+
+/**
+ * 顶部导航专用的横向玻璃条：只在下沿画一条细线，不再给整块加边框。
+ * 与详情页悬浮栏共用同一个 HazeState，避免重复全屏模糊造成掉帧。
+ */
+@Composable
+fun HeikaGlassTopBar(
+    hazeState: HazeState?,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val dark = LocalHeikaDark.current
+    val base = if (dark) Color(0xFF24262D) else Color(0xFFFDFCF9)
+    val alpha = if (hazeState != null) (if (dark) .58f else .64f) else (if (dark) .94f else .95f)
+    val border = if (dark) Color.White.copy(alpha = .10f) else Color(0xFF3A362B).copy(alpha = .10f)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .then(
+                if (hazeState != null) Modifier.hazeEffect(
+                    state = hazeState,
+                    style = HazeStyle(
+                        backgroundColor = base.copy(alpha = alpha),
+                        tint = HazeTint(if (dark) Color.White.copy(alpha = .10f) else Color.White.copy(alpha = .26f)),
+                        blurRadius = 18.dp,
+                        fallbackTint = HazeTint(base.copy(alpha = if (dark) .95f else .96f)),
+                    ),
+                ) else Modifier,
+            )
+            .background(base.copy(alpha = alpha))
+            .drawBehind {
+                drawLine(border, Offset(0f, size.height), Offset(size.width, size.height), 1f)
+            },
+        content = content,
+    )
+}

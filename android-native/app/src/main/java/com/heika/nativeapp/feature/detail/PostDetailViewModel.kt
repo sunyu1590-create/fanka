@@ -110,6 +110,10 @@ class PostDetailViewModel @Inject constructor(
         }
     }
 
+    fun recordShare(clientId: Int, platform: String) {
+        viewModelScope.launch(HeikaCoroutineGuard) { repository.recordShare(clientId, platform) }
+    }
+
     fun load(post: HeikaPost, force: Boolean = false) {
         val key = post.cloudId.ifBlank { post.id.toString() }
         if (!force && loadedId == key && mutableState.value.post != null) return

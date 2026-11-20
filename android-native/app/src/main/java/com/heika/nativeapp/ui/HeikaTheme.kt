@@ -38,12 +38,17 @@ object HeikaGlassTokens {
     val menuRadius = 14.dp
     val capsuleRadius = 26.dp
     val borderWidth = .5.dp
-    val dialogBlurRadius = 20.dp
-    val menuBlurRadius = 20.dp
-    /** 玻璃面保留底层轮廓，同时用中性色压住艳色透出。 */
-    const val darkDialogTintAlpha = .74f
-    const val lightDialogTintAlpha = .82f
+    val dialogBlurRadius = 24.dp
+    val menuBlurRadius = 22.dp
+    /**
+     * 2026-11-20 视觉修正：固态玻璃不是高不透明深黑面板。
+     * 降低材质自身不透明度，让底层颜色真正透出；亮度由白色 tint 提上来。
+     */
+    const val darkDialogTintAlpha = .58f
+    const val lightDialogTintAlpha = .62f
     const val backdropDimAmount = .16f
+    const val glassBorderAlphaDark = .13f
+    const val glassBorderAlphaLight = .12f
 }
 
 private val HeikaShapes = Shapes(

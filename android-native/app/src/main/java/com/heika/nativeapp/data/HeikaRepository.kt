@@ -300,6 +300,20 @@ class HeikaRepository @Inject constructor(
         JSONObject().put("liked", liked)
     }
 
+    /** 分享行为落库；匿名也允许统计，失败不影响分享本身。 */
+    suspend fun recordShare(clientId: Int, platform: String, surface: String = "android") = withContext(Dispatchers.IO) {
+        if (clientId <= 0) return@withContext
+        runCatching {
+            request(
+                "/api/v1/posts/$clientId/share",
+                method = "POST",
+                body = JSONObject().put("platform", platform).put("surface", surface).toString(),
+                includeSession = true,
+            )
+        }
+        Unit
+    }
+
     suspend fun reportPost(postId: String, reason: String, note: String, commentId: String? = null): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(postId) || (commentId != null && isUuid(commentId))) { "举报对象无效" }
         require(commentId == null || isUuid(commentId)) { "评论编号无效" }
