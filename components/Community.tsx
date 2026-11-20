@@ -3662,10 +3662,10 @@ export default function Community() {
     const firstSentence = source.split(/[。！？!?；;\n]/).map((item) => item.trim()).find(Boolean) || "";
     // 十几字最合适：太长会被平台折叠，太短像标签；优先在「｜，、空格」处断开，避免半句硬切。
     const clipBlurb = (text: string) => {
-      if (text.length <= 26) return text.replace(/[｜|，,、\s]+$/, "");
-      const head = text.slice(0, 26);
+      if (text.length <= 18) return text.replace(/[｜|，,、\s]+$/, "");
+      const head = text.slice(0, 18);
       const boundary = Math.max(head.lastIndexOf("｜"), head.lastIndexOf("|"), head.lastIndexOf("，"), head.lastIndexOf("、"), head.lastIndexOf(" "));
-      return boundary >= 10 ? head.slice(0, boundary) : head;
+      return (boundary >= 8 ? head.slice(0, boundary) : head).replace(/[｜|，,、\s]+$/, "");
     };
     const blurb = firstSentence.length >= 12 ? clipBlurb(firstSentence) : `${(target.title || "这篇内容").slice(0, 18)}，值得花两分钟读完`;
     return {
