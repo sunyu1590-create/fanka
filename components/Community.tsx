@@ -58,6 +58,7 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
   loading: () => <div className="empty">正在加载审核队列…</div>,
 });
 import DiscoveryPostCard from "./DiscoveryPostCard";
+import SharePanel, { type SharePayload } from "./SharePanel";
 const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
 import RecoveryCodesPage from "./RecoveryCodesPage";
@@ -961,6 +962,8 @@ export default function Community() {
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [replyTargetName, setReplyTargetName] = useState<string | undefined>();
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
+  const [sharePayloadState, setSharePayloadState] = useState<SharePayload | null>(null);
+  const [shareClientId, setShareClientId] = useState<string | null>(null);
   const [aiDetailAction, setAiDetailAction] = useState<"versions" | "feedback" | "resources" | null>(null);
   const [aiVersionsAvailable, setAiVersionsAvailable] = useState(false);
   const closeAiDetailAction = useCallback(() => setAiDetailAction(null), []);
@@ -3675,7 +3678,7 @@ export default function Community() {
       text: `《${(target.title || "").replace(/[。！？!?，,]+$/, "")}》\n${blurb}\n这是黑卡的链接，打开后可以进入黑卡探索更多内容：\n${url}`,
     };
   };
-  const sharePublishedPost = async () => {
+  const openSharePanel = async () => {
     if (!post || post.status !== "published") { toast("仅公开发布的作品可以分享"); return; }
     let summary = "";
     if (post.cloudId) {
@@ -3683,38 +3686,13 @@ export default function Community() {
         const response = await fetch(`/api/v1/posts/${encodeURIComponent(post.cloudId)}/summary`, { cache: "no-store" });
         const result = response.ok ? await response.json() : null;
         if (typeof result?.data?.summary === "string") summary = result.data.summary;
-      } catch { /* share can continue without a generated summary */ }
+      } catch { /* 没有摘要也能分享，退回正文首句 */ }
     }
-    const payload = sharePayload(post, summary);
-    try {
-      if (navigator.share) await navigator.share({ title: `《${payload.title}》`, text: payload.text, url: payload.url });
-      else { await navigator.clipboard.writeText(payload.text); toast("分享内容已复制，可粘贴到其他应用"); }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      try { await navigator.clipboard.writeText(payload.text); toast("分享面板不可用，分享内容已复制"); }
-      catch { toast("分享失败，请复制作品链接重试"); }
-    }
-  };
-  const shareToPlatform = (platform: "x" | "facebook" | "qq" | "wechat" | "instagram") => {
-    if (!post || post.status !== "published") { toast("仅公开发布的作品可以分享"); return; }
-    const payload = sharePayload(post);
-    const quote = encodeURIComponent(`《${payload.title}》 ${payload.blurb}`);
-    const encodedUrl = encodeURIComponent(payload.url);
-    const targets: Record<typeof platform, string | null> = {
-      x: `https://twitter.com/intent/tweet?text=${quote}&url=${encodedUrl}`,
-      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-      qq: `https://connect.qq.com/widget/shareqq/index.html?url=${encodedUrl}&title=${encodeURIComponent(payload.title)}&summary=${encodeURIComponent(payload.blurb)}`,
-      wechat: null,
-      instagram: null,
-    };
-    if (targets[platform]) {
-      window.open(targets[platform]!, "_blank", "noopener,noreferrer");
-      setDetailMoreOpen(false);
-      return;
-    }
-    void navigator.clipboard?.writeText(payload.text).then(() => toast(platform === "wechat" ? "分享文案已复制，可直接粘贴到微信" : "分享文案已复制，可直接粘贴到 Instagram")).catch(() => toast("当前浏览器不能访问剪贴板，请使用系统分享"));
+    setShareClientId(post.cloudId ?? null);
+    setSharePayloadState(sharePayload(post, summary));
     setDetailMoreOpen(false);
   };
+  const closeSharePanel = useCallback(() => setSharePayloadState(null), []);
   useEffect(() => {
     if (detail === null || !post?.cloudId || !post.isPartial) return;
     if (detailPostOverride?.id === detail && !detailPostOverride.isPartial) return;
@@ -5195,13 +5173,7 @@ export default function Community() {
                         void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
                         setDetailMoreOpen(false);
                       }}><Share2 size={16} /> 复制链接</button>
-                      <button onClick={() => { setDetailMoreOpen(false); void sharePublishedPost(); }}><Share2 size={16} /> 系统分享</button>
-                      <span className="detail-more-group">快捷分享</span>
-                      <button onClick={() => shareToPlatform("x")}><Share2 size={16} /> 分享到 X</button>
-                      <button onClick={() => shareToPlatform("facebook")}><Share2 size={16} /> 分享到 Facebook</button>
-                      <button onClick={() => shareToPlatform("qq")}><Share2 size={16} /> 分享到 QQ</button>
-                      <button onClick={() => shareToPlatform("wechat")}><Share2 size={16} /> 复制用于微信</button>
-                      <button onClick={() => shareToPlatform("instagram")}><Share2 size={16} /> 复制用于 Instagram</button>
+                      <button onClick={() => void openSharePanel()}><Share2 size={16} /> 打开分享面板</button>
                     </>}
                     {post.cloudId && post.status === "published" && <button onClick={() => {
                       if (!accountId) { setDetailMoreOpen(false); toast("登录后可以举报内容"); return; }
@@ -5329,8 +5301,8 @@ export default function Community() {
                   {commentHasMore && <button className="comments-load-more" disabled={commentsLoading} onClick={() => void loadMoreComments()}>{commentsLoading ? "正在加载…" : "更多评论"}</button>}
                 </section>
               </div>
-            </div>
-            <form className="detail-action-bar" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
+              <div className="detail-dock" role="group" aria-label="作品操作">
+              <form className="detail-dock-comment heika-solid-glass" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
               <div className={`detail-comment-input${reply ? " replying" : ""}${commentInputExpanded || draft ? " expanded" : ""}`}>
                 <span className="comment-compose-avatar" aria-hidden="true"><span>{(state.name || "探").slice(0, 1)}</span>{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
                 {reply && <span className="reply-label">回复 @{replyTargetName || state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => { setReply(undefined); setReplyTargetName(undefined); }}><X size={13} /></button></span>}
@@ -5338,6 +5310,8 @@ export default function Community() {
                 {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
                 {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><ArrowUp size={18} strokeWidth={2.4} /></button>}
               </div>
+              </form>
+              <div className="detail-dock-actions heika-solid-glass">
               <button type="button" className={`bar-icon like-action${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
                 if (likeBusy) return;
                 const next = !state.liked?.includes(post.id);
@@ -5350,12 +5324,22 @@ export default function Community() {
                 }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
               }}><Heart size={19} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span className="detail-like-count">{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span></button>
               <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
-              {post.status === "published" && <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => void sharePublishedPost()}><Share2 size={20} /></button>}
-            </form>
+              {post.status === "published" && <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => void openSharePanel()}><Share2 size={20} /></button>}
+              </div>
+              </div>
+            </div>
           </div>
           {previewImage && detailImages[displayedImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[displayedImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
         </div>
       )}
+      <SharePanel
+        open={Boolean(sharePayloadState)}
+        payload={sharePayloadState}
+        clientId={shareClientId}
+        surface="web"
+        onClose={closeSharePanel}
+        onNotice={toast}
+      />
       {authorProfile && (
         <PublicProfile
           id={authorProfile}

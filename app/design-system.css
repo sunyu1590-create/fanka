@@ -6538,3 +6538,353 @@ img, video, canvas, iframe { max-width:100%; }
 .discover-category-nav>button.discover-category-more svg{transition:transform 180ms ease}
 .discover-category-nav.is-expanded{flex-wrap:wrap;overflow:visible;row-gap:0;padding-bottom:2px}
 .discover-category-nav.is-expanded>button.discover-category-more svg{transform:rotate(180deg)}
+
+/* =========================================================================
+   HEIKA Solid Glass 3.2 — 2026-11-20
+   修正方向：固态玻璃不是「高不透明度深黑面板」。
+   真实背景模糊 + 略高亮度与饱和度 + 细描边，让底层内容透出颜色但保持可读。
+   深色为默认，浅色单独调参；不支持 backdrop-filter 时退回接近的实体色。
+   ========================================================================= */
+:root {
+  --glass-blur: 22px;
+  --glass-saturate: 145%;
+  --glass-brightness: 1.12;
+  --glass-bg: rgba(39, 41, 49, .58);
+  --glass-bg-strong: rgba(37, 39, 46, .66);
+  --glass-stroke: rgba(255, 255, 255, .13);
+  --glass-stroke-soft: rgba(255, 255, 255, .09);
+  --glass-shadow: 0 8px 28px rgba(0, 0, 0, .20), inset 0 1px 0 rgba(255, 255, 255, .08);
+  --glass-shadow-soft: 0 6px 20px rgba(0, 0, 0, .16), inset 0 1px 0 rgba(255, 255, 255, .06);
+  --glass-tint-gold: rgba(197, 166, 101, .18);
+}
+
+:root[data-theme="light"] {
+  --glass-blur: 22px;
+  --glass-saturate: 140%;
+  --glass-brightness: 1.03;
+  --glass-bg: rgba(252, 251, 247, .62);
+  --glass-bg-strong: rgba(253, 252, 249, .72);
+  --glass-stroke: rgba(255, 255, 255, .72);
+  --glass-stroke-soft: rgba(58, 54, 43, .10);
+  --glass-shadow: 0 10px 30px rgba(46, 42, 32, .14), inset 0 1px 0 rgba(255, 255, 255, .78);
+  --glass-shadow-soft: 0 6px 20px rgba(46, 42, 32, .10), inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+.heika-solid-glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) brightness(var(--glass-brightness));
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--glass-shadow);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .heika-solid-glass { background: rgba(34, 36, 43, .95); }
+  :root[data-theme="light"] .heika-solid-glass { background: rgba(250, 249, 245, .96); }
+}
+
+/* 顶部导航：模糊适中，不压厚暗色蒙层，频道名始终可读。 */
+.topline,
+:root[data-theme="dark"] .topline {
+  background: rgba(31, 33, 39, .60);
+  border-bottom: 1px solid rgba(255, 255, 255, .10);
+  -webkit-backdrop-filter: blur(18px) saturate(142%) brightness(1.10);
+  backdrop-filter: blur(18px) saturate(142%) brightness(1.10);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .04);
+}
+:root[data-theme="light"] .topline {
+  background: rgba(250, 249, 245, .66);
+  border-bottom-color: rgba(52, 49, 40, .10);
+  -webkit-backdrop-filter: blur(18px) saturate(135%) brightness(1.02);
+  backdrop-filter: blur(18px) saturate(135%) brightness(1.02);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .6);
+}
+/* 顶栏里的小按钮不再各自铺不透明底，避免叠出灰块。 */
+.topline-action,
+.discover-top-actions .topline-action,
+.mine-topline-actions .mine-settings-button,
+.mine-topline-actions .mine-membership-button,
+.topline .app-download-link {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .10);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root[data-theme="light"] .topline-action,
+:root[data-theme="light"] .discover-top-actions .topline-action,
+:root[data-theme="light"] .mine-topline-actions .mine-settings-button,
+:root[data-theme="light"] .mine-topline-actions .mine-membership-button,
+:root[data-theme="light"] .topline .app-download-link {
+  background: rgba(255, 255, 255, .52);
+  border-color: rgba(52, 49, 40, .10);
+}
+@media (max-width: 1023px) {
+  .topline { background: rgba(31, 33, 39, .54); -webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.08); backdrop-filter: blur(16px) saturate(140%) brightness(1.08); }
+  :root[data-theme="light"] .topline { background: rgba(250, 249, 245, .60); }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topline, :root[data-theme="dark"] .topline { background: #1b1d22; }
+  :root[data-theme="light"] .topline { background: #f8f7f3; }
+}
+
+/* AI 频道：只保留一处精致的香槟金强调，不做整块金色。 */
+.ai-space-heading { position: relative; padding-bottom: 14px; }
+.ai-space-heading h1 { background: linear-gradient(96deg, #efe0bc 0%, #c9a54b 58%, #e6cf9c 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+:root[data-theme="light"] .ai-space-heading h1 { background: linear-gradient(96deg, #8a6d2f 0%, #b2893c 60%, #8a6d2f 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ai-space-heading::after { content: ""; position: absolute; left: 0; bottom: 0; width: 46px; height: 1px; background: linear-gradient(90deg, rgba(201, 165, 75, .85), rgba(201, 165, 75, 0)); }
+.ai-space-heading p { color: color-mix(in srgb, var(--muted) 82%, #c9a54b); }
+
+/* 详情页头部：与顶栏同一材质，滚动时内容轻微透出。 */
+.detail-header,
+:root[data-theme="dark"] .detail-header {
+  background: rgba(31, 33, 39, .56);
+  border-bottom: 1px solid rgba(255, 255, 255, .09);
+  -webkit-backdrop-filter: blur(18px) saturate(140%) brightness(1.10);
+  backdrop-filter: blur(18px) saturate(140%) brightness(1.10);
+}
+:root[data-theme="light"] .detail-header {
+  background: rgba(250, 249, 245, .64);
+  border-bottom-color: rgba(52, 49, 40, .10);
+  -webkit-backdrop-filter: blur(18px) saturate(135%) brightness(1.02);
+  backdrop-filter: blur(18px) saturate(135%) brightness(1.02);
+}
+
+/* -------------------------------------------------------------------------
+   详情页双悬浮操作栏：左侧评论入口，右侧点赞 / 收藏 / 分享。
+   两个独立模块，真实高斯模糊，底部安全区留白，不遮挡正文。
+   ------------------------------------------------------------------------- */
+.detail-dock {
+  position: sticky;
+  z-index: 70;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  width: min(560px, calc(100% - 20px));
+  margin: -66px auto 8px;
+  pointer-events: none;
+}
+.detail-dock > * { pointer-events: auto; }
+
+.detail-dock-comment {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 4px;
+  border-radius: 22px;
+}
+.detail-dock-comment .detail-comment-input {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+:root[data-theme="light"] .detail-dock-comment .detail-comment-input {
+  background: rgba(255, 255, 255, .55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+.detail-dock-comment .detail-comment-input.expanded { align-items: flex-start; }
+.detail-dock-comment .detail-comment-input textarea { font-size: 12.5px; }
+.detail-dock-comment .comment-compose-avatar { width: 26px; height: 26px; flex: none; }
+.detail-dock-comment .comment-send { background: var(--action); color: #17140c; }
+
+.detail-dock-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 5px;
+  border-radius: 999px;
+}
+.detail-dock-actions .bar-icon { width: 38px; height: 38px; border-radius: 50%; }
+.detail-dock-actions .bar-icon.like-action { width: auto; min-width: 44px; padding-inline: 7px; gap: 4px; font-size: 11px; }
+.detail-dock-actions .bar-icon:hover { background: rgba(255, 255, 255, .07); }
+:root[data-theme="light"] .detail-dock-actions .bar-icon:hover { background: rgba(58, 54, 43, .06); }
+/* 选中态统一为香槟金，不再用粉红。 */
+.detail-dock-actions .bar-icon.selected,
+.detail-dock-actions .bar-icon.selected:active { color: var(--action); }
+.detail-dock-actions .bar-icon.like-action.selected .detail-like-count { color: var(--action); }
+:root[data-theme="dark"] .detail-dock-actions .bar-icon { color: #d7d5cf; }
+:root[data-theme="light"] .detail-dock-actions .bar-icon { color: #4c4a44; }
+
+/* 给悬浮栏让出空间，最后一条评论不会被盖住。 */
+.detail-body { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+
+@media (min-width: 1024px) {
+  .detail-dock { bottom: 20px; width: min(560px, 40vw); margin-top: -66px; }
+  .detail-body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .detail-dock { width: min(430px, 34vw); }
+}
+@media (max-width: 380px) {
+  .detail-dock { gap: 7px; width: calc(100% - 14px); }
+  .detail-dock-actions { padding-inline: 3px; }
+  .detail-dock-actions .bar-icon { width: 34px; }
+  .detail-dock-actions .bar-icon.like-action { min-width: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-dock-actions .bar-icon { transition: none; }
+}
+
+/* -------------------------------------------------------------------------
+   分享面板 / 弹窗：固态玻璃 + 适度遮罩，不把整页压成纯黑。
+   ------------------------------------------------------------------------- */
+.share-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: end center;
+  padding: 0;
+  background: rgba(9, 10, 13, .40);
+  -webkit-backdrop-filter: blur(6px) saturate(115%);
+  backdrop-filter: blur(6px) saturate(115%);
+  animation: heika-overlay-in 220ms ease both;
+}
+:root[data-theme="light"] .share-sheet-backdrop { background: rgba(30, 28, 22, .26); }
+.share-sheet {
+  width: min(560px, 100%);
+  max-height: min(88dvh, 720px);
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  padding: 18px 18px calc(16px + env(safe-area-inset-bottom));
+  border-radius: 22px 22px 0 0;
+  border-bottom: 0;
+  animation: share-sheet-in 260ms cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes share-sheet-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+.share-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.share-sheet-head h2 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+.share-sheet-head p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.share-sheet-close { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border: 1px solid var(--glass-stroke); border-radius: 50%; background: rgba(255, 255, 255, .06); color: var(--ink); }
+.share-sheet-preview { display: grid; gap: 5px; padding: 11px 12px; border-radius: 12px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .07); }
+:root[data-theme="light"] .share-sheet-preview { background: rgba(255, 255, 255, .48); border-color: rgba(58, 54, 43, .08); }
+.share-sheet-preview strong { color: var(--ink); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-sheet-preview span { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-sheet-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.share-sheet-item { display: grid; justify-items: center; gap: 7px; padding: 4px 0; border: 0; background: transparent; color: var(--muted); font-size: 10.5px; }
+.share-sheet-item:active .share-sheet-icon { transform: scale(.94); }
+.share-sheet-icon {
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border-radius: 14px;
+  background: var(--brand);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .18);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 34%, transparent), inset 0 1px 0 rgba(255, 255, 255, .26);
+  transition: transform 160ms var(--ease);
+}
+:root[data-theme="light"] .share-sheet-icon { border-color: rgba(255, 255, 255, .6); box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 26%, transparent), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.share-sheet-icon svg { width: 22px; height: 22px; }
+.share-sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 2px; }
+.share-sheet-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; padding: 0 12px; border: 1px solid var(--glass-stroke); border-radius: 12px; background: rgba(255, 255, 255, .06); color: var(--ink); font-size: 12px; }
+:root[data-theme="light"] .share-sheet-secondary { background: rgba(255, 255, 255, .5); }
+.share-sheet-secondary:active { transform: scale(.99); }
+@media (min-width: 720px) {
+  .share-sheet-backdrop { place-items: center; padding: 24px; }
+  .share-sheet { border-radius: 18px; border-bottom: 1px solid var(--glass-stroke); width: min(560px, 92vw); padding: 20px; }
+}
+@media (max-width: 360px) {
+  .share-sheet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-sheet-backdrop, .share-sheet { animation: none !important; }
+}
+
+/* 通用弹窗改用玻璃材质；遮罩只压低干扰。 */
+.modal-backdrop:not(.composer-backdrop) {
+  background: rgba(8, 9, 11, .46);
+  -webkit-backdrop-filter: blur(8px) saturate(118%);
+  backdrop-filter: blur(8px) saturate(118%);
+}
+:root[data-theme="light"] .modal-backdrop:not(.composer-backdrop) { background: rgba(38, 34, 26, .22); }
+.modal-backdrop:not(.composer-backdrop) > .modal:not(.composer-modal),
+:root[data-theme="dark"] .modal-backdrop:not(.composer-backdrop) > .modal:not(.composer-modal) {
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(39, 41, 49, .72);
+  -webkit-backdrop-filter: blur(26px) saturate(150%) brightness(1.10);
+  backdrop-filter: blur(26px) saturate(150%) brightness(1.10);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, .40), inset 0 1px 0 rgba(255, 255, 255, .10);
+}
+:root[data-theme="light"] .modal-backdrop:not(.composer-backdrop) > .modal:not(.composer-modal) {
+  border-color: rgba(255, 255, 255, .78);
+  background: rgba(252, 251, 247, .78);
+  -webkit-backdrop-filter: blur(26px) saturate(140%) brightness(1.03);
+  backdrop-filter: blur(26px) saturate(140%) brightness(1.03);
+  box-shadow: 0 24px 64px rgba(40, 36, 27, .18), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .modal-backdrop:not(.composer-backdrop) > .modal:not(.composer-modal),
+  :root[data-theme="dark"] .modal-backdrop:not(.composer-backdrop) > .modal:not(.composer-modal) { background: #262830; }
+  :root[data-theme="light"] .modal-backdrop:not(.composer-backdrop) > .modal:not(.composer-modal) { background: #fbfaf6; }
+}
+
+/* 更多操作菜单：同一材质，避免变成一块黑色实心。 */
+.detail-more-menu,
+:root[data-theme="dark"] .detail-more-menu {
+  background: rgba(38, 40, 47, .70);
+  border-color: rgba(255, 255, 255, .14);
+  -webkit-backdrop-filter: blur(22px) saturate(145%) brightness(1.10);
+  backdrop-filter: blur(22px) saturate(145%) brightness(1.10);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(255, 255, 255, .10);
+}
+:root[data-theme="light"] .detail-more-menu {
+  background: rgba(252, 251, 247, .78);
+  border-color: rgba(255, 255, 255, .8);
+  -webkit-backdrop-filter: blur(22px) saturate(140%) brightness(1.03);
+  backdrop-filter: blur(22px) saturate(140%) brightness(1.03);
+  box-shadow: 0 16px 40px rgba(40, 36, 27, .16), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+/* 底部导航：与详情悬浮栏同一亮度层级。 */
+.bottom-nav,
+:root[data-theme="dark"] .bottom-nav {
+  background: rgba(37, 39, 46, .66);
+  border-color: rgba(255, 255, 255, .12);
+  -webkit-backdrop-filter: blur(24px) saturate(148%) brightness(1.10);
+  backdrop-filter: blur(24px) saturate(148%) brightness(1.10);
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .07);
+}
+:root[data-theme="light"] .bottom-nav {
+  background: rgba(252, 251, 247, .70);
+  border-color: rgba(255, 255, 255, .74);
+  -webkit-backdrop-filter: blur(24px) saturate(140%) brightness(1.02);
+  backdrop-filter: blur(24px) saturate(140%) brightness(1.02);
+  box-shadow: 0 -10px 30px rgba(46, 42, 32, .12), inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+@media (max-width: 1199px) {
+  :root[data-theme="dark"] .bottom-nav-shell { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root[data-theme="light"] .bottom-nav-shell { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .bottom-nav, :root[data-theme="dark"] .bottom-nav { background: #23252c; }
+  :root[data-theme="light"] .bottom-nav { background: #faf9f5; }
+}
+
+/* -------------------------------------------------------------------------
+   设置页：一级简洁、二级分组、三级具体设置，保留信息密度。
+   只在「分组卡片」层用一次玻璃，不给每一行加强边框。
+   ------------------------------------------------------------------------- */
+.settings-home-page .settings-list {
+  border: 1px solid var(--glass-stroke);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(140%) brightness(var(--glass-brightness));
+  backdrop-filter: blur(20px) saturate(140%) brightness(var(--glass-brightness));
+  box-shadow: var(--glass-shadow-soft);
+}
+.settings-home-page .settings-list button { border-bottom: 1px solid color-mix(in srgb, var(--line) 62%, transparent); }
+.settings-home-page .settings-list button:last-child { border-bottom: 0; }
+.settings-home-page .settings-list button:hover { background: color-mix(in srgb, var(--action) 7%, transparent); }
+.settings-detail-page .settings-module { border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent); }
+.settings-detail-page .switch-row,
+.settings-detail-page .settings-list button { background: transparent; }
+.settings-detail-page .settings-list { border: 0; background: transparent; }
+:root[data-theme="light"] .settings-home-page .settings-list { background: rgba(255, 255, 255, .58); border-color: rgba(255, 255, 255, .72); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .settings-home-page .settings-list { background: var(--surface); }
+}
