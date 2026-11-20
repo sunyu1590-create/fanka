@@ -949,9 +949,9 @@ private fun AdminConfigPanel(state: AdminCenterState, viewModel: AdminCenterView
                     }
                     Button(enabled = state.saving == null, onClick = { viewModel.createAiTask("review_pending") }, modifier = Modifier.fillMaxWidth()) { Text(if (state.saving == "ai-task-create") "正在创建…" else "一键 AI 审核待审内容", fontSize = 12.sp) }
                     val metrics = meta.optJSONObject("metrics")
-                    val period = metrics?.optJSONObject("periods")?.optJSONObject("month")
+                    val period = metrics?.optJSONObject("periods")?.optJSONObject("thirtyDays")
                     Text(
-                        "本月调用 ${period?.optInt("requests") ?: 0} 次 · ${period?.optLong("tokens") ?: 0} tokens",
+                        "近 30 天调用 ${period?.optInt("requests") ?: 0} 次 · ${period?.optLong("tokens") ?: 0} tokens",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 10.sp,
                     )

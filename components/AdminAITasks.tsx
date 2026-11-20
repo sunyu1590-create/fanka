@@ -19,7 +19,8 @@ type Metrics = {
   recent?: UsageEntry[];
   pricingConfigured?: boolean;
 };
-type ModelState = { configs: Array<{ purpose: string; model: string; updated_at: string }>; availableModels: string[]; discoveryAvailable: boolean; history: Array<{ purpose: string; model: string; changed_at: string; profiles: { nickname: string } | { nickname: string }[] | null }>; prices: Array<{ model: string; version: string; currency: string; input_per_million: number; cache_hit_input_per_million: number | null; output_per_million: number; valid_from: string }> };
+type Price = { model: string; version: string; currency: string; input_per_million: number; cache_hit_input_per_million: number | null; output_per_million: number; valid_from: string };
+type ModelState = { configs: Array<{ purpose: string; model: string; updated_at: string }>; availableModels: string[]; models?: string[]; usageModels?: Array<{ model: string; requests: number }>; discoveryAvailable: boolean; history: Array<{ purpose: string; model: string; changed_at: string; profiles: { nickname: string } | { nickname: string }[] | null }>; prices: Price[] };
 
 const purposeLabels: Record<string, string> = { review: "内容审核", summary: "内容总结", classification: "自动分类", polish: "正文润色", markdown: "Markdown 优化", title: "标题生成", other: "其他 AI 功能" };
 const taskLabels: Record<string, string> = { summary_all: "全量生成 AI 总结", summary_incremental: "增量生成 AI 总结", review_pending: "一键 AI 审核", classification: "自动分类与标签" };
@@ -28,7 +29,7 @@ const firstProfile = (value: Profile | Profile[] | null | undefined) => Array.is
 const formatTokens = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(Number(value) || 0);
 const formatMoney = (value: Record<string, number> | null | undefined, requests = 0) => {
   if (requests === 0) return "—";
-  if (!value) return "缺少完整价格配置";
+  if (!value) return "部分请求未登记价格";
   const rows = Object.entries(value);
   return rows.length ? rows.map(([currency, amount]) => `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 4 }).format(amount)} ${currency}`).join(" · ") : "—";
 };
@@ -77,7 +78,10 @@ export default function AdminAITasks() {
         cloudRequest("/api/v1/admin/ai-model-config") as Promise<ModelState>,
       ]);
       setBatches(taskData.batches || []); setReviewItems(taskData.reviewItems || []); setClassificationItems(taskData.classificationItems || []); setMetrics(taskData.metrics || {}); setModelState(configData);
-      if (!priceDraft.model && configData.availableModels?.[0]) setPriceDraft((current) => ({ ...current, model: configData.availableModels[0] }));
+      if (!priceDraft.model) {
+        const preferred = configData.usageModels?.[0]?.model || configData.availableModels?.[0];
+        if (preferred) setPriceDraft((current) => ({ ...current, model: preferred }));
+      }
       setError("");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "AI 资源数据加载失败"); }
   }, [priceDraft.model]);
@@ -110,14 +114,25 @@ export default function AdminAITasks() {
   const savePrice = (event: FormEvent) => {
     event.preventDefault();
     void execute("模型价格版本已保存，后续请求按该版本估算费用。", async () => {
-      await cloudRequest("/api/v1/admin/ai-model-config", {
+      const saved = await cloudRequest("/api/v1/admin/ai-model-config", {
         action: "price", model: priceDraft.model, version: priceDraft.version, currency: priceDraft.currency,
         inputPerMillion: Number(priceDraft.inputPerMillion), cacheHitInputPerMillion: priceDraft.cacheHitInputPerMillion, outputPerMillion: Number(priceDraft.outputPerMillion),
-      }, "PATCH");
+      }, "PATCH") as Price | null;
+      if (saved) setModelState((current) => current ? { ...current, prices: [saved, ...(current.prices || []).filter((price) => !(price.model === saved.model && price.version === saved.version))] } : current);
       setPriceDraft((current) => ({ ...current, version: "", inputPerMillion: "", cacheHitInputPerMillion: "", outputPerMillion: "" }));
     });
   };
   const dailyMaximum = useMemo(() => Math.max(1, ...(metrics.daily || []).map((day) => Number(day.tokens) || 0)), [metrics.daily]);
+  const latestPrices = useMemo(() => {
+    const map = new Map<string, Price>();
+    for (const price of modelState?.prices || []) if (!map.has(price.model)) map.set(price.model, price);
+    return map;
+  }, [modelState]);
+  const modelOptions = useMemo(() => {
+    const usage = new Map((modelState?.usageModels || []).map((row): [string, number] => [row.model, row.requests]));
+    const names = new Set<string>([...(modelState?.models || []), ...(modelState?.availableModels || []), ...(modelState?.configs || []).map((row) => row.model), ...(modelState?.prices || []).map((row) => row.model)]);
+    return [...names].map((model) => ({ model, requests: usage.get(model) || 0 })).sort((a, b) => b.requests - a.requests || a.model.localeCompare(b.model));
+  }, [modelState]);
   const currentActive = batches.some((batch) => ["queued", "running", "paused"].includes(batch.status));
 
   return <main className="admin-ai-center">
@@ -146,11 +161,18 @@ export default function AdminAITasks() {
       <div className="admin-ai-request-list">{metrics.recent?.slice(0, 12).map((row) => <div key={row.request_id}><span className={row.status === "success" ? "ok" : "failed"}>{row.status === "success" ? "成功" : "失败"}</span><strong>{purposeLabels[row.purpose] || row.purpose}</strong><small>{row.model} · 输入 {formatTokens(row.input_tokens)} / 输出 {formatTokens(row.output_tokens)} · {row.elapsed_ms} ms · 平均输出 {row.output_tokens_per_second == null ? "暂无" : `${Number(row.output_tokens_per_second).toFixed(1)} Token/秒`}</small><time>{new Date(row.created_at).toLocaleString("zh-CN")}</time></div>)}</div>
     </section>
 
-    <section className="admin-ai-center-panel"><div className="admin-ai-panel-title"><h3>模型与价格配置</h3><small>候选模型由 DeepSeek 服务端实时返回</small></div>
+    <section className="admin-ai-center-panel"><div className="admin-ai-panel-title"><h3>模型与价格配置</h3><small>候选模型合并服务端列表与近 30 天真实请求</small></div>
       {!modelState?.discoveryAvailable && <p className="admin-ai-data-note">当前未能读取服务端模型列表。请先检查已保存的服务密钥和 DeepSeek 连接；不会展示未经验证的模型名称。</p>}
-      {modelState?.discoveryAvailable && <div className="admin-ai-model-config-grid">{(modelState.configs || []).map((row) => <label key={row.purpose}>{purposeLabels[row.purpose] || row.purpose}<select value={row.model} disabled={busy} onChange={(event) => void changeModel(row.purpose, event.target.value)}>{modelState.availableModels.map((model) => <option key={model} value={model}>{model}</option>)}</select></label>)}</div>}
+      {!!modelState?.usageModels?.length && <p className="admin-ai-data-note">近 30 天实际请求：{modelState.usageModels.map((row) => `${row.model}（${formatTokens(row.requests)} 次，${latestPrices.has(row.model) ? "已登记价格" : "未登记价格"}）`).join("；")}。请为实际请求的模型登记价格，费用才会显示。</p>}
+      {modelState?.discoveryAvailable && <div className="admin-ai-model-config-grid">{(modelState.configs || []).map((row) => {
+        const options = modelState.availableModels.includes(row.model) ? modelState.availableModels : [row.model, ...modelState.availableModels];
+        const price = latestPrices.get(row.model);
+        return <label key={row.purpose}>{purposeLabels[row.purpose] || row.purpose}<select value={row.model} disabled={busy} onChange={(event) => void changeModel(row.purpose, event.target.value)}>{options.map((model) => <option key={model} value={model}>{model}{modelState.availableModels.includes(model) ? "" : " · 服务端未列出"}</option>)}</select><small className={`admin-ai-model-price${price ? "" : " is-missing"}`}>{price ? `输入 ${price.input_per_million} · 缓存 ${price.cache_hit_input_per_million ?? "未区分"} · 输出 ${price.output_per_million} ${price.currency}` : "该模型尚未登记价格"}</small></label>;
+      })}</div>}
       <p className="admin-ai-data-note">当前接口未确认独立的“思考强度”参数，因此此处不伪造档位。新任务会固定记录启动时选中的模型。</p>
-      <form className="admin-ai-price-form" onSubmit={savePrice}><strong>添加价格版本（以服务商实际价格为准）</strong><select value={priceDraft.model} onChange={(event) => setPriceDraft((current) => ({ ...current, model: event.target.value }))} required><option value="">选择已验证模型</option>{modelState?.availableModels.map((model) => <option value={model} key={model}>{model}</option>)}</select><input value={priceDraft.version} onChange={(event) => setPriceDraft((current) => ({ ...current, version: event.target.value }))} placeholder="价格版本或生效批次" required maxLength={60}/><select value={priceDraft.currency} onChange={(event) => setPriceDraft((current) => ({ ...current, currency: event.target.value }))}><option value="CNY">人民币</option><option value="USD">美元</option></select><input type="number" min="0" step="0.000001" value={priceDraft.inputPerMillion} onChange={(event) => setPriceDraft((current) => ({ ...current, inputPerMillion: event.target.value }))} placeholder="普通输入价格 / 百万 Token" required/><input type="number" min="0" step="0.000001" value={priceDraft.cacheHitInputPerMillion} onChange={(event) => setPriceDraft((current) => ({ ...current, cacheHitInputPerMillion: event.target.value }))} placeholder="缓存输入价格（选填）"/><input type="number" min="0" step="0.000001" value={priceDraft.outputPerMillion} onChange={(event) => setPriceDraft((current) => ({ ...current, outputPerMillion: event.target.value }))} placeholder="输出价格 / 百万 Token" required/><button className="soft-button" disabled={busy || !modelState?.availableModels.length}>保存价格</button></form>
+      <form className="admin-ai-price-form" onSubmit={savePrice}><strong>添加价格版本（以服务商实际价格为准）</strong><select value={priceDraft.model} onChange={(event) => setPriceDraft((current) => ({ ...current, model: event.target.value }))} required><option value="">选择模型（优先当前在用）</option>{modelOptions.map(({ model, requests }) => <option value={model} key={model}>{model}{requests ? ` · 近 30 天 ${formatTokens(requests)} 次` : ""}{modelState?.availableModels.includes(model) ? "" : " · 服务端未列出"}</option>)}</select><input value={priceDraft.version} onChange={(event) => setPriceDraft((current) => ({ ...current, version: event.target.value }))} placeholder="价格版本或生效批次" required maxLength={60}/><select value={priceDraft.currency} onChange={(event) => setPriceDraft((current) => ({ ...current, currency: event.target.value }))}><option value="CNY">人民币</option><option value="USD">美元</option></select><input type="number" min="0" step="0.000001" value={priceDraft.inputPerMillion} onChange={(event) => setPriceDraft((current) => ({ ...current, inputPerMillion: event.target.value }))} placeholder="普通输入价格 / 百万 Token" required/><input type="number" min="0" step="0.000001" value={priceDraft.cacheHitInputPerMillion} onChange={(event) => setPriceDraft((current) => ({ ...current, cacheHitInputPerMillion: event.target.value }))} placeholder="缓存输入价格（选填）"/><input type="number" min="0" step="0.000001" value={priceDraft.outputPerMillion} onChange={(event) => setPriceDraft((current) => ({ ...current, outputPerMillion: event.target.value }))} placeholder="输出价格 / 百万 Token" required/><button className="soft-button" disabled={busy || !modelOptions.length}>保存价格</button></form>
+      {priceDraft.model && !(modelState?.usageModels || []).some((row) => row.model === priceDraft.model && row.requests > 0) && !!modelState?.usageModels?.length && <p className="admin-ai-price-hint warn">该模型近 30 天没有请求；当前实际使用的是 {modelState.usageModels[0].model}，请确认是否为它登记价格。</p>}
+      <p className="admin-ai-price-hint">保存后立即按该价格回填此模型尚未计费的历史请求，费用卡片与每日趋势会同步刷新。</p>
       {modelState?.prices?.length ? <div className="admin-ai-price-list">{modelState.prices.map((price) => <span key={`${price.model}-${price.version}`}>{price.model} · {price.version} · 普通输入 {price.input_per_million}/{price.currency} · 缓存输入 {price.cache_hit_input_per_million ?? "未区分"}/{price.currency} · 输出 {price.output_per_million}/{price.currency} · {new Date(price.valid_from).toLocaleDateString("zh-CN")} 起</span>)}</div> : <p className="admin-ai-data-note">尚未登记模型价格；费用将显示为未配置，不会估算虚构金额。</p>}
       {!!modelState?.history.length && <details className="admin-ai-config-history"><summary>查看模型配置变更记录</summary>{modelState.history.map((row, index) => <span key={`${row.changed_at}-${index}`}>{purposeLabels[row.purpose] || row.purpose} · {row.model} · {new Date(row.changed_at).toLocaleString("zh-CN")}</span>)}</details>}
     </section>

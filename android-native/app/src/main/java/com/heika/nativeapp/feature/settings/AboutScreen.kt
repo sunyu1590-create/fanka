@@ -42,6 +42,9 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(70, "2026.11.20", listOf(
+        "AI 资源中心的调用次数改为近 30 天口径，不再固定显示 0。",
+    )),
     NativeRelease(69, "2026.11.20", listOf(
         "发布页重写：AI 自动判断投社区精选还是 AI 空间，AI 内容类型也由 AI 决定，不用手选。",
         "图片与视频入口改成等宽等高的两张卡片，不再一大一小。",
