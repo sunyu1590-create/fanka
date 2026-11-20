@@ -22,7 +22,7 @@ HEIKA 是内容探索社区，网页端与原生 Android App 共用账号和核�
 
 - 网站 API 服务通过 Supabase SDK 访问 Auth、Postgres 和 Storage；主服务密钥仅供服务端使用。不要在网页变量或 APK 中放入服务密钥。
 - Android 登录与账号令牌通过现有 CloudBase 账号网关及 HEIKA API；App 继续复用 `/api/v1` 业务服务。
-- DeepSeek API 密钥由管理员保存后使用 AES-256-GCM 加密，并存放在 `@vercel/blob` 私有对象中。该 SDK 是代码中的密钥存储依赖，不表示网站部署在 Vercel。
+- DeepSeek API 密钥由管理员在后台保存，使用 AES-256-GCM 加密后写入 Supabase 的 `app_secrets` 表（仅 `service_role` 可访问），不再依赖 Vercel Blob 或服务器本地文件；明文只在应用进程内存中出现。
 - 当前 Compose 配置包含 `app`、`ai-worker`、`caddy`。交接 AI 必须核验目标机现有容器、域名、数据服务和环境后再部署。
 
 ## 本地检查
@@ -52,7 +52,7 @@ cd android-native
 
 - `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`（兼容旧名 `SUPABASE_SECRET_KEY`）
 - `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`NEXT_PUBLIC_AUTH_REDIRECT_URL`、`PUBLIC_BASE_URL`
-- `AI_SETTINGS_ENCRYPTION_KEY`、`BLOB_READ_WRITE_TOKEN`、`AI_TASK_WORKER_TOKEN`、`NEXT_PUBLIC_VIDEO_UPLOAD_BETA`
+- `AI_SETTINGS_ENCRYPTION_KEY`、`AI_TASK_WORKER_TOKEN`、`NEXT_PUBLIC_VIDEO_UPLOAD_BETA`
 
 仓库只记录变量名和占位配置，禁止提交任何真实密钥。AI worker 需要与主服务配置相同的 `AI_TASK_WORKER_TOKEN`。
 

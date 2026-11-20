@@ -1,92 +1,63 @@
-import { del, get, put } from "@vercel/blob";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { adminClient } from "@/lib/server/admin-client";
 import { ApiError } from "@/lib/server/api";
-
-const SECRET_PATH = "private/ai/deepseek-key.json";
+import { SecretBoxError, decryptSecret, encryptSecret } from "@/lib/server/secret-box";
 
 /**
- * 密钥存储有两套后端：
- * 1. 配置了 BLOB_READ_WRITE_TOKEN 时，沿用 Blob 私有对象（多实例共享）；
- * 2. 自托管单机部署没有 Blob 时，写到服务器本地文件（同样 AES-256-GCM 加密）。
- * 两条路径存储的都是密文，明文只在进程内存中出现。
+ * AI 供应商密钥（当前为 DeepSeek）统一存放在 Supabase 的 public.app_secrets 表。
+ * 该表只对 service_role 开放，应用写入的是 AES-256-GCM 密文，
+ * 明文只在进程内存中出现，任何日志、接口响应和数据库行都不含明文。
+ * 不再使用 Vercel Blob，也不依赖服务器本地文件，多实例部署天然共享同一份密钥。
  */
-function localSecretFile() {
-  return process.env.AI_SECRET_FILE || join(process.cwd(), "data", "ai-secret.json");
+const SECRET_NAME = "ai.deepseek.api_key";
+
+function secretDb() {
+  try {
+    return adminClient();
+  } catch {
+    throw new ApiError(503, "AI 密钥保险箱尚未连接数据库，请检查 Supabase 服务端配置");
+  }
 }
 
-function usesBlob() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
-}
-
-function encryptionKey() {
-  const encoded = process.env.AI_SETTINGS_ENCRYPTION_KEY;
-  if (!encoded) throw new ApiError(503, "AI 密钥云端保险箱尚未配置");
-  const key = Buffer.from(encoded, "base64");
-  if (key.byteLength !== 32) throw new ApiError(503, "AI 密钥加密配置无效");
-  return key;
+function toApiError(error: unknown) {
+  if (error instanceof SecretBoxError) {
+    if (error.reason === "decrypt_failed") return new ApiError(503, "AI 密钥无法读取，请在管理后台重新保存");
+    return new ApiError(503, error.message);
+  }
+  return error;
 }
 
 export function encryptAiKey(value: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return JSON.stringify({ version: 1, iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), ciphertext: ciphertext.toString("base64") });
+  try {
+    return encryptSecret(value);
+  } catch (error) {
+    throw toApiError(error);
+  }
 }
 
 export function decryptAiKey(value: string) {
   try {
-    const record = JSON.parse(value) as { version: number; iv: string; tag: string; ciphertext: string };
-    if (record.version !== 1) throw new Error("unsupported version");
-    const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(record.iv, "base64"));
-    decipher.setAuthTag(Buffer.from(record.tag, "base64"));
-    return Buffer.concat([decipher.update(Buffer.from(record.ciphertext, "base64")), decipher.final()]).toString("utf8");
-  } catch {
-    throw new ApiError(503, "AI 密钥无法读取，请在管理后台重新保存");
-  }
-}
-
-async function readLocalSecret() {
-  try {
-    return await readFile(localSecretFile(), "utf8");
+    return decryptSecret(value);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw new ApiError(503, "AI 密钥文件无法读取，请检查服务器数据目录权限");
+    throw toApiError(error);
   }
 }
 
-export async function saveAiKey(key: string) {
+export async function saveAiKey(key: string, updatedBy: string | null = null) {
   const payload = encryptAiKey(key);
-  if (usesBlob()) {
-    await put(SECRET_PATH, payload, { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json", cacheControlMaxAge: 0 });
-    return;
-  }
-  const file = localSecretFile();
-  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-  await writeFile(file, payload, { encoding: "utf8", mode: 0o600 });
+  const { error } = await secretDb()
+    .from("app_secrets")
+    .upsert({ name: SECRET_NAME, ciphertext: payload, updated_by: updatedBy, updated_at: new Date().toISOString() }, { onConflict: "name" });
+  if (error) throw new ApiError(503, "AI 密钥保存失败，请稍后重试");
 }
 
 export async function readAiKey() {
-  if (!usesBlob()) {
-    const stored = await readLocalSecret();
-    return stored ? decryptAiKey(stored) : null;
-  }
-  try {
-    const file = await get(SECRET_PATH, { access: "private", useCache: false });
-    if (!file) return null;
-    return decryptAiKey(await new Response(file.stream).text());
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    // Blob 未授权或网络异常时按"未配置"处理，管理界面仍能打开并提示配置。
-    return null;
-  }
+  const { data, error } = await secretDb().from("app_secrets").select("ciphertext").eq("name", SECRET_NAME).maybeSingle();
+  if (error) throw new ApiError(503, "AI 密钥读取失败，请稍后重试");
+  if (!data?.ciphertext) return null;
+  return decryptAiKey(data.ciphertext as string);
 }
 
 export async function deleteAiKey() {
-  if (usesBlob()) {
-    await del(SECRET_PATH);
-    return;
-  }
-  await rm(localSecretFile(), { force: true });
+  const { error } = await secretDb().from("app_secrets").delete().eq("name", SECRET_NAME);
+  if (error) throw new ApiError(503, "AI 密钥删除失败，请稍后重试");
 }

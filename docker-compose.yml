@@ -9,8 +9,6 @@ services:
     volumes:
       # 只读挂载安装包清单，下载页在服务端直接读取版本信息
       - /home/ubuntu/downloads:/srv/dl:ro
-      # 自托管部署的 AI 密钥密文目录（无 Blob 令牌时使用）
-      - ./data:/app/data
     networks:
       - web
 
