@@ -706,6 +706,7 @@ export default function Community() {
     [writeChannel, setWriteChannel] = useState<"community" | "ai">("community"),
     [writeContentType, setWriteContentType] = useState<AiContentType>("knowledge_article"),
     [composerRoute, setComposerRoute] = useState<ComposerRoute | null>(null),
+    [composerRouteLocked, setComposerRouteLocked] = useState(false),
     [composerRouteChecking, setComposerRouteChecking] = useState(false),
     [composerRouteReason, setComposerRouteReason] = useState(""),
     [aiResourceFields, setAiResourceFields] = useState<Record<string, string>>({}),
@@ -2853,6 +2854,8 @@ export default function Community() {
     setAttachmentError("");
     setAiResourceFields(Object.fromEntries(Object.entries(initialResourceData).filter(([key]) => key !== "attachments").map(([key, value]) => [key, Array.isArray(value) ? value.join("\n") : typeof value === "string" ? value : ""]).filter(([, value]) => Boolean(value))));
     setEditing(initialPost?.id ?? null);
+    // 打开已有草稿/作品时保留原分类，不再自动重判；只有全新内容才让 AI 判断。
+    setComposerRouteLocked(Boolean(initialPost));
     setComposerEditingPublished(Boolean(post && post.status !== "draft"));
     setComposerRevisionMode(Boolean(post && (post.status === "published" || post.pendingRevision)));
     setTitle(revisionPayload?.title || initialPost?.title || "");
@@ -3099,7 +3102,7 @@ export default function Community() {
     if (!keepTag) setWriteTag(route.category);
   };
   const detectComposerRoute = async (force = false) => {
-    if (composerEditingPublished || editing !== null) return;
+    if (composerEditingPublished || composerRouteLocked) return;
     const titleText = title.trim();
     const bodyText = body.trim();
     if (!titleText && !bodyText) { setComposerRoute(null); setComposerRouteReason(""); return; }
@@ -3125,11 +3128,11 @@ export default function Community() {
   const detectComposerRouteRef = useRef(detectComposerRoute);
   detectComposerRouteRef.current = detectComposerRoute;
   useEffect(() => {
-    if (modal !== "write" || composerEditingPublished || editing !== null) return;
+    if (modal !== "write" || composerEditingPublished || composerRouteLocked) return;
     if (!title.trim() && !body.trim()) return;
     const timer = window.setTimeout(() => { void detectComposerRouteRef.current(); }, 1100);
     return () => window.clearTimeout(timer);
-  }, [modal, title, body, composerEditingPublished, editing]);
+  }, [modal, title, body, composerEditingPublished, composerRouteLocked]);
   const reorderComposerImages = (from: number, to: number) => {
     if (isPublishing || from === to || from < 0 || to < 0 || to >= composerImages.length) return;
     const coverId = composerImages[coverIndex]?.id;
@@ -3656,12 +3659,12 @@ export default function Community() {
     const source = (summary || plain).replace(/\s+/g, " ").trim();
     // 摘要控制在一句话、十多个字：太短像标签，太长会被各平台折叠。
     const firstSentence = source.split(/[。！？!?；;\n]/).map((item) => item.trim()).find(Boolean) || "";
-    const blurb = firstSentence.length >= 12 ? firstSentence.slice(0, 40) : `${(target.title || "这篇内容").slice(0, 20)}，值得花两分钟读完`;
+    const blurb = firstSentence.length >= 12 ? firstSentence.slice(0, 26) : `${(target.title || "这篇内容").slice(0, 18)}，值得花两分钟读完`;
     return {
       title: target.title,
       blurb,
       url,
-      text: `《${target.title}》\n${blurb}\n这是黑卡的链接，打开后可以进入黑卡探索更多内容：\n${url}`,
+      text: `《${(target.title || "").replace(/[。！？!?，,]+$/, "")}》\n${blurb}\n这是黑卡的链接，打开后可以进入黑卡探索更多内容：\n${url}`,
     };
   };
   const sharePublishedPost = async () => {
@@ -5619,11 +5622,11 @@ export default function Community() {
               <div className="composer-workspace">
               <div className="composer-scroll">
                 {!composerEditingPublished && <section className="composer-route" aria-label="发布去向">
-                  <div className="composer-route-head"><span>发布去向</span><small>{editing !== null ? "沿用内容的原分类" : composerRouteChecking ? "AI 正在判断…" : composerRoute?.source === "ai" ? "AI 已判断" : "按内容自动判断"}</small></div>
+                  <div className="composer-route-head"><span>发布去向</span><small>{composerEditingPublished || composerRouteLocked ? "沿用内容的原分类" : composerRouteChecking ? "AI 正在判断…" : composerRoute?.source === "ai" ? "AI 已判断" : "按内容自动判断"}</small></div>
                   <div className={`composer-route-target${writeChannel === "ai" ? " is-ai" : ""}`}>
                     <span className="composer-route-icon">{writeChannel === "ai" ? <Sparkles size={17}/> : <Compass size={17}/>}</span>
                     <div className="composer-route-copy"><strong>{composerRoute ? describeRoute(composerRoute) : writeChannel === "ai" ? `AI 空间 · ${AI_CONTENT_TYPE_LABELS[writeContentType]}` : `社区精选 · ${writeTag}`}</strong><small>{composerRouteReason || "写完标题和正文，会自动判断是投到社区精选还是 AI 空间；AI 内容类型也由 AI 定。"}</small></div>
-                    {editing === null && <button type="button" className="composer-route-refresh" disabled={composerRouteChecking || (!title.trim() && !body.trim())} onClick={() => void detectComposerRoute(true)}>{composerRouteChecking ? "判断中…" : "重新判断"}</button>}
+                    {!composerEditingPublished && !composerRouteLocked && <button type="button" className="composer-route-refresh" disabled={composerRouteChecking || (!title.trim() && !body.trim())} onClick={() => void detectComposerRoute(true)}>{composerRouteChecking ? "判断中…" : "重新判断"}</button>}
                   </div>
                   {writeChannel === "ai" && <p className="composer-route-hint">AI 内容类型由 AI 判断，需要修改分类可到「更多发布设置」。</p>}
                 </section>}
