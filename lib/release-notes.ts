@@ -7,6 +7,20 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.55.0",
+    date: "2026.11.21",
+    notes: [
+      { category: "体验优化", text: "精选与 AI 信息流统一作品卡外壳：图片与作者互动栏同属一张卡，16px 圆角加 1px 细描边，纯文字作品不再留灰色图片占位。" },
+      { category: "体验优化", text: "AI 资源中心改为真正的双列瀑布流，每列卡片紧跟上一张，不再被同行最高的卡撑开空档，列间距 12px。" },
+      { category: "体验优化", text: "设置中心一级为独立大圆角卡，二级与三级统一 18px 圆角分组、内部分割线，删掉三级页底部多余的返回行。" },
+      { category: "体验优化", text: "合集详情拆成阅读态与管理态：阅读页只留封面、简介、开始/继续阅读、收藏与目录，资料、章节管理与发布审核收进右上角更多菜单。" },
+      { category: "体验优化", text: "详情页合集导航收敛为一张轻量卡，上一章/下一章移到正文末尾；底部评论与互动两个胶囊统一 54px 高。" },
+      { category: "新功能", text: "个人主页新增「合集」标签，与我的作品、我的收藏、我的点赞同级，可集中查看、创建与管理章节。" },
+      { category: "问题修复", text: "修复合集章节的详情页评论加载失败：接口返回时把作品编号覆盖成了数据库主键，导致评论请求被判为无效编号。" },
+      { category: "问题修复", text: "修复审核意见显示为 null 的问题：通过不显示、待审只显示审核中、退回显示真实原因，没有记录时不渲染。" },
+    ],
+  },
+  {
     version: "2.52.0",
     date: "2026.11.20",
     notes: [
