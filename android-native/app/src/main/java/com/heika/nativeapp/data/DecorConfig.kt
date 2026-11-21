@@ -158,8 +158,9 @@ data class DecorConfig(
             return DecorConfig(
                 bar = parseBar(barNode),
                 card = parseCard(cardNode),
-                barThemeId = data.optString("bottomBarTitle").takeIf { it.isNotBlank() && it != "null" },
-                cardThemeId = data.optString("cardTitle").takeIf { it.isNotBlank() && it != "null" },
+                // 只有「从主题应用」的配置才带主题编号；工作室里手工调的配色为 null。
+                barThemeId = data.optString("bottomBarThemeId").takeIf { it.isNotBlank() && it != "null" },
+                cardThemeId = data.optString("cardThemeId").takeIf { it.isNotBlank() && it != "null" },
             )
         }
 
