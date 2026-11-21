@@ -7315,6 +7315,14 @@ img, video, canvas, iframe { max-width:100%; }
 }
 .settings-page .settings-list button:active,
 .settings-center-detail > button:active { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+/* 一级设置卡：独立大圆角卡，与二级/三级分组同一圆角口径 */
+.settings-page.settings-home-page .settings-center-card {
+  border-radius: var(--radius-card-lg);
+  border-color: var(--card-border);
+  background: var(--card-bg);
+}
+.settings-page.settings-home-page .settings-center-card:hover { border-color: var(--metal); }
+
 /* 三级页面只保留顶部返回，列表内不再重复一个「返回」。 */
 .settings-center-back { display: none !important; }
 .settings-detail-page .settings-list { margin-top: 2px; }
@@ -7497,8 +7505,8 @@ img, video, canvas, iframe { max-width:100%; }
 }
 .heika-masonry-item { min-width: 0; }
 @media (max-width: 640px) {
-  .heika-masonry { gap: 11px; }
-  .heika-masonry-column { gap: 11px; }
+  .heika-masonry { gap: 12px; }
+  .heika-masonry-column { gap: 12px; }
 }
 
 /* ---- 合集阅读页：紧凑竖版封面 + 右侧信息，且不再用整块灰底占位 ---- */
@@ -7696,7 +7704,8 @@ img, video, canvas, iframe { max-width:100%; }
 .collection-ghost.active,
 .collection-ghost[aria-pressed="true"] { border-color: color-mix(in srgb, var(--brand-accent) 55%, transparent); color: var(--brand-accent); }
 .collection-chapter-current { background: color-mix(in srgb, var(--brand-accent) 16%, transparent); color: var(--brand-accent); }
-.mine-tabs.mine-content-tabs button[aria-selected="true"] {
+.mine-tabs.mine-content-tabs button[aria-selected="true"],
+.mine-page .mine-tabs.mine-content-tabs button[aria-selected="true"] {
   border-color: color-mix(in srgb, var(--brand-accent) 44%, transparent);
   background: color-mix(in srgb, var(--brand-accent) 14%, transparent);
   color: color-mix(in srgb, var(--brand-accent) 86%, var(--ink));
