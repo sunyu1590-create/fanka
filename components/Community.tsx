@@ -287,6 +287,12 @@ function drawLuckyBonus() {
   if (roll < 0.166) return 2;
   return 0;
 }
+/** APP 内嵌模式：原生容器带 app=1 打开，网页只渲染业务内容。 */
+function isAppEmbed() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("app") === "1";
+}
+
 const nav = [
   ["today", "首页", Home],
   ["discover", "发现", Compass],
@@ -1874,8 +1880,10 @@ export default function Community() {
   // APP 内嵌打开时，网页只保留业务内容：顶栏、底栏与发布按钮由原生容器提供，
   // 避免出现两套导航和重复的下载入口。
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get("app") === "1") document.documentElement.dataset.appEmbed = "1";
+    if (!isAppEmbed()) return;
+    document.documentElement.dataset.appEmbed = "1";
+    // 引导页只属于网页端首次访问，容器里直接跳过。
+    update((current) => current.onboardingDone ? current : { ...current, onboardingDone: true });
   }, []);
   // 从 APP 的「底栏装扮 / 卡片装扮 / 创意工坊」直接进入对应页面，不经过网页首页。
   const sharedDecorHandled = useRef<string | null>(null);
@@ -4276,7 +4284,9 @@ export default function Community() {
                 ...s,
                 luckyBonus,
                 onboardingDone:
-                  previous.onboardingDone || Boolean(data.interests.length),
+                  // APP 内嵌打开时跳过网页引导：用户是从原生功能直接进来的，
+                  // 不该先看到一套只属于网页端的兴趣选择。
+                  previous.onboardingDone || isAppEmbed() || Boolean(data.interests.length),
                 name: data.profile.nickname,
                 bio: data.profile.bio,
                 avatar: data.profile.avatar_url,

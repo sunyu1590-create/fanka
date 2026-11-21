@@ -444,3 +444,8 @@
   padding-bottom: 0;
   box-shadow: none;
 }
+
+/* 容器内不显示网页自己的引导页，避免从原生入口进来先看到兴趣选择 */
+:root[data-app-embed="1"] .heika-onboarding {
+  display: none !important;
+}
