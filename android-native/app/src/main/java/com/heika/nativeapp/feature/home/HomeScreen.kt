@@ -753,8 +753,63 @@ private fun CardBack(number: Int, preview: Boolean = false) {
                         row++
                     }
                 }
+                // 稀疏点阵：点更大、间距更开（约 3%）
+                "dots" -> {
+                    var y = size.height / 12f
+                    while (y <= size.height) {
+                        var x = size.width / 12f
+                        while (x <= size.width) {
+                            drawCircle(palette.backBorder.copy(alpha = .3f), radius = 1.5.dp.toPx(), center = androidx.compose.ui.geometry.Offset(x, y))
+                            x += size.width / 6f
+                        }
+                        y += size.height / 8f
+                    }
+                }
+                // 纸张颗粒：两层错位细点模拟纸纤维（约 4%）
+                "paper" -> {
+                    var y = 0f
+                    var row = 0
+                    while (y <= size.height) {
+                        var x = if (row % 2 == 0) 0f else size.width / 40f
+                        while (x <= size.width) {
+                            drawCircle(palette.backBorder.copy(alpha = .26f), radius = 0.8.dp.toPx(), center = androidx.compose.ui.geometry.Offset(x, y))
+                            if (row % 3 == 0) {
+                                drawCircle(palette.backBorder.copy(alpha = .18f), radius = 0.6.dp.toPx(), center = androidx.compose.ui.geometry.Offset(x + size.width / 30f, y + size.height / 40f))
+                            }
+                            x += size.width / 20f
+                        }
+                        y += size.height / 34f
+                        row++
+                    }
+                }
+                // 同心圆：低强度等距圆环（约 2%）
+                "rings" -> {
+                    val cx = size.width / 2f
+                    val cy = size.height * .46f
+                    var r = size.width / 7f
+                    while (r < size.width * 1.2f) {
+                        drawCircle(
+                            palette.backBorder.copy(alpha = .22f),
+                            radius = r,
+                            center = androidx.compose.ui.geometry.Offset(cx, cy),
+                            style = Stroke(1.dp.toPx()),
+                        )
+                        r += size.width / 7f
+                    }
+                }
+                // 几何菱形：两组反向斜线交叉（约 3%）
+                "diamonds" -> {
+                    val step = size.width / 5f
+                    var d = -size.height
+                    while (d <= size.width) {
+                        drawLine(palette.backBorder.copy(alpha = .26f), start = androidx.compose.ui.geometry.Offset(d, 0f), end = androidx.compose.ui.geometry.Offset(d + size.height, size.height), strokeWidth = 1.dp.toPx())
+                        drawLine(palette.backBorder.copy(alpha = .26f), start = androidx.compose.ui.geometry.Offset(d, 0f), end = androidx.compose.ui.geometry.Offset(d - size.height, size.height), strokeWidth = 1.dp.toPx())
+                        d += step
+                    }
+                }
                 "none" -> Unit
                 else -> {
+                    // 细斜线（linen 默认）
                     for (line in 0..16) {
                         val x = size.width * (line / 16f)
                         drawLine(Color.White.copy(alpha = 0.045f), start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x - size.height * .24f, size.height), strokeWidth = 1.dp.toPx())

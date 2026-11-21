@@ -9,7 +9,7 @@ import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { blobToFile, renderBackdrop, renderIcon } from "@/lib/decor/image";
 import { uploadDecorAsset } from "@/lib/decor/upload";
 import { OFFICIAL_PRESETS } from "@/lib/decor/official";
-import { loadDecor, saveDecor, useDecor } from "@/lib/decor/store";
+import { loadDecor, saveDecor, useDecor, isDecorAppEmbed, installDecorAppliedHook } from "@/lib/decor/store";
 import {
   DECOR_ICON_SLOTS, SLOT_LABELS, DEFAULT_BOTTOM_BAR, DEFAULT_CARD, normalizeBottomBar, normalizeCard,
   paletteFor, safeColor, withAlpha, type BottomBarConfig, type CardConfig, type DecorConfig, type DecorIconSlot, type DecorTheme,
@@ -43,7 +43,7 @@ function useMode(): "dark" | "light" {
   return mode;
 }
 
-function BarPreview({ config, mode, active = "home", compact = false }: { config: BottomBarConfig; mode: "dark" | "light"; active?: DecorIconSlot; compact?: boolean }) {
+function BarPreview({ config, mode, active = "home", compact = false, onActiveChange }: { config: BottomBarConfig; mode: "dark" | "light"; active?: DecorIconSlot; compact?: boolean; onActiveChange?: (slot: DecorIconSlot) => void }) {
   const palette = paletteFor(config, config.mode === "split" ? mode : "dark");
   return (
     <div
@@ -63,7 +63,7 @@ function BarPreview({ config, mode, active = "home", compact = false }: { config
         const icon = config.icons[slot];
         const src = slot === active ? icon?.active || icon?.normal : icon?.normal;
         return (
-          <button type="button" key={slot} className={slot === active ? "active" : ""} tabIndex={-1}>
+          <button type="button" key={slot} className={slot === active ? "active" : ""} tabIndex={onActiveChange ? 0 : -1} onClick={() => onActiveChange?.(slot)} aria-pressed={slot === active}>
             {src ? (
               icon?.tint ? (
                 <span
@@ -121,9 +121,13 @@ function CardPreview({ config, mode, state = "back" }: { config: CardConfig; mod
         color: palette.numberColor,
       }}
     >
-      {palette.texture === "grid" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(${withAlpha(palette.backBorder, .28)} 1px, transparent 1px), linear-gradient(90deg, ${withAlpha(palette.backBorder, .28)} 1px, transparent 1px)`, backgroundSize: "22px 22px" }} />}
-      {palette.texture === "linen" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(42deg, ${withAlpha("#FFFFFF", .05)} 0 1px, transparent 1px 5px)` }} />}
-      {palette.texture === "noise" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${withAlpha("#FFFFFF", .07)} .8px, transparent .9px)`, backgroundSize: "5px 5px" }} />}
+      {palette.texture === "linen" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(42deg, ${withAlpha(palette.backBorder, .26)} 0 1px, transparent 1px 5px)` }} />}
+      {palette.texture === "dots" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${withAlpha(palette.backBorder, .34)} 1.1px, transparent 1.3px)`, backgroundSize: "13px 13px" }} />}
+      {palette.texture === "grid" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(${withAlpha(palette.backBorder, .3)} 1px, transparent 1px), linear-gradient(90deg, ${withAlpha(palette.backBorder, .3)} 1px, transparent 1px)`, backgroundSize: "22px 22px" }} />}
+      {palette.texture === "paper" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${withAlpha(palette.backBorder, .3)} .7px, transparent .9px), radial-gradient(${withAlpha(palette.backBorder, .22)} .6px, transparent .8px)`, backgroundSize: "6px 6px, 9px 7px" }} />}
+      {palette.texture === "noise" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${withAlpha(palette.backBorder, .32)} .8px, transparent .9px)`, backgroundSize: "5px 5px" }} />}
+      {palette.texture === "rings" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `repeating-radial-gradient(circle at 50% 46%, ${withAlpha(palette.backBorder, .24)} 0 1px, transparent 1px 22px)` }} />}
+      {palette.texture === "diamonds" && <span aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(45deg, ${withAlpha(palette.backBorder, .24)} 0 1px, transparent 1px 16px), repeating-linear-gradient(-45deg, ${withAlpha(palette.backBorder, .24)} 0 1px, transparent 1px 16px)` }} />}
       {palette.pattern === "monogram" && <span aria-hidden="true" style={{ position: "absolute", fontFamily: "Georgia, serif", fontSize: 56, color: withAlpha(palette.backBorder, .55) }}>H</span>}
       {palette.pattern === "diamond" && <span aria-hidden="true" style={{ position: "absolute", width: "34%", aspectRatio: "1", border: `1px solid ${withAlpha(palette.backBorder, .8)}`, transform: "rotate(45deg)" }} />}
       {palette.pattern === "frame" && <span aria-hidden="true" style={{ position: "absolute", inset: 9, border: `1px solid ${withAlpha(palette.backBorder, .6)}` }} />}
@@ -136,7 +140,7 @@ function CardPreview({ config, mode, state = "back" }: { config: CardConfig; mod
   );
 }
 
-function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function ColorRow({ label, value, onChange, defaultValue }: { label: string; value: string; onChange: (value: string) => void; defaultValue?: string }) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   return (
@@ -156,18 +160,48 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
           }}
           onBlur={() => setText(value)}
         />
+        {defaultValue !== undefined && defaultValue.toLowerCase() !== value.toLowerCase() && (
+          <button type="button" className="decor-row-reset" aria-label={`恢复${label}默认值`} onClick={() => onChange(defaultValue)}>↺</button>
+        )}
       </span>
     </label>
   );
 }
 
-function OpacityRow({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+function OpacityRow({ label, value, onChange, defaultValue }: { label: string; value: number; onChange: (value: number) => void; defaultValue?: number }) {
   return (
     <label className="decor-slider-row">
-      <span>{label}<em>{Math.round(value * 100)}%</em></span>
+      <span>{label}<em>{Math.round(value * 100)}%</em>{defaultValue !== undefined && Math.abs(defaultValue - value) > 0.004 && (
+        <button type="button" className="decor-row-reset" aria-label={`恢复${label}默认值`} onClick={() => onChange(defaultValue)}>↺</button>
+      )}</span>
       <input type="range" min={0} max={1} step={0.01} value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
+}
+
+/**
+ * 保存后的反馈分层（4.3）：
+ * - 纯网页：只报「已保存到账户」，不假装 APP 有回执；
+ * - APP 内嵌：先报「正在同步到 APP」，收到原生渲染回执后报「APP 已应用」，
+ *   超时未回执报「已保存，APP 待同步」，由用户决定是否重试。
+ */
+function announceSaved(onNotice: (message: string) => void) {
+  if (!isDecorAppEmbed()) {
+    onNotice("已保存到账户");
+    return;
+  }
+  onNotice("已保存到账户，正在同步到 APP");
+  let settled = false;
+  const finish = (message: string) => {
+    if (settled) return;
+    settled = true;
+    window.clearTimeout(timer);
+    window.removeEventListener("heika-decor-applied", onApplied);
+    onNotice(message);
+  };
+  const onApplied = () => finish("APP 已应用");
+  const timer = window.setTimeout(() => finish("已保存，APP 待同步"), 5000);
+  window.addEventListener("heika-decor-applied", onApplied, { once: true });
 }
 
 export default function DecorCenter({
@@ -195,6 +229,8 @@ export default function DecorCenter({
   const [demo, setDemo] = useState<{ config: DecorTheme; state: "back" | "confirm" | "content" } | null>(null);
   const [working, setWorking] = useState<{ bottomBar: BottomBarConfig; card: CardConfig }>({ bottomBar: decor.decor.bottomBar, card: decor.decor.card });
   const [studioKind, setStudioKind] = useState<"bottom" | "card">(initialKind === "card" ? "card" : "bottom");
+  // 单条底栏预览的选中状态切换（只预览，不改配置）。
+  const [previewSlot, setPreviewSlot] = useState<DecorIconSlot>("home");
   const [studioMode, setStudioMode] = useState<"dark" | "light">("dark");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -218,6 +254,9 @@ export default function DecorCenter({
     setWorking({ bottomBar: decor.decor.bottomBar, card: decor.decor.card });
     setDirty(false);
   }, [open, initialTab, initialKind]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // APP 渲染完成后回执「APP 已应用」（4.3），钩子只在装扮中心生命周期内有效。
+  useEffect(() => installDecorAppliedHook(), []);
 
   const loadList = useCallback(async (scope: Tab) => {
     if (scope === "studio") return;
@@ -276,7 +315,7 @@ export default function DecorCenter({
         patch.cardThemeId = theme.id;
       }
       await saveDecor(patch);
-      onNotice(part === "icons" ? "图标已应用" : part === "palette" ? "配色已应用" : "装扮已应用");
+      announceSaved(onNotice);
       setDetail(null);
     } catch (cause) {
       onNotice(cause instanceof Error ? cause.message : "应用失败，请重试");
@@ -304,7 +343,7 @@ export default function DecorCenter({
       if (apply) {
         await saveDecor({ bottomBar: working.bottomBar, card: working.card, bottomBarThemeId: null, cardThemeId: null });
         setDirty(false);
-        onNotice("已保存并应用");
+        announceSaved(onNotice);
       } else {
         onNotice("方案已保存在本地预览，点击「应用」后才会同步到账号");
       }
@@ -388,6 +427,8 @@ export default function DecorCenter({
 
   const barPalette = working.bottomBar[studioMode];
   const cardPalette = working.card[studioMode];
+  const barDefaults = DEFAULT_BOTTOM_BAR[studioMode];
+  const cardDefaults = DEFAULT_CARD[studioMode];
 
   const updateBar = (patch: Partial<typeof barPalette>) => {
     setWorking((current) => ({ ...current, bottomBar: { ...current.bottomBar, mode: "split", [studioMode]: { ...current.bottomBar[studioMode], ...patch } } }));
@@ -430,10 +471,18 @@ export default function DecorCenter({
                   ))}
                 </div>
               </div>
+              <div className="decor-studio-kind">
+                <button type="button" className={studioKind === "bottom" ? "active" : ""} onClick={() => setStudioKind("bottom")}><Layers size={15} /> 底栏</button>
+                <button type="button" className={studioKind === "card" ? "active" : ""} onClick={() => setStudioKind("card")}><ImageIcon size={15} /> 卡片</button>
+              </div>
               {studioKind === "bottom" ? (
                 <div className="decor-studio-bars">
-                  <BarPreview config={working.bottomBar} mode={studioMode} />
-                  <BarPreview config={working.bottomBar} mode={studioMode} active="discover" compact />
+                  <BarPreview config={working.bottomBar} mode={studioMode} active={previewSlot} onActiveChange={setPreviewSlot} />
+                  <div className="decor-preview-slot-tabs" role="group" aria-label="切换预览选中状态">
+                    {DECOR_ICON_SLOTS.map((slot) => (
+                      <button key={slot} type="button" className={previewSlot === slot ? "active" : ""} aria-pressed={previewSlot === slot} onClick={() => setPreviewSlot(slot)}>{SLOT_LABELS[slot]}</button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="decor-studio-cards">
@@ -441,135 +490,12 @@ export default function DecorCenter({
                   <CardPreview config={working.card} mode={studioMode} state="content" />
                 </div>
               )}
-              <div className="decor-studio-kind">
-                <button type="button" className={studioKind === "bottom" ? "active" : ""} onClick={() => setStudioKind("bottom")}><Layers size={15} /> 底栏</button>
-                <button type="button" className={studioKind === "card" ? "active" : ""} onClick={() => setStudioKind("card")}><ImageIcon size={15} /> 卡片</button>
-              </div>
-              <div className="decor-studio-actions">
-                <button type="button" className="is-primary" disabled={busy || !dirty} onClick={() => void saveStudio(true)}><Check size={15} />{busy ? "保存中…" : dirty ? "应用装扮" : "已应用"}</button>
-                <button type="button" onClick={() => setSubmitOpen(true)}><Upload size={15} /> 投稿</button>
-                <button type="button" onClick={() => {
-                  setWorking({ bottomBar: DEFAULT_BOTTOM_BAR, card: DEFAULT_CARD });
-                  setDirty(true);
-                }}><RotateCcw size={15} /> 恢复默认</button>
-              </div>
-              {dirty && <p className="decor-studio-note">预览不会立即生效，点击「应用装扮」后才会写入账号并同步到 APP。</p>}
             </div>
 
             <div className="decor-studio-editor">
-              {studioKind === "bottom" ? (
-                <>
-                  <section>
-                    <h3>底栏颜色</h3>
-                    <ColorRow label="背景" value={barPalette.bg} onChange={(value) => updateBar({ bg: value })} />
-                    <OpacityRow label="背景透明度" value={barPalette.bgOpacity} onChange={(value) => updateBar({ bgOpacity: value })} />
-                    <ColorRow label="描边" value={barPalette.border} onChange={(value) => updateBar({ border: value })} />
-                    <OpacityRow label="描边透明度" value={barPalette.borderOpacity} onChange={(value) => updateBar({ borderOpacity: value })} />
-                    <ColorRow label="图标" value={barPalette.icon} onChange={(value) => updateBar({ icon: value })} />
-                    <ColorRow label="选中图标" value={barPalette.activeIcon} onChange={(value) => updateBar({ activeIcon: value })} />
-                    <ColorRow label="文字" value={barPalette.label} onChange={(value) => updateBar({ label: value })} />
-                    <ColorRow label="选中文字" value={barPalette.activeLabel} onChange={(value) => updateBar({ activeLabel: value })} />
-                    <ColorRow label="选中底色" value={barPalette.activePill} onChange={(value) => updateBar({ activePill: value })} />
-                    <OpacityRow label="选中底色透明度" value={barPalette.activePillOpacity} onChange={(value) => updateBar({ activePillOpacity: value })} />
-                  </section>
-                  <section>
-                    <h3>底栏图标</h3>
-                    <p className="decor-section-hint">每个位置可以分别替换普通态与选中态；只上传一张时，选中态用颜色与轻微缩放区分。</p>
-                    {DECOR_ICON_SLOTS.map((slot) => {
-                      const icon = working.bottomBar.icons[slot];
-                      return (
-                        <div className="decor-icon-slot" key={slot}>
-                          <strong>{SLOT_LABELS[slot]}</strong>
-                          <div className="decor-icon-slot-previews">
-                            {(["normal", "active"] as const).map((state) => (
-                              <label key={state} className="decor-icon-upload">
-                                <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => {
-                                  const file = event.target.files?.[0];
-                                  event.currentTarget.value = "";
-                                  if (!file) return;
-                                  setIconScale(1); setIconFit("contain"); setIconTrim(true);
-                                  setIconEditing({ slot, state, file, url: URL.createObjectURL(file) });
-                                }} />
-                                {icon?.[state] ? <img src={icon[state]} alt="" /> : <span>{state === "normal" ? "普通" : "选中"}</span>}
-                              </label>
-                            ))}
-                          </div>
-                          {icon && (
-                            <div className="decor-icon-flags">
-                              <label><input type="checkbox" checked={icon.tint} onChange={(event) => {
-                                setWorking((current) => ({ ...current, bottomBar: { ...current.bottomBar, icons: { ...current.bottomBar.icons, [slot]: { ...icon, tint: event.target.checked } } } }));
-                                setDirty(true);
-                              }} /> 跟随主题色</label>
-                              <label><input type="range" min={0.6} max={1.4} step={0.02} value={icon.scale} onChange={(event) => {
-                                setWorking((current) => ({ ...current, bottomBar: { ...current.bottomBar, icons: { ...current.bottomBar.icons, [slot]: { ...icon, scale: Number(event.target.value) } } } }));
-                                setDirty(true);
-                              }} /></label>
-                              <button type="button" aria-label={`移除${SLOT_LABELS[slot]}图标`} onClick={() => {
-                                setWorking((current) => {
-                                  const icons = { ...current.bottomBar.icons };
-                                  delete icons[slot];
-                                  return { ...current, bottomBar: { ...current.bottomBar, icons } };
-                                });
-                                setDirty(true);
-                              }}><Trash2 size={13} /></button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </section>
-                </>
-              ) : (
-                <>
-                  <section>
-                    <h3>卡背</h3>
-                    <ColorRow label="卡背底色" value={cardPalette.backBg} onChange={(value) => updateCard({ backBg: value })} />
-                    <div className="decor-backdrop-row">
-                      <span>卡背图片</span>
-                      <label className="decor-backdrop-upload">
-                        <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void uploadBackdrop(file, "backImage"); }} />
-                        <ImageIcon size={14} /> 上传
-                      </label>
-                      {cardPalette.backImage && <button type="button" onClick={() => updateCard({ backImage: "" })}><X size={13} /> 移除</button>}
-                    </div>
-                    <label className="decor-select-row"><span>纹理</span>
-                      <select value={cardPalette.texture} onChange={(event) => updateCard({ texture: event.target.value as typeof cardPalette.texture })}>
-                        <option value="none">无</option><option value="linen">布纹</option><option value="grid">网格</option><option value="noise">颗粒</option>
-                      </select>
-                    </label>
-                    <label className="decor-select-row"><span>中央图案</span>
-                      <select value={cardPalette.pattern} onChange={(event) => updateCard({ pattern: event.target.value as typeof cardPalette.pattern })}>
-                        <option value="none">无</option><option value="monogram">字母 H</option><option value="diamond">菱形</option><option value="frame">内框</option>
-                      </select>
-                    </label>
-                    <ColorRow label="卡背描边" value={cardPalette.backBorder} onChange={(value) => updateCard({ backBorder: value })} />
-                    <ColorRow label="编号颜色" value={cardPalette.numberColor} onChange={(value) => updateCard({ numberColor: value })} />
-                    <ColorRow label="提示文字" value={cardPalette.hintColor} onChange={(value) => updateCard({ hintColor: value })} />
-                    <ColorRow label="按钮底色" value={cardPalette.actionBg} onChange={(value) => updateCard({ actionBg: value })} />
-                    <ColorRow label="按钮文字" value={cardPalette.actionText} onChange={(value) => updateCard({ actionText: value })} />
-                  </section>
-                  <section>
-                    <h3>翻开后的内容面</h3>
-                    <ColorRow label="内容区底色" value={cardPalette.contentBg} onChange={(value) => updateCard({ contentBg: value })} />
-                    <div className="decor-backdrop-row">
-                      <span>内容区底图</span>
-                      <label className="decor-backdrop-upload">
-                        <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void uploadBackdrop(file, "contentImage"); }} />
-                        <ImageIcon size={14} /> 上传
-                      </label>
-                      {cardPalette.contentImage && <button type="button" onClick={() => updateCard({ contentImage: "" })}><X size={13} /> 移除</button>}
-                    </div>
-                    <ColorRow label="内容区描边" value={cardPalette.contentBorder} onChange={(value) => updateCard({ contentBorder: value })} />
-                    <ColorRow label="标题" value={cardPalette.titleColor} onChange={(value) => updateCard({ titleColor: value })} />
-                    <ColorRow label="正文" value={cardPalette.bodyColor} onChange={(value) => updateCard({ bodyColor: value })} />
-                    <ColorRow label="分类底色" value={cardPalette.chipBg} onChange={(value) => updateCard({ chipBg: value })} />
-                    <ColorRow label="分类描边" value={cardPalette.chipBorder} onChange={(value) => updateCard({ chipBorder: value })} />
-                    <ColorRow label="强调色" value={cardPalette.accent} onChange={(value) => updateCard({ accent: value })} />
-                  </section>
-                </>
-              )}
               <section>
                 <h3>官方预设</h3>
+                <p className="decor-section-hint">点选即套用到预览，确认后点击下方「应用装扮」保存并同步。</p>
                 <div className="decor-preset-row">
                   {OFFICIAL_PRESETS.map((preset) => (
                     <button key={preset.slug} type="button" onClick={() => {
@@ -579,6 +505,153 @@ export default function DecorCenter({
                   ))}
                 </div>
               </section>
+              {studioKind === "bottom" ? (
+                <>
+                  <section>
+                    <h3>基础配色</h3>
+                    <ColorRow label="背景"  value={barPalette.bg} onChange={(value) => updateBar({ bg: value })} defaultValue={barDefaults.bg} />
+                    <ColorRow label="图标"  value={barPalette.icon} onChange={(value) => updateBar({ icon: value })} defaultValue={barDefaults.icon} />
+                    <ColorRow label="选中图标"  value={barPalette.activeIcon} onChange={(value) => updateBar({ activeIcon: value })} defaultValue={barDefaults.activeIcon} />
+                    <ColorRow label="文字"  value={barPalette.label} onChange={(value) => updateBar({ label: value })} defaultValue={barDefaults.label} />
+                    <ColorRow label="选中文字"  value={barPalette.activeLabel} onChange={(value) => updateBar({ activeLabel: value })} defaultValue={barDefaults.activeLabel} />
+                  </section>
+                  <details className="decor-advanced">
+                    <summary>高级自定义</summary>
+                    <section>
+                      <h3>透明度与描边</h3>
+                      <ColorRow label="描边"  value={barPalette.border} onChange={(value) => updateBar({ border: value })} defaultValue={barDefaults.border} />
+                      <OpacityRow label="背景透明度"  value={barPalette.bgOpacity} onChange={(value) => updateBar({ bgOpacity: value })} defaultValue={barDefaults.bgOpacity} />
+                      <OpacityRow label="描边透明度"  value={barPalette.borderOpacity} onChange={(value) => updateBar({ borderOpacity: value })} defaultValue={barDefaults.borderOpacity} />
+                      <ColorRow label="选中底色"  value={barPalette.activePill} onChange={(value) => updateBar({ activePill: value })} defaultValue={barDefaults.activePill} />
+                      <OpacityRow label="选中底色透明度"  value={barPalette.activePillOpacity} onChange={(value) => updateBar({ activePillOpacity: value })} defaultValue={barDefaults.activePillOpacity} />
+                    </section>
+                    <section>
+                      <h3>底栏图标</h3>
+                      <p className="decor-section-hint">每个位置可分别替换普通态与选中态；只上传一张时，选中态用颜色与轻微缩放区分。单色图标可跟随主题色，彩色图标保留原色。</p>
+                      {DECOR_ICON_SLOTS.map((slot) => {
+                        const icon = working.bottomBar.icons[slot];
+                        return (
+                          <div className="decor-icon-slot" key={slot}>
+                            <strong>{SLOT_LABELS[slot]}</strong>
+                            <div className="decor-icon-slot-previews">
+                              {(["normal", "active"] as const).map((state) => (
+                                <label key={state} className="decor-icon-upload">
+                                  <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.currentTarget.value = "";
+                                    if (!file) return;
+                                    setIconScale(1); setIconFit("contain"); setIconTrim(true);
+                                    setIconEditing({ slot, state, file, url: URL.createObjectURL(file) });
+                                  }} />
+                                  {icon?.[state] ? <img src={icon[state]} alt="" /> : <span>{state === "normal" ? "普通" : "选中"}</span>}
+                                </label>
+                              ))}
+                            </div>
+                            {icon && (
+                              <div className="decor-icon-flags">
+                                <label><input type="checkbox" checked={icon.tint} onChange={(event) => {
+                                  setWorking((current) => ({ ...current, bottomBar: { ...current.bottomBar, icons: { ...current.bottomBar.icons, [slot]: { ...icon, tint: event.target.checked } } } }));
+                                  setDirty(true);
+                                }} /> 跟随主题色</label>
+                                <label><input type="range" min={0.6} max={1.4} step={0.02} value={icon.scale} onChange={(event) => {
+                                  setWorking((current) => ({ ...current, bottomBar: { ...current.bottomBar, icons: { ...current.bottomBar.icons, [slot]: { ...icon, scale: Number(event.target.value) } } } }));
+                                  setDirty(true);
+                                }} /></label>
+                                <button type="button" aria-label={`移除${SLOT_LABELS[slot]}图标`} onClick={() => {
+                                  setWorking((current) => {
+                                    const icons = { ...current.bottomBar.icons };
+                                    delete icons[slot];
+                                    return { ...current, bottomBar: { ...current.bottomBar, icons } };
+                                  });
+                                  setDirty(true);
+                                }}><Trash2 size={13} /></button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </section>
+                  </details>
+                </>
+              ) : (
+                <>
+                  <section>
+                    <h3>基础设置</h3>
+                    <ColorRow label="卡背底色"  value={cardPalette.backBg} onChange={(value) => updateCard({ backBg: value })} defaultValue={cardDefaults.backBg} />
+                    <label className="decor-select-row"><span>纹理</span>
+                      <select value={cardPalette.texture} onChange={(event) => updateCard({ texture: event.target.value as typeof cardPalette.texture })}>
+                        <option value="none">无纹理</option>
+                        <option value="linen">细斜线</option>
+                        <option value="dots">稀疏点阵</option>
+                        <option value="grid">精细方格</option>
+                        <option value="paper">纸张颗粒</option>
+                        <option value="noise">磨砂噪点</option>
+                        <option value="rings">同心圆</option>
+                        <option value="diamonds">几何菱形</option>
+                      </select>
+                    </label>
+                    <label className="decor-select-row"><span>中央图案</span>
+                      <select value={cardPalette.pattern} onChange={(event) => updateCard({ pattern: event.target.value as typeof cardPalette.pattern })}>
+                        <option value="none">无</option>
+                        <option value="monogram">字母 H</option>
+                        <option value="diamond">菱形</option>
+                        <option value="frame">内框</option>
+                      </select>
+                    </label>
+                  </section>
+                  <details className="decor-advanced">
+                    <summary>高级自定义</summary>
+                    <section>
+                      <h3>卡背细节</h3>
+                      <div className="decor-backdrop-row">
+                        <span>卡背图片</span>
+                        <label className="decor-backdrop-upload">
+                          <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void uploadBackdrop(file, "backImage"); }} />
+                          <ImageIcon size={14} /> 上传
+                        </label>
+                        {cardPalette.backImage && <button type="button" onClick={() => updateCard({ backImage: "" })}><X size={13} /> 移除</button>}
+                      </div>
+                      <ColorRow label="卡背描边"  value={cardPalette.backBorder} onChange={(value) => updateCard({ backBorder: value })} defaultValue={cardDefaults.backBorder} />
+                      <ColorRow label="编号颜色"  value={cardPalette.numberColor} onChange={(value) => updateCard({ numberColor: value })} defaultValue={cardDefaults.numberColor} />
+                      <ColorRow label="提示文字"  value={cardPalette.hintColor} onChange={(value) => updateCard({ hintColor: value })} defaultValue={cardDefaults.hintColor} />
+                      <ColorRow label="按钮底色"  value={cardPalette.actionBg} onChange={(value) => updateCard({ actionBg: value })} defaultValue={cardDefaults.actionBg} />
+                      <ColorRow label="按钮文字"  value={cardPalette.actionText} onChange={(value) => updateCard({ actionText: value })} defaultValue={cardDefaults.actionText} />
+                    </section>
+                    <section>
+                      <h3>翻开后的内容面</h3>
+                      <ColorRow label="内容区底色"  value={cardPalette.contentBg} onChange={(value) => updateCard({ contentBg: value })} defaultValue={cardDefaults.contentBg} />
+                      <div className="decor-backdrop-row">
+                        <span>内容区底图</span>
+                        <label className="decor-backdrop-upload">
+                          <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void uploadBackdrop(file, "contentImage"); }} />
+                          <ImageIcon size={14} /> 上传
+                        </label>
+                        {cardPalette.contentImage && <button type="button" onClick={() => updateCard({ contentImage: "" })}><X size={13} /> 移除</button>}
+                      </div>
+                      <ColorRow label="内容区描边"  value={cardPalette.contentBorder} onChange={(value) => updateCard({ contentBorder: value })} defaultValue={cardDefaults.contentBorder} />
+                      <ColorRow label="标题"  value={cardPalette.titleColor} onChange={(value) => updateCard({ titleColor: value })} defaultValue={cardDefaults.titleColor} />
+                      <ColorRow label="正文"  value={cardPalette.bodyColor} onChange={(value) => updateCard({ bodyColor: value })} defaultValue={cardDefaults.bodyColor} />
+                      <ColorRow label="分类底色"  value={cardPalette.chipBg} onChange={(value) => updateCard({ chipBg: value })} defaultValue={cardDefaults.chipBg} />
+                      <ColorRow label="分类描边"  value={cardPalette.chipBorder} onChange={(value) => updateCard({ chipBorder: value })} defaultValue={cardDefaults.chipBorder} />
+                      <ColorRow label="强调色"  value={cardPalette.accent} onChange={(value) => updateCard({ accent: value })} defaultValue={cardDefaults.accent} />
+                    </section>
+                  </details>
+                </>
+              )}
+              <div className="decor-studio-actions">
+                <button type="button" className="is-primary" disabled={busy || !dirty} onClick={() => void saveStudio(true)}><Check size={15} />{busy ? "正在保存…" : dirty ? "应用装扮" : "已应用"}</button>
+                <button type="button" onClick={() => setSubmitOpen(true)}><Upload size={15} /> 投稿</button>
+                {!dirty && isDecorAppEmbed() && (
+                  <button type="button" onClick={() => {
+                    try { (window as unknown as { HeikaNative?: { post?: (m: string) => void } }).HeikaNative?.post?.(JSON.stringify({ type: "close" })); } catch { /* 用户仍可点右上角返回 */ }
+                  }}><Check size={15} /> 完成并返回 APP</button>
+                )}
+                <button type="button" onClick={() => {
+                  setWorking({ bottomBar: DEFAULT_BOTTOM_BAR, card: DEFAULT_CARD });
+                  setDirty(true);
+                }}><RotateCcw size={15} /> 恢复默认</button>
+              </div>
+              {dirty && <p className="decor-studio-note">预览不会立即生效，点击「应用装扮」后才会写入账号并同步到 APP。</p>}
             </div>
           </div>
         ) : (

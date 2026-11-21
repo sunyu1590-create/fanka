@@ -54,7 +54,8 @@ export type CardPalette = {
   backBg: string;
   /** 卡背图片；为空时只用底色与纹理 */
   backImage: string;
-  texture: "none" | "linen" | "grid" | "noise";
+  /** 纹理预设（需求十二）：none/细斜线/稀疏点阵/精细方格/纸张颗粒/磨砂噪点/同心圆/几何菱形 */
+  texture: "none" | "linen" | "dots" | "grid" | "paper" | "noise" | "rings" | "diamonds";
   pattern: "none" | "monogram" | "diamond" | "frame";
   backBorder: string;
   numberColor: string;
@@ -264,7 +265,8 @@ function normalizeBar(value: unknown, fallback: BottomBarPalette): BottomBarPale
 
 function normalizeCardPalette(value: unknown, fallback: CardPalette): CardPalette {
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-  const texture = source.texture === "grid" || source.texture === "noise" || source.texture === "none" ? source.texture : source.texture === "linen" ? "linen" : fallback.texture;
+  const TEXTURES = new Set(["none", "linen", "dots", "grid", "paper", "noise", "rings", "diamonds"]);
+  const texture = typeof source.texture === "string" && TEXTURES.has(source.texture) ? (source.texture as CardPalette["texture"]) : fallback.texture;
   const pattern = source.pattern === "diamond" || source.pattern === "frame" || source.pattern === "none" ? source.pattern : source.pattern === "monogram" ? "monogram" : fallback.pattern;
   return {
     backBg: safeColor(source.backBg, fallback.backBg),
