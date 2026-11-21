@@ -7724,3 +7724,42 @@ img, video, canvas, iframe { max-width:100%; }
 /* 章节切换与评分之间只留一条分隔，不用双线 */
 .detail-series-steps { margin: 18px 0 6px; padding-top: 0; border-top: 0; }
 .collection-chapter-open { align-items: center; }
+
+/* ---- 2026-11-21 圆角与选中态收口（Round 5 复核） ---- */
+/* AI 资源入口与内容卡同圆角口径（16px） */
+.ai-space-explore-entry { border-radius: var(--radius-card); }
+/* 合集页普通按钮回到 12px 圆角，只有底部悬浮栏保留全胶囊 */
+.collection-primary, .collection-ghost { border-radius: 12px; }
+/* 三级设置列表若使用通用 settings-list，同样是一个完整圆角分组 */
+.settings-page .settings-list:not(.settings-search-results) {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card-lg);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+/* 选项类选中态统一香槟金：三级设置、兴趣、布局、字体、下拉 */
+:root[data-theme="dark"] .preference-option.selected,
+:root[data-theme="light"] .preference-option.selected,
+.preference-option.selected,
+:root[data-theme="dark"] .account-interest-option.selected,
+:root[data-theme="light"] .account-interest-option.selected,
+:root[data-theme="dark"] .font-option.selected,
+:root[data-theme="light"] .font-option.selected,
+:root[data-theme="dark"] .discover-layout-options button[aria-pressed="true"],
+:root[data-theme="light"] .discover-layout-options button[aria-pressed="true"],
+:root[data-theme="dark"] .choice-select-option.selected,
+:root[data-theme="light"] .choice-select-option.selected {
+  border-color: color-mix(in srgb, var(--brand-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--brand-accent) 9%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-accent) 55%, transparent);
+}
+:root[data-theme="dark"] .preference-option.selected .preference-option-copy strong,
+:root[data-theme="light"] .preference-option.selected .preference-option-copy strong { color: var(--ink); }
+:root[data-theme="dark"] .preference-option.selected .preference-check,
+:root[data-theme="light"] .preference-option.selected .preference-check {
+  border-color: var(--brand-accent);
+  background: var(--brand-accent);
+  color: var(--brand-accent-ink);
+}
+:root[data-theme="dark"] .choice-select-option.selected > svg,
+:root[data-theme="light"] .choice-select-option.selected > svg { color: var(--brand-accent); }
