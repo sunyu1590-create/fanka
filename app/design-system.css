@@ -7763,3 +7763,31 @@ img, video, canvas, iframe { max-width:100%; }
 }
 :root[data-theme="dark"] .choice-select-option.selected > svg,
 :root[data-theme="light"] .choice-select-option.selected > svg { color: var(--brand-accent); }
+
+/* ---- 作品卡底部作者栏：昵称横排、认证图标紧跟、长昵称才省略 ---- */
+.heika-discovery-card .discovery-post-meta {
+  gap: 4px;
+  min-height: 32px;
+  padding: 6px 9px 7px;
+}
+.heika-discovery-card .discovery-author {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 30px;
+  gap: 4px;
+}
+.heika-discovery-card .discovery-author-name {
+  max-width: none;
+  min-width: 0;
+  flex: 0 1 auto;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.heika-discovery-card .discovery-author > svg,
+.heika-discovery-card .discovery-author [class*="badge"] { flex: 0 0 auto; }
+.heika-discovery-card .discovery-post-actions { gap: 0; flex: 0 0 auto; }
+.heika-discovery-card .discovery-post-actions button { width: 30px; height: 30px; }
+.heika-discovery-card .discovery-like-count { min-width: 11px; font-size: 9.5px; }
