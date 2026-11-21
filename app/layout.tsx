@@ -8,6 +8,10 @@ import './settings.css';
 import './composer.css';
 import './public-profile.css';
 import './community-access.css';
+import './profile.css';
+import './decor.css';
+import './decor-center.css';
+import './drafts.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',

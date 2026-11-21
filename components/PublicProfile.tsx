@@ -1,43 +1,37 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, ChevronRight, LockKeyhole, MessageCircle, MoreHorizontal, Share2, UserRound } from "lucide-react";
-import { browserDb } from "@/lib/browser-db";
+import { ArrowLeft, Check, Heart, LockKeyhole, MessageCircle, MoreHorizontal, Share2, UserRound } from "lucide-react";
 import AnimatedNotice from "./AnimatedNotice";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
-import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import ProfileBadgeList, { type ProfileBadge } from "./ProfileBadgeList";
+import ProfileHeader from "./ProfileHeader";
+import type { CoverMeta } from "./CoverEditor";
 
-type PublicInfo = { nickname: string | null; bio: string | null; avatar_url: string | null; show_bookmarks: boolean };
+type PublicInfo = {
+  nickname: string | null;
+  bio: string | null;
+  avatar_url: string | null;
+  cover_url?: string | null;
+  cover_meta?: Partial<CoverMeta> | null;
+  show_bookmarks: boolean;
+};
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
-type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; video_url?: string | null; created_at?: string; post_media?: { storage_path: string; sort_order: number }[] };
+type ApiPost = {
+  id: number;
+  cloudId?: string;
+  title?: string;
+  body?: string;
+  image?: string;
+  imageRetina?: string;
+  thumbnailImages?: string[];
+  video?: string;
+  date?: string;
+  likedAt?: string | null;
+};
 type ProfileLayout = "masonry" | "list";
 type ProfileCollection = { id: string; title: string; kind: string; coverUrl: string | null; publishedCount?: number };
-
-async function withSignedPostImages(db: Awaited<ReturnType<typeof browserDb>>, posts: ProfilePost[]) {
-  const paths = [...new Set(posts.flatMap((post) => (post.post_media || []).map((media) => media.storage_path)))];
-  if (!paths.length) return posts;
-  const buckets = new Map<string, string[]>();
-  for (const path of paths) {
-    const bucket = mediaBucketForPath(path);
-    buckets.set(bucket, [...(buckets.get(bucket) || []), path]);
-  }
-  const results = await Promise.all([...buckets].flatMap(([bucket, bucketPaths]) => {
-    const batches = Array.from({ length: Math.ceil(bucketPaths.length / 100) }, (_, index) => bucketPaths.slice(index * 100, (index + 1) * 100));
-    return batches.map((batch) => db.storage.from(bucket).createSignedUrls(batch, 3600));
-  }));
-  const signed = new Map(results.flatMap(({ data }) => (data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
-  return posts.map((post) => {
-    const paths = (post.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order).map((item) => item.storage_path);
-    const image = paths.find((path) => !isVideoMediaPath(path));
-    const video = paths.find(isVideoMediaPath);
-    return {
-      ...post,
-      image_url: post.image_url || (image ? signed.get(image) : null) || null,
-      video_url: video ? signed.get(video) || null : null,
-    };
-  });
-}
+type Section = "posts" | "collections" | "bookmarks" | "likes";
 
 function displayAttributeValue(item: PublicAttribute) {
   if (item.attribute === "gender") return ({ female: "女", male: "男", nonbinary: "非二元", undisclosed: "不愿透露" }[item.value] || item.value);
@@ -46,7 +40,12 @@ function displayAttributeValue(item: PublicAttribute) {
   catch { return item.value; }
 }
 
-function ProfileMedia({ post, layout }: { post: ProfilePost; layout: ProfileLayout }) {
+function gridMedia(post: ApiPost) {
+  return post.thumbnailImages?.[0] || post.image || "";
+}
+
+function ProfileMedia({ post, layout }: { post: ApiPost; layout: ProfileLayout }) {
+  const src = gridMedia(post);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(4 / 5);
@@ -55,7 +54,7 @@ function ProfileMedia({ post, layout }: { post: ProfilePost; layout: ProfileLayo
     setLoaded(false);
     setFailed(false);
     setAspectRatio(4 / 5);
-  }, [post.image_url, post.video_url]);
+  }, [src, post.video]);
 
   const setNaturalRatio = (width: number, height: number) => {
     if (width > 0 && height > 0) setAspectRatio(width / height);
@@ -65,15 +64,15 @@ function ProfileMedia({ post, layout }: { post: ProfilePost; layout: ProfileLayo
   return (
     <span className={`public-profile-cover${loaded ? " is-loaded" : " is-loading"}${failed ? " is-failed" : ""}`} style={layout === "masonry" ? { aspectRatio: String(aspectRatio) } : undefined}>
       {!loaded && !failed && <span className="public-profile-cover-skeleton" aria-hidden="true" />}
-      {post.image_url ? <img
-        src={post.image_url}
+      {src ? <img
+        src={src}
         alt={post.title ? `${post.title}封面` : "作品封面"}
         loading="lazy"
         decoding="async"
         onLoad={(event) => setNaturalRatio(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
         onError={() => setFailed(true)}
-      /> : post.video_url ? <video
-        src={post.video_url}
+      /> : post.video ? <video
+        src={post.video}
         muted
         playsInline
         preload="metadata"
@@ -112,17 +111,16 @@ export default function PublicProfile({
   const [profile, setProfile] = useState<PublicInfo>();
   const [attributes, setAttributes] = useState<PublicAttribute[]>([]);
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
-  const [posts, setPosts] = useState<ProfilePost[]>([]);
-  const [bookmarks, setBookmarks] = useState<ProfilePost[]>([]);
+  const [posts, setPosts] = useState<ApiPost[]>([]);
+  const [bookmarks, setBookmarks] = useState<ApiPost[]>([]);
+  const [likes, setLikes] = useState<ApiPost[]>([]);
   const [collections, setCollections] = useState<ProfileCollection[]>([]);
   const [following, setFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
-  const [section, setSection] = useState<"posts" | "bookmarks">("posts");
+  const [section, setSection] = useState<Section>("posts");
   const [error, setError] = useState("");
-  const [bioExpanded, setBioExpanded] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [avatarFailed, setAvatarFailed] = useState(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -133,60 +131,44 @@ export default function PublicProfile({
     setBadges([]);
     setPosts([]);
     setBookmarks([]);
+    setLikes([]);
     setCollections([]);
     setFollowing(false);
     setFollowerCount(0);
     setSection("posts");
     setError("");
-    setBioExpanded(false);
     setMoreOpen(false);
-    setAvatarFailed(false);
-    void browserDb()
-      .then(async (db) => {
-        const [p, a, c, followResponse, badgeResponse] = await Promise.all([
-          db.from("profiles").select("nickname,bio,avatar_url,show_bookmarks").eq("id", id).single(),
-          db.from("profile_attributes").select("attribute,value").eq("user_id", id).eq("is_public", true),
-          db.from("posts").select("client_id,title,body,image_url,created_at,post_media(storage_path,sort_order)").eq("author_id", id).eq("status", "published").order("created_at", { ascending: false }).limit(30),
-          cloudFetch(`/api/v1/creator-follows?creator=${encodeURIComponent(id)}`, { cache: "no-store" }),
-          cloudFetch(`/api/v1/profiles/${encodeURIComponent(id)}`, { cache: "no-store" }),
-        ]);
+    void Promise.all([
+      cloudFetch(`/api/v1/profiles/${encodeURIComponent(id)}`, { cache: "no-store" }),
+      cloudFetch(`/api/v1/creator-follows?creator=${encodeURIComponent(id)}`, { cache: "no-store" }),
+      fetch(`/api/v1/series?creator=${encodeURIComponent(id)}`, { cache: "no-store" }),
+    ])
+      .then(async ([profileResponse, followResponse, collectionResponse]) => {
         if (!alive) return;
-        if (p.error) { setError(p.error.message); return; }
-        const info = p.data as PublicInfo;
+        if (!profileResponse.ok) {
+          const payload = await profileResponse.json().catch(() => null);
+          setError(payload?.error?.message || "暂时无法加载这位创作者的主页。");
+          return;
+        }
+        const payload = await profileResponse.json();
+        const info = payload?.data?.profile as PublicInfo | undefined;
+        if (!info) { setError("暂时无法加载这位创作者的主页。"); return; }
         setProfile(info);
-        setAttributes((a.data || []) as PublicAttribute[]);
-        if (badgeResponse.ok) {
-          const badgePayload = await badgeResponse.json();
-          if (!alive) return;
-          setBadges((badgePayload.data?.badges || []) as ProfileBadge[]);
-        }
-        if (c.error) { setError("暂时无法加载公开内容。"); return; }
-        const signedPosts = await withSignedPostImages(db, (c.data || []) as ProfilePost[]);
-        if (!alive) return;
-        setPosts(signedPosts);
-        const collectionResponse = await fetch(`/api/v1/series?creator=${encodeURIComponent(id)}`, { cache: "no-store" });
-        if (collectionResponse.ok) {
-          const collectionPayload = await collectionResponse.json();
-          if (!alive) return;
-          setCollections(Array.isArray(collectionPayload?.data?.items) ? collectionPayload.data.items : []);
-        }
+        setAttributes((payload?.data?.details || []) as PublicAttribute[]);
+        setBadges((payload?.data?.badges || []) as ProfileBadge[]);
+        setPosts((payload?.data?.posts || []) as ApiPost[]);
+        setBookmarks((payload?.data?.bookmarks || []) as ApiPost[]);
+        setLikes((payload?.data?.likes || []) as ApiPost[]);
         if (followResponse.ok) {
           const followData = await followResponse.json();
           if (!alive) return;
           setFollowing(Boolean(followData.data?.following));
           setFollowerCount(Number(followData.data?.followerCount) || 0);
         }
-        if (info.show_bookmarks) {
-          const saved = await db.from("bookmarks").select("created_at,posts(client_id,title,body,image_url,post_media(storage_path,sort_order))").eq("user_id", id).order("created_at", { ascending: false }).limit(30);
+        if (collectionResponse.ok) {
+          const collectionPayload = await collectionResponse.json();
           if (!alive) return;
-          if (saved.error) { setError("暂时无法加载公开收藏。"); return; }
-          const bookmarkPosts = (saved.data || []).flatMap((row) => {
-            const post = Array.isArray(row.posts) ? row.posts[0] : row.posts;
-            return post ? [{ ...post, created_at: row.created_at } as ProfilePost] : [];
-          });
-          const signedBookmarks = await withSignedPostImages(db, bookmarkPosts);
-          if (!alive) return;
-          setBookmarks(signedBookmarks);
+          setCollections(Array.isArray(collectionPayload?.data?.items) ? collectionPayload.data.items : []);
         }
       })
       .catch((cause) => { if (alive) setError(cause instanceof Error ? cause.message : "主页加载失败"); });
@@ -209,9 +191,7 @@ export default function PublicProfile({
   }, [moreOpen]);
 
   const isOwnProfile = accountReady && currentUserId === id;
-  const displayedPosts = section === "posts" ? posts : bookmarks;
-  const bio = profile?.bio?.trim() || "还没有填写简介。";
-  const canExpandBio = Boolean(profile?.bio && profile.bio.trim().length > 76);
+  const canSeeSaved = Boolean(profile?.show_bookmarks);
 
   const toggleFollow = async () => {
     if (followBusy || isOwnProfile) return;
@@ -256,7 +236,56 @@ export default function PublicProfile({
     setMoreOpen(false);
   };
 
-  const formatDate = (value?: string) => value ? new Date(value).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) : "黑卡内容";
+  const shortDate = (value?: string | null) => {
+    if (!value) return "";
+    const date = new Date(value.length <= 10 ? `${value}T00:00:00` : value);
+    if (Number.isNaN(date.getTime())) return "";
+    return `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  };
+  const capped = (count: number) => count >= 30 ? "30+" : String(count);
+
+  const tabCount = (key: Section) => {
+    if (key === "posts") return capped(posts.length);
+    if (key === "collections") return collections.length ? String(collections.length) : "";
+    if (key === "bookmarks") return canSeeSaved ? capped(bookmarks.length) : "";
+    return canSeeSaved ? capped(likes.length) : "";
+  };
+
+  const currentList = section === "posts" ? posts : section === "bookmarks" ? bookmarks : section === "likes" ? likes : [];
+  const emptyText = section === "posts"
+    ? "还没有发布公开作品。"
+    : section === "bookmarks" ? "还没有公开收藏。"
+    : section === "likes" ? "还没有公开点赞。" : "还没有创建合集。";
+
+  const facts = attributes.filter((item) => item.value).length ? (
+    <div className="profile-hero-facts" aria-label="公开资料">
+      {attributes.filter((item) => item.value).flatMap((item) => {
+        const values = item.attribute === "hobbies" ? displayAttributeValue(item).split("、").filter(Boolean) : [displayAttributeValue(item)];
+        return values.map((value, index) => <span key={`${item.attribute}-${index}`}>
+          {item.attribute === "birthday" && <small>生日</small>}
+          <strong>{value}</strong>
+        </span>);
+      })}
+    </div>
+  ) : null;
+
+  const stats = <div className="profile-hero-stats">
+    <button type="button" onClick={() => setSection("posts")} aria-label={`作品 ${posts.length}`}><strong>{capped(posts.length)}</strong><small>作品</small></button>
+    <span aria-label={`粉丝 ${followerCount}`}><strong>{followerCount.toLocaleString("zh-CN")}</strong><small>粉丝</small></span>
+    <button type="button" onClick={() => setSection("collections")} aria-label={`合集 ${collections.length}`}><strong>{collections.length}</strong><small>合集</small></button>
+    {canSeeSaved && <button type="button" onClick={() => setSection("likes")} aria-label={`点赞 ${likes.length}`}><strong>{capped(likes.length)}</strong><small>点赞</small></button>}
+  </div>;
+
+  const actions = !accountReady
+    ? <span className="public-profile-actions-loading" role="status">正在确认账号…</span>
+    : isOwnProfile
+      ? <button type="button" className="is-primary" onClick={onOpenMine}>进入我的主页</button>
+      : <>
+        <button type="button" className={following ? "is-following" : "is-primary"} disabled={followBusy} aria-busy={followBusy} onClick={() => void toggleFollow()}>
+          {followBusy ? "处理中…" : following ? "已关注" : "关注"}
+        </button>
+        <button type="button" onClick={() => onMessage(id)}><MessageCircle size={15} /> 私信</button>
+      </>;
 
   return (
     <main className="public-profile" role="dialog" aria-modal="true" aria-label="个人主页">
@@ -274,67 +303,78 @@ export default function PublicProfile({
       <div className="public-profile-scroll">
         {profile ? (
           <div className="public-profile-content">
-            <section className="public-profile-identity">
-              {profile.avatar_url && !avatarFailed ? <img className="public-profile-avatar" src={profile.avatar_url} alt={`${profile.nickname || "探索者"}的头像`} onError={() => setAvatarFailed(true)} /> : <div className="public-profile-avatar public-profile-avatar-placeholder"><UserRound size={29}/></div>}
-              <div className="public-profile-name-block">
-                <h1>{profile.nickname || "探索者"}<ProfileBadgeList badges={badges} compact/></h1>
-                <div className="public-profile-account"><span>黑卡创作者</span><span aria-hidden="true">·</span><span>用户编号 {id.slice(0, 8).toUpperCase()}</span></div>
+            <ProfileHeader
+              mode="other"
+              nickname={profile.nickname || "探索者"}
+              avatar={profile.avatar_url}
+              coverUrl={profile.cover_url}
+              coverMeta={profile.cover_meta}
+              badges={<ProfileBadgeList badges={badges} compact />}
+              accountLine={`用户编号 ${id.slice(0, 8).toUpperCase()}`}
+              bio={profile.bio?.trim() || undefined}
+              facts={facts}
+              stats={stats}
+              actions={actions}
+            >
+              <div className="public-profile-tabs" role="tablist" aria-label="主页内容分类">
+                {(["posts", "collections", "bookmarks", "likes"] as Section[]).map((key) => {
+                  const label = key === "posts" ? "作品" : key === "collections" ? "合集" : key === "bookmarks" ? "收藏" : "点赞";
+                  const locked = (key === "bookmarks" || key === "likes") && !canSeeSaved;
+                  return <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    id={`public-profile-tab-${key}`}
+                    aria-selected={section === key}
+                    aria-controls="public-profile-panel"
+                    tabIndex={section === key ? 0 : -1}
+                    onClick={() => setSection(key)}
+                  >
+                    {label} {locked ? <LockKeyhole size={13} /> : tabCount(key) ? <small>{tabCount(key)}</small> : null}
+                  </button>;
+                })}
               </div>
-            </section>
-            <div className="public-profile-bio-block">
-              <p className={bioExpanded ? "is-expanded" : ""}>{bio}</p>
-              {canExpandBio && <button type="button" aria-expanded={bioExpanded} onClick={() => setBioExpanded((expanded) => !expanded)}>{bioExpanded ? "收起" : "展开"}</button>}
-            </div>
-            {!!attributes.filter((item) => item.value).length && <div className="public-profile-facts" aria-label="公开资料">
-              {attributes.filter((item) => item.value).flatMap((item) => {
-                const values = item.attribute === "hobbies" ? displayAttributeValue(item).split("、").filter(Boolean) : [displayAttributeValue(item)];
-                return values.map((value, index) => <span key={`${item.attribute}-${index}`}>{item.attribute !== "hobbies" && item.attribute !== "gender" && item.attribute !== "mbti" && <small>{{ birthday: "生日" }[item.attribute]}</small>}<strong>{value}</strong></span>);
-              })}
-            </div>}
-            <section className="public-profile-overview" aria-label="主页数据与操作">
-              <div className="public-profile-stats">
-                <button type="button" onClick={() => setSection("posts")} aria-label={`笔记 ${posts.length}`}><strong>{posts.length === 30 ? "30+" : posts.length}</strong><small>笔记</small></button>
-                <span aria-label={`粉丝 ${followerCount}`}><strong>{followerCount.toLocaleString("zh-CN")}</strong><small>粉丝</small></span>
-                {profile.show_bookmarks && <button type="button" onClick={() => setSection("bookmarks")} aria-label={`公开收藏 ${bookmarks.length}`}><strong>{bookmarks.length === 30 ? "30+" : bookmarks.length}</strong><small>收藏</small></button>}
+              <div className="public-profile-panel" role="tabpanel" id="public-profile-panel" aria-labelledby={`public-profile-tab-${section}`}>
+                {error ? <AnimatedNotice message={error} /> : (section === "bookmarks" || section === "likes") && !canSeeSaved ? (
+                  <div className="public-profile-private">
+                    <LockKeyhole size={19} />
+                    <strong>{section === "bookmarks" ? "收藏" : "点赞"}暂未公开</strong>
+                    <span>对方选择了仅自己查看这些内容。</span>
+                  </div>
+                ) : section === "collections" ? (
+                  collections.length ? (
+                    <div className="public-profile-collection-row">
+                      {collections.map((item) => <button type="button" className="public-profile-collection" key={item.id} onClick={() => onOpenCollection?.(item.id)}>
+                        <span className={`public-profile-collection-cover${item.coverUrl ? " has-cover" : ""}`} style={item.coverUrl ? { backgroundImage: `url(${item.coverUrl})` } : undefined} aria-hidden="true" />
+                        <span className="public-profile-collection-copy">
+                          <strong>{item.title}</strong>
+                          <small>{item.publishedCount || 0} 章 · {item.kind === "tutorial" ? "教程" : item.kind === "resource" ? "资源" : "连载"}</small>
+                        </span>
+                      </button>)}
+                    </div>
+                  ) : <div className="public-profile-empty">{emptyText}</div>
+                ) : currentList.length ? (
+                  <div className={`public-profile-grid profile-layout-${layout}`}>
+                    {currentList.map((post) => <button type="button" className={`public-profile-post${gridMedia(post) || post.video ? " has-image" : " is-text-only"}`} key={`${section}-${post.id}`} onClick={() => onSelectPost(post.id)}>
+                      {(gridMedia(post) || post.video) && <ProfileMedia post={post} layout={layout} />}
+                      <span className="public-profile-post-copy">
+                        <span className="public-profile-post-title">{post.title || "未命名内容"}</span>
+                        <small>
+                          {section === "bookmarks" ? "收藏于 " : section === "likes" ? "点赞于 " : "发布于 "}
+                          {shortDate(section === "likes" ? post.likedAt : post.date)}
+                        </small>
+                      </span>
+                      {section === "likes" && <span className="public-profile-like-mark" aria-hidden="true"><Heart size={12} /></span>}
+                    </button>)}
+                  </div>
+                ) : <div className="public-profile-empty">{emptyText}</div>}
               </div>
-              <div className="public-profile-actions">
-                {!accountReady ? <span className="public-profile-actions-loading" role="status">正在确认账号…</span> : isOwnProfile ? <button className="public-profile-own" type="button" onClick={onOpenMine}>进入我的主页 <ChevronRight size={15}/></button> : <>
-                  <button className={`public-profile-follow${following ? " is-following" : ""}`} type="button" disabled={followBusy} aria-busy={followBusy} onClick={() => void toggleFollow()}>{followBusy ? "处理中…" : following ? "已关注" : "关注"}</button>
-                  <button className="public-profile-message" type="button" onClick={() => onMessage(id)}><MessageCircle size={15}/> 私信</button>
-                </>}
-              </div>
-            </section>
-            {collections.length > 0 && <section className="public-profile-collections" aria-label="作者的合集">
-              <div className="public-profile-collections-head"><strong>合集</strong><small>{collections.length} 个</small></div>
-              <div className="public-profile-collection-row">
-                {collections.map((item) => <button type="button" className="public-profile-collection" key={item.id} onClick={() => onOpenCollection?.(item.id)}>
-                  <span className={`public-profile-collection-cover${item.coverUrl ? " has-cover" : ""}`} style={item.coverUrl ? { backgroundImage: `url(${item.coverUrl})` } : undefined} aria-hidden="true" />
-                  <span className="public-profile-collection-copy"><strong>{item.title}</strong><small>{item.publishedCount || 0} 章 · {item.kind === "tutorial" ? "教程" : item.kind === "resource" ? "资源" : "连载"}</small></span>
-                </button>)}
-              </div>
-            </section>}
-            <div className="public-profile-tabs" role="tablist" aria-label="主页内容分类">
-              <button type="button" id="public-profile-tab-posts" role="tab" aria-selected={section === "posts"} aria-controls="public-profile-panel" tabIndex={section === "posts" ? 0 : -1} onClick={() => setSection("posts")}>笔记 <small>{posts.length === 30 ? "30+" : posts.length}</small></button>
-              <button type="button" id="public-profile-tab-bookmarks" role="tab" aria-selected={section === "bookmarks"} aria-controls="public-profile-panel" tabIndex={section === "bookmarks" ? 0 : -1} onClick={() => setSection("bookmarks")}>收藏 {profile.show_bookmarks ? <small>{bookmarks.length === 30 ? "30+" : bookmarks.length}</small> : <LockKeyhole size={13}/>}</button>
-              <i className={section === "bookmarks" ? "is-bookmarks" : ""} aria-hidden="true"/>
-            </div>
-            <div className="public-profile-panel" role="tabpanel" id="public-profile-panel" aria-labelledby={section === "posts" ? "public-profile-tab-posts" : "public-profile-tab-bookmarks"}>
-              {error ? <AnimatedNotice message={error}/> : section === "bookmarks" && !profile.show_bookmarks ? (
-                <div className="public-profile-private"><LockKeyhole size={19}/><strong>收藏暂未公开</strong><span>对方选择了仅自己查看收藏内容。</span></div>
-              ) : displayedPosts.length ? (
-                <div className={`public-profile-grid profile-layout-${layout}`}>
-                  {displayedPosts.map((post) => <button type="button" className={`public-profile-post${post.image_url || post.video_url ? " has-image" : " is-text-only"}`} key={`${section}-${post.client_id}`} onClick={() => onSelectPost(post.client_id)}>
-                    {(post.image_url || post.video_url) && <ProfileMedia post={post} layout={layout} />}
-                    <span className="public-profile-post-copy">
-                      <span className="public-profile-post-title">{post.title || "未命名内容"}</span>
-                      <small>{section === "bookmarks" ? "收藏于 " : "发布于 "}{formatDate(post.created_at)}</small>
-                    </span>
-                  </button>)}
-                </div>
-              ) : <div className="public-profile-empty">{section === "posts" ? "还没有发布公开内容。" : "还没有公开收藏。"}</div>}
-            </div>
+            </ProfileHeader>
           </div>
-        ) : error ? <AnimatedNotice message={error}/> : <div className="public-profile-loading">正在加载主页…</div>}
+        ) : error ? <AnimatedNotice message={error} /> : <div className="public-profile-loading">
+          <span className="public-profile-loading-avatar" aria-hidden="true"><UserRound size={26} /></span>
+          正在加载主页…
+        </div>}
       </div>
     </main>
   );

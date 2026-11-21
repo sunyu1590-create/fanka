@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { BadgeCheck, Check, Eye, ImagePlus, LockKeyhole, UserRound } from "lucide-react";
+import { BadgeCheck, Check, Eye, ImagePlus, Image as ImageIcon, LockKeyhole, Trash2, UserRound } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import { cloudRequest } from "@/lib/cloud";
 import { tags } from "@/lib/content";
 import AnimatedNotice from "./AnimatedNotice";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
+import AvatarCropper from "./AvatarCropper";
+import CoverEditor, { type CoverMeta } from "./CoverEditor";
 
 export type ProfileDetails = {
   gender: string;
@@ -37,17 +39,25 @@ export default function AccountProfile({
   name,
   bio,
   avatar,
+  cover,
+  coverMeta,
+  accountId,
   details = emptyDetails,
   onSave,
   onClose,
+  onNotice,
   mode = "modal",
 }: {
   name: string;
   bio: string;
   avatar?: string;
+  cover?: string;
+  coverMeta?: CoverMeta;
+  accountId?: string | null;
   details?: ProfileDetails;
   onSave: (name: string, bio: string, avatar: string | undefined, details: ProfileDetails) => void;
   onClose: () => void;
+  onNotice?: (message: string) => void;
   mode?: "page" | "modal";
 }) {
   const [nickname, setNickname] = useState(name),
@@ -58,6 +68,11 @@ export default function AccountProfile({
     [filePreview, setFilePreview] = useState<string>(),
     [badges, setBadges] = useState<ProfileBadge[]>([]),
     [error, setError] = useState(""),
+    [cropFile, setCropFile] = useState<File | null>(null),
+    [coverFile, setCoverFile] = useState<File | null>(null),
+    [currentCover, setCurrentCover] = useState<string | undefined>(cover),
+    [currentCoverMeta, setCurrentCoverMeta] = useState<CoverMeta | undefined>(coverMeta),
+    [coverBusy, setCoverBusy] = useState(false),
     [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -164,17 +179,63 @@ export default function AccountProfile({
         </span>
         <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => {
           const selected = event.target.files?.[0];
+          event.target.value = "";
           if (!selected) return;
-          if (selected.size > 2097152 || !["image/jpeg", "image/png", "image/webp"].includes(selected.type)) {
-            setError("请选择 2MB 以内的 JPEG、PNG 或 WebP");
-            event.target.value = "";
+          if (!["image/jpeg", "image/png", "image/webp"].includes(selected.type)) {
+            setError("请选择 JPEG、PNG 或 WebP 图片");
             return;
           }
-          setError(""); setFile(selected);
+          setError("");
+          // 先进入圆形裁剪，确认后才会替换当前头像。
+          setCropFile(selected);
         }}/>
       </label>
       <label className="account-profile-field">昵称<input value={nickname} maxLength={24} onChange={(event) => setNickname(event.target.value)} placeholder="设置公开昵称" /><small className="account-character-count">{nickname.length}/24</small></label>
       <label className="account-profile-field">简介<textarea value={description} maxLength={80} rows={3} onChange={(event) => setDescription(event.target.value)} placeholder="介绍一下自己" /><small className="account-character-count">{description.length}/80</small></label>
+    </section>
+
+    <section className="account-profile-section account-cover-section" aria-labelledby="account-cover-title">
+      <div className="account-profile-section-heading"><span className="account-profile-section-index">封面</span><div><h3 id="account-cover-title">个人封面</h3><p>支持横图与竖图。主页收起时是适度高度的横向窗口，下拉可展开，点击可看完整原图。</p></div></div>
+      <div className="account-cover-control">
+        <span className="account-cover-thumb" style={currentCover ? { backgroundImage: `url("${currentCover}")` } : undefined}>
+          {!currentCover && <ImageIcon size={18} />}
+        </span>
+        <div className="account-cover-copy">
+          <strong>{currentCover ? "已设置封面" : "还没有封面"}</strong>
+          <small>{currentCover ? "取景参数会随封面一起保存" : "未设置时使用统一的黑卡品牌背景"}</small>
+        </div>
+        <div className="account-cover-actions">
+          <label className="account-cover-upload">
+            {coverBusy ? "处理中…" : "更换封面"}
+            <input type="file" accept="image/jpeg,image/png,image/webp" disabled={coverBusy || !accountId} onChange={(event) => {
+              const selected = event.target.files?.[0];
+              event.target.value = "";
+              if (!selected) return;
+              if (!["image/jpeg", "image/png", "image/webp"].includes(selected.type)) { setError("封面只支持 JPEG、PNG 或 WebP"); return; }
+              if (selected.size > 12 * 1024 * 1024) { setError("封面图片不能超过 12 MB"); return; }
+              setError("");
+              setCoverFile(selected);
+            }} />
+          </label>
+          {currentCover && <button type="button" disabled={coverBusy} onClick={async () => {
+            if (!await confirmInApp("移除当前封面？主页会回到默认品牌背景。", { title: "移除封面", confirmLabel: "移除", danger: true })) return;
+            setCoverBusy(true);
+            try {
+              const { browserDb } = await import("@/lib/browser-db");
+              const db = await browserDb();
+              const { data } = await db.auth.getSession();
+              if (!data.session) throw new Error("登录后才能修改封面");
+              const response = await fetch("/api/v1/me/cover", { method: "DELETE", headers: { Authorization: `Bearer ${data.session.access_token}` } });
+              if (!response.ok) throw new Error("封面移除失败");
+              setCurrentCover(undefined);
+              setCurrentCoverMeta(undefined);
+              window.dispatchEvent(new CustomEvent("heika-profile-updated", { detail: { id: accountId, cover: "", coverMeta: undefined } }));
+              onNotice?.("封面已移除");
+            } catch (cause) { setError(cause instanceof Error ? cause.message : "封面移除失败"); }
+            finally { setCoverBusy(false); }
+          }}><Trash2 size={14} /> 移除</button>}
+        </div>
+      </div>
     </section>
 
     <section className="account-profile-section account-certification-section" aria-labelledby="account-certification-title">
@@ -197,6 +258,29 @@ export default function AccountProfile({
       <div className="profile-visibility-list" aria-label="资料公开设置">{(Object.keys(detailLabels) as (keyof ProfileDetails["visibility"])[]).map((key) => <label className="profile-visibility-row" key={key}><span><strong>{detailLabels[key]}</strong><small>{profileDetails.visibility[key] ? "已展示在公开主页" : "仅自己可见"}</small></span><span className="profile-visibility-control"><input type="checkbox" checked={profileDetails.visibility[key]} aria-label={`公开${detailLabels[key]}`} onChange={(event) => { const isVisible = event.target.checked; const apply = () => setProfileDetails((value) => ({ ...value, visibility: { ...value.visibility, [key]: isVisible } })); if (isVisible) void confirmInApp("公开展示" + detailLabels[key] + "？", {title:"更新个人信息展示",confirmLabel:"公开展示"}).then((confirmed) => { if (confirmed) apply(); }); else apply(); }} /></span></label>)}</div>
     </section>
 
+    {cropFile && <AvatarCropper
+      file={cropFile}
+      onCancel={() => setCropFile(null)}
+      onConfirm={(blob, previewUrl) => {
+        const cropped = new File([blob], `avatar-${Date.now()}.${blob.type === "image/png" ? "png" : "jpg"}`, { type: blob.type });
+        setFile(cropped);
+        setFilePreview(previewUrl);
+        setCropFile(null);
+      }}
+    />}
+    {coverFile && <CoverEditor
+      file={coverFile}
+      nickname={nickname}
+      avatar={filePreview || avatar}
+      onCancel={() => setCoverFile(null)}
+      onSaved={(url, meta) => {
+        setCurrentCover(url);
+        setCurrentCoverMeta(meta);
+        setCoverFile(null);
+        window.dispatchEvent(new CustomEvent("heika-profile-updated", { detail: { id: accountId, cover: url, coverMeta: meta } }));
+      }}
+      onNotice={(message) => onNotice?.(message)}
+    />}
     <AnimatedNotice message={error}/>
     <div className="account-profile-actions">
       <span className="account-profile-save-status">{busy ? "正在安全保存资料…" : "修改仅在点击保存后生效"}</span>

@@ -1,0 +1,432 @@
+/* ==========================================================================
+   装扮层：底栏与首页卡片
+   只消费 lib/decor/store.ts 写入的 CSS 变量，不硬编码具体主题色。
+   ========================================================================== */
+
+/* ---------- 底栏 ---------- */
+:root[data-decor-bar="custom"] .bottom-nav {
+  background: var(--decor-bar-bg) !important;
+  border-color: var(--decor-bar-border) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(125%);
+  backdrop-filter: blur(20px) saturate(125%);
+  transition: background-color .3s var(--ease, ease), border-color .3s var(--ease, ease);
+}
+
+:root[data-decor-bar="custom"] .bottom-nav button {
+  color: var(--decor-bar-label) !important;
+  border-radius: 12px;
+  transition: color .22s ease, transform .22s var(--ease, ease);
+}
+
+:root[data-decor-bar="custom"] .bottom-nav button.active {
+  color: var(--decor-bar-active-label) !important;
+}
+
+:root[data-decor-bar="custom"] .bottom-nav button svg {
+  color: var(--decor-bar-icon) !important;
+  stroke: var(--decor-bar-icon) !important;
+}
+
+:root[data-decor-bar="custom"] .bottom-nav button.active svg {
+  color: var(--decor-bar-active-icon) !important;
+  stroke: var(--decor-bar-active-icon) !important;
+}
+
+/* 选中态胶囊：只做很轻的一层，避免底栏变成彩色横条 */
+:root[data-decor-bar="custom"] .bottom-nav button::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 44px;
+  height: 30px;
+  transform: translateX(-50%) scale(.86);
+  border-radius: 10px;
+  background: var(--decor-bar-pill);
+  opacity: 0;
+  transition: opacity .24s ease, transform .24s var(--ease, ease);
+  pointer-events: none;
+  z-index: -1;
+}
+
+:root[data-decor-bar="custom"] .bottom-nav button.active::before {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+:root[data-decor-bar="custom"] .bottom-nav button.active > span {
+  position: relative;
+  z-index: 1;
+}
+
+/* 自定义图标：既支持彩色原图，也支持单色蒙版跟随主题色 */
+.decor-nav-icon {
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.decor-nav-icon.is-mask {
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.decor-nav-icon.is-cover {
+  object-fit: cover;
+  -webkit-mask-size: cover;
+  mask-size: cover;
+}
+
+:root[data-decor-bar="custom"] .compose {
+  background: var(--decor-publish-bg) !important;
+}
+
+:root[data-decor-bar="custom"] .compose svg {
+  stroke: var(--decor-publish-icon) !important;
+  color: var(--decor-publish-icon) !important;
+}
+
+:root[data-decor-bar="custom"] .compose .decor-nav-icon.is-mask {
+  background-color: var(--decor-publish-icon);
+}
+
+.bottom-nav button.active .bottom-nav-icon {
+  transform: translateY(-.5px) scale(1.02);
+}
+
+.decor-nav-fallback {
+  display: none;
+}
+
+/* ---------- 卡片：卡背（小卡与放大确认卡共用同一套外观） ---------- */
+:root[data-decor-card="custom"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"] .flip-window-face {
+  background-color: var(--decor-card-back-bg) !important;
+  background-image: var(--decor-card-back-image) !important;
+  background-size: cover !important;
+  background-position: center !important;
+  border: 1px solid var(--decor-card-back-border) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--decor-card-back-border) 50%, transparent) !important;
+  border-radius: inherit;
+}
+
+/* 原生卡背上的斜切纹理在自定义主题下让位给主题自己的纹理 */
+:root[data-decor-card="custom"] .candidate-feed-card .card-flip-front::before,
+:root[data-decor-card="custom"] .flip-window-face::before,
+:root[data-decor-card="custom"] .candidate-feed-card .card-flip-front::after,
+:root[data-decor-card="custom"] .flip-window-face::after,
+:root[data-decor-card="custom"] .black-card-focus .card-flip-front::before,
+:root[data-decor-card="custom"] .black-card-focus .card-flip-front::after {
+  display: none !important;
+}
+
+/* 纹理：只叠一层很淡的线性/点状图案，不盖住卡背图 */
+:root[data-decor-card="custom"][data-decor-card-texture="linen"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"][data-decor-card-texture="linen"] .flip-window-face {
+  background-image: var(--decor-card-back-image), repeating-linear-gradient(42deg, rgba(255,255,255,.035) 0 1px, transparent 1px 5px) !important;
+  background-size: cover, auto !important;
+}
+
+:root[data-decor-card="custom"][data-decor-card-texture="grid"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"][data-decor-card-texture="grid"] .flip-window-face {
+  background-image: var(--decor-card-back-image), linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px) !important;
+  background-size: cover, 26px 26px, 26px 26px !important;
+}
+
+:root[data-decor-card="custom"][data-decor-card-texture="noise"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"][data-decor-card-texture="noise"] .flip-window-face {
+  background-image: var(--decor-card-back-image), radial-gradient(rgba(255,255,255,.055) .8px, transparent .9px) !important;
+  background-size: cover, 5px 5px !important;
+}
+
+/* 中央图案：用程序渲染，不烘焙进图片，任何尺寸都清晰 */
+:root[data-decor-card="custom"][data-decor-card-pattern="monogram"] .candidate-feed-card .card-flip-front::after,
+:root[data-decor-card="custom"][data-decor-card-pattern="monogram"] .flip-window-face::after {
+  content: "H";
+  display: grid !important;
+  place-items: center;
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  border: 0;
+  background: none;
+  transform: none;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: clamp(52px, 22%, 132px);
+  line-height: 1;
+  letter-spacing: .04em;
+  color: color-mix(in srgb, var(--decor-card-back-border) 92%, transparent);
+  opacity: .5;
+}
+
+:root[data-decor-card="custom"][data-decor-card-pattern="diamond"] .candidate-feed-card .card-flip-front::after,
+:root[data-decor-card="custom"][data-decor-card-pattern="diamond"] .flip-window-face::after {
+  content: "";
+  display: block !important;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34%;
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in srgb, var(--decor-card-back-border) 85%, transparent);
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: none;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--decor-card-back-bg) 55%, transparent);
+}
+
+:root[data-decor-card="custom"][data-decor-card-pattern="frame"] .candidate-feed-card .card-flip-front::after,
+:root[data-decor-card="custom"][data-decor-card-pattern="frame"] .flip-window-face::after {
+  content: "";
+  display: block !important;
+  position: absolute;
+  inset: 9px;
+  border: 1px solid color-mix(in srgb, var(--decor-card-back-border) 65%, transparent);
+  background: none;
+  transform: none;
+  width: auto;
+  height: auto;
+}
+
+:root[data-decor-card="custom"] .candidate-feed-card .card-number,
+:root[data-decor-card="custom"] .flip-window-face .card-number {
+  color: var(--decor-card-number) !important;
+}
+
+:root[data-decor-card="custom"] .candidate-feed-card .card-prompt,
+:root[data-decor-card="custom"] .candidate-feed-card .card-brand,
+:root[data-decor-card="custom"] .flip-window-face .window-brand-cn,
+:root[data-decor-card="custom"] .flip-window-face .window-brand-en {
+  color: var(--decor-card-hint) !important;
+  text-shadow: none !important;
+}
+
+:root[data-decor-card="custom"] .flip-window-face .flip-button {
+  background: var(--decor-card-action-bg) !important;
+  color: var(--decor-card-action-text) !important;
+  border-color: color-mix(in srgb, var(--decor-card-action-bg) 70%, transparent) !important;
+}
+
+/* ---------- 卡片：翻开后的内容面 ---------- */
+:root[data-decor-card="custom"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"] .flip-window-revealed {
+  background-color: var(--decor-card-content-bg) !important;
+  background-image: var(--decor-card-content-image) !important;
+  background-size: cover !important;
+  border-color: var(--decor-card-content-border) !important;
+  color: var(--decor-card-title) !important;
+}
+
+:root[data-decor-card="custom"] .candidate-feed-card .card-flip-back:has(img)::after {
+  background: linear-gradient(transparent 26%, color-mix(in srgb, var(--decor-card-content-bg) 88%, transparent)) !important;
+}
+
+:root[data-decor-card="custom"] .card-back-copy small,
+:root[data-decor-card="custom"] .window-reveal-meta small {
+  color: color-mix(in srgb, var(--decor-card-body) 90%, transparent) !important;
+}
+
+:root[data-decor-card="custom"] .card-back-copy strong {
+  color: var(--decor-card-title) !important;
+}
+
+:root[data-decor-card="custom"] .card-back-copy em {
+  color: var(--decor-card-accent) !important;
+}
+
+:root[data-decor-card="custom"] .window-reveal-copy {
+  background: var(--decor-card-content-bg) !important;
+  border-top-color: var(--decor-card-content-border) !important;
+  color: var(--decor-card-title) !important;
+}
+
+:root[data-decor-card="custom"] .window-reveal-copy h2 {
+  color: var(--decor-card-title) !important;
+}
+
+:root[data-decor-card="custom"] .window-reveal-copy p {
+  color: var(--decor-card-body) !important;
+}
+
+:root[data-decor-card="custom"] .window-reveal-copy .rarity-inline-chip,
+:root[data-decor-card="custom"] .window-reveal-copy .window-reveal-meta i {
+  background: var(--decor-card-chip-bg) !important;
+  border: 1px solid var(--decor-card-chip-border) !important;
+  color: var(--decor-card-body) !important;
+}
+
+:root[data-decor-card="custom"] .window-reveal-copy .window-more {
+  background: var(--decor-card-action-bg) !important;
+  color: var(--decor-card-action-text) !important;
+  border-color: transparent !important;
+}
+
+:root[data-decor-card="custom"] .window-reveal-copy .window-more svg {
+  stroke: var(--decor-card-action-text) !important;
+}
+
+:root[data-decor-card="custom"] .candidate-feed-card .candidate-rarity-chip {
+  background: var(--decor-card-chip-bg) !important;
+  border-color: var(--decor-card-chip-border) !important;
+  color: var(--decor-card-accent) !important;
+}
+
+/* ---------- 预览容器（工作室内部） ---------- */
+.decor-preview-bar {
+  --bar-bg: var(--decor-bar-bg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 20px;
+  border: 1px solid var(--decor-bar-border);
+  background: var(--decor-bar-bg);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.decor-preview-bar button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--decor-bar-label);
+  font-size: 10px;
+  position: relative;
+}
+
+.decor-preview-bar button.active {
+  color: var(--decor-bar-active-label);
+  background: var(--decor-bar-pill);
+}
+
+.decor-preview-bar button svg {
+  stroke: var(--decor-bar-icon);
+}
+
+.decor-preview-bar button.active svg {
+  stroke: var(--decor-bar-active-icon);
+}
+
+.decor-preview-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--decor-card-back-border);
+  background-color: var(--decor-card-back-bg);
+  background-image: var(--decor-card-back-image);
+  background-size: cover;
+  background-position: center;
+  display: grid;
+  place-items: center;
+  color: var(--decor-card-number);
+}
+
+.decor-preview-card .decor-preview-number {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  font: 12px ui-monospace, monospace;
+  letter-spacing: .12em;
+  color: var(--decor-card-number);
+}
+
+.decor-preview-card .decor-preview-brand {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--decor-card-hint);
+}
+
+.decor-preview-card .decor-preview-prompt {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  font-size: 10px;
+  color: var(--decor-card-hint);
+}
+
+.decor-preview-card.is-content {
+  background-color: var(--decor-card-content-bg);
+  background-image: var(--decor-card-content-image);
+  border-color: var(--decor-card-content-border);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.decor-preview-content {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: color-mix(in srgb, var(--decor-card-content-bg) 92%, transparent);
+  border-top: 1px solid var(--decor-card-content-border);
+}
+
+.decor-preview-content small {
+  color: var(--decor-card-body);
+  font-size: 10px;
+  letter-spacing: .1em;
+}
+
+.decor-preview-content strong {
+  color: var(--decor-card-title);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.decor-preview-content p {
+  color: var(--decor-card-body);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.decor-preview-content em {
+  align-self: flex-start;
+  font-style: normal;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  background: var(--decor-card-action-bg);
+  color: var(--decor-card-action-text);
+}
+
+.decor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--decor-card-chip-border);
+  background: var(--decor-card-chip-bg);
+  color: var(--decor-card-body);
+  font-size: 10px;
+  align-self: flex-start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-decor-bar="custom"] .bottom-nav button,
+  :root[data-decor-bar="custom"] .bottom-nav button::before { transition: none !important; }
+}

@@ -3,7 +3,7 @@
 import { memo, useMemo, useState } from "react";
 import {
   BadgeCheck, Bell, BookOpen, ChevronRight, Database, FileText, Hash, Inbox,
-  Info, LayoutGrid, Megaphone, MessageSquare, Moon, PanelBottom, PenLine, Search,
+  Info, Layers, LayoutGrid, Megaphone, MessageSquare, Moon, Palette, PanelBottom, PenLine, Save, Search,
   Shield, ShieldCheck, Sparkles, Type, UserRound, UserSquare,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/version";
@@ -23,6 +23,8 @@ type Props = {
   accountId: string | null;
   isStaff: boolean;
   onOpenDetail: (detail: SettingsDetail) => void;
+  onOpenDecor: (target: "bottom" | "card" | "official") => void;
+  onOpenDrafts: () => void;
   onOpenAbout: () => void;
   onOpenContent: () => void;
   onOpenCreator: () => void;
@@ -40,7 +42,7 @@ type Center = { id: CenterId; title: string; description: string; icon: typeof M
  * → 三级 具体设置（主题、字体、字号、布局、阅读模式、通知开关等，由 onOpenDetail 打开）。
  * 个人账号入口直达三级，避免为层级而多点一次。最多三级，不产生第四级页面。
  */
-function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode, detailTransition, discoverLayout, profileLayout, messagesEnabled, accountId, isStaff, onOpenDetail, onOpenAbout, onOpenContent, onOpenCreator, onOpenFeedbackAdmin, onOpenModeration, onBack }: Props) {
+function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode, detailTransition, discoverLayout, profileLayout, messagesEnabled, accountId, isStaff, onOpenDetail, onOpenDecor, onOpenDrafts, onOpenAbout, onOpenContent, onOpenCreator, onOpenFeedbackAdmin, onOpenModeration, onBack }: Props) {
   const [center, setCenter] = useState<CenterId | null>(null);
   const [query, setQuery] = useState("");
 
@@ -51,6 +53,9 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
           { label: "主题外观", value: ({ dark: "深色", light: "浅色", system: "跟随系统" } as const)[theme], icon: Moon, action: () => onOpenDetail("theme") },
           { label: "字体设置", value: fontChoice === "oppo" ? "OPPO Sans" : "系统字体", icon: Type, action: () => onOpenDetail("font") },
           { label: "底部导航", value: bottomNavStyle === "glass" ? "悬浮" : "固定", icon: PanelBottom, action: () => onOpenDetail("bottomNav") },
+          { label: "底栏装扮", value: "颜色、图标与预设", icon: Palette, action: () => onOpenDecor("bottom") },
+          { label: "卡片装扮", value: "卡背与内容面", icon: Layers, action: () => onOpenDecor("card") },
+          { label: "创意工坊", value: "官方与玩家主题", icon: Sparkles, action: () => onOpenDecor("official") },
           { label: "首页浏览方式", value: homeMode === "waterfall" ? "瀑布流" : "黑卡模式", icon: LayoutGrid, action: () => onOpenDetail("homeMode") },
           { label: "发现页布局", value: discoverLayout === "waterfall" ? "瀑布流" : "单列阅读", icon: LayoutGrid, action: () => onOpenDetail("discoverLayout") },
           { label: "详情过渡效果", value: ({ "image-zoom": "连续展开", "blur-rise": "柔和上浮", "ghost-handoff": "留影衔接" } as const)[detailTransition], icon: Sparkles, action: () => onOpenDetail("detailTransition") },
@@ -69,6 +74,7 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
           { label: "个人资料", icon: UserRound, action: () => onOpenDetail("profile") },
           { label: "隐私与安全", value: "作品可见范围", icon: Shield, action: () => onOpenDetail("security") },
           { label: "我的作品与草稿", icon: FileText, action: onOpenContent },
+          { label: "本地草稿箱", value: "只保存在此设备", icon: Save, action: onOpenDrafts },
           { label: "兴趣与话题", icon: Hash, action: () => onOpenDetail("interests") },
           { label: "创作者中心", icon: PenLine, action: onOpenCreator },
           { label: "兑换认证码", value: "认证标识", icon: BadgeCheck, action: () => onOpenDetail("certification") },

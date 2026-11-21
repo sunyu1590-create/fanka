@@ -44,6 +44,7 @@ import {
   Smartphone,
   Megaphone,
   ShoppingBag,
+  FileText,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import AnnouncementAdmin from "./AnnouncementAdmin";
@@ -98,6 +99,12 @@ import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExte
 import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
+import DecorCenter from "./DecorCenter";
+import DraftBox from "./DraftBox";
+import ProfileHeader from "./ProfileHeader";
+import type { CoverMeta } from "./CoverEditor";
+import { applyDecorToDocument, installDecorThemeSync, loadDecor, resetDecor, useDecor } from "@/lib/decor/store";
+import { countDrafts, getDraftFile, migrateLegacyDrafts, saveDraft, deleteDraft, type LocalDraft } from "@/lib/local-drafts";
 import AccountSwitcher from "./AccountSwitcher";
 import ProfileBadgeList, { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
 import { rememberSession } from "@/lib/saved-accounts";
@@ -221,6 +228,8 @@ type State = {
   name: string;
   bio: string;
   profileDetails: ProfileDetails;
+  cover?: string;
+  coverMeta?: CoverMeta;
   viewed: number[];
 };
 const initial: State = {
@@ -698,6 +707,13 @@ export default function Community() {
     [composerEditingPublished, setComposerEditingPublished] = useState(false),
     [composerRevisionMode, setComposerRevisionMode] = useState(false),
     [draftSaving, setDraftSaving] = useState(false),
+    [draftLocalState, setDraftLocalState] = useState<"idle" | "saving" | "saved" | "error">("idle"),
+    [localDraftId, setLocalDraftId] = useState<string | null>(null),
+    [localDraftCount, setLocalDraftCount] = useState(0),
+    [draftBoxOpen, setDraftBoxOpen] = useState(false),
+    [decorOpen, setDecorOpen] = useState(false),
+    [decorTab, setDecorTab] = useState<"official" | "community" | "mine" | "submissions" | "studio">("official"),
+    [decorKind, setDecorKind] = useState<"all" | "bottom" | "card">("all"),
     [isPublishing, setIsPublishing] = useState(false),
     [topicSummary, setTopicSummary] = useState<TopicSummary | null>(null),
     [topicPosts, setTopicPosts] = useState<Post[]>([]),
@@ -944,6 +960,8 @@ export default function Community() {
   const draftSaveTimer = useRef<number | null>(null);
   const draftCloudQueue = useRef<Promise<void>>(Promise.resolve());
   const composerSession = useRef(0);
+  const localDraftIdRef = useRef<string | null>(null);
+  const pendingAttachmentFiles = useRef(new Map<string, File>());
   const composerRouteSeq = useRef(0);
   const composerSuggestionRef = useRef<{ key: string; route: ComposerRoute | null; topics: string[]; degraded: boolean; checking: boolean } | null>(null);
   const composerTagTouchedRef = useRef(false);
@@ -2628,7 +2646,15 @@ export default function Community() {
     try {
       const old = state.own.find((p) => p.id === editing);
       const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
-      const attachmentPayload = composerAttachments;
+      let attachmentPayload = composerAttachments;
+      if (composerAttachments.some((item) => item.path.startsWith("local:"))) {
+        try { attachmentPayload = await flushPendingAttachments(); }
+        catch (error) {
+          setAttachmentError(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
+          toast(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
+          return;
+        }
+      }
       const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai"
         ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, attachments: attachmentPayload, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
         : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag, topics: writeTopics, attachments: attachmentPayload, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
@@ -2709,6 +2735,15 @@ export default function Community() {
       }
       composerCloudDrafts.current.delete(`${owner}:${writeChannel}`); composerDraftRef.current = null;
       lastDraftPayload.current = "";
+      // 服务端确认发布成功后才删除本地草稿；失败时草稿继续保留。
+      if (localDraftIdRef.current) {
+        await deleteDraft(localDraftIdRef.current).catch(() => {});
+        localDraftIdRef.current = null;
+        setLocalDraftId(null);
+        setDraftLocalState("idle");
+        void refreshLocalDraftCount();
+      }
+      pendingAttachmentFiles.current.clear();
       toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : "内容已提交人工审核，通过后将公开展示");
     } catch (e) {
       setUploadingImages(false);
@@ -2733,80 +2768,67 @@ export default function Community() {
     void refreshAttachmentQuota();
   }, [modal, writeChannel]);
 
+  /**
+   * 附件也保持本地：选中时只记录文件与占位路径，
+   * 真正上传发生在点击发布之后，避免草稿阶段暗中把附件传到云端。
+   */
   const uploadComposerAttachments = async (files: File[]) => {
     if (!files.length || attachmentBusy) return;
     setAttachmentError("");
-    const incoming = files;
-    if (composerAttachments.length + incoming.length > MAX_ATTACHMENT_FILES) {
+    if (composerAttachments.length + files.length > MAX_ATTACHMENT_FILES) {
       setAttachmentError(`最多上传 ${MAX_ATTACHMENT_FILES} 个附件`);
       return;
     }
     const total = composerAttachments.reduce((sum, item) => sum + item.size, 0);
-    for (const file of incoming) {
+    for (const file of files) {
       if (file.size > MAX_ATTACHMENT_BYTES) { setAttachmentError(`「${file.name}」超过单个 30 MB 的限制`); return; }
     }
-    if (total + incoming.reduce((sum, file) => sum + file.size, 0) > MAX_ATTACHMENT_TOTAL_BYTES) {
+    if (total + files.reduce((sum, file) => sum + file.size, 0) > MAX_ATTACHMENT_TOTAL_BYTES) {
       setAttachmentError("附件合计不能超过 50 MB");
       return;
     }
-    setAttachmentBusy(true);
-    setAttachmentProgress(0);
-    const failed: File[] = [];
-    const totalBytes = incoming.reduce((sum, file) => sum + file.size, 0);
-    let completedBytes = 0;
-    try {
-      for (const file of incoming) {
-        try {
-          const db = await browserDb();
-          const { data } = await db.auth.getSession();
-          if (!data.session) throw new Error("登录状态已失效，请重新登录后重试");
-          const form = new FormData();
-          form.set("file", file);
-          let uploadId = attachmentUploadIds.current.get(file);
-          if (!uploadId) {
-            uploadId = crypto.randomUUID();
-            attachmentUploadIds.current.set(file, uploadId);
-          }
-          form.set("uploadId", uploadId);
-          const uploaded = await new Promise<{ data: PostAttachment & { remaining?: number } }>((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open("POST", "/api/v1/attachments");
-            xhr.setRequestHeader("Authorization", `Bearer ${data.session.access_token}`);
-            xhr.upload.onprogress = (event) => {
-              if (!event.lengthComputable || totalBytes <= 0) return;
-              setAttachmentProgress(Math.min(99, Math.floor(((completedBytes + event.loaded) / totalBytes) * 100)));
-            };
-            xhr.onerror = () => reject(new Error("网络中断，附件未能上传，请重试"));
-            xhr.onabort = () => reject(new Error("附件上传已取消"));
-            xhr.onload = () => {
-              let payload: { data?: PostAttachment & { remaining?: number }; error?: string } | null = null;
-              try { payload = JSON.parse(xhr.responseText); } catch { /* 由状态码提供通用错误 */ }
-              if (xhr.status < 200 || xhr.status >= 300 || !payload?.data) {
-                reject(new Error(payload?.error || "附件上传失败，请稍后重试"));
-                return;
-              }
-              resolve(payload as { data: PostAttachment & { remaining?: number } });
-            };
-            xhr.send(form);
-          });
-          setComposerAttachments((current) => [...current, uploaded.data]);
-          attachmentUploadIds.current.delete(file);
-          setAttachmentRetryFiles((current) => current.filter((item) => item !== file));
-          if (typeof uploaded.data.remaining === "number") setAttachmentQuota((current) => current ? { ...current, remaining: uploaded.data.remaining!, used: current.limit - uploaded.data.remaining! } : current);
-        } catch (error) {
-          failed.push(file);
-          setAttachmentError(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
-        }
-        completedBytes += file.size;
-        setAttachmentProgress(totalBytes ? Math.min(100, Math.floor((completedBytes / totalBytes) * 100)) : 100);
-      }
-      setAttachmentRetryFiles((current) => [...current.filter((item) => !incoming.includes(item)), ...failed]);
-      if (failed.length === 0) setAttachmentError("");
-    } finally {
-      setAttachmentBusy(false);
-      setAttachmentProgress(null);
-      void refreshAttachmentQuota();
+    const staged: PostAttachment[] = files.map((file) => {
+      const uploadId = crypto.randomUUID();
+      pendingAttachmentFiles.current.set(uploadId, file);
+      return { path: `local:${uploadId}`, name: file.name, size: file.size, mime: file.type || "application/octet-stream" };
+    });
+    setComposerAttachments((current) => [...current, ...staged]);
+    setAttachmentRetryFiles([]);
+  };
+
+  /** 发布前把本地暂存的附件按既有接口上传，返回服务端路径。 */
+  const flushPendingAttachments = async (): Promise<PostAttachment[]> => {
+    const pending = composerAttachments.filter((item) => item.path.startsWith("local:"));
+    if (!pending.length) return composerAttachments;
+    const db = await browserDb();
+    const { data } = await db.auth.getSession();
+    if (!data.session) throw new Error("登录状态已失效，请重新登录后重试");
+    const resolved: PostAttachment[] = [];
+    for (const item of composerAttachments) {
+      if (!item.path.startsWith("local:")) { resolved.push(item); continue; }
+      const file = pendingAttachmentFiles.current.get(item.path.slice(6));
+      if (!file) throw new Error(`「${item.name}」的本地文件已丢失，请重新选择`);
+      const form = new FormData();
+      form.set("file", file);
+      form.set("uploadId", crypto.randomUUID());
+      const uploaded = await new Promise<PostAttachment>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/v1/attachments");
+        xhr.setRequestHeader("Authorization", `Bearer ${data.session!.access_token}`);
+        xhr.onerror = () => reject(new Error("网络中断，附件未能上传，请重试"));
+        xhr.onload = () => {
+          let payload: { data?: PostAttachment; error?: string } | null = null;
+          try { payload = JSON.parse(xhr.responseText); } catch { /* 由状态码提供通用错误 */ }
+          if (xhr.status < 200 || xhr.status >= 300 || !payload?.data) { reject(new Error(payload?.error || "附件上传失败，请稍后重试")); return; }
+          resolve(payload.data);
+        };
+        xhr.send(form);
+      });
+      pendingAttachmentFiles.current.delete(item.path.slice(6));
+      resolved.push({ ...uploaded, name: uploaded.name || item.name, size: uploaded.size || item.size, mime: uploaded.mime || item.mime });
     }
+    setComposerAttachments(resolved);
+    return resolved;
   };
 
   const addComposerAttachments = async (files: FileList | null) => {
@@ -2823,6 +2845,11 @@ export default function Community() {
   };
 
   const removeComposerAttachment = async (path: string) => {
+    if (path.startsWith("local:")) {
+      pendingAttachmentFiles.current.delete(path.slice(6));
+      setComposerAttachments((current) => current.filter((item) => item.path !== path));
+      return;
+    }
     const previous = composerAttachments;
     setComposerAttachments((current) => current.filter((item) => item.path !== path));
     if (composerEditingPublished) return;
@@ -2836,15 +2863,44 @@ export default function Community() {
     }
   };
 
-  const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community") => {
+  const saveAndNewDraft = async () => {
+    await flushComposerDraft.current().catch(() => {});
+    setComposerPanel(null);
+    await openComposer();
+    toast("已保存到本机草稿，开始一篇新的作品");
+  };
+
+  const deleteCurrentDraft = async () => {
+    if (!localDraftIdRef.current) { toast("当前内容还没有保存到本机草稿"); return; }
+    if (!await confirmInApp("删除当前草稿？正文、图片与附件都会从本机移除。", { title: "删除草稿", confirmLabel: "删除", danger: true })) return;
+    const removing = localDraftIdRef.current;
+    localDraftIdRef.current = null;
+    setLocalDraftId(null);
+    pendingAttachmentFiles.current.clear();
+    await deleteDraft(removing).catch(() => {});
+    composerSession.current += 1;
+    setTitle("");
+    setBody("");
+    setComposerImages([]);
+    setComposerVideo(null);
+    setComposerAttachments([]);
+    setPollQuestion("");
+    setPollOptions(["", ""]);
+    setDraftLocalState("idle");
+    setComposerPanel(null);
+    void refreshLocalDraftCount();
+    toast("草稿已删除");
+  };
+
+  const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community", localDraft?: LocalDraft) => {
     composerImages.forEach(image=>{if(image.url.startsWith("blob:"))URL.revokeObjectURL(image.url);});
     composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false);
     videoCompressionAbort.current?.abort();
     videoCompressionAbort.current = null;
     videoCompressionSequence.current += 1;
     if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
-    const stored = !post ? state.own.find((item) => item.status === "draft" && (item.channel || "community") === requestedChannel) : undefined;
-    const initialPost = post || stored;
+    // 正常入口一律从空白开始；只有主动从草稿箱选择才会恢复内容。
+    const initialPost = post;
     composerDraftRef.current = initialPost || null;
     if (initialPost?.status === "draft") composerCloudDrafts.current.set(`${accountId || "guest"}:${requestedChannel}`,initialPost);
     const revisionPayload = initialPost?.pendingRevision?.payload;
@@ -2918,133 +2974,112 @@ export default function Community() {
         }
       } catch { setComposerMediaLoadFailed(true);toast("已恢复草稿文字，附件列表读取失败，请重试读取后提交"); }
     }
-    const owner = accountId || "guest";
-    if (!initialPost || initialPost.status === "draft") {
-      try {
-        const ownRaw = localStorage.getItem(`heika-compose-${channel}-${owner}`);
-        const legacyRaw = channel === "community" ? localStorage.getItem(`heika-compose-${owner}`) : null;
-        const raw = ownRaw || legacyRaw || (accountId && channel === "community" ? localStorage.getItem("heika-compose-guest") : null);
-        const fileOwner = ownRaw || legacyRaw || !accountId ? owner : "guest";
-        if (raw) {
-          const saved = JSON.parse(raw) as { title?: string; body?: string; tag?: string; topics?: string[]; seriesId?: string | null; poll?: { question?: string; options?: string[] }; channel?: "community" | "ai"; contentType?: AiContentType; resourceData?: Record<string,string>; attachments?: PostAttachment[]; coverIndex?: number; images?: { id: string; path?: string; url?: string; external?: boolean }[]; video?: { id: string; path?: string; name?: string; size?: number; type?: string; existing?: boolean } };
-          setTitle(saved.title || "");
-          setBody(saved.body || "");
-          setWriteTag(saved.tag || (channel === "ai" ? aiCategories[0]?.name || "AI 知识" : communityCategories[0] || tags[0]));
-          setWriteTopics(saved.topics || []);
-          setWriteContentType(saved.contentType || "knowledge_article");
-          setAiResourceFields(saved.resourceData || {});
-          setComposerAttachments(saved.attachments || []);
-          setWriteSeriesId(saved.seriesId || "");
-          setPollQuestion(saved.poll?.question || "");
-          setPollOptions(saved.poll?.options?.length ? [...saved.poll.options, "", ""].slice(0, 4) : ["", ""]);
-          if (saved.images?.length || saved.video) {
-            const files = await loadDraftFiles(`${fileOwner}:${channel}`).then(async files => files.length ? files : loadDraftFiles(fileOwner)).catch(()=>[]);
-            if (saved.video) {
-              const videoFile = files.find((item) => item.id === saved.video!.id)?.file;
-              if (saved.video.path) {
-                const signedUrl = await composerMediaUrl(saved.video.path);
-                if (signedUrl || !videoFile) setComposerVideo({ id: saved.video.id, path: saved.video.path, url: signedUrl, name: saved.video.name || "已上传视频", size: saved.video.size || videoFile?.size || 0, type: saved.video.type || videoFile?.type || "video/mp4", status: "ready", progress: 100, existing: saved.video.existing });
-                else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
-              } else if (videoFile) setComposerVideo({ id: saved.video.id, file: videoFile, url: URL.createObjectURL(videoFile), name: videoFile.name, size: videoFile.size, type: videoFile.type, status: "ready", progress: 0 });
-            }
-            if (saved.images?.length) {
-              const restored = await Promise.all(saved.images.map(async (image, index) => {
-              if (image.path) {
-                const signedUrl = await composerMediaUrl(image.path);
-                const file = files.find((item) => item.id === image.id)?.file;
-                return { id:image.id,path:image.path,file,url:signedUrl || (file?URL.createObjectURL(file):"/image-not-loaded.svg"),status:"ready" as const,sortOrder:index };
-              }
-              if (image.external && image.url) return { id: image.id, url: image.url, status: "ready" as const, external: true };
-              const file = files.find((item) => item.id === image.id)?.file;
-              if (file) return { id: image.id, file, url: URL.createObjectURL(file), status: "ready" as const };
-              return {id:image.id,url:image.url || "/image-not-loaded.svg",status:"failed" as const};
-            }));
-            setComposerImages(restored.filter((image): image is NonNullable<typeof image> => Boolean(image?.url)));
-            }
-          }
-          setCoverIndex(Math.min(saved.coverIndex || 0, Math.max(0, (saved.images?.length || 1) - 1)));
-          toast("已恢复上次保存的草稿");
+    // 仅「从草稿箱继续编辑」会回填内容；其余入口保持空白。
+    localDraftIdRef.current = localDraft?.id ?? null;
+    setLocalDraftId(localDraft?.id ?? null);
+    setDraftLocalState("idle");
+    pendingAttachmentFiles.current.clear();
+    if (localDraft) {
+      setTitle(localDraft.title);
+      setBody(localDraft.body);
+      if (localDraft.tag) setWriteTag(localDraft.tag);
+      if (localDraft.topics.length) setWriteTopics(localDraft.topics);
+      setWriteSeriesId(localDraft.seriesId || "");
+      setPollQuestion(localDraft.poll?.question || "");
+      setPollOptions(localDraft.poll?.options?.length ? [...localDraft.poll.options, "", ""].slice(0, 4) : ["", ""]);
+      if (localDraft.contentType) setWriteContentType(localDraft.contentType as AiContentType);
+      setAiResourceFields(localDraft.resourceData || {});
+      setComposerAttachments((localDraft.attachments || []) as PostAttachment[]);
+      setCoverIndex(localDraft.coverIndex || 0);
+      const restoredImages: ComposerImage[] = [];
+      for (const image of localDraft.images) {
+        if (image.fileId) {
+          const blob = await getDraftFile(localDraft.id, image.fileId).catch(() => null);
+          if (blob) restoredImages.push({ id: image.id, file: new File([blob], image.name || `image-${image.id}`, { type: image.type || blob.type || "image/jpeg" }), url: URL.createObjectURL(blob), status: "ready" });
+          else restoredImages.push({ id: image.id, url: "/image-not-loaded.svg", status: "failed" });
+        } else if (image.externalUrl) {
+          restoredImages.push({ id: image.id, url: image.externalUrl, status: "ready", external: true });
         }
-      } catch { toast("草稿恢复失败，可继续新建内容"); }
+      }
+      setComposerImages(restoredImages);
+      if (localDraft.video?.fileId) {
+        const blob = await getDraftFile(localDraft.id, localDraft.video.fileId).catch(() => null);
+        if (blob) setComposerVideo({ id: localDraft.video.id, file: new File([blob], localDraft.video.name || "video.mp4", { type: localDraft.video.type || blob.type }), url: URL.createObjectURL(blob), name: localDraft.video.name || "视频", size: localDraft.video.size || blob.size, type: localDraft.video.type || blob.type, status: "ready", progress: 100 });
+        else setComposerVideo(null);
+      } else setComposerVideo(null);
+      setComposerValidation("");
     }
     setDraftSaved(false);
     setModal("write");
   };
+  // 草稿自动保存：只写本机 IndexedDB，不上传云端；发布成功后由 publish 删除。
   useEffect(() => {
-    if (modal !== "write") return;
+    if (modal !== "write" || composerEditingPublished) return;
     const generation = composerSession.current;
-    const revision = ++draftRevision.current;
     const currentSession = () => composerSession.current === generation;
-    setDraftCloudSynced(false);
     const persist = async () => {
-      if (publishInFlight.current || !currentSession() || (!title && !body && !composerImages.length && !composerVideo && !composerAttachments.length && !pollQuestion && !pollOptions.some(Boolean))) return;
-      const owner = accountId || "guest";
+      if (publishInFlight.current || !currentSession()) return;
       const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
-      const draftData = { title, body, tag: writeTag, topics: writeTopics, channel: writeChannel, contentType: writeContentType, resourceData: aiResourceFields, attachments: composerAttachments, seriesId: writeSeriesId || null, poll: poll.question || poll.options.length ? poll : null, coverIndex, images: composerImages.map(({ id, path, url, external }) => ({ id, path, url, external })), video: composerVideo ? { id: composerVideo.id, path: composerVideo.path, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type, existing: composerVideo.existing } : null, savedAt: Date.now() };
-      localStorage.setItem(`heika-compose-${writeChannel}-${owner}`, JSON.stringify(draftData));
-      if (writeChannel === "community") localStorage.setItem(`heika-compose-${owner}`, JSON.stringify(draftData));
-      await saveDraftFiles(`${owner}:${writeChannel}`, [...composerImages.map(({ id, file }) => ({ id, file })), ...(composerVideo ? [{ id: composerVideo.id, file: composerVideo.file }] : [])]);
-      if (!currentSession()) return;
-      setDraftSaved(true); setDraftSyncError("");
-      if (!accountId || composerEditingPublished || composerMediaLoadFailed) return;
-      // Serialize snapshots: an older response cannot finish after a newer save.
-      draftCloudQueue.current = draftCloudQueue.current.catch(() => {}).then(async () => {
-        if (!currentSession() || publishInFlight.current || draftRevision.current !== revision) return;
-        setDraftSaving(true);
-        try {
-        if (accountId && !composerEditingPublished) {
-          const signature = JSON.stringify({ accountId, title, body, writeTag, writeTopics, writeSeriesId, poll, coverIndex, writeChannel, writeContentType, aiResourceFields, composerAttachments });
-          let cloudDraft = composerDraftRef.current || composerCloudDrafts.current.get(`${owner}:${writeChannel}`) || state.own.find((item) => item.id === editing && item.status === "draft" && (item.channel || "community") === writeChannel);
-          if (lastDraftPayload.current !== signature || !cloudDraft) {
-            setDraftSaving(true);
-            try {
-              const cover = composerImages[coverIndex];
-              const saved = writeChannel === "ai"
-                ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: cloudDraft?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields, attachments: composerAttachments, coverUrl: cover?.external ? cover.url : null }) as Post | null
-                : await cloudRequest("/api/v1/library-state", { action: "draft", id: cloudDraft?.cloudId ? cloudDraft.id : undefined, title, body, tag: writeTag, topics: writeTopics, attachments: composerAttachments, seriesId: writeSeriesId || null, ...(poll.question && poll.options.length >= 2 && poll.options.length <= 4 ? { poll } : {}), coverUrl: cover?.external ? cover.url : null }) as Post | null;
-              if (saved?.cloudId) composerCloudDrafts.current.set(`${owner}:${writeChannel}`,saved);
-              if (!currentSession()) return;
-              if (!saved?.cloudId) throw new Error("云端草稿暂时不可用");
-              cloudDraft = saved; composerDraftRef.current = saved; lastDraftPayload.current = signature; setEditing(saved.id); update((current) => ({ ...current, own: [saved, ...current.own.filter((item) => item.id !== saved.id)] }));
-            } catch { throw new Error("同步失败，本机草稿已保留"); }
-            finally { /* The queue clears saving after all media has settled. */ }
-          }
-          if (cloudDraft?.cloudId) {
-            const cover = composerImages[coverIndex];
-            const storageImages = composerImages.filter((image) => !image.external);
-            const ordered = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
-            for (const [index, image] of ordered.entries()) {
-              if (!currentSession()) return;
-              if (image.external) continue;
-              const needsUpload = Boolean(image.file && !image.path);
-              const needsReorder = Boolean(image.path && image.sortOrder !== index);
-              if ((!needsUpload && !needsReorder) || image.status === "failed" || draftMediaBusy.current.has(image.id)) continue;
-              draftMediaBusy.current.add(image.id);
-              setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading" } : item));
-              try {
-                const synced = await uploadImageToPost(image, cloudDraft.cloudId, index);
-                if (currentSession()) setComposerImages((items) => items.map((item) => item.id === image.id ? synced : item));
-              } catch (error) {
-                if (currentSession()) setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
-                throw error;
-              } finally { draftMediaBusy.current.delete(image.id); }
-            }
-          }
-        }
-          if (currentSession() && draftRevision.current === revision && !composerEditingPublished && !composerVideo && !composerImages.some(image=>image.status !== "ready" || (!image.external && !image.path))) setDraftCloudSynced(true);
-        } catch (error) { if (currentSession()) setDraftSyncError(error instanceof Error ? error.message : "同步失败，本机草稿已保留"); }
-        finally { if (currentSession()) setDraftSaving(false); }
-      });
+      const hasContent = Boolean(title.trim() || body.trim() || composerImages.length || composerVideo || composerAttachments.length || poll.question || poll.options.length);
+      if (!hasContent) return;
+      const id = localDraftIdRef.current || crypto.randomUUID();
+      const draft: LocalDraft = {
+        id,
+        owner: accountId || "guest",
+        channel: writeChannel,
+        title,
+        body,
+        tag: writeTag,
+        topics: writeTopics,
+        seriesId: writeSeriesId || null,
+        poll: poll.question || poll.options.length ? poll : null,
+        contentType: writeContentType,
+        resourceData: aiResourceFields,
+        attachments: composerAttachments,
+        coverIndex,
+        images: composerImages.map((image) => ({
+          id: image.id,
+          fileId: image.file ? image.id : undefined,
+          externalUrl: image.external ? image.url : undefined,
+          name: image.file?.name,
+          type: image.file?.type,
+        })),
+        video: composerVideo ? { id: composerVideo.id, fileId: composerVideo.file ? composerVideo.id : undefined, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type } : null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      const files: { fileId: string; blob: Blob }[] = [];
+      for (const image of composerImages) if (image.file) files.push({ fileId: image.id, blob: image.file });
+      if (composerVideo?.file) files.push({ fileId: composerVideo.id, blob: composerVideo.file });
+      for (const attachment of composerAttachments) {
+        if (!attachment.path.startsWith("local:")) continue;
+        const file = pendingAttachmentFiles.current.get(attachment.path.slice(6));
+        if (file) files.push({ fileId: attachment.path, blob: file });
+      }
+      if (currentSession()) setDraftLocalState("saving");
+      try {
+        await saveDraft(draft, files);
+        localDraftIdRef.current = id;
+        if (!currentSession()) return;
+        setLocalDraftId(id);
+        setDraftLocalState("saved");
+        setDraftSyncError("");
+        void refreshLocalDraftCount();
+      } catch (error) {
+        if (!currentSession()) return;
+        setDraftLocalState("error");
+        setDraftSyncError(error instanceof Error ? error.message : "本机草稿保存失败");
+      }
     };
     flushComposerDraft.current = persist;
-    const save = () => { void persist().catch(() => { if (currentSession()) setDraftSyncError("本机保存失败，请重试"); }); };
-    const timer = window.setTimeout(save, 500);
+    const save = () => { void persist().catch(() => { if (currentSession()) { setDraftLocalState("error"); setDraftSyncError("本机保存失败，请重试"); } }); };
+    const timer = window.setTimeout(save, 700);
     draftSaveTimer.current = timer;
-    window.addEventListener("pagehide",save);
-    return () => { window.clearTimeout(timer); window.removeEventListener("pagehide",save); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
-  // UI-only panels are excluded so opening a sheet does not restart autosave.
+    window.addEventListener("pagehide", save);
+    return () => { window.clearTimeout(timer); window.removeEventListener("pagehide", save); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
+  // 面板开关等纯 UI 状态不参与依赖，避免打开面板就重启自动保存。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerAttachments, composerEditingPublished, writeChannel, writeContentType, aiResourceFields, draftRetry, composerMediaLoadFailed]);
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerAttachments, composerEditingPublished, writeChannel, writeContentType, aiResourceFields]);
   const reloadComposerMedia = async () => {
     const old=composerDraftRef.current || state.own.find(item=>item.id===editing);
     if(!old?.cloudId)return;
@@ -4012,10 +4047,16 @@ export default function Community() {
     </>
   );
 
-  const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => (
+  const renderNavButton = ([id, label, Icon]: (typeof nav)[number]) => {
+    const navActive = tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "shared-collection") && id === "discover") || ((tab === "exploration-center" || tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain") && id === "mine") || (tab === "notifications" && id === "messages");
+    const slot = id === "today" ? "home" : id === "discover" ? "discover" : id === "messages" ? "messages" : "mine";
+    const custom = decorState.decor.bottomBar.icons[slot];
+    const customSrc = navActive ? custom?.active || custom?.normal : custom?.normal;
+    const iconSize = 21 * (custom?.scale || 1);
+    return (
     <button
       key={id}
-      className={tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "shared-collection") && id === "discover") || ((tab === "exploration-center" || tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain") && id === "mine") || (tab === "notifications" && id === "messages") ? "active" : ""}
+      className={navActive ? "active" : ""}
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
@@ -4033,11 +4074,15 @@ export default function Community() {
     >
       <span className="bottom-nav-icon">
         {id === "messages" && <InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} />}
-        <Icon size={21} strokeWidth={1.8} />
+        {customSrc ? (custom?.tint
+          ? <span className={`decor-nav-icon is-mask${custom?.fit === "cover" ? " is-cover" : ""}`} aria-hidden="true" style={{ width: iconSize, height: iconSize, WebkitMaskImage: `url("${customSrc}")`, maskImage: `url("${customSrc}")` }} />
+          : <img className={`decor-nav-icon${custom?.fit === "cover" ? " is-cover" : ""}`} src={customSrc} alt="" aria-hidden="true" style={{ width: iconSize, height: iconSize }} />)
+          : <Icon size={21} strokeWidth={1.8} />}
       </span>
       <span>{label}</span>
     </button>
   );
+  };
 
   const renderCandidate = (p: Post, deckPosition = candidates.findIndex((candidate) => candidate.id === p.id), showHistoricalReveal = false) => {
     const historical = showHistoricalReveal || (deckPosition < 0 && Boolean(state.revealed[p.id]));
@@ -4219,6 +4264,8 @@ export default function Community() {
                 name: data.profile.nickname,
                 bio: data.profile.bio,
                 avatar: data.profile.avatar_url,
+                cover: data.profile.cover_url || undefined,
+                coverMeta: (data.profile.cover_meta || undefined) as CoverMeta | undefined,
                 profileDetails: hydrateProfileDetails(data.profileDetails),
                 saved,
                 opened,
@@ -4344,12 +4391,42 @@ export default function Community() {
   }, [accountId]);
   useEffect(() => {
     const syncProfile = (event: Event) => {
-      const detail = (event as CustomEvent<{ id?: string; nickname?: string; bio?: string; avatar?: string }>).detail;
+      const detail = (event as CustomEvent<{ id?: string; nickname?: string; bio?: string; avatar?: string; cover?: string; coverMeta?: CoverMeta }>).detail;
       if (!detail || detail.id !== accountId) return;
-      setState((current) => ({ ...current, name: detail.nickname || current.name, bio: detail.bio ?? current.bio, avatar: detail.avatar || undefined, comments: current.comments.map((comment) => comment.authorId === accountId ? { ...comment, name: detail.nickname || comment.name, avatar: detail.avatar || undefined } : comment) }));
+      setState((current) => ({
+        ...current,
+        name: detail.nickname || current.name,
+        bio: detail.bio ?? current.bio,
+        avatar: detail.avatar || undefined,
+        cover: detail.cover !== undefined ? (detail.cover || undefined) : current.cover,
+        coverMeta: detail.coverMeta !== undefined ? detail.coverMeta : current.coverMeta,
+        comments: current.comments.map((comment) => comment.authorId === accountId ? { ...comment, name: detail.nickname || comment.name, avatar: detail.avatar || undefined } : comment),
+      }));
     };
     window.addEventListener("heika-profile-updated", syncProfile);
     return () => window.removeEventListener("heika-profile-updated", syncProfile);
+  }, [accountId]);
+
+  // 装扮：属于账号设置。退出登录后回到默认，避免把上一位用户的主题留在界面上。
+  const decorState = useDecor();
+  useEffect(() => installDecorThemeSync(), []);
+  useEffect(() => {
+    if (!ready) return;
+    if (accountId) void loadDecor(true);
+    else resetDecor();
+  }, [accountId, ready]);
+
+  const refreshLocalDraftCount = useCallback(async () => {
+    setLocalDraftCount(await countDrafts(accountId || "guest"));
+  }, [accountId]);
+  useEffect(() => {
+    let alive = true;
+    // 旧版「自动恢复」草稿搬进草稿箱，之后打开发布页不再自动填充。
+    void migrateLegacyDrafts(accountId || "guest").then(async () => {
+      const count = await countDrafts(accountId || "guest");
+      if (alive) setLocalDraftCount(count);
+    }).catch(() => {});
+    return () => { alive = false; };
   }, [accountId]);
   useEffect(() => {
     if (!accountId || !cloudHydrated.current) return;
@@ -4808,6 +4885,8 @@ export default function Community() {
           accountId={accountId}
           isStaff={isStaff}
           onOpenDetail={openSettingsDetail}
+          onOpenDecor={(target) => { setDecorKind(target === "card" ? "card" : target === "bottom" ? "bottom" : "all"); setDecorTab(target === "official" ? "official" : "studio"); setDecorOpen(true); }}
+          onOpenDrafts={() => setDraftBoxOpen(true)}
           onOpenAbout={openAboutPage}
           onOpenContent={() => openMyContent("settings")}
           onOpenCreator={() => openCreatorCenter("settings")}
@@ -4847,7 +4926,7 @@ export default function Community() {
               {!!experienceSummary.events.length && <div className="experience-level-list"><button type="button" className="collapsible-panel-toggle" aria-expanded={recentExperienceOpen} onClick={() => setRecentExperienceOpen((open) => !open)}><h2>最近经验</h2><span>{experienceSummary.events.length} 条 <ChevronDown size={16}/></span></button>{recentExperienceOpen && experienceSummary.events.map((event, index) => <div className="experience-event-row" key={`${event.createdAt}-${index}`}><span>{event.type === "flip" ? "翻开卡片" : event.type === "mission" ? "创作者任务" : event.type === "daily_mission" ? "每日探索任务" : "内容评分"}</span><strong>+{event.points} EXP</strong><small>{new Date(event.createdAt).toLocaleDateString("zh-CN")}</small></div>)}</div>}
             </div>;
           })()}
-          {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} details={state.profileDetails} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
+          {settingsDetail === "profile" && <AccountProfile mode="page" name={state.name} bio={state.bio} avatar={state.avatar} cover={state.cover} coverMeta={state.coverMeta} accountId={accountId} details={state.profileDetails} onNotice={toast} onSave={(name,bio,avatar,profileDetails)=>{update(current=>({...current,name,bio,avatar,profileDetails}));window.dispatchEvent(new CustomEvent("heika-profile-updated",{detail:{id:accountId,nickname:name,bio,avatar}}));}} onClose={closeSettingsDetail}/>}
           {settingsDetail === "security" && <><AccountSwitcher accountId={accountId} onNotice={toast}/><MessagingPreferences accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} publicBookmarks={publicBookmarks} publicBookmarksLoaded={publicBookmarksLoaded} bookmarkVisibilityBusy={bookmarkVisibilityBusy} onBookmarkVisibilityChange={updateBookmarkVisibility} onNotice={toast}/><AppealCenter accountId={accountId} onLogin={() => { closeSettingsDetail(); setTab("messages"); }} onNotice={toast}/></>}
           {settingsDetail === "announcement" && <AnnouncementAdmin onNotice={toast}/>}
           {settingsDetail === "membership" && <MembershipCenter tier={membershipTier} dailyAllowance={dailyAllowance} usedFlips={opened.length} accountId={accountId} experienceTotal={experienceSummary.total} /> }
@@ -4954,15 +5033,26 @@ export default function Community() {
       )}
       {tab === "mine" && (
         <section className="page mine-page">
-          <section className="mine-profile-hero" aria-label="个人资料">
-            <div className="profile-card mine-profile-card">
-              <div className="avatar">{state.avatar ? <img src={state.avatar} alt="头像" /> : state.name[0]}</div>
-              <div className="mine-profile-copy"><div className="mine-profile-name-row"><h2>{state.name}</h2><ProfileBadgeList badges={ownBadges} compact/><button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button></div><p>{state.bio || "记录生活，继续探索。"}</p>{accountId && <small className="mine-account-id">黑卡编号 · {accountId.slice(0, 8).toUpperCase()}</small>}</div>
-              <button type="button" aria-label="编辑资料" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={18} /></button>
-            </div>
-            <div className="stats exploration-stats mine-profile-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>
-          </section>
+          <ProfileHeader
+            mode="self"
+            nickname={state.name}
+            avatar={state.avatar}
+            coverUrl={state.cover}
+            coverMeta={state.coverMeta}
+            badges={<ProfileBadgeList badges={ownBadges} compact/>}
+            level={<button className="mine-level-tag" type="button" aria-label={`探索等级 LV.${currentExperience.current.level}，查看经验详情`} onClick={() => openSettingsDetail("progression", "mine")}>LV.{currentExperience.current.level}</button>}
+            bio={state.bio}
+            accountLine={accountId ? `黑卡编号 · ${accountId.slice(0, 8).toUpperCase()}` : undefined}
+            stats={<div className="profile-hero-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>}
+            actions={<button type="button" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={16} /> 编辑资料</button>}
+            onEditCover={() => openSettingsDetail("profile", "mine")}
+          />
           <section className="mine-exploration-hub" aria-label="探索功能">
+            <button type="button" className="mine-exploration-entry mine-draft-entry" onClick={() => setDraftBoxOpen(true)}>
+              <span className="mine-exploration-entry-icon"><FileText size={18}/></span>
+              <span><strong>草稿箱</strong><small>{localDraftCount > 0 ? `${localDraftCount} 篇草稿，只保存在本机` : "没有未完成的草稿"}</small></span>
+              <ChevronRight size={18}/>
+            </button>
             <DailyMissions accountId={accountId} onNotice={toast}/>
             <button type="button" className="mine-exploration-entry" onClick={openExplorationCenter}>
               <span className="mine-exploration-entry-icon"><Compass size={18}/></span>
@@ -5155,7 +5245,11 @@ export default function Community() {
           {nav.slice(2).map(renderNavButton)}
         </nav>
         <button type="button" className="compose" aria-label="发布内容" onClick={() => void openComposer()}>
-          <span className="bottom-nav-icon"><Plus size={25} strokeWidth={1.8} /></span>
+          <span className="bottom-nav-icon">
+            {decorState.decor.bottomBar.publish.iconUrl
+              ? <img className="decor-nav-icon" src={decorState.decor.bottomBar.publish.iconUrl} alt="" aria-hidden="true" style={{ width: 25, height: 25 }} />
+              : <Plus size={25} strokeWidth={1.8} />}
+          </span>
           <span>发布</span>
         </button>
       </div>
@@ -5565,7 +5659,10 @@ export default function Community() {
             {modal === "write" ? <header className="composer-topbar">
               <button type="button" className="composer-back" onClick={() => void closeComposer()} aria-label="返回"><ArrowLeft size={19}/><span>返回</span></button>
               <strong>创作内容</strong>
-              <button type="button" className="composer-preview-button" onClick={() => setComposerPanel("preview")}>预览</button>
+              <div className="composer-topbar-actions">
+                <button type="button" className="composer-draft-button" onClick={() => { void flushComposerDraft.current().catch(() => {}); setDraftBoxOpen(true); }}>草稿箱{localDraftCount > 0 && <small>{localDraftCount}</small>}</button>
+                <button type="button" className="composer-preview-button" onClick={() => setComposerPanel("preview")}>预览</button>
+              </div>
             </header> : <button
               className="close"
               aria-label="关闭"
@@ -5901,6 +5998,11 @@ export default function Community() {
                 </section>}
                   </div>
                 </div>
+                <section className="composer-draft-actions" aria-label="草稿操作">
+                  <button type="button" onClick={() => void saveAndNewDraft()}><Plus size={15} /> 保存并新建</button>
+                  <button type="button" className="is-danger" onClick={() => void deleteCurrentDraft()}><Trash2 size={15} /> 删除当前草稿</button>
+                  <small>草稿只保存在当前设备，不会上传云端。</small>
+                </section>
 </> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<PostAttachmentsPanel resourceData={{ attachments: composerAttachments }} onNotice={toast}/><div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
             </ComposerSheet>}
             {modal === "write" && markdownOptimizeOpen && <ComposerSheet title="Markdown 优化" full onClose={() => { if (!markdownOptimizeBusy) setMarkdownOptimizeOpen(false); }}>
@@ -5912,10 +6014,27 @@ export default function Community() {
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && markdownPreviousBody !== null && <div className="composer-markdown-applied" role="status"><span>已应用 Markdown 优化</span><button type="button" onClick={undoMarkdownOptimize}>撤回</button></div>}
-            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftSaving ? "正在同步…" : draftCloudSynced ? "已同步至账号" : draftSaved ? "已保存至此设备" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : composerSuggestion && !composerSuggestion.checking ? "确认发布" : "发布内容"}</button></footer>}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftLocalState === "saving" ? "正在保存到本机…" : draftLocalState === "saved" ? "已保存到本机" : draftLocalState === "error" ? "本机保存失败" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : composerSuggestion && !composerSuggestion.checking ? "确认发布" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}
+      <DecorCenter
+        open={decorOpen}
+        initialTab={decorTab}
+        initialKind={decorKind}
+        accountId={accountId}
+        onClose={() => setDecorOpen(false)}
+        onNotice={toast}
+        onLogin={() => { setDecorOpen(false); setTab("messages"); toast("登录后可以保存自己的装扮"); }}
+      />
+      <DraftBox
+        open={draftBoxOpen}
+        owner={accountId || "guest"}
+        onClose={() => setDraftBoxOpen(false)}
+        onNew={() => { setDraftBoxOpen(false); setModal(null); void openComposer(); }}
+        onResume={(draft) => { setDraftBoxOpen(false); setModal(null); void openComposer(undefined, draft.channel, draft); }}
+        onNotice={toast}
+      />
       {notice && <NoticeBanner key={notice.id} notice={notice} leaving={noticeLeaving} expanded={noticeExpanded} onExpand={expandNotice} onDismiss={dismissNotice} />}
       {announcement && <div className="announcement-backdrop" role="dialog" aria-modal="true" aria-labelledby="announcement-title" onClick={dismissAnnouncement}>
         <div className="announcement-card" onClick={(event) => event.stopPropagation()}>

@@ -126,12 +126,13 @@
 .public-profile-own { color: var(--ink); border-color: var(--line); background: transparent; }
 .public-profile-actions-loading { color: var(--muted); font-size: 10px; white-space: nowrap; }
 
-.public-profile-tabs { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: 1fr 1fr; margin-top: 5px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 91%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.public-profile-tabs { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 91%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
 .public-profile-tabs button { min-height: 45px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 12px; transition: color 180ms var(--ease, ease); }
 .public-profile-tabs button[aria-selected="true"] { color: var(--ink); font-weight: 640; }
 .public-profile-tabs button small { color: var(--muted); font-size: 9px; font-weight: 450; }
-.public-profile-tabs > i { position: absolute; bottom: -1px; left: 0; width: 50%; height: 2px; background: var(--ink); transform: translateX(0); transition: transform 200ms var(--ease, ease); }
-.public-profile-tabs > i.is-bookmarks { transform: translateX(100%); }
+.public-profile-tabs button[aria-selected="true"] { position: relative; }
+.public-profile-tabs button[aria-selected="true"]::after { content: ""; position: absolute; bottom: -1px; left: 50%; width: 22px; height: 2px; border-radius: 2px; background: var(--ink); transform: translateX(-50%); }
+.public-profile-tabs button svg { opacity: .7; }
 .public-profile-panel { min-height: 150px; }
 
 .public-profile-grid.profile-layout-masonry { display: block; width: min(100%, 780px); margin-inline: auto; columns: 2; column-gap: 9px; }
@@ -197,4 +198,45 @@ body:has(.public-profile) .toast { z-index: 260; }
   .public-profile-message,
   .public-profile-own,
   .public-profile-post { transition: none !important; }
+}
+
+/* 点赞标签：右下角轻标记，说明这条来自「点赞」而不是发布 */
+.public-profile-like-mark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: #E0A0A8;
+  background: color-mix(in srgb, #0B0C0E 62%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.public-profile-grid.profile-layout-list .public-profile-like-mark { position: static; grid-column: 3; width: 18px; height: 18px; background: transparent; }
+
+.public-profile-loading {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 64px 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.public-profile-loading-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 80%, var(--bg));
+  color: var(--muted);
+  animation: public-profile-skeleton 1.3s ease-in-out infinite alternate;
 }
