@@ -39,6 +39,7 @@ import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaAlertDialog
 import com.heika.nativeapp.ui.HeikaGlassDialog
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
@@ -247,7 +248,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
             }
             item {
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     SectionTitle("认识黑卡")
@@ -257,7 +258,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                 }
             }
             item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface)) {
                     FeatureRow(HeikaIcons.Home, "每日翻卡", "从候选卡片中，选择每天想要探索的内容。")
                     FeatureDivider()
                     FeatureRow(HeikaIcons.Discovery, "发现社区", "阅读、收藏、评论和分享作品，交流不同观点。")
@@ -266,7 +267,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                 }
             }
             item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("关于开发者", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("SunYu（孙宇）", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -285,7 +286,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
                 }
             }
             item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface)) {
                     AboutAction(
                         icon = HeikaIcons.Retry,
                         title = if (checkingUpdate) "正在检查更新…" else "检查更新",
@@ -299,7 +300,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
             }
             item { ReleaseSection(version.second, historyExpanded) { historyExpanded = !historyExpanded } }
             item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface)) {
                     AboutAction(HeikaIcons.Comment, "意见反馈", "告诉我们问题或建议", onFeedback)
                     FeatureDivider()
                     AboutAction(HeikaIcons.OpenInNew, "官方网站", BuildConfig.API_BASE_URL.removePrefix("https://").removeSuffix("/"), { openExternal(context, BuildConfig.API_BASE_URL, notice = { notice = it }) })
@@ -354,7 +355,7 @@ fun AboutScreen(onBack: () -> Unit, onFeedback: () -> Unit) {
 
 @Composable private fun ReleaseSection(currentBuild: Long, historyExpanded: Boolean, onToggleHistory: () -> Unit) {
     val current = nativeReleases.firstOrNull { it.build == currentBuild }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("版本更新", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         if (current == null) Text("当前版本 ${BuildConfig.VERSION_NAME} · 构建 $currentBuild", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         else ReleaseRow(current, true)

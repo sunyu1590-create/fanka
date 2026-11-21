@@ -80,6 +80,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import com.heika.nativeapp.ui.HeikaPulsePage
+import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaPulseRow
 import com.heika.nativeapp.ui.HeikaPulseLines
 
@@ -277,7 +278,7 @@ private fun AdminCommunityAccessPanel(state: AdminCenterState, viewModel: AdminC
         if (!state.error.isNullOrBlank()) Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
         if (!state.notice.isNullOrBlank()) Text(state.notice.orEmpty(), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
         if (noticesMode) {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text(if (editingNotice == null) "发送系统公告" else "编辑系统公告", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Text("用户会在通知中心收到公告，并可查看历史和未读状态。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 OutlinedTextField(noticeTitle, { noticeTitle = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("标题") }, singleLine = true)
@@ -313,7 +314,7 @@ private fun AdminCommunityAccessPanel(state: AdminCenterState, viewModel: AdminC
                 }
             }
         } else {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Text("认证标识", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Text("标识可由管理员自定义，并显示在主页和私信资料旁。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 state.communityBadges.forEach { badge ->
@@ -327,7 +328,7 @@ private fun AdminCommunityAccessPanel(state: AdminCenterState, viewModel: AdminC
                 OutlinedTextField(newColor, { newColor = it.take(7) }, Modifier.fillMaxWidth(), label = { Text("颜色（#RRGGBB）") }, singleLine = true)
                 Button(enabled = state.saving == null && newSlug.length >= 2 && newLabel.isNotBlank() && newColor.matches(Regex("#[0-9A-Fa-f]{6}")), onClick = { viewModel.createCommunityBadge(newSlug, newLabel, newDescription, newColor); newSlug = ""; newLabel = ""; newDescription = "" }) { Text("创建标识") }
             }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("直接为用户认证", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Text("搜索任意已注册用户，可直接授予或撤销认证。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 OutlinedTextField(userQuery, { userQuery = it.take(80) }, Modifier.fillMaxWidth(), label = { Text("昵称或完整用户编号") }, singleLine = true)
@@ -358,7 +359,7 @@ private fun AdminCommunityAccessPanel(state: AdminCenterState, viewModel: AdminC
                     }
                 }
             }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("生成邀请码或认证码", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 Text("邀请码用于新用户入驻并赠送 Pro 30 天；认证码供已注册用户兑换标签。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

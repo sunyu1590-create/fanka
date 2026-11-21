@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -69,6 +70,7 @@ import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.feature.profile.ProfileViewModel
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
+import com.heika.nativeapp.ui.HeikaRadii
 import java.util.Locale
 
 data class SettingsEntry(val key: String, val title: String, val iconRes: Int)
@@ -79,7 +81,7 @@ private fun CertificationSettingsContent() {
     val state by profileViewModel.state.collectAsStateWithLifecycle()
     var code by remember { mutableStateOf("") }
     LaunchedEffect(profileViewModel) { profileViewModel.load(null, force = true) }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("输入管理员发放的认证码。兑换成功后，认证标识会显示在你的公开主页和私信资料旁。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
         OutlinedTextField(code, { code = it.uppercase().take(24) }, Modifier.fillMaxWidth(), label = { Text("认证码") }, placeholder = { Text("HEIKA-XXXX-XXXX-XXXX") }, singleLine = true)
         Button(enabled = !state.saving && code.isNotBlank(), onClick = { profileViewModel.redeemCertificationCode(code); code = "" }) { Text(if (state.saving) "兑换中…" else "兑换认证") }
@@ -118,8 +120,14 @@ private fun SettingsGroupTitle(text: String) {
 
 @Composable
 private fun SettingsGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    // 一级、二级、三级共用同一个容器：18dp 圆角 + 细描边 + 略亮底色，内部靠分割线区分行。
+    val shape = RoundedCornerShape(HeikaRadii.group)
     Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface),
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = .32f), shape),
         content = content,
     )
 }
@@ -366,7 +374,7 @@ fun SettingsDetailScreen(
                     item {
                         Text(
                             "阅读与字号会立即应用于详情正文、评论正文和内容标题。",
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp),
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(16.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 14.sp * com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(bodyTextSize),
                             lineHeight = 22.sp * com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(bodyTextSize),
