@@ -7791,3 +7791,11 @@ img, video, canvas, iframe { max-width:100%; }
 .heika-discovery-card .discovery-post-actions { gap: 0; flex: 0 0 auto; }
 .heika-discovery-card .discovery-post-actions button { width: 30px; height: 30px; }
 .heika-discovery-card .discovery-like-count { min-width: 11px; font-size: 9.5px; }
+/* 无封面合集：品牌香槟金渐变占位，不再是冷灰块 */
+.collection-cover-fallback {
+  background:
+    radial-gradient(120% 90% at 22% 0%, color-mix(in srgb, var(--brand-accent) 30%, transparent), transparent 62%),
+    linear-gradient(160deg, color-mix(in srgb, var(--brand-accent) 15%, var(--card-bg-raised)), var(--card-sunken));
+  color: var(--brand-accent);
+}
+.collection-cover-fallback em { color: color-mix(in srgb, var(--brand-accent) 80%, var(--ink)); }
