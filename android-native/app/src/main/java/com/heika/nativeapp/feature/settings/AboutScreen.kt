@@ -42,6 +42,11 @@ import com.heika.nativeapp.ui.HeikaIcons
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(73, "2026.11.21", listOf(
+        "作品合集：连载、教程与资源三种合集，支持目录、上一章/下一章、阅读进度、收藏与更新提醒。",
+        "发布页新增轻量「加入合集」，作者主页新增合集区，作品详情可直接回到目录继续阅读。",
+        "图片支持全屏查看、双指与双击缩放、多图切换，长按可保存或分享图片。",
+    )),
     NativeRelease(72, "2026.11.21", listOf(
         "发布不再要求填写资源信息，只保留标题、正文、图片附件与分类话题，必填提示改为具体原因。",
         "AI 专区的「探索 AI 资源」随内容滚动，回到顶部才重新出现；顶部改为紧凑双行，分类横滑、搜索与筛选固定右侧。",
