@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
     if (action === "approve") {
       const patch: Record<string, unknown> = {
         review_status: "approved",
+        // 通过审核才对外公开；新建与修改期间保持不可见，避免「待审却已公开」。
+        is_public: true,
         review_note: note || null,
         pending_public: null,
         pending_review_note: null,

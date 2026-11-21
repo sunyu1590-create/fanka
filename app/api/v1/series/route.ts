@@ -265,6 +265,8 @@ export async function POST(req: NextRequest) {
       channel,
       category_id: categoryId,
       status,
+      // 未过审的合集不对外公开：审核通过时由管理员侧置为 true，避免出现「待审但已公开」的错觉。
+      is_public: false,
       review_status: "pending",
       updated_at: new Date().toISOString(),
     }).select(publicFields).single();
