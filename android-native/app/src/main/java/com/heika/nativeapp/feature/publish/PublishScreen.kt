@@ -492,6 +492,31 @@ fun PublishScreen(
                         }
                     }
                 }
+                if (state.channel != "ai" && state.seriesOptions.isNotEmpty()) {
+                    // 轻量「加入合集」：只有一排可选合集，不新增任何必填字段。
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("加入合集", color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                FilterChip("不加入", state.seriesId.isBlank(), {
+                                    if (state.seriesId.isNotBlank()) {
+                                        viewModel.editSeries("")
+                                        HeikaNoticeBus.showSelection("不加入合集")
+                                    }
+                                })
+                                state.seriesOptions.forEach { (id, title) ->
+                                    FilterChip(title, state.seriesId == id, {
+                                        if (state.seriesId != id) {
+                                            viewModel.editSeries(id)
+                                            HeikaNoticeBus.showSelection("加入合集：$title")
+                                        }
+                                    })
+                                }
+                            }
+                            Text("可选。合集可在「我的 → 作品管理」中创建和管理。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp)
+                        }
+                    }
+                }
                 if (state.channel == "ai") {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

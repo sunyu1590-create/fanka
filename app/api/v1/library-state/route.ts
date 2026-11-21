@@ -16,7 +16,7 @@ import { cardRarityTier } from "@/lib/progression";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
 import { postAttachments, withPostAttachments } from "@/lib/server/post-attachments";
-import { enqueuePostClassification } from "@/lib/server/ai-classification-queue";
+import { enqueuePostClassification, enqueuePostReview } from "@/lib/server/ai-classification-queue";
 const mediaVariants = (path: string) => {
   const match = path.match(/^(.*\/)([^/]+)\.(?:jpg|png|webp)$/i);
   return match ? [`${match[1]}${match[2]}-480.webp`, `${match[1]}${match[2]}-960.webp`] : [];
@@ -498,6 +498,7 @@ export async function POST(req: NextRequest) {
       const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single();
       dbError(refreshed.error);
       await enqueuePostClassification(postId);
+      await enqueuePostReview(postId);
       return (await presentMany(db, [refreshed.data as unknown as LibraryRow]))[0];
     }
     let postQuery = db

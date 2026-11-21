@@ -22,13 +22,27 @@ function encodeCursor(row: Pick<LibraryRow, "created_at" | "id">) {
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  const kind = params.get("kind") === "people" ? "people" : "content";
+  const kindParam = params.get("kind");
+  const kind = kindParam === "people" ? "people" : kindParam === "collections" ? "collections" : "content";
   const response = await respond(async () => {
     const { db } = await context(req, false);
     const query = (params.get("q") || "").trim().replace(/[%,_()."\\*,]/g, "").slice(0, 60);
     const page = Math.max(1, Math.min(10000, Number(params.get("page")) || 1));
     const limit = Math.max(1, Math.min(24, Number(params.get("limit")) || 12));
     if (query.length < 1) return { kind, items: [], total: 0, has_more: false, next_cursor: null, page, limit };
+
+    if (kind === "collections") {
+      const { data, error, count } = await db
+        .from("post_series")
+        .select("id,title,description,cover_url,kind,channel,status,updated_at", { count: "exact" })
+        .eq("review_status", "approved")
+        .eq("is_public", true)
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+        .order("updated_at", { ascending: false })
+        .range((page - 1) * limit, page * limit - 1);
+      dbError(error);
+      return { kind, items: data || [], total: count || 0, has_more: (page * limit) < (count || 0), next_cursor: null, page, limit };
+    }
 
     if (kind === "people") {
       const { data, error, count } = await db

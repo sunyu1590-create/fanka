@@ -31,6 +31,10 @@ data class HeikaPost(
     val usageScenarios: List<String> = emptyList(),
     val aiSummary: String? = null,
     val status: String = "published",
+    /** 所属合集（第一篇最多属于一个作者合集），用于详情页目录入口与卡片徽标。 */
+    val seriesId: String? = null,
+    val seriesTitle: String? = null,
+    val seriesOrder: Int? = null,
 ) {
     val thumbnail: String? get() = thumbnails.firstOrNull() ?: images.firstOrNull()
     val hasRating: Boolean get() = ratingCount > 0 && ratingAverage != null
@@ -79,6 +83,9 @@ data class HeikaPost(
                 usageScenarios = json.stringList("usageScenarios").ifEmpty { json.stringList("usage_scenarios") },
                 aiSummary = json.optString("aiSummary").takeIf { it.isNotBlank() && it != "null" },
                 status = json.optString("status", "published"),
+                seriesId = (json.optString("seriesId").takeIf(String::isNotBlank) ?: json.optString("series_id").takeIf(String::isNotBlank)),
+                seriesTitle = json.optString("seriesTitle").takeIf(String::isNotBlank),
+                seriesOrder = json.optInt("seriesOrder").takeIf { it > 0 } ?: json.optInt("series_order").takeIf { it > 0 },
             )
         }
     }

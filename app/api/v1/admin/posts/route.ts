@@ -19,14 +19,14 @@ export async function GET(req: NextRequest) {
     ]);
     dbError(newPosts.error); dbError(revisions.error);
     const newRows = (newPosts.data || []) as unknown as { id: string; title: string; body: string; status: string; created_at: string; image_url: string | null; profiles: { nickname: string } | { nickname: string }[] | null; post_media?: MediaRow[] }[];
-    const revisionRows = (revisions.data || []) as unknown as { post_id: string; payload: Record<string, unknown>; created_at: string; posts: { title: string; status: string; profiles: { nickname: string } | { nickname: string }[] | null } | { title: string; status: string; profiles: { nickname: string } | { nickname: string }[] | null }[] }[];
+    const revisionRows = (revisions.data || []) as unknown as { post_id: string; payload: Record<string, unknown>; created_at: string; posts: { title: string; body: string; status: string; profiles: { nickname: string } | { nickname: string }[] | null } | { title: string; body: string; status: string; profiles: { nickname: string } | { nickname: string }[] | null }[] }[];
     const submissions = [
-      ...newRows.map((post) => ({ kind: "new" as const, id: post.id, title: post.title, body: post.body, status: post.status, created_at: post.created_at, author: first(post.profiles)?.nickname || "探索者", originalTitle: null, paths: (post.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order).map((item) => item.storage_path), coverUrl: post.image_url })),
+      ...newRows.map((post) => ({ kind: "new" as const, id: post.id, title: post.title, body: post.body, status: post.status, created_at: post.created_at, author: first(post.profiles)?.nickname || "探索者", originalTitle: null, originalBody: null, paths: (post.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order).map((item) => item.storage_path), coverUrl: post.image_url })),
       ...revisionRows.flatMap((revision) => {
         const post = first(revision.posts);
         if (!post || post.status !== "published") return [];
         const paths = Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.filter((path): path is string => typeof path === "string") : [];
-        return [{ kind: "revision" as const, id: revision.post_id, title: String(revision.payload.title || ""), body: String(revision.payload.body || ""), status: "pending_review", created_at: revision.created_at, author: first(post.profiles)?.nickname || "探索者", originalTitle: post.title, paths, coverUrl: typeof revision.payload.coverUrl === "string" ? revision.payload.coverUrl : null }];
+        return [{ kind: "revision" as const, id: revision.post_id, title: String(revision.payload.title || ""), body: String(revision.payload.body || ""), status: "pending_review", created_at: revision.created_at, author: first(post.profiles)?.nickname || "探索者", originalTitle: post.title, originalBody: String(post.body || ""), paths, coverUrl: typeof revision.payload.coverUrl === "string" ? revision.payload.coverUrl : null }];
       }),
     ].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(from, from + limit);
     const allPaths = [...new Set(submissions.flatMap((submission) => submission.paths))];
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     dbError(signed.error);
     const signedByPath = new Map((signed.data || []).flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
     return {
-      items: submissions.map((submission) => ({ id: submission.id, title: submission.title, body: submission.body, status: submission.status, created_at: submission.created_at, author: submission.author, originalTitle: submission.originalTitle, kind: submission.kind, images: [...(submission.coverUrl ? [submission.coverUrl] : []), ...submission.paths.flatMap((path) => !isVideoMediaPath(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : [])], videos: submission.paths.flatMap((path) => isVideoMediaPath(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : []) })),
+      items: submissions.map((submission) => ({ id: submission.id, title: submission.title, body: submission.body, status: submission.status, created_at: submission.created_at, author: submission.author, originalTitle: submission.originalTitle, originalBody: submission.originalBody || null, kind: submission.kind, images: [...(submission.coverUrl ? [submission.coverUrl] : []), ...submission.paths.flatMap((path) => !isVideoMediaPath(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : [])], videos: submission.paths.flatMap((path) => isVideoMediaPath(path) && signedByPath.has(path) ? [signedByPath.get(path)!] : []) })),
       total: (newPosts.count || 0) + (revisions.count || 0),
       page,
       limit,

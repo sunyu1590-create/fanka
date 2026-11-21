@@ -83,6 +83,13 @@ data class PostDetailState(
     val aiFeedbackSubmitted: Boolean = false,
     val operationSending: Boolean = false,
     val canAdminDelete: Boolean = false,
+    // 合集上下文：用于详情页展示「第 N 章 / 共 M 章」与上一章、下一章、回目录。
+    val seriesId: String? = null,
+    val seriesTitle: String? = null,
+    val chapterIndex: Int = 0,
+    val chapterCount: Int = 0,
+    val prevChapterKey: String? = null,
+    val nextChapterKey: String? = null,
 )
 
 @HiltViewModel
@@ -130,6 +137,7 @@ class PostDetailViewModel @Inject constructor(
                     mutableState.update { it.copy(post = detail, likeCount = detail.likeCount, loading = false, refreshing = false, error = null) }
                     loadComments(detail, version)
                     loadInteractions(detail, version)
+                    if (detail.seriesId != null) loadSeriesContext(detail)
                 }
                 .onFailure { if (version == requestVersion) mutableState.update { it.copy(loading = false, refreshing = false, error = "内容暂时无法加载，请重试") } }
         }
@@ -156,6 +164,7 @@ class PostDetailViewModel @Inject constructor(
                     loadComments(detail, version)
                     loadInteractions(detail, version)
                     if (detail.channel == "ai") loadAiVersions(detail)
+                    if (detail.seriesId != null) loadSeriesContext(detail)
                 }
                 .onFailure { if (version == requestVersion) mutableState.update { it.copy(loading = false, refreshing = false, error = "内容暂时无法加载，请重试") } }
         }
@@ -164,6 +173,34 @@ class PostDetailViewModel @Inject constructor(
     fun reload() {
         val key = requestedKey ?: return
         if (mutableState.value.post != null) load(mutableState.value.post!!, force = true) else loadByKey(key, force = true)
+    }
+
+    /**
+     * 拉取所属合集的目录，算出上一章/下一章，并记录章节级阅读进度。
+     * 失败不影响正文阅读：拿不到目录时详情页只是不显示章节导航。
+     */
+    fun loadSeriesContext(post: HeikaPost) {
+        val seriesId = post.seriesId ?: return
+        if (!isUuid(seriesId)) return
+        viewModelScope.launch(HeikaCoroutineGuard) {
+            val collection = runCatching { repository.collectionDetail(seriesId) }.getOrNull() ?: return@launch
+            val index = collection.chapters.indexOfFirst { it.id == post.cloudId }
+            if (index < 0) {
+                mutableState.update { it.copy(seriesId = seriesId, seriesTitle = collection.title) }
+                return@launch
+            }
+            mutableState.update {
+                it.copy(
+                    seriesId = seriesId,
+                    seriesTitle = collection.title,
+                    chapterIndex = index + 1,
+                    chapterCount = collection.chapters.size,
+                    prevChapterKey = collection.chapters.getOrNull(index - 1)?.id,
+                    nextChapterKey = collection.chapters.getOrNull(index + 1)?.id,
+                )
+            }
+            repository.recordCollectionProgress(seriesId, collection.chapters[index].id)
+        }
     }
 
     fun loadAiVersions(post: HeikaPost? = mutableState.value.post, force: Boolean = false) {

@@ -62,6 +62,9 @@ data class PublishState(
     val routeReason: String = "", val routeChecking: Boolean = false,
     val error: String? = null, val notice: String? = null, val showLeaveDialog: Boolean = false,
     val publishedPost: JSONObject? = null,
+    // 发布页唯一新增的轻量选项：是否加入自己的某个合集（非必填）。
+    val seriesId: String = "",
+    val seriesOptions: List<Pair<String, String>> = emptyList(),
 )
 
 /** 已上传到服务端的附件：name 只用于展示，path 是唯一凭据。 */
@@ -151,6 +154,25 @@ class PublishViewModel @Inject constructor(
             loading = false,
             error = if (categories.isEmpty()) "$target 分类暂不可用，请重试" else current.error,
         ) }
+        if (target == "community") loadSeriesOptions()
+    }
+
+    /** 社区频道的轻量「加入合集」候选：只列自己的合集，不额外要求填写任何字段。 */
+    fun loadSeriesOptions() = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.channel == "ai") return@launch
+        val items = runCatching { repository.creatorCollections() }.getOrDefault(emptyList())
+        mutableState.update { current ->
+            current.copy(
+                seriesOptions = items.map { it.id to it.title },
+                seriesId = current.seriesId.takeIf { id -> items.any { it.id == id } } ?: "",
+            )
+        }
+    }
+
+    fun editSeries(seriesId: String) {
+        needsServerSync = true
+        mutableState.update { it.copy(seriesId = seriesId, error = null) }
+        scheduleSave()
     }
 
     /** 热门话题：只做候选提示，用户也可以直接输入自己的话题。 */
@@ -294,6 +316,7 @@ class PublishViewModel @Inject constructor(
                 attachments = attachmentsOf(source.optJSONObject("resourceData")),
                 usageScenarios = source.stringList("usageScenarios").ifEmpty { source.stringList("usage_scenarios") },
                 category = source.optString("tag").ifBlank { current.category },
+                seriesId = (source.optString("seriesId").takeIf(String::isNotBlank) ?: source.optString("series_id").takeIf(String::isNotBlank)).orEmpty(),
                 topicText = source.optJSONArray("topics")?.let { arr -> buildList { for (i in 0 until arr.length()) add(arr.optString(i)) }.joinToString(" ") } ?: "",
                 mediaPaths = paths,
                 images = paths.mapIndexed { index, path -> PendingImage(
@@ -347,6 +370,7 @@ class PublishViewModel @Inject constructor(
             attachments = attachmentsOf(snapshot),
             usageScenarios = snapshot.stringList("usageScenarios").filter { it in AiResourceRules.usageScenarios.map { option -> option.first } },
             category = snapshot.optString("category").ifBlank { current.category },
+            seriesId = snapshot.optString("seriesId"),
             images = images, mediaPaths = images.mapNotNull(PendingImage::path),
             pendingDeletePaths = snapshot.optJSONArray("pendingDeletePaths")?.let { array -> buildList { for (i in 0 until array.length()) add(array.optString(i)) } }.orEmpty(),
             notice = "已恢复本机草稿", error = null,
@@ -403,7 +427,7 @@ class PublishViewModel @Inject constructor(
         val snapshot = JSONObject()
             .put("draftId", current.draftId).put("draftCloudId", current.draftCloudId)
             .put("revisionMode", current.revisionMode).put("serverStatus", current.serverStatus).put("title", current.title).put("body", current.body)
-            .put("topicText", current.topicText).put("category", current.category).put("channel", current.channel)
+            .put("topicText", current.topicText).put("category", current.category).put("channel", current.channel).put("seriesId", current.seriesId)
             .put("contentType", current.contentType).put("resourceData", JSONObject(current.resourceData))
             .put("attachments", JSONArray().apply { current.attachments.forEach { put(it.toJson()) } })
             .put("usageScenarios", JSONArray(current.usageScenarios)).put("images", images)
@@ -644,7 +668,7 @@ class PublishViewModel @Inject constructor(
                 attachments = current.attachments.map { it.toJson() },
             )
         } else {
-            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths, current.attachments.map { it.toJson() })
+            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths, current.attachments.map { it.toJson() }, current.seriesId.takeIf(String::isNotBlank))
         }
     }
 

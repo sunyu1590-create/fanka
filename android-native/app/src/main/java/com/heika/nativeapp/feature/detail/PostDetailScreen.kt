@@ -142,6 +142,8 @@ fun PostDetailScreen(
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
     sharedElementsEnabled: Boolean,
+    onOpenCollection: (String) -> Unit = {},
+    onOpenChapter: (String) -> Unit = {},
     hazeState: HazeState? = null,
     viewModel: PostDetailViewModel = hiltViewModel(),
 ) {
@@ -173,6 +175,7 @@ fun PostDetailScreen(
     var reportNote by remember { mutableStateOf("") }
     var moreOpen by remember { mutableStateOf(false) }
     var shareOpen by remember { mutableStateOf(false) }
+    var previewIndex by remember(post?.cloudId, postKey) { mutableStateOf<Int?>(null) }
     var aiMoreAction by remember(state.post?.cloudId) { mutableStateOf<String?>(null) }
     var feedbackOpen by remember { mutableStateOf(false) }
     var feedbackText by remember { mutableStateOf("") }
@@ -244,7 +247,7 @@ fun PostDetailScreen(
                                         contentDescription = "${item.title}，第 ${page + 1} 张",
                                         imageLoader = imageLoader,
                                         contentScale = ContentScale.Fit,
-                                        modifier = Modifier.fillMaxSize().then(sharedImageModifier),
+                                        modifier = Modifier.fillMaxSize().then(sharedImageModifier).clickable { previewIndex = page },
                                     )
                                 }
                                 val counterShape = RoundedCornerShape(50)
@@ -272,7 +275,7 @@ fun PostDetailScreen(
                                 imageLoader = imageLoader,
                                 contentScale = ContentScale.FillWidth,
                                 lockRatio = true,
-                                modifier = Modifier.fillMaxWidth().then(sharedImageModifier),
+                                modifier = Modifier.fillMaxWidth().then(sharedImageModifier).clickable { previewIndex = index },
                             )
                         }
                         // 标题参与共享转场，必须待在淡入层之外；其余内容等封面落位后再出现。
@@ -382,6 +385,44 @@ fun PostDetailScreen(
                         }
                         item.tags.takeIf { it.isNotEmpty() }?.let { tags ->
                             Text(tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                        }
+                        // 合集上下文：章节号 + 回目录 + 上一章/下一章，保证连载与教程能连续读完。
+                        val seriesId = state.seriesId
+                        val seriesTitle = state.seriesTitle
+                        if (seriesId != null && seriesTitle != null) {
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().clickable { onOpenCollection(seriesId) },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Icon(HeikaIcons.List, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        "《${seriesTitle}》",
+                                        Modifier.weight(1f, fill = false),
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (state.chapterIndex > 0) {
+                                        Text("第 ${state.chapterIndex} / ${state.chapterCount} 章", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    Text("目录", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                                    Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ChapterNavButton("上一章", state.prevChapterKey, Modifier.weight(1f), onOpenChapter)
+                                    ChapterNavButton("下一章", state.nextChapterKey, Modifier.weight(1f), onOpenChapter)
+                                }
+                            }
                         }
                         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("评分", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -673,6 +714,10 @@ fun PostDetailScreen(
             dismissButton = { TextButton(onClick = { reportOpen = false; commentReport = null }) { Text("取消") } },
         )
     }
+    previewIndex?.let { index ->
+        val urls = state.post?.images ?: emptyList()
+        if (urls.isNotEmpty()) ImagePreviewOverlay(urls = urls, initialIndex = index, onClose = { previewIndex = null })
+    }
     commentMenu?.let { comment ->
         HeikaAlertDialog(
             onDismissRequest = { commentMenu = null },
@@ -741,6 +786,26 @@ fun PostDetailScreen(
         // 整页提示，和网页端 /link-warning 保持一致，不再用弹窗。
         LinkWarningPage(url = url, onDismiss = { linkWarning = null })
     }
+}
+
+@Composable
+private fun ChapterNavButton(
+    label: String,
+    targetKey: String?,
+    modifier: Modifier = Modifier,
+    onOpenChapter: (String) -> Unit,
+) {
+    val enabled = !targetKey.isNullOrBlank()
+    Text(
+        label,
+        modifier.clip(RoundedCornerShape(9.dp))
+            .background(if (enabled) MaterialTheme.colorScheme.surface else Color.Transparent)
+            .then(if (enabled) Modifier.clickable { targetKey?.let(onOpenChapter) } else Modifier)
+            .padding(vertical = 8.dp),
+        color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .5f),
+        fontSize = 11.sp,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @Composable

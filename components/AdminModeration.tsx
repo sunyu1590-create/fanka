@@ -23,7 +23,7 @@ type Report = {
   reviewed_at: string | null;
   target: { type: "post" | "comment"; title: string; body: string; status: string; images: string[]; videos?: string[] };
 };
-type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; videos?: string[]; kind?: "new" | "revision"; originalTitle?: string | null };
+type Submission = { id: string; title: string; body: string; author: string; created_at: string; images: string[]; videos?: string[]; kind?: "new" | "revision"; originalTitle?: string | null; originalBody?: string | null };
 type AdminUser = { id: string; nickname: string; email: string; bio: string; role: "member" | "admin" | "content_manager" | "reviewer"; membership_tier: "free" | "plus" | "pro"; created_at: string; role_updated_at: string | null; community_restriction: { active: boolean; restricted_until: string | null; reason: string } | null };
 type DmReport = { id: string; reporter_id: string; user_id: string | null; message_id: string | null; reason: string; status: "open" | "resolved" | "dismissed"; created_at: string; review_note?: string | null; reviewed_at?: string | null };
 type TopicTag = { id: number; name: string };
@@ -31,7 +31,7 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices";
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
@@ -41,6 +41,7 @@ const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed",
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
 const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
   { title: "审核与举报", modules: [
+    { id: "ai-review", title: "AI 审核中心", description: "AI 初审、人工复审与审核任务历史", icon: ShieldCheck },
     { id: "content", title: "作品审核", description: "新投稿与已发布作品的修改", icon: FileCheck },
     { id: "reports", title: "内容举报", description: "查看并处理作品与评论举报", icon: Flag },
     { id: "messages", title: "私信举报", description: "处理用户提交的私信举报", icon: MessageCircle },
@@ -61,7 +62,8 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
   ] },
   { title: "AI 内容运营", modules: [
     { id: "ai-space", title: "AI 专区管理", description: "审核资源、管理精选与分类标签", icon: Sparkles },
-    { id: "ai-resource-center", title: "AI 资源中心", description: "批量审核、作品摘要、模型配置与用量统计", icon: ShieldCheck },
+    { id: "ai-resource-center", title: "AI 资源中心", description: "批量审核、作品摘要与模型配置", icon: ShieldCheck },
+    { id: "ai-usage", title: "模型用量中心", description: "调用次数、Token、费用与响应时间", icon: ScrollText },
   ] },
   { title: "运营配置", modules: [
     { id: "exploration-ad", title: "探索中心广告位", description: "设置探索页顶部广告及目标作品", icon: Megaphone },
@@ -80,6 +82,8 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   "ai-settings": "AI 工作台",
   "ai-space": "AI 专区管理",
   "ai-resource-center": "AI 资源中心",
+  "ai-review": "AI 审核中心",
+  "ai-usage": "模型用量中心",
   appeals: "申诉处理",
   membership: "会员与赞助",
   "community-access": "认证与入驻邀请",
@@ -441,7 +445,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "ai-resource-center" ? <AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
+    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "ai-review" ? <AdminAITasks key={`ai-review-${governanceRefreshKey}`} mode="review" /> : section === "ai-usage" ? <AdminAITasks key={`ai-usage-${governanceRefreshKey}`} mode="usage" /> : section === "ai-resource-center" ? <AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
         <div className="admin-topic-event-form-heading"><div><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}
@@ -557,7 +561,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       </article>)}</div> : <p className="moderation-empty">当前没有符合条件的举报。</p>
     ) : submissions.length ? <div className="moderation-list">{submissions.map((post) => <article className="moderation-item" key={post.id}>
       <div className="moderation-item-heading"><strong><ShieldCheck size={16} /> 待人工审核</strong><time>{new Date(post.created_at).toLocaleString("zh-CN")}</time></div>
-      <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文"/>
+      <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文"/>{post.kind === "revision" && post.originalBody != null && <details className="moderation-diff"><summary>对比新旧正文（线上版本 vs 待审版本）</summary><div className="moderation-diff-grid"><div><strong>线上版本</strong><pre>{post.originalBody || "（空）"}</pre></div><div><strong>待审版本</strong><pre>{post.body || "（空）"}</pre></div></div></details>}
       <CollapsibleImages images={post.images} label="查看图片"/><CollapsibleVideos videos={post.videos || []} label="查看视频"/>
       <div className="moderation-presets" aria-label="快捷审核">
         <div className="moderation-preset-row">

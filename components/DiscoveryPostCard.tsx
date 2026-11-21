@@ -48,14 +48,13 @@ export default function DiscoveryPostCard({
       ? source
       : `${source}${source.includes("?") ? "&" : "?"}retry=${retryCount}`
     : undefined;
-  const textExcerpt = markdownToText(post.body || "").replace(/\s+/g, " ").trim().slice(0, 420);
-  const textCardHeight = Math.max(142, Math.min(272, 124 + Math.min(post.title.length, 80) * 0.8 + Math.min(textExcerpt.length, 360) * 0.16));
+  const textExcerpt = markdownToText(post.body || "").replace(/\s+/g, " ").trim().slice(0, 300);
 
   return (
     <article className="post-card editorial-post discover-content-card heika-discovery-card" data-discover-id={post.id}>
       <div
         className={`discovery-cover${source && imageFailed ? " is-failed" : ""}${!source && !coverVideo ? " is-text-only" : ""}`}
-        style={source || coverVideo ? { aspectRatio: String(coverRatio) } : !source ? { "--text-card-min-height": `${textCardHeight}px` } as CSSProperties : undefined}
+        style={source || coverVideo ? { aspectRatio: String(coverRatio) } : undefined}
       >
         <button
           type="button"
@@ -140,7 +139,7 @@ export default function DiscoveryPostCard({
             disabled={likeBusy}
             onClick={onLike}
           >
-            <Heart size={14} fill={liked ? "currentColor" : "none"} aria-hidden="true" />
+            <Heart size={15} fill={liked ? "currentColor" : "none"} aria-hidden="true" />
           </button>
           {typeof post.likeCount === "number" && <span className="discovery-like-count" aria-label={`${post.likeCount} 个赞`}>{post.likeCount}</span>}
           <button
@@ -149,7 +148,7 @@ export default function DiscoveryPostCard({
             aria-label={`打开详情：${post.title}`}
             onClick={(event) => onOpen(event.currentTarget)}
           >
-            <ArrowRight size={16} aria-hidden="true" />
+            <ArrowRight size={15} aria-hidden="true" />
           </button>
         </span>
       </div>

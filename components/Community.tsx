@@ -62,6 +62,7 @@ import SharePanel, { type SharePayload } from "./SharePanel";
 const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
 import RecoveryCodesPage from "./RecoveryCodesPage";
+import SeriesChapterNav from "./SeriesChapterNav";
 import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelcomePage";
 import { FollowedTopicsSettings, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
@@ -109,6 +110,7 @@ const FeedbackForm = dynamic(() => import("./FeedbackForm"));
 const FeedbackAdmin = dynamic(() => import("./FeedbackAdmin"));
 const NotificationSettings = dynamic(() => import("./NotificationSettings"));
 const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div className="empty">正在加载 AI 空间…</div> });
+const CollectionView = dynamic(() => import("./CollectionView"), { loading: () => <div className="empty">正在加载合集…</div> });
 const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
 const PostAttachmentsPanel = dynamic(() => import("./PostAttachmentsPanel"));
 const AppealCenter = dynamic(() => import("./AppealCenter"));
@@ -363,6 +365,7 @@ export default function Community() {
   const [themeReady, setThemeReady] = useState(false);
   const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("glass");
   const [discoverSettingsOpen, setDiscoverSettingsOpen] = useState(false);
+  const [discoverNavCollapsed, setDiscoverNavCollapsed] = useState(false);
   const [discoverSearchOpen, setDiscoverSearchOpen] = useState(false);
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
   const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("blur-rise");
@@ -492,6 +495,9 @@ export default function Community() {
   const [creatorSeries, setCreatorSeries] = useState<PostSeries[]>([]);
   const [seriesName, setSeriesName] = useState("");
   const [seriesDescription, setSeriesDescription] = useState("");
+  const [seriesKind, setSeriesKind] = useState("serial");
+  const [seriesStatus, setSeriesStatus] = useState("ongoing");
+  const [seriesCover, setSeriesCover] = useState("");
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
   const [topicEvents, setTopicEvents] = useState<TopicEvent[]>([]);
   const [explorationAd, setExplorationAd] = useState<PublicExplorationAd | null>(null);
@@ -590,6 +596,8 @@ export default function Community() {
   const [state, setState] = useState<State>(initial),
     [ready, setReady] = useState(false),
     [tab, setTabState] = useState("today"),
+    [collectionId, setCollectionId] = useState<string | null>(null),
+    [collectionReturnTab, setCollectionReturnTab] = useState("discover"),
     [detail, setDetail] = useState<number | null>(null),
     [detailPostOverride, setDetailPostOverride] = useState<Post | null>(null),
     [detailReady, setDetailReady] = useState(false),
@@ -603,7 +611,8 @@ export default function Community() {
     [discoverChannelPhase, setDiscoverChannelPhase] = useState<"primed" | "running" | null>(null),
     [searchDraft, setSearchDraft] = useState(""),
     [searchTerm, setSearchTerm] = useState(""),
-    [searchKind, setSearchKind] = useState<"content" | "people">("content"),
+    [searchKind, setSearchKind] = useState<"content" | "people" | "collections">("content"),
+    [searchCollections, setSearchCollections] = useState<Array<{ id: string; title: string; description: string; cover_url: string | null; kind: string; channel: string; updated_at: string }>>([]),
     [searchPeople, setSearchPeople] = useState<SearchPerson[]>([]),
     [searchPosts, setSearchPosts] = useState<Post[]>([]),
     [searchTotal, setSearchTotal] = useState(0),
@@ -791,6 +800,7 @@ export default function Community() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("room")) { setSecondaryReturnTab("mine"); setTabState("co-explore"); }
     else if (params.get("collection")) { setSharedCollectionCode(params.get("collection") || ""); setSecondaryReturnTab("discover"); setTabState("shared-collection"); }
+    else if (params.get("series")) { setCollectionReturnTab("discover"); setCollectionId(params.get("series")); setTabState("collection"); }
     else if (params.get("chain")) { setSecondaryReturnTab("mine"); setTabState("card-chain"); }
   }, []);
   const startPageTransition = (updatePage: () => void) => {
@@ -1273,9 +1283,20 @@ export default function Community() {
   const createPostSeries = async () => {
     if (!seriesName.trim()) return;
     try {
-      const item = await cloudRequest("/api/v1/series", { title: seriesName.trim(), description: seriesDescription.trim() }) as PostSeries | null;
-      if (item) { setCreatorSeries((items) => [item, ...items]); setSeriesName(""); setSeriesDescription(""); toast("作品系列已创建，发布内容时可以加入"); }
-    } catch (error) { toast(error instanceof Error ? error.message : "系列创建失败"); }
+      const item = await cloudRequest("/api/v1/series", {
+        title: seriesName.trim(),
+        description: seriesDescription.trim(),
+        coverUrl: seriesCover.trim() || undefined,
+        kind: seriesKind,
+        status: seriesStatus,
+      }) as PostSeries | null;
+      if (item) {
+        setCreatorSeries((items) => [item, ...items]);
+        setSeriesName(""); setSeriesDescription(""); setSeriesCover("");
+        setSeriesKind("serial"); setSeriesStatus("ongoing");
+        toast("合集已创建，名称与简介通过审核后公开展示");
+      }
+    } catch (error) { toast(error instanceof Error ? error.message : "合集创建失败"); }
   };
   const joinTopicEvent = async (event: TopicEvent) => {
     if (!accountId) { toast("登录后可以参加话题共创"); return; }
@@ -1351,6 +1372,11 @@ export default function Community() {
           searchCursorRef.current = result.data.next_cursor || null;
           setSearchHasMore(Boolean(result.data.has_more));
           setSearchPosts((current) => searchPage === 1 ? items as Post[] : [...current, ...(items as Post[])]);
+        } else if (searchKind === "collections") {
+          setSearchTotal(result.data.total || 0);
+          setSearchHasMore(false);
+          const rows = result.data.items as Array<{ id: string; title: string; description: string; cover_url: string | null; kind: string; channel: string; updated_at: string }>;
+          setSearchCollections((current) => searchPage === 1 ? rows : [...current, ...rows]);
         } else {
           setSearchTotal(result.data.total || 0);
           setSearchHasMore(false);
@@ -3313,6 +3339,45 @@ export default function Community() {
   useEffect(() => () => {
     if (discoverChannelTimer.current !== null) window.clearTimeout(discoverChannelTimer.current);
   }, []);
+  // 发现页导航：向下滚动收起、向上滚动恢复。仅改变 transform，不参与布局，避免跳动。
+  useEffect(() => {
+    let lastY = typeof window === "undefined" ? 0 : window.scrollY;
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        const y = window.scrollY;
+        const delta = y - lastY;
+        if (Math.abs(delta) < 8) return;
+        if (delta > 0 && y > 96) setDiscoverNavCollapsed(true);
+        else if (delta < 0) setDiscoverNavCollapsed(false);
+        lastY = y;
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); if (frame) window.cancelAnimationFrame(frame); };
+  }, []);
+  const openCollection = (id: string) => {
+    if (!id) return;
+    setCollectionReturnTab(tab);
+    setCollectionId(id);
+    scrollPositions.current.collection = 0;
+    startPageTransition(() => setTabState("collection"));
+  };
+  // 合集章节可能不在当前 feed 的 all 里，先拉取真实作品再作为 resolvedPost 打开。
+  const openCollectionChapter = async (chapter: { id: string }) => {
+    try {
+      const response = await fetch(`/api/v1/posts/${encodeURIComponent(chapter.id)}`, { cache: "no-store" });
+      const result = await response.json();
+      const post = result?.data as Post | undefined;
+      if (!response.ok || !post) throw new Error("章节暂不可用");
+      setPublicFeed((current) => current.some((item) => item.id === post.id) ? current : [...current, post]);
+      openPost(post.id, "discover", null, post);
+    } catch {
+      toast("这一章暂时无法打开，请稍后重试");
+    }
+  };
   const openAiPost = (item: Post, source: Element | null) => {
     setPublicFeed((current) => current.some((post) => post.id === item.id) ? current : [...current, item]);
     setFeedPostIds((current) => current.includes(item.id) ? current : [...current, item.id]);
@@ -3448,6 +3513,7 @@ export default function Community() {
         : tab === "exploration-center" ? "探索中心"
         : tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain" ? secondaryReturnTab === "exploration-center" ? "探索中心" : "我的"
         : tab === "shared-collection" ? "分享收藏夹"
+        : tab === "collection" ? "合集"
         : tab === "about" || tab === "moderation" ? "设置"
           : tab === "debug" ? debugReturnTab === "settings" ? "设置" : "我的"
             : tab === "creator-center" || tab === "my-content" ? myContentReturnTab === "settings" ? "设置" : "我的"
@@ -3461,6 +3527,7 @@ export default function Community() {
     if (tab === "search") { closeSearch(); return; }
     if (tab === "exploration-center") { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.mine || 0, behavior: "instant" })); return; }
     if (tab === "notifications" || tab === "co-explore" || tab === "shared-collection" || tab === "monthly-recap" || tab === "card-chain") { returnToSecondaryTab(); return; }
+    if (tab === "collection") { setTab(collectionReturnTab); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[collectionReturnTab] || 0, behavior: "instant" })); return; }
     if (tab === "about" || tab === "moderation") { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); return; }
     if (tab === "debug") {
       setTab(debugReturnTab);
@@ -4399,19 +4466,15 @@ export default function Community() {
   ) : null;
   return (
     <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
-      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}${tab === "discover" && !secondaryTitle ? " is-discover-topline" : ""}`}>
-        {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <span className="brand"><span>黑卡</span><i>HEIKA</i></span>}
+      <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}${tab === "discover" && !secondaryTitle ? " is-discover-topline" : ""}${tab === "discover" && discoverNavCollapsed ? " is-nav-collapsed" : ""}`}>
+        {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <><span className="brand"><span>黑卡</span><i>HEIKA</i></span>
+        {tab === "discover" && !secondaryTitle ? <div className="discover-channel-tabs topline-channel-tabs" role="tablist" aria-label="发现频道">
+            <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>精选</span></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected ai-channel-active" : ""} onClick={() => switchDiscoverChannel("ai")}><span><Sparkles size={13} aria-hidden="true"/>AI</span></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "mall"} className={discoverChannel === "mall" ? "selected" : ""} onClick={() => switchDiscoverChannel("mall")}><span>商城</span></button>
+          </div> : null}</>}
         <div className="topline-end-actions">
-        {tab === "discover" && !secondaryTitle ? <div className="discover-top-actions">
-          <button type="button" className={`topline-action${discoverSearchOpen ? " selected" : ""}`} aria-label={discoverSearchOpen ? "关闭搜索" : "搜索内容或用户"} aria-expanded={discoverSearchOpen} onClick={() => { setSearchDraft(searchTerm); setDiscoverSearchOpen((open) => !open); setDiscoverSettingsOpen(false); }}><Search size={19} strokeWidth={1.8}/></button>
-          <button type="button" className={`topline-action${discoverSettingsOpen ? " selected" : ""}`} aria-label="更多" aria-expanded={discoverSettingsOpen} aria-controls="discover-quick-settings" onClick={() => { setDiscoverSettingsOpen((open) => !open); setDiscoverSearchOpen(false); }}><MoreHorizontal size={21} strokeWidth={1.8}/></button>
-          {discoverSettingsOpen && <div className="discover-quick-settings" id="discover-quick-settings" role="group" aria-label="发现页浏览设置">
-            <span>浏览方式</span>
-            <button type="button" aria-pressed={state.discoverLayout === "waterfall"} className={state.discoverLayout === "waterfall" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "waterfall" })); setDiscoverSettingsOpen(false); }}><LayoutGrid size={16}/><span>双列瀑布流</span></button>
-            <button type="button" aria-pressed={state.discoverLayout === "single"} className={state.discoverLayout === "single" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "single" })); setDiscoverSettingsOpen(false); }}><List size={16}/><span>单列浏览</span></button>
-            <RecommendationControls accountId={accountId} onLogin={() => { setDiscoverSettingsOpen(false); setTab("messages"); }} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
-          </div>}
-        </div> : tab === "today" && !secondaryTitle ? <div className="discover-top-actions today-top-actions">
+        {tab === "today" && !secondaryTitle ? <div className="discover-top-actions today-top-actions">
           <button type="button" className="topline-action" aria-label="搜索内容或用户" onClick={() => { setSearchReturnTab("today"); setSearchDraft(searchTerm); setTab("search"); }}><Search size={19} strokeWidth={1.8}/></button>
           <button type="button" className="topline-action" aria-label="打开通知" onClick={() => openNotifications("today")}><Bell size={19} strokeWidth={1.8}/></button>
         </div> : tab === "mine" && !secondaryTitle ? <div className="mine-topline-actions"><button type="button" className="mine-membership-button" aria-label={`会员中心，当前${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}`} onClick={() => openSettingsDetail("membership", "mine")}><Crown size={16}/><span>会员中心</span></button><button type="button" className="mine-settings-button" aria-label="打开设置" onClick={openMineSettings}><Settings size={19}/></button></div> : null}
@@ -4515,7 +4578,7 @@ export default function Community() {
           {searchTerm ? <>
             <div className="search-result-toolbar">
               <div className="search-result-tabs" role="tablist" aria-label="搜索范围">
-                {([ ["content", "内容"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); searchCursorRef.current = null; setSearchTotal(0); setSearchHasMore(false); setSearchPosts([]); setSearchPeople([]); setSearchError(""); }}>{label}</button>)}
+                {([ ["content", "内容"], ["collections", "合集"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); searchCursorRef.current = null; setSearchTotal(0); setSearchHasMore(false); setSearchPosts([]); setSearchPeople([]); setSearchCollections([]); setSearchError(""); }}>{label}</button>)}
               </div>
               <small>{searchLoading && searchPage === 1 ? "正在搜索" : searchKind === "content" ? `已加载 ${searchPosts.length} 条${searchHasMore ? "" : "结果"}` : `${searchTotal} 条结果`}</small>
             </div>
@@ -4529,6 +4592,14 @@ export default function Community() {
               {!searchLoading && !searchError && !searchPosts.length && <div className="search-state">没有找到相关内容，试试更短的关键词。</div>}
               {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
               {searchHasMore && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多内容"}</button>}
+            </div> : searchKind === "collections" ? <div className="search-collection-results" role="tabpanel">
+              {searchCollections.map((collection) => <button className="search-post-result" key={collection.id} onClick={() => openCollection(collection.id)}>
+                <span className="search-post-thumbnail">{collection.cover_url ? <img src={collection.cover_url} alt="" loading="lazy"/> : <small>合集</small>}</span>
+                <span className="search-post-copy"><strong>{collection.title}</strong><span>{collection.description || "持续更新中"}</span><small>{collection.kind === "serial" ? "连载" : collection.kind === "tutorial" ? "教程" : "资源"} · {collection.channel === "ai" ? "AI 专区" : "精选"}</small></span>
+                <ChevronRight size={17}/>
+              </button>)}
+              {!searchLoading && !searchError && !searchCollections.length && <div className="search-state">没有找到相关合集。</div>}
+              {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
             </div> : <div className="search-people-results" role="tabpanel">
               {searchPeople.map((person) => <button className="search-person-result" key={person.id} onClick={() => setAuthorProfile(person.id)}>
                 <span className="search-person-avatar"><span>{(person.nickname || "探").slice(0, 1)}</span>{person.avatar_url && <img src={person.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}</span>
@@ -4548,11 +4619,7 @@ export default function Community() {
       )}
       {tab === "discover" && (
         <section className="page editorial-home discover-page">
-          <div className="discover-channel-tabs" role="tablist" aria-label="发现频道">
-            <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>社区</span></button>
-            <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected ai-channel-active" : ""} onClick={() => switchDiscoverChannel("ai")}><span>AI 空间</span></button>
-            <button type="button" role="tab" aria-selected={discoverChannel === "mall"} className={discoverChannel === "mall" ? "selected" : ""} onClick={() => switchDiscoverChannel("mall")}><span>商城</span></button>
-          </div>
+          
           {discoverSearchOpen && <form className="discover-inline-search" role="search" onSubmit={(event) => { event.preventDefault(); setSearchReturnTab("discover"); submitSearch(searchDraft); setDiscoverSearchOpen(false); setTab("search"); }}>
             <Search size={17} aria-hidden="true" />
             <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜索标题、作者或内容" aria-label="搜索内容或用户" autoFocus maxLength={60} />
@@ -4566,7 +4633,8 @@ export default function Community() {
                 <span className="exploration-ad-card-copy"><small><Megaphone size={12}/> 黑卡 · 推荐</small><strong>{explorationAd.title}</strong>{explorationAd.body && <span>{explorationAd.body}</span>}</span>
             <ArrowRight size={17} aria-hidden="true"/>
           </button>}
-          <div className={`discover-category-nav${categoryOverflowOpen ? " is-expanded" : ""}`} role="tablist" aria-label="发现内容分类">
+          <div className="discover-secondary-bar">
+<div className={`discover-category-nav${categoryOverflowOpen ? " is-expanded" : ""}`} role="tablist" aria-label="发现内容分类">
             {["全部", ...visibleDiscoverCategories].map((t) => (
               <button
                 key={t}
@@ -4591,6 +4659,21 @@ export default function Community() {
             ))}
             {hiddenCategoryCount > 0 && <button type="button" className="discover-category-more" aria-expanded={categoryOverflowOpen} onClick={() => setCategoryOverflowOpen((open) => !open)}>{categoryOverflowOpen ? "收起分类" : `更多分类${hiddenCategoryCount ? ` ${hiddenCategoryCount}` : ""}`}<ChevronDown size={13} aria-hidden="true"/></button>}
           </div>
+          <div className="discover-bar-actions">
+<div className="discover-top-actions discover-bar-group">
+            <button type="button" className={`topline-action${discoverSearchOpen ? " selected" : ""}`} aria-label={discoverSearchOpen ? "关闭搜索" : "搜索内容或用户"} aria-expanded={discoverSearchOpen} onClick={() => { setSearchDraft(searchTerm); setDiscoverSearchOpen((open) => !open); setDiscoverSettingsOpen(false); }}><Search size={19} strokeWidth={1.8}/></button>
+            <button type="button" className={`topline-action${discoverSettingsOpen ? " selected" : ""}`} aria-label="更多" aria-expanded={discoverSettingsOpen} aria-controls="discover-quick-settings" onClick={() => { setDiscoverSettingsOpen((open) => !open); setDiscoverSearchOpen(false); }}><MoreHorizontal size={21} strokeWidth={1.8}/></button>
+            {discoverSettingsOpen && <div className="discover-quick-settings" id="discover-quick-settings" role="group" aria-label="发现页浏览设置">
+              <span>话题</span>
+            <div className="discover-quick-topics">{topicChoices.slice(0, 8).map((topic) => <button key={topic.id} type="button" onClick={() => { setDiscoverSettingsOpen(false); void openTopic(topic.name); }}>#{topic.name}<small>{topic.postCount}</small></button>)}</div>
+            <span>浏览方式</span>
+              <button type="button" aria-pressed={state.discoverLayout === "waterfall"} className={state.discoverLayout === "waterfall" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "waterfall" })); setDiscoverSettingsOpen(false); }}><LayoutGrid size={16}/><span>双列瀑布流</span></button>
+              <button type="button" aria-pressed={state.discoverLayout === "single"} className={state.discoverLayout === "single" ? "selected" : ""} onClick={() => { update((current) => ({ ...current, discoverLayout: "single" })); setDiscoverSettingsOpen(false); }}><List size={16}/><span>单列浏览</span></button>
+              <RecommendationControls accountId={accountId} onLogin={() => { setDiscoverSettingsOpen(false); setTab("messages"); }} onNotice={toast} onChange={() => void loadPublicFeed(1, true, category)} />
+            </div>}
+        </div>
+          </div>
+        </div>
           {sort === "精选" && category === "全部" && latestOpenedPost && (
             <section className="recent-flip-section" aria-labelledby="recent-flip-title">
               <div className="recent-flip-heading">
@@ -4600,9 +4683,7 @@ export default function Community() {
               {renderCandidate(latestOpenedPost, -1, true)}
             </section>
           )}
-          <div className="discover-topic-list" aria-label="精选话题">
-            {topicChoices.slice(0, 8).map((topic) => <button key={topic.id} className="discover-topic-chip" onClick={() => void openTopic(topic.name)}>#{topic.name}<small>{topic.postCount}</small></button>)}
-          </div>
+          
           {topicEvents.length > 0 && <section className="topic-events-section" aria-labelledby="topic-events-title"><div className="topic-events-heading"><div><h2 id="topic-events-title">本期话题共创</h2></div><span>{topicEvents.length} 个进行中</span></div><div className="topic-event-list">{topicEvents.map((event) => <article className="topic-event-card" key={event.id}><div className="topic-event-mark">#{event.topic}</div><div className="topic-event-copy"><h3>{event.title}</h3><p>{event.description}</p><small>{event.participantCount} 人参与 · {event.postCount} 篇内容 · 截止 {new Date(event.ends_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</small></div><button type="button" className={event.joined ? "joined" : ""} onClick={() => void joinTopicEvent(event)}>{event.joined ? "继续创作" : "加入共创"}</button></article>)}</div></section>}
           <div className="discover-sort" role="group" aria-label="发现排序">
             {["精选", "最新", "高分", "关注"].map((option) => <button key={option} type="button" className={sort === option ? "selected" : ""} aria-pressed={sort === option} onClick={() => { if (sort !== option) { setPublicFeed([]); setFeedPostIds([]); setFeedPage(0); setFeedTotal(0); setFeedHasMore(false); feedCursor.current = null; setFeedLoadedTag(null); setFeedLoadedSort(null); setPage(12); setSort(option); } }}>{option === "精选" ? "为你推荐" : option === "高分" ? "高评分" : option}</button>)}
@@ -4789,6 +4870,16 @@ export default function Community() {
 
         </section>
       )}
+      {tab === "collection" && collectionId && <CollectionView
+        id={collectionId}
+        accountId={accountId}
+        ownPosts={state.own}
+        onBack={handleSecondaryBack}
+        onOpenChapter={(chapter) => void openCollectionChapter(chapter)}
+        onLogin={() => setTab("messages")}
+        onNotice={toast}
+        onChanged={() => { void cloudRequest("/api/v1/series").then((data) => { const items = (data as { items?: PostSeries[] })?.items; if (Array.isArray(items)) setCreatorSeries(items); }).catch(() => {}); }}
+      />}
       {tab === "moderation" && isStaff && <AdminModeration role={adminRole as "admin" | "content_manager" | "reviewer"} onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
       {tab === "about" && <AboutHeika onBack={closeAboutPage} onFeedback={openFeedbackFromAbout} />}
       {tab === "debug" && (
@@ -4966,7 +5057,7 @@ export default function Community() {
           }}><ArrowLeft size={18} /> {myContentReturnTab === "settings" ? "设置" : "我的"}</button>
           <h1>作品管理<span className="red-dot">.</span></h1>
           <p className="lead">整理系列、查看内容状态并管理草稿。</p>
-          <div className="series-manager"><div className="series-manager-heading"><strong>作品系列</strong><span>把有关联的内容整理成专栏</span></div><div className="series-create-form"><input aria-label="系列名称" maxLength={48} placeholder="例如：一周城市观察" value={seriesName} onChange={(event) => setSeriesName(event.target.value)}/><input aria-label="系列简介" maxLength={240} placeholder="一句话介绍（可选）" value={seriesDescription} onChange={(event) => setSeriesDescription(event.target.value)}/><button type="button" disabled={!accountId || seriesName.trim().length < 2} onClick={() => void createPostSeries()}><Plus size={15}/>新建</button></div>{creatorSeries.length > 0 && <div className="series-list">{creatorSeries.map((series) => <button type="button" className={selectedSeriesId === series.id ? "active" : ""} key={series.id} onClick={() => setSelectedSeriesId((current) => current === series.id ? "" : series.id)}><strong>{series.title}</strong><span>{series.description || "持续更新中"}</span><small>{series.postCount || 0} 篇</small></button>)}</div>}</div>
+          <div className="series-manager"><div className="series-manager-heading"><strong>作品合集</strong><span>连载、教程与资源合集，章节可排序</span></div><div className="series-create-form"><input aria-label="合集名称" maxLength={48} placeholder="合集名称（必填），例如：一周城市观察" value={seriesName} onChange={(event) => setSeriesName(event.target.value)}/><input aria-label="合集简介" maxLength={240} placeholder="一句话介绍（可选）" value={seriesDescription} onChange={(event) => setSeriesDescription(event.target.value)}/><input aria-label="合集封面" maxLength={600} placeholder="封面图片地址（可选）" value={seriesCover} onChange={(event) => setSeriesCover(event.target.value)}/><div className="series-create-row"><select aria-label="合集类型" value={seriesKind} onChange={(event) => setSeriesKind(event.target.value)}><option value="serial">连载</option><option value="tutorial">教程</option><option value="resource">资源</option></select><select aria-label="连载状态" value={seriesStatus} onChange={(event) => setSeriesStatus(event.target.value)}><option value="ongoing">连载中</option><option value="completed">已完结</option></select></div><button type="button" disabled={!accountId || seriesName.trim().length < 2} onClick={() => void createPostSeries()}><Plus size={15}/>新建</button></div>{creatorSeries.length > 0 && <div className="series-list">{creatorSeries.map((series) => <button type="button" className={selectedSeriesId === series.id ? "active" : ""} key={series.id} onClick={() => setSelectedSeriesId((current) => current === series.id ? "" : series.id)}><strong>{series.title}</strong><span>{series.description || "持续更新中"}</span><small>{series.postCount || 0} 篇</small><em className="series-manage-link" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); openCollection(series.id); }} onKeyDown={(event) => { if (event.key === "Enter") { event.stopPropagation(); openCollection(series.id); } }}>管理</em></button>)}</div>}</div>
           <div className="section-head"><h2>作品列表</h2><span>{visibleOwnPosts.length} 项</span></div>
           {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
           {visibleOwnPosts.length ? visibleOwnPosts.map((post) => (
@@ -5232,7 +5323,13 @@ export default function Community() {
                 <button className="detail-reading-setting" onClick={() => setModal("reading")}>
                   阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
                 </button>
-                {post.seriesTitle && <div className="detail-series-badge"><span>系列</span><strong>{post.seriesTitle}</strong>{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
+                {post.seriesTitle && <div className="detail-series-badge"><span>系列</span>{post.seriesId ? <button type="button" className="detail-series-open" onClick={() => openCollection(post.seriesId!)}><strong>{post.seriesTitle}</strong></button> : <strong>{post.seriesTitle}</strong>}{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
+                {post.seriesId && post.cloudId && <SeriesChapterNav
+                  seriesId={post.seriesId}
+                  postId={post.cloudId}
+                  onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
+                  onOpenCollection={openCollection}
+                />}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
                 {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
                 {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} action={aiDetailAction} onActionClose={closeAiDetailAction} onVersionsAvailability={setAiVersionsAvailable}/></Suspense>}
@@ -5714,7 +5811,7 @@ export default function Community() {
                   {writeChannel === "ai" ? "AI 分类" : "分类"}
                   <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={(value) => { markComposerTagTouched(); setWriteTag(value); }} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
                 </label>
-                {accountId && writeChannel === "community" && <label className="composer-series-field">加入作品系列<ChoiceSelect label="加入作品系列" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入系列"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>系列可在「我的 → 作品管理」中创建和管理。</small></label>}
+                {accountId && writeChannel === "community" && <label className="composer-series-field">加入合集<ChoiceSelect label="加入合集" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入合集"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>可选。合集在「我的 → 作品管理」中创建和管理，发布后也能随时把作品加进去。</small></label>}
                 <div className="composer-advanced">
                   <div className="composer-advanced-content">
                 {writeChannel === "community" && <section className="composer-poll-editor" aria-label="添加投票">

@@ -67,6 +67,7 @@ import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.feature.exploration.ExplorationLogic
 import com.heika.nativeapp.ui.BackHeader
 import androidx.compose.ui.zIndex
+import com.heika.nativeapp.feature.collection.AuthorCollectionsSection
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaSpacing
 import com.heika.nativeapp.ui.HeikaType
@@ -94,6 +95,7 @@ fun ProfileScreen(
     onExplore: () -> Unit = {},
     onDailyTasks: () -> Unit = onExplore,
     onManageWorks: () -> Unit = {},
+    onCollection: (String) -> Unit = {},
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     sharedElementsEnabled: Boolean = false,
@@ -287,6 +289,15 @@ fun ProfileScreen(
                         Text("${state.posts.size} 篇作品", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         Text("作品管理", Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onManageWorks).padding(horizontal = 10.dp, vertical = 7.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                     }
+                }
+                if (selected == "works") item(span = StaggeredGridItemSpan.FullLine) {
+                    // 作者主页合集区：连载 / 教程 / 资源合集的入口，点进去看目录与进度。
+                    AuthorCollectionsSection(
+                        creatorId = profile.id,
+                        own = state.own,
+                        onOpenCollection = onCollection,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
                 if (posts.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
                     Text(when (selected) { "works" -> "还没有公开作品。"; "bookmarks" -> "还没有可见收藏。"; else -> "还没有点赞内容。" }, Modifier.fillMaxWidth().padding(vertical = 28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)

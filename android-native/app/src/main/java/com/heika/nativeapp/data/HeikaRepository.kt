@@ -1082,9 +1082,10 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    suspend fun publishDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String>, mediaPaths: List<String>, attachments: List<JSONObject> = emptyList()): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun publishDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String>, mediaPaths: List<String>, attachments: List<JSONObject> = emptyList(), seriesId: String? = null): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject().put("action", "publish").put("title", title).put("body", body).put("tag", tag).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths)).put("attachments", JSONArray(attachments))
         id?.let { payload.put("id", it) }
+        seriesId?.takeIf(String::isNotBlank)?.let { payload.put("seriesId", it) }
         request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
@@ -1336,6 +1337,109 @@ class HeikaRepository @Inject constructor(
     suspend fun clearLocalPublishSnapshot(userId: String, channel: String = "community") = withContext(Dispatchers.IO) {
         if (!userId.matches(Regex("[0-9a-fA-F-]{36}"))) return@withContext
         cacheDao.clearPublishSnapshot(publishSnapshotKey(userId, channel))
+    }
+
+    /** 合集详情：带章节明细、作者、关注状态与上次阅读章节。 */
+    suspend fun collectionDetail(id: String): HeikaCollection = withContext(Dispatchers.IO) {
+        val payload = request("/api/v1/series?id=${encode(id)}", includeSession = true) as? JSONObject
+            ?: throw IOException("合集暂不可用")
+        HeikaCollection.from(payload)
+    }
+
+    /** 作者合集列表；scope=all 时作者本人可见未过审合集。 */
+    suspend fun creatorCollections(creatorId: String? = null, scope: String? = null): List<HeikaCollection> = withContext(Dispatchers.IO) {
+        val params = buildList {
+            creatorId?.takeIf(String::isNotBlank)?.let { add("creator=${encode(it)}") }
+            scope?.takeIf(String::isNotBlank)?.let { add("scope=${encode(it)}") }
+        }
+        val query = "/api/v1/series" + if (params.isEmpty()) "" else "?" + params.joinToString("&")
+        val payload = request(query, includeSession = true) as? JSONObject ?: JSONObject()
+        payload.optJSONArray("items").jsonObjects().map(HeikaCollection::from)
+    }
+
+    suspend fun saveCollection(
+        id: String?,
+        title: String,
+        description: String,
+        coverUrl: String?,
+        kind: String,
+        channel: String,
+        status: String,
+        categoryId: Int? = null,
+    ): HeikaCollection = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("title", title)
+            .put("description", description)
+            .put("kind", kind)
+            .put("channel", channel)
+            .put("status", status)
+        id?.takeIf(String::isNotBlank)?.let { body.put("id", it) }
+        coverUrl?.takeIf(String::isNotBlank)?.let { body.put("coverUrl", it) }
+        categoryId?.takeIf { it > 0 }?.let { body.put("categoryId", it) }
+        val payload = request("/api/v1/series", method = "POST", body = body.toString(), authenticated = true) as? JSONObject
+            ?: throw IOException("合集保存失败")
+        HeikaCollection.from(payload)
+    }
+
+    suspend fun deleteCollection(id: String) = withContext(Dispatchers.IO) {
+        request("/api/v1/series", method = "POST", body = JSONObject().put("action", "delete").put("id", id).toString(), authenticated = true)
+        Unit
+    }
+
+    suspend fun addCollectionItems(id: String, postIds: List<String>, reorder: Boolean = false) = withContext(Dispatchers.IO) {
+        require(postIds.isNotEmpty()) { "请选择要加入合集的作品" }
+        request(
+            "/api/v1/series",
+            method = "POST",
+            body = JSONObject()
+                .put("action", if (reorder) "reorder" else "add_items")
+                .put("id", id)
+                .put("postIds", JSONArray(postIds))
+                .toString(),
+            authenticated = true,
+        )
+        Unit
+    }
+
+    suspend fun removeCollectionItem(id: String, postId: String) = withContext(Dispatchers.IO) {
+        request(
+            "/api/v1/series",
+            method = "POST",
+            body = JSONObject().put("action", "remove_item").put("id", id).put("postId", postId).toString(),
+            authenticated = true,
+        )
+        Unit
+    }
+
+    suspend fun followCollection(id: String, following: Boolean, notify: Boolean = true) = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("action", "follow").put("id", id).put("value", following)
+        if (following) body.put("notify", notify)
+        request("/api/v1/series", method = "POST", body = body.toString(), authenticated = true)
+        Unit
+    }
+
+    suspend fun setCollectionNotify(id: String, notify: Boolean) = withContext(Dispatchers.IO) {
+        request(
+            "/api/v1/series",
+            method = "POST",
+            body = JSONObject().put("action", "notify").put("id", id).put("notify", notify).toString(),
+            authenticated = true,
+        )
+        Unit
+    }
+
+    /** 章节级阅读进度；未登录时静默跳过，不阻塞阅读。 */
+    suspend fun recordCollectionProgress(seriesId: String, postId: String) = withContext(Dispatchers.IO) {
+        if (auth.current() == null) return@withContext Unit
+        runCatching {
+            request(
+                "/api/v1/series",
+                method = "POST",
+                body = JSONObject().put("action", "progress").put("id", seriesId).put("postId", postId).toString(),
+                authenticated = true,
+            )
+        }
+        Unit
     }
 
     private fun publishSnapshotKey(userId: String, channel: String) = if (channel == "ai") "native-publish:ai:$userId" else "native-publish:$userId"

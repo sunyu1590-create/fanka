@@ -64,6 +64,8 @@ import com.heika.nativeapp.feature.messages.MessagesScreen
 import com.heika.nativeapp.feature.notifications.NotificationsScreen
 import com.heika.nativeapp.feature.notifications.ForegroundNoticeHost
 import com.heika.nativeapp.data.HeikaPost
+import com.heika.nativeapp.data.HeikaCollection
+import com.heika.nativeapp.feature.collection.CollectionScreen
 import com.heika.nativeapp.feature.profile.ProfileScreen
 import com.heika.nativeapp.feature.profile.ProfileViewModel
 import com.heika.nativeapp.feature.profile.EditProfileScreen
@@ -294,6 +296,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                             nav.navigate("exploration/tasks")
                         },
                         onManageWorks = { nav.navigate("manage-works") },
+                        onCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
@@ -355,9 +358,10 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     route = postDetailRoute,
                     arguments = listOf(navArgument("postKey") { type = NavType.StringType }),
                 ) { entry ->
+                    val postKey = entry.arguments?.getString("postKey")
                     PostDetailScreen(
-                        post = entry.arguments?.getString("postKey")?.let(sharedPosts::get),
-                        postKey = entry.arguments?.getString("postKey"),
+                        post = postKey?.let(sharedPosts::get),
+                        postKey = postKey,
                         onBack = { nav.popBackStack() },
                         onAuthor = { id -> openDestination(HeikaDestination.UserProfile(id)) },
                         onLogin = { nav.navigate("account") },
@@ -365,6 +369,20 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
+                        onOpenCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
+                        onOpenChapter = { key -> nav.navigate("post/${Uri.encode(key)}") },
+                    )
+                }
+                composable(
+                    route = "collection/{seriesId}",
+                    arguments = listOf(navArgument("seriesId") { type = NavType.StringType }),
+                ) { entry ->
+                    CollectionScreen(
+                        seriesId = entry.arguments?.getString("seriesId"),
+                        onBack = { nav.popBackStack() },
+                        onOpenChapter = { chapter -> nav.navigate("post/${Uri.encode(chapter.id)}") },
+                        onAuthor = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                        onShare = { collection -> shareNativeCollection(context, collection) },
                     )
                 }
                 composable(
@@ -380,6 +398,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onMembership = { openDestination(HeikaDestination.Membership) },
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
                         onLogin = { nav.navigate("account") },
+                        onCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
@@ -670,6 +689,22 @@ private fun shareNativePost(context: android.content.Context, post: HeikaPost) {
         putExtra(Intent.EXTRA_TEXT, listOf(post.title, summary, "作者：${post.author}", url).filter(String::isNotBlank).joinToString("\n"))
     }
     runCatching { context.startActivity(Intent.createChooser(send, "分享内容")) }
+}
+
+private fun shareNativeCollection(context: android.content.Context, collection: HeikaCollection) {
+    val url = "https://moonclean.shop/?series=${Uri.encode(collection.id)}"
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, collection.title)
+        val summary = collection.description.take(180)
+        putExtra(
+            Intent.EXTRA_TEXT,
+            listOf(collection.title, "${collection.kindLabel} · ${collection.statusLabel} · ${collection.publishedCount} 章", summary, "作者：${collection.creatorName}", url)
+                .filter(String::isNotBlank)
+                .joinToString("\n"),
+        )
+    }
+    runCatching { context.startActivity(Intent.createChooser(send, "分享合集")) }
 }
 
 private fun navigateTopLevel(nav: androidx.navigation.NavHostController, target: String) {

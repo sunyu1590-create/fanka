@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (body.action === "review") {
       const itemId = uuid(body.itemId, "复审记录 ID");
-      const decision = body.decision === "published" || body.decision === "hidden" ? body.decision : null;
+      const decision = ["published", "hidden", "revision"].includes(String(body.decision)) ? String(body.decision) : null;
       if (!decision) throw new ApiError(400, "人工复审结果无效");
       const reason = textField(body.reason, "人工处理原因", 3, 500);
       const applied = await admin.rpc("apply_ai_review_decision", {

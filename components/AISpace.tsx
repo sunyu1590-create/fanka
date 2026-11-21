@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { ArrowLeft, Blocks, Bookmark, Bot, BrainCircuit, ChevronRight, Code2, Compass, ExternalLink, FileText, ImageOff, RotateCcw, Search, Sparkles, Terminal, Wrench } from "lucide-react";
+import { ArrowLeft, Blocks, Bookmark, Bot, BrainCircuit, ChevronRight, Code2, Compass, ExternalLink, FileText, ImageOff, RotateCcw, Search, SlidersHorizontal, Sparkles, Terminal, Wrench } from "lucide-react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import type { Post } from "@/lib/content";
 import { ProfileBadgeMarks } from "./ProfileBadgeList";
@@ -96,6 +96,9 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
   const [contentType, setContentType] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<"latest" | "popular" | "featured">("latest");
   const [list, setList] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -171,7 +174,7 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     const run = async () => {
       setLoading(true);
       setError("");
-      const params = new URLSearchParams({ sort: "latest", page: "1", limit: "12" });
+      const params = new URLSearchParams({ sort: sortMode, page: "1", limit: "12" });
       if (categoryId) params.set("category", String(categoryId));
       if (contentType) params.set("type", contentType);
       if (searchTerm) params.set("q", searchTerm);
@@ -190,13 +193,13 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     };
     void run();
     return () => { active = false; controller.abort(); };
-  }, [categoryId, contentType, searchTerm]);
+  }, [categoryId, contentType, searchTerm, sortMode]);
 
   const loadMore = async () => {
     if (loading || list.length >= total) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ sort: "latest", page: String(page + 1), limit: "12" });
+      const params = new URLSearchParams({ sort: sortMode, page: String(page + 1), limit: "12" });
       if (categoryId) params.set("category", String(categoryId));
       if (contentType) params.set("type", contentType);
       if (searchTerm) params.set("q", searchTerm);
@@ -235,10 +238,6 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
     setSearchTerm(term);
     pushHistory("home", { categoryId: null, contentType: "", searchTerm: term });
   };
-  const clearSearch = () => {
-    setSearchDraft("");
-    setSearchTerm("");
-  };
   const openTypeFeed = (type: string, returnView: "home" | "categories" = "home") => {
     setCategoryId(null);
     setSearchTerm("");
@@ -273,19 +272,32 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
 
   return <section className="ai-space" hidden={hidden} aria-label="AI 空间">
     {view === "home" && <>
-      <header className="ai-space-toolbar">
-        <h1>AI 空间</h1>
-        <form className="ai-space-search" role="search" onSubmit={submitSearch}>
-          <Search size={15}/>
-          <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜索 AI 内容" maxLength={60}/>
-          {searchDraft && <button type="button" onClick={clearSearch}>清除</button>}
-          <button type="submit" aria-label="搜索"><Search size={14}/></button>
-        </form>
-        <button type="button" className="ai-space-categories" onClick={openCategories}><Compass size={15}/> 分类</button>
-      </header>
-      {!searchTerm && searchSuggestions.length > 0 && <div className="ai-space-suggestion-chips" aria-label="快捷搜索">{searchSuggestions.map((term) => <button type="button" key={term} onClick={() => searchFor(term)}>{term}</button>)}</div>}
-      {searchTerm ? <ResultsSection heading={`“${searchTerm}”的结果`} eyebrow="搜索结果" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} /> : <>
+      {/* 紧凑双行导航的第二行：分类横滑 + 独立的搜索/筛选按钮（与 APP 端结构一致） */}
+      <div className="ai-space-nav">
+        <div className="ai-space-nav-scroll" role="tablist" aria-label="AI 资源分类">
+          <button type="button" role="tab" aria-selected={!contentType && !categoryId && !searchTerm} className={`ai-space-chip${!contentType && !categoryId && !searchTerm ? " selected" : ""}`} onClick={() => { setCategoryId(null); setContentType(""); setSearchTerm(""); setSearchDraft(""); }}>推荐</button>
+          {resourceTypes.map((item) => <button type="button" role="tab" key={item.resource_type} aria-selected={contentType === item.resource_type} className={`ai-space-chip${contentType === item.resource_type ? " selected" : ""}`} onClick={() => { setContentType(item.resource_type); setCategoryId(null); setSearchTerm(""); setSearchDraft(""); }}>{item.label}</button>)}
+          <button type="button" className="ai-space-chip ai-space-chip-more" onClick={openCategories}><Compass size={13}/>全部分类</button>
+        </div>
+        <button type="button" className={`ai-space-nav-icon${searchOpen ? " active" : ""}`} aria-label="搜索 AI 内容" aria-expanded={searchOpen} onClick={() => { setSearchOpen((value) => !value); setFilterOpen(false); }}><Search size={18}/></button>
+        <button type="button" className={`ai-space-nav-icon${filterOpen ? " active" : ""}`} aria-label="筛选 AI 内容" aria-expanded={filterOpen} onClick={() => { setFilterOpen((value) => !value); setSearchOpen(false); }}><SlidersHorizontal size={18}/></button>
+      </div>
+      {searchOpen && <form className="ai-space-search-panel" role="search" onSubmit={(event) => { submitSearch(event); setSearchOpen(false); }}>
+        <div className="ai-space-search-panel-field"><Search size={15}/><input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜索 AI 内容" maxLength={60} autoFocus/><button type="submit" className="ai-space-search-panel-go" disabled={!searchDraft.trim()}>搜索</button></div>
+        {searchSuggestions.length > 0 && <div className="ai-space-suggestion-chips" aria-label="快捷搜索">{searchSuggestions.map((term) => <button type="button" key={term} onClick={() => { searchFor(term); setSearchOpen(false); }}>{term}</button>)}</div>}
+      </form>}
+      {filterOpen && <div className="ai-space-filter-panel" role="group" aria-label="筛选条件">
+        <div className="ai-space-filter-row"><span>排序</span>{([["latest", "最新"], ["popular", "最热"], ["featured", "精选"]] as const).map(([key, label]) => <button type="button" key={key} className={sortMode === key ? "selected" : ""} onClick={() => setSortMode(key)}>{label}</button>)}</div>
+        <div className="ai-space-filter-row"><span>类型</span><button type="button" className={!contentType ? "selected" : ""} onClick={() => setContentType("")}>全部</button>{resourceTypes.map((item) => <button type="button" key={item.resource_type} className={contentType === item.resource_type ? "selected" : ""} onClick={() => setContentType(item.resource_type)}>{item.label}</button>)}</div>
+      </div>}
+      {searchTerm || contentType || categoryId ? <ResultsSection heading={searchTerm ? `“${searchTerm}”的结果` : selectedCategory?.name || typeLabels[contentType] || "全部 AI 内容"} eyebrow={searchTerm ? "搜索结果" : "筛选结果"} total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} /> : <>
         <div className="ai-space-editorial-home">
+          {/* 探索入口：初进可见、随内容自然滚出，不做粘性、不跟随滚动方向重新出现 */}
+          <button type="button" className="ai-space-explore-entry" onClick={openCategories}>
+            <span className="ai-space-explore-icon" aria-hidden="true"><Compass size={16}/></span>
+            <span className="ai-space-explore-copy"><strong>探索 AI 资源</strong><small>按 Agent、Prompt、Skills 与教程分类进入资源中心</small></span>
+            <ChevronRight size={16} aria-hidden="true"/>
+          </button>
           {!!featured.length && <section className="ai-space-section ai-space-featured"><div className="ai-space-section-head"><div><h2>AI 内容推荐</h2></div><button type="button" onClick={() => openTypeFeed("")}>查看全部 <ChevronRight size={15}/></button></div><div className="ai-resource-grid">{featured.slice(0, 3).map(card)}</div></section>}
           {!!popular.length && <section className="ai-space-section"><div className="ai-space-section-head"><div><h2>热门 AI 资源</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}
         </div>
