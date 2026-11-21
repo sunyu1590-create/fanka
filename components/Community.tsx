@@ -19,6 +19,7 @@ import {
   PenLine,
   ChevronDown,
   ChevronRight,
+  Gift,
   X,
   Check,
   ArrowRight,
@@ -573,6 +574,7 @@ export default function Community() {
     [viewerFlipped, setViewerFlipped] = useState(false),
     [viewerRevealPhase, setViewerRevealPhase] = useState<"rarity" | "content" | null>(null),
     [flippingId, setFlippingId] = useState<number | null>(null),
+    [flipError, setFlipError] = useState<string | null>(null),
     [publicFeed, setPublicFeed] = useState<Post[]>([]),
     [feedPostIds, setFeedPostIds] = useState<number[]>([]),
     [feedError, setFeedError] = useState(""),
@@ -717,6 +719,8 @@ export default function Community() {
     [localDraftId, setLocalDraftId] = useState<string | null>(null),
     [localDraftCount, setLocalDraftCount] = useState(0),
     [draftBoxOpen, setDraftBoxOpen] = useState(false),
+    [missionsOpen, setMissionsOpen] = useState(false),
+    [missionSummary, setMissionSummary] = useState(""),
     [decorOpen, setDecorOpen] = useState(false),
     [decorTab, setDecorTab] = useState<"official" | "community" | "mine" | "submissions" | "studio">("official"),
     [decorKind, setDecorKind] = useState<"all" | "bottom" | "card">("all"),
@@ -1895,6 +1899,19 @@ export default function Community() {
     setDecorTab(target === "gallery" ? "official" : "studio");
     setDecorOpen(true);
   }, [ready]);
+  // 从 APP 的「今日任务 / 探索中心」直接进入对应页面（需求 6.3，替换旧原生页）。
+  const sharedMineHandled = useRef<string | null>(null);
+  useEffect(() => {
+    const target = new URLSearchParams(location.search).get("mine");
+    if (!ready || !target || sharedMineHandled.current === target) return;
+    sharedMineHandled.current = target;
+    if (target === "explore") {
+      openExplorationCenter();
+    } else if (target === "missions") {
+      setTab("mine");
+      setMissionsOpen(true);
+    }
+  }, [ready]);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("profile");
     if (!ready || !sharedId || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sharedId) || sharedProfileHandled.current === sharedId) return;
@@ -2250,6 +2267,7 @@ export default function Community() {
     }
     flipBusy.current = true;
     setFlippingId(id);
+    setFlipError(null);
     try {
       let revealedData: Post;
       let lucky = 0;
@@ -2263,6 +2281,7 @@ export default function Community() {
           id,
           idempotencyKey: `flip:${today}:${id}`,
         });
+        if (!confirmed) throw new Error("登录状态已失效，请重新登录后重试");
         if (!confirmed?.post || !confirmed?.flipState) throw new Error("翻卡结果暂不可用，请重试");
         revealedData = confirmed.post as Post;
         authoritativeDay = String(confirmed.flipState.localDate || today);
@@ -2347,7 +2366,16 @@ export default function Community() {
       window.setTimeout(() => setJustFlippedId(null), 950);
       if (!lucky) toast("已翻开 · 今日探索进度已更新");
     } catch (error) {
-      toast(error instanceof Error ? error.message : "内容加载失败，请重试");
+      // 失败原因贴在按钮旁常驻展示（13.3），不再用一闪而过的 toast 重复播报。
+      const message = error instanceof Error ? error.message : "内容加载失败，请重试";
+      const network = error instanceof TypeError || /failed to fetch|network/i.test(message);
+      setFlipError(
+        /登录|会话/.test(message)
+          ? message
+          : network
+            ? "网络异常，未能确认翻开结果；重试不会重复扣除次数。"
+            : message,
+      );
     } finally {
       setFlippingId(null);
       flipBusy.current = false;
@@ -4031,12 +4059,6 @@ export default function Community() {
   };
   const feed = (items: Post[]) => (
     <>
-      <button
-        className="text-button feed-refresh"
-        onClick={() => void refreshFeed()}
-      >
-        刷新内容 ↻
-      </button>
       {feedError && items.length > 0 && (
         <div className="feed-inline-error" role="status">
           <span>{feedError}</span>
@@ -4842,6 +4864,7 @@ export default function Community() {
           <div className="section-head editorial-section-head discover-feed-heading">
             <h2>{category === "全部" ? "为你推荐" : category}</h2>
             <span>{Math.max(filtered.length, feedTotal)} 篇内容</span>
+            <button type="button" className="text-button feed-refresh" onClick={() => void refreshFeed()}>刷新 ↻</button>
           </div>
           {feed(list)}
           </div>
@@ -5073,18 +5096,25 @@ export default function Community() {
             actions={<button type="button" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={16} /> 编辑资料</button>}
             onEditCover={() => openSettingsDetail("profile", "mine")}
           />
-          <section className="mine-exploration-hub" aria-label="探索功能">
-            <button type="button" className="mine-exploration-entry mine-draft-entry" onClick={() => setDraftBoxOpen(true)}>
-              <span className="mine-exploration-entry-icon"><FileText size={18}/></span>
-              <span><strong>草稿箱</strong><small>{localDraftCount > 0 ? `${localDraftCount} 篇草稿，只保存在本机` : "没有未完成的草稿"}</small></span>
-              <ChevronRight size={18}/>
-            </button>
-            <DailyMissions accountId={accountId} onNotice={toast}/>
-            <button type="button" className="mine-exploration-entry" onClick={openExplorationCenter}>
-              <span className="mine-exploration-entry-icon"><Compass size={18}/></span>
-              <span><strong>探索中心</strong><small>好友探索 · 月报 · 接龙 · 日历 · 最近发现</small></span>
-              <ChevronRight size={18}/>
-            </button>
+          <section className="mine-exploration-hub" aria-label="常用入口">
+            <div className="mine-exploration-row">
+              <button type="button" className="mine-exploration-entry mine-draft-entry" onClick={() => setDraftBoxOpen(true)}>
+                <span className="mine-exploration-entry-icon"><FileText size={19}/></span>
+                <strong>草稿箱</strong>
+                <small>{localDraftCount > 0 ? `${localDraftCount} 篇草稿` : "暂无草稿"}</small>
+              </button>
+              <button type="button" className="mine-exploration-entry" aria-expanded={missionsOpen} onClick={() => setMissionsOpen((open) => !open)}>
+                <span className="mine-exploration-entry-icon"><Gift size={19}/></span>
+                <strong>今日任务</strong>
+                <small>{missionSummary || "查看进度"}</small>
+              </button>
+              <button type="button" className="mine-exploration-entry" onClick={openExplorationCenter}>
+                <span className="mine-exploration-entry-icon"><Compass size={19}/></span>
+                <strong>探索中心</strong>
+                <small>好友 · 月报 · 接龙</small>
+              </button>
+            </div>
+            <DailyMissions accountId={accountId} onNotice={toast} hideToggle open={missionsOpen} onOpenChange={setMissionsOpen} onSummary={setMissionSummary} />
           </section>
           <div className="mine-tabs-shell">
             <div className="mine-tabs mine-content-tabs" role="tablist" aria-label="个人内容分类">
@@ -5339,13 +5369,24 @@ export default function Community() {
                     <span className="window-brand-cn">黑卡</span>
                     <span className="window-brand-en">HEIKA</span>
                     {!viewerFlipped && (
-                      <button
-                        className="flip-button"
-                        disabled={flippingId === viewerId}
-                        onClick={completeFlip}
-                      >
-                        {flippingId === viewerId ? "正在翻开…" : "确认翻开"}
-                      </button>
+                      <>
+                        {flipError && (
+                          <p className="flip-error" role="alert">
+                            {flipError}
+                          </p>
+                        )}
+                        <button
+                          className="flip-button"
+                          disabled={flippingId === viewerId}
+                          onClick={completeFlip}
+                        >
+                          {flippingId === viewerId
+                            ? "正在翻开…"
+                            : flipError
+                              ? "重试翻开"
+                              : "确认翻开"}
+                        </button>
+                      </>
                     )}
                   </div>
                   <div

@@ -115,6 +115,46 @@ export function resetDecor(): void {
   emit();
 }
 
+/** APP 容器注入的受控桥接（只在原生 WebView 里存在）。 */
+type DecorNativeBridge = { post?: (message: string) => void };
+
+function nativeBridge(): DecorNativeBridge | null {
+  if (typeof window === "undefined") return null;
+  const bridge = (window as unknown as { HeikaNative?: DecorNativeBridge }).HeikaNative;
+  return bridge && typeof bridge.post === "function" ? bridge : null;
+}
+
+export function isDecorAppEmbed(): boolean {
+  return nativeBridge() !== null;
+}
+
+/**
+ * 保存成功后通知 APP 重新拉取并渲染（4.2 链路）。
+ * APP 刷新完成后会回调 window.__heikaDecorApplied，
+ * 界面据此把「正在同步到 APP」推进为「APP 已应用」。
+ */
+function notifyNativeDecor(updatedAt: string | null): void {
+  const bridge = nativeBridge();
+  if (!bridge) return;
+  try {
+    bridge.post?.(JSON.stringify({ type: "decor-updated", updatedAt }));
+  } catch {
+    /* 桥接失败不影响网页自身的保存结果 */
+  }
+}
+
+/** APP 端通过 evaluateJavascript 调用，宣告对应版本已完成原生渲染。 */
+export function installDecorAppliedHook(): () => void {
+  if (typeof window === "undefined") return () => {};
+  const hook = (version?: string) => {
+    window.dispatchEvent(new CustomEvent("heika-decor-applied", { detail: version ?? "" }));
+  };
+  (window as unknown as { __heikaDecorApplied?: typeof hook }).__heikaDecorApplied = hook;
+  return () => {
+    delete (window as unknown as { __heikaDecorApplied?: typeof hook }).__heikaDecorApplied;
+  };
+}
+
 export async function saveDecor(patch: {
   bottomBar?: BottomBarConfig | null;
   card?: CardConfig | null;
@@ -127,6 +167,7 @@ export async function saveDecor(patch: {
   applyDecorToDocument(state.decor);
   emit();
   window.dispatchEvent(new CustomEvent("heika-decor-updated"));
+  notifyNativeDecor(data.updatedAt ?? null);
   return state;
 }
 

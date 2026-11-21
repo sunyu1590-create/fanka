@@ -291,14 +291,9 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
                         onLogin = { nav.navigate("account") },
                         onEditProfile = { nav.navigate("edit-profile") },
-                        onExplore = {
-                            runCatching { nav.getBackStackEntry("profile").savedStateHandle.set("refreshProfileExploration", true) }
-                            nav.navigate("exploration")
-                        },
-                        onDailyTasks = {
-                            runCatching { nav.getBackStackEntry("profile").savedStateHandle.set("refreshProfileExploration", true) }
-                            nav.navigate("exploration/tasks")
-                        },
+                        // 任务与探索入口进网页容器（需求 6.3），不再进旧原生页。
+                        onExplore = { nav.navigate("web/explore-center") },
+                        onDailyTasks = { nav.navigate("web/missions") },
                         onManageWorks = { nav.navigate("manage-works") },
                         onCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
@@ -492,11 +487,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         title = webTitle(feature),
                         path = webPath(feature),
                         sessionJson = webSession,
+                        decorSynced = decorViewModel.appliedTick,
                         onBack = { nav.popBackStack() },
                         onEvent = { type, _ ->
                             when (type) {
-                                // 网页完成装扮应用：native 侧立即失效缓存并重新拉取设置。
-                                "decor-applied" -> { decorViewModel.invalidate(); decorViewModel.refresh() }
+                                // 网页保存/应用装扮：native 侧失效缓存并强制重拉，完成后回执网页。
+                                "decor-updated", "decor-applied" -> decorViewModel.syncFromWeb()
                                 "close" -> nav.popBackStack()
                                 "open-native" -> Unit
                             }
@@ -760,6 +756,8 @@ private fun webTitle(feature: String): String = when (feature) {
     "decor-bar" -> "底栏装扮"
     "decor-card" -> "卡片装扮"
     "decor-gallery" -> "创意工坊"
+    "missions" -> "今日任务"
+    "explore-center" -> "探索中心"
     else -> "黑卡"
 }
 
@@ -767,5 +765,8 @@ private fun webPath(feature: String): String = when (feature) {
     "decor-bar" -> "/?app=1&decor=bar"
     "decor-card" -> "/?app=1&decor=card"
     "decor-gallery" -> "/?app=1&decor=gallery"
+    // 任务与探索中心复用网页实现（需求 6.3：替换旧原生处理）。
+    "missions" -> "/?app=1&mine=missions"
+    "explore-center" -> "/?app=1&mine=explore"
     else -> "/?app=1"
 }

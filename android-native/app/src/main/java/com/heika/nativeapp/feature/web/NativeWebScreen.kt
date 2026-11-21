@@ -59,6 +59,7 @@ fun NativeWebScreen(
     title: String,
     path: String,
     sessionJson: String?,
+    decorSynced: kotlinx.coroutines.flow.Flow<String>? = null,
     onBack: () -> Unit,
     onEvent: (type: String, payload: JSONObject) -> Unit,
 ) {
@@ -119,6 +120,15 @@ fun NativeWebScreen(
                 progress = 0f
                 failed = null
                 webView?.loadUrl(BuildConfig.API_BASE_URL.trimEnd('/') + path)
+            }
+            // APP 完成装扮渲染后把配置版本回执给网页（4.3「APP 已应用」）。
+            LaunchedEffect(Unit) {
+                decorSynced?.collect { version ->
+                    webView?.evaluateJavascript(
+                        "window.__heikaDecorApplied && window.__heikaDecorApplied(" + JSONObject.quote(version) + ")",
+                        null,
+                    )
+                }
             }
             // 过渡页只在「还没有真实进度」或加载未完成时出现，进度是真实值。
             if (progress < 1f && failed == null) {

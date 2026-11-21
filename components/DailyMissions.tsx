@@ -5,10 +5,21 @@ import { cloudFetch, cloudRequest } from "@/lib/cloud";
 
 type Mission = { key: "flip_two" | "rate_one" | "save_one"; title: string; description: string; progress: number; target: number; points: number; claimed: boolean };
 
-export default function DailyMissions({ accountId, onNotice }: { accountId: string | null; onNotice?: (message: string) => void }) {
+export default function DailyMissions({ accountId, onNotice, hideToggle, open: openProp, onOpenChange, onSummary }: {
+  accountId: string | null;
+  onNotice?: (message: string) => void;
+  /** 入口模式：toggle 由外部「今日任务」项承担，本组件只渲染详情。 */
+  hideToggle?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** 把「N/3 项已领取」短状态交给外部入口按钮显示。 */
+  onSummary?: (summary: string) => void;
+}) {
   const [items, setItems] = useState<Mission[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (value: boolean) => { setOpenState(value); onOpenChange?.(value); };
   const refresh = useCallback(async () => {
     if (!accountId) { setItems([]); setBusy(null); return; }
     try { const response = await cloudFetch("/api/v1/daily-missions", { cache: "no-store" }); const result = await response.json(); if (response.ok && Array.isArray(result.data?.missions)) setItems(result.data.missions); } catch {}
@@ -21,14 +32,17 @@ export default function DailyMissions({ accountId, onNotice }: { accountId: stri
     finally { setBusy(null); }
   };
   const claimedCount = items.filter((item) => item.claimed).length;
-  const summary = accountId ? `${claimedCount}/${items.length || 3} 项已领取` : "登录后完成小目标，累计领取经验";
+  const summary = accountId ? `${claimedCount}/${items.length || 3} 项已领取` : "登录后累计领取经验";
+  useEffect(() => { onSummary?.(summary); }, [summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <section className={`daily-missions-panel${open ? " is-open" : ""}`}>
-      <button type="button" className="daily-missions-toggle" aria-expanded={open} aria-controls="daily-missions-details" onClick={() => setOpen((value) => !value)}>
-        <span className="daily-missions-toggle-label"><Gift size={17}/><strong>今日探索任务</strong><small>{summary}</small></span>
-        <ChevronDown size={17} aria-hidden="true"/>
-      </button>
+      {!hideToggle && (
+        <button type="button" className="daily-missions-toggle" aria-expanded={open} aria-controls="daily-missions-details" onClick={() => setOpen(!open)}>
+          <span className="daily-missions-toggle-label"><Gift size={17}/><strong>今日探索任务</strong><small>{summary}</small></span>
+          <ChevronDown size={17} aria-hidden="true"/>
+        </button>
+      )}
       <div id="daily-missions-details" className="daily-missions-details" aria-hidden={!open} inert={!open}>
         <div className="daily-missions-details-inner">
           {!accountId ? <p className="daily-missions-login-hint"><Sparkles size={15}/>登录后查看每日任务与经验奖励。</p> : <div className="daily-missions-list">

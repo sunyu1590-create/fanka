@@ -125,23 +125,63 @@
   display: none !important;
 }
 
-/* 纹理：只叠一层很淡的线性/点状图案，不盖住卡背图 */
+/* 纹理（需求十二）：只叠一层很淡的图案，不盖住卡背图、不参与点击命中；
+   颜色跟随描边色深浅混合，深色浅色卡背都能显形。强度：斜线4%/点阵3%/方格3%/
+   纸感4%/噪点3%/同心圆2%/菱形3%。 */
 :root[data-decor-card="custom"][data-decor-card-texture="linen"] .candidate-feed-card .card-flip-front,
 :root[data-decor-card="custom"][data-decor-card-texture="linen"] .flip-window-face {
-  background-image: var(--decor-card-back-image), repeating-linear-gradient(42deg, rgba(255,255,255,.035) 0 1px, transparent 1px 5px) !important;
+  background-image: var(--decor-card-back-image), repeating-linear-gradient(42deg, color-mix(in srgb, var(--decor-card-back-border) 26%, transparent) 0 1px, transparent 1px 5px) !important;
   background-size: cover, auto !important;
+}
+
+:root[data-decor-card="custom"][data-decor-card-texture="dots"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"][data-decor-card-texture="dots"] .flip-window-face {
+  background-image: var(--decor-card-back-image), radial-gradient(color-mix(in srgb, var(--decor-card-back-border) 34%, transparent) 1.1px, transparent 1.3px) !important;
+  background-size: cover, 13px 13px !important;
 }
 
 :root[data-decor-card="custom"][data-decor-card-texture="grid"] .candidate-feed-card .card-flip-front,
 :root[data-decor-card="custom"][data-decor-card-texture="grid"] .flip-window-face {
-  background-image: var(--decor-card-back-image), linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px) !important;
+  background-image: var(--decor-card-back-image), linear-gradient(color-mix(in srgb, var(--decor-card-back-border) 30%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--decor-card-back-border) 30%, transparent) 1px, transparent 1px) !important;
   background-size: cover, 26px 26px, 26px 26px !important;
+}
+
+:root[data-decor-card="custom"][data-decor-card-texture="paper"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"][data-decor-card-texture="paper"] .flip-window-face {
+  background-image: var(--decor-card-back-image),
+    radial-gradient(color-mix(in srgb, var(--decor-card-back-border) 30%, transparent) .7px, transparent .9px),
+    radial-gradient(color-mix(in srgb, var(--decor-card-back-border) 22%, transparent) .6px, transparent .8px) !important;
+  background-size: cover, 6px 6px, 9px 7px !important;
 }
 
 :root[data-decor-card="custom"][data-decor-card-texture="noise"] .candidate-feed-card .card-flip-front,
 :root[data-decor-card="custom"][data-decor-card-texture="noise"] .flip-window-face {
-  background-image: var(--decor-card-back-image), radial-gradient(rgba(255,255,255,.055) .8px, transparent .9px) !important;
+  background-image: var(--decor-card-back-image), radial-gradient(color-mix(in srgb, var(--decor-card-back-border) 32%, transparent) .8px, transparent .9px) !important;
   background-size: cover, 5px 5px !important;
+}
+
+:root[data-decor-card="custom"][data-decor-card-texture="rings"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"][data-decor-card-texture="rings"] .flip-window-face {
+  background-image: var(--decor-card-back-image), repeating-radial-gradient(circle at 50% 46%, color-mix(in srgb, var(--decor-card-back-border) 24%, transparent) 0 1px, transparent 1px 22px) !important;
+  background-size: cover, auto !important;
+}
+
+:root[data-decor-card="custom"][data-decor-card-texture="diamonds"] .candidate-feed-card .card-flip-front,
+:root[data-decor-card="custom"][data-decor-card-texture="diamonds"] .flip-window-face {
+  background-image: var(--decor-card-back-image),
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--decor-card-back-border) 24%, transparent) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(-45deg, color-mix(in srgb, var(--decor-card-back-border) 24%, transparent) 0 1px, transparent 1px 16px) !important;
+  background-size: cover, auto, auto !important;
+}
+
+/* 纯装饰层一律不参与点击命中：图案/纹理伪元素曾盖住「确认翻开」按钮导致点击失效 */
+.candidate-feed-card .card-flip-front::before,
+.candidate-feed-card .card-flip-front::after,
+.black-card-focus .card-flip-front::before,
+.black-card-focus .card-flip-front::after,
+.flip-window-face::before,
+.flip-window-face::after {
+  pointer-events: none;
 }
 
 /* 中央图案：用程序渲染，不烘焙进图片，任何尺寸都清晰 */
@@ -157,6 +197,7 @@
   border: 0;
   background: none;
   transform: none;
+  pointer-events: none;
   font-family: Georgia, "Songti SC", serif;
   font-size: clamp(52px, 22%, 132px);
   line-height: 1;
@@ -177,6 +218,7 @@
   border: 1px solid color-mix(in srgb, var(--decor-card-back-border) 85%, transparent);
   transform: translate(-50%, -50%) rotate(45deg);
   background: none;
+  pointer-events: none;
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--decor-card-back-bg) 55%, transparent);
 }
 
@@ -189,6 +231,7 @@
   border: 1px solid color-mix(in srgb, var(--decor-card-back-border) 65%, transparent);
   background: none;
   transform: none;
+  pointer-events: none;
   width: auto;
   height: auto;
 }

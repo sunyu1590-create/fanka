@@ -107,6 +107,7 @@
 .window-brand-cn{font-size:38px;font-weight:600;letter-spacing:.18em;margin-left:.18em}
 .window-brand-en{font-size:10px;color:#b7b5ae;letter-spacing:.3em;margin-top:8px}
 .flip-window-face .flip-button{position:absolute;bottom:20px;left:20px;right:20px;width:calc(100% - 40px);margin:0;background:#f4f1e8;color:#171717}
+.flip-window-face .flip-error{position:absolute;left:20px;right:20px;bottom:78px;margin:0;padding:8px 12px;border:1px solid rgba(214,120,110,.55);border-radius:8px;background:rgba(60,18,16,.82);color:#f2d8d2;font-size:12px;line-height:1.5;text-align:center;z-index:2}
 .flip-overlay{z-index:30}
 .overlay.from-flip-window{z-index:40}
 .flip-overlay:has(~ .overlay.from-flip-window){z-index:30}

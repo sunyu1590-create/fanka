@@ -192,9 +192,9 @@ fun ProfileScreen(
                     Column {
                         // 封面 + 跨边界头像：头像与昵称同处一条垂直中心线，
                         // 昵称落在封面下缘偏下的位置，深浅色下都保持可读。
+                        // 通栏直角封面（需求 6.1 双端统一）：不留左右与顶部缩进、不裁圆角。
                         Box(
-                            Modifier.fillMaxWidth().padding(top = 8.dp).height(178.dp)
-                                .clip(RoundedCornerShape(HeikaRadii.surface))
+                            Modifier.fillMaxWidth().height(178.dp)
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                         ) {
                             if (profile.cover != null) {
@@ -307,7 +307,8 @@ fun ProfileScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                                 ) {
-                                    Text("LV${levelProgress.current.level}", Modifier.clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .13f)).padding(horizontal = 7.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                    // 等级用小号金字与昵称同行，不做灰色/彩色方块（与网页统一）。
+                                    Text("LV${levelProgress.current.level}", Modifier.padding(end = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                                     Column(Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(levelProgress.current.reward, Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)

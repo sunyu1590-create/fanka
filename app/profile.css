@@ -2,21 +2,24 @@
    个人主页（自己 / 他人共用）+ 头像裁剪 + 封面编辑
    ========================================================================== */
 
+/* 通栏封面（需求 6.1）：取消卡片壳与圆角，封面直角铺满内容宽度、紧接顶栏；
+   桌面双列布局里也通栏，不拉伸到整个超宽屏（只占内容列宽度）。 */
 .profile-hero {
   position: relative;
   width: 100%;
-  margin: 0 0 18px;
-  border-radius: var(--radius-card-lg, 18px);
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  box-shadow: var(--card-shadow, 0 10px 30px rgba(0, 0, 0, .18));
+  margin: -14px 0 18px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
   isolation: isolate;
+  grid-column: 1 / -1;
 }
 
 .profile-hero-cover {
   position: relative;
   width: 100%;
-  border-radius: calc(var(--radius-card-lg, 18px) - 1px) calc(var(--radius-card-lg, 18px) - 1px) 0 0;
+  border-radius: 0;
   background-color: var(--card-sunken, #15171b);
   background-repeat: no-repeat;
   overflow: hidden;
@@ -113,7 +116,7 @@
 .profile-hero-body {
   position: relative;
   padding: 0 16px 15px;
-  border-radius: 0 0 calc(var(--radius-card-lg, 18px) - 1px) calc(var(--radius-card-lg, 18px) - 1px);
+  border-radius: 0;
   background: var(--card-bg);
 }
 

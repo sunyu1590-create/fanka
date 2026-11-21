@@ -83,6 +83,8 @@ data class DecorConfig(
     /** 主题标识，用于原生侧判断是否需要刷新（主题变了才重建底栏） */
     val barThemeId: String?,
     val cardThemeId: String?,
+    /** 服务端配置版本（updatedAt），用于双端确认「同一版本已渲染」。 */
+    val syncVersion: String,
 ) {
     companion object {
         val DARK_BAR = BarPalette(
@@ -124,6 +126,7 @@ data class DecorConfig(
             card = CardSkin(split = false, dark = DARK_CARD, light = LIGHT_CARD),
             barThemeId = null,
             cardThemeId = null,
+            syncVersion = "",
         )
 
         private val HEX = Regex("^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
@@ -161,6 +164,7 @@ data class DecorConfig(
                 // 只有「从主题应用」的配置才带主题编号；工作室里手工调的配色为 null。
                 barThemeId = data.optString("bottomBarThemeId").takeIf { it.isNotBlank() && it != "null" },
                 cardThemeId = data.optString("cardThemeId").takeIf { it.isNotBlank() && it != "null" },
+                syncVersion = data.optString("updatedAt").takeIf { it.isNotBlank() && it != "null" }.orEmpty(),
             )
         }
 
