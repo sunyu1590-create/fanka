@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Bookmark, Check, ChevronDown, ChevronUp, Layers, ListOrdered, Loader2, Pencil, Plus, Share2, Trash2, X } from "lucide-react";
-import { cloudRequest } from "@/lib/cloud";
+import { cloudRequest, publicRequest } from "@/lib/cloud";
 import { confirmInApp } from "@/lib/in-app-dialog";
 
 type Chapter = { id: string; clientId: number; title: string; excerpt: string; image: string | null; status: string; chapter: number; date: string };
@@ -42,7 +42,8 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
     setLoading(true);
     setError("");
     try {
-      const data = await cloudRequest(`/api/v1/series?id=${encodeURIComponent(id)}`) as unknown as Series;
+      const data = await publicRequest<Series>(`/api/v1/series?id=${encodeURIComponent(id)}`);
+      if (!data) throw new Error("合集不存在或暂不可见");
       setSeries(data);
       setForm({ title: data.title, description: data.description, coverUrl: data.coverUrl || "", kind: data.kind, status: data.status });
     } catch (e) {

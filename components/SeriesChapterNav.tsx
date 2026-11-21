@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, ListOrdered } from "lucide-react";
-import { cloudRequest } from "@/lib/cloud";
+import { cloudRequest, publicRequest } from "@/lib/cloud";
 
 type Chapter = { id: string; title: string; chapter: number; status: string };
 
@@ -23,10 +23,10 @@ export default function SeriesChapterNav({ seriesId, postId, onOpen, onOpenColle
   useEffect(() => {
     let active = true;
     setChapters(null);
-    cloudRequest(`/api/v1/series?id=${encodeURIComponent(seriesId)}`)
+    publicRequest<{ chapters?: Chapter[] }>(`/api/v1/series?id=${encodeURIComponent(seriesId)}`)
       .then((data) => {
         if (!active) return;
-        const items = (data as { chapters?: Chapter[] } | null)?.chapters;
+        const items = data?.chapters;
         setChapters(Array.isArray(items) ? items : []);
       })
       .catch(() => { if (active) setChapters([]); });
