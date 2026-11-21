@@ -7684,3 +7684,34 @@ img, video, canvas, iframe { max-width:100%; }
 .settings-page .settings-group > button { border-bottom: 0; }
 .settings-page.settings-home-page .settings-list > button:last-child,
 .settings-page .settings-center-detail > button:last-child { border-bottom: 0; }
+
+/* ---- 品牌香槟金：只用在主操作与选中态，不铺满全局 ---- */
+:root, :root[data-theme="dark"] { --brand-accent: #C9A961; --brand-accent-ink: #17140C; }
+:root[data-theme="light"] { --brand-accent: #93762F; --brand-accent-ink: #FFFDF7; }
+.collection-primary {
+  background: var(--brand-accent);
+  color: var(--brand-accent-ink);
+  border-color: color-mix(in srgb, var(--brand-accent) 72%, #000);
+}
+.collection-ghost.active,
+.collection-ghost[aria-pressed="true"] { border-color: color-mix(in srgb, var(--brand-accent) 55%, transparent); color: var(--brand-accent); }
+.collection-chapter-current { background: color-mix(in srgb, var(--brand-accent) 16%, transparent); color: var(--brand-accent); }
+.mine-tabs.mine-content-tabs button[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--brand-accent) 44%, transparent);
+  background: color-mix(in srgb, var(--brand-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--brand-accent) 86%, var(--ink));
+}
+.detail-series-actions button.is-on {
+  border-color: color-mix(in srgb, var(--brand-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--brand-accent) 13%, transparent);
+  color: var(--brand-accent);
+}
+.detail-series-actions .series-subscribe-button.is-following {
+  border-color: color-mix(in srgb, var(--brand-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--brand-accent) 13%, transparent);
+  color: var(--brand-accent);
+}
+
+/* 章节切换与评分之间只留一条分隔，不用双线 */
+.detail-series-steps { margin: 18px 0 6px; padding-top: 0; border-top: 0; }
+.collection-chapter-open { align-items: center; }
