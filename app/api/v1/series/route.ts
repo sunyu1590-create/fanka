@@ -117,6 +117,29 @@ export async function GET(req: NextRequest) {
       return { items: ((data || []) as SeriesRow[]).map((row) => presentSeries(row)) };
     }
 
+    // 我收藏的合集：只返回已过审且公开的，和「我的作品」分开展示。
+    if (scope === "following") {
+      if (!user) return { items: [] };
+      const { data: follows, error: followError } = await db.from("collection_follows").select("series_id").eq("user_id", user.id);
+      dbError(followError);
+      const followedIds = (follows || []).map((row) => String((row as { series_id: string }).series_id));
+      if (!followedIds.length) return { items: [] };
+      const { data: followedRows, error: followedError } = await db.from("post_series").select(publicFields)
+        .in("id", followedIds).eq("review_status", "approved").eq("is_public", true)
+        .order("updated_at", { ascending: false }).limit(50);
+      dbError(followedError);
+      const followedSeries = (followedRows || []) as SeriesRow[];
+      const followedSeriesIds = followedSeries.map((row) => row.id);
+      const chapterCounts = followedSeriesIds.length
+        ? await db.from("posts").select("series_id").in("series_id", followedSeriesIds).eq("status", "published")
+        : { data: [] as { series_id: string }[], error: null as null };
+      const chapterBySeries = new Map<string, number>();
+      for (const row of (chapterCounts.data || []) as { series_id: string }[]) {
+        chapterBySeries.set(String(row.series_id), (chapterBySeries.get(String(row.series_id)) || 0) + 1);
+      }
+      return { items: followedSeries.map((row) => presentSeries(row, { publishedCount: chapterBySeries.get(row.id) || 0 })) };
+    }
+
     const creatorId = creator ? uuid(creator, "创作者") : user?.id;
     if (!creatorId) return { items: [] };
     const isSelf = !!user && user.id === creatorId;

@@ -366,6 +366,7 @@ export default function Community() {
   const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("glass");
   const [discoverSettingsOpen, setDiscoverSettingsOpen] = useState(false);
   const [discoverNavCollapsed, setDiscoverNavCollapsed] = useState(false);
+  const [mineCollections, setMineCollections] = useState<{ id: string; title: string; kind: string; publishedCount?: number }[]>([]);
   const [discoverSearchOpen, setDiscoverSearchOpen] = useState(false);
   const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
   const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("blur-rise");
@@ -3358,6 +3359,17 @@ export default function Community() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => { window.removeEventListener("scroll", onScroll); if (frame) window.cancelAnimationFrame(frame); };
   }, []);
+  useEffect(() => {
+    if (tab !== "mine" || !accountId) { setMineCollections([]); return; }
+    let alive = true;
+    void cloudRequest("/api/v1/series?scope=following")
+      .then((data) => {
+        const items = (data as { items?: { id: string; title: string; kind: string; publishedCount?: number }[] } | null)?.items;
+        if (alive) setMineCollections(Array.isArray(items) ? items : []);
+      })
+      .catch(() => { if (alive) setMineCollections([]); });
+    return () => { alive = false; };
+  }, [tab, accountId]);
   const openCollection = (id: string) => {
     if (!id) return;
     setCollectionReturnTab(tab);
@@ -4958,6 +4970,13 @@ export default function Community() {
               <ChevronRight size={18}/>
             </button>
           </section>
+          {mineCollections.length > 0 && <section className="mine-collections" aria-label="我收藏的合集">
+            <div className="mine-collections-head"><strong>我收藏的合集</strong><small>{mineCollections.length} 个</small></div>
+            <div className="mine-collection-row">{mineCollections.map((item) => <button type="button" key={item.id} className="mine-collection-card" onClick={() => openCollection(item.id)}>
+              <span className="mine-collection-copy"><strong>{item.title}</strong><small>{item.publishedCount || 0} 章 · {item.kind === "tutorial" ? "教程" : item.kind === "resource" ? "资源" : "连载"}</small></span>
+              <ChevronRight size={15} aria-hidden="true"/>
+            </button>)}</div>
+          </section>}
           <div className="mine-tabs-shell">
             <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
               {([
@@ -5473,6 +5492,7 @@ export default function Community() {
             setTab("mine");
             requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
           }}
+          onOpenCollection={(seriesId) => { closeAuthorProfile(); openCollection(seriesId); }}
           onNotice={toast}
           onSelectPost={(id) => {
             closeAuthorProfile();

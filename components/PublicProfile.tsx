@@ -12,6 +12,7 @@ type PublicInfo = { nickname: string | null; bio: string | null; avatar_url: str
 type PublicAttribute = { attribute: "gender" | "mbti" | "birthday" | "hobbies"; value: string };
 type ProfilePost = { client_id: number; title: string; body: string; image_url: string | null; video_url?: string | null; created_at?: string; post_media?: { storage_path: string; sort_order: number }[] };
 type ProfileLayout = "masonry" | "list";
+type ProfileCollection = { id: string; title: string; kind: string; coverUrl: string | null; publishedCount?: number };
 
 async function withSignedPostImages(db: Awaited<ReturnType<typeof browserDb>>, posts: ProfilePost[]) {
   const paths = [...new Set(posts.flatMap((post) => (post.post_media || []).map((media) => media.storage_path)))];
@@ -94,6 +95,7 @@ export default function PublicProfile({
   onMessage,
   onSelectPost,
   onOpenMine,
+  onOpenCollection,
   onNotice,
 }: {
   id: string;
@@ -104,6 +106,7 @@ export default function PublicProfile({
   onMessage: (id: string) => void;
   onSelectPost: (id: number) => void;
   onOpenMine: () => void;
+  onOpenCollection?: (seriesId: string) => void;
   onNotice: (message: string) => void;
 }) {
   const [profile, setProfile] = useState<PublicInfo>();
@@ -111,6 +114,7 @@ export default function PublicProfile({
   const [badges, setBadges] = useState<ProfileBadge[]>([]);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [bookmarks, setBookmarks] = useState<ProfilePost[]>([]);
+  const [collections, setCollections] = useState<ProfileCollection[]>([]);
   const [following, setFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
   const [followBusy, setFollowBusy] = useState(false);
@@ -129,6 +133,7 @@ export default function PublicProfile({
     setBadges([]);
     setPosts([]);
     setBookmarks([]);
+    setCollections([]);
     setFollowing(false);
     setFollowerCount(0);
     setSection("posts");
@@ -159,6 +164,12 @@ export default function PublicProfile({
         const signedPosts = await withSignedPostImages(db, (c.data || []) as ProfilePost[]);
         if (!alive) return;
         setPosts(signedPosts);
+        const collectionResponse = await fetch(`/api/v1/series?creator=${encodeURIComponent(id)}`, { cache: "no-store" });
+        if (collectionResponse.ok) {
+          const collectionPayload = await collectionResponse.json();
+          if (!alive) return;
+          setCollections(Array.isArray(collectionPayload?.data?.items) ? collectionPayload.data.items : []);
+        }
         if (followResponse.ok) {
           const followData = await followResponse.json();
           if (!alive) return;
@@ -293,6 +304,15 @@ export default function PublicProfile({
                 </>}
               </div>
             </section>
+            {collections.length > 0 && <section className="public-profile-collections" aria-label="作者的合集">
+              <div className="public-profile-collections-head"><strong>合集</strong><small>{collections.length} 个</small></div>
+              <div className="public-profile-collection-row">
+                {collections.map((item) => <button type="button" className="public-profile-collection" key={item.id} onClick={() => onOpenCollection?.(item.id)}>
+                  <span className={`public-profile-collection-cover${item.coverUrl ? " has-cover" : ""}`} style={item.coverUrl ? { backgroundImage: `url(${item.coverUrl})` } : undefined} aria-hidden="true" />
+                  <span className="public-profile-collection-copy"><strong>{item.title}</strong><small>{item.publishedCount || 0} 章 · {item.kind === "tutorial" ? "教程" : item.kind === "resource" ? "资源" : "连载"}</small></span>
+                </button>)}
+              </div>
+            </section>}
             <div className="public-profile-tabs" role="tablist" aria-label="主页内容分类">
               <button type="button" id="public-profile-tab-posts" role="tab" aria-selected={section === "posts"} aria-controls="public-profile-panel" tabIndex={section === "posts" ? 0 : -1} onClick={() => setSection("posts")}>笔记 <small>{posts.length === 30 ? "30+" : posts.length}</small></button>
               <button type="button" id="public-profile-tab-bookmarks" role="tab" aria-selected={section === "bookmarks"} aria-controls="public-profile-panel" tabIndex={section === "bookmarks" ? 0 : -1} onClick={() => setSection("bookmarks")}>收藏 {profile.show_bookmarks ? <small>{bookmarks.length === 30 ? "30+" : bookmarks.length}</small> : <LockKeyhole size={13}/>}</button>

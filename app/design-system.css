@@ -7157,3 +7157,26 @@ img, video, canvas, iframe { max-width:100%; }
 .ai-space-explore-copy strong { color:var(--ink); font-size:12.5px; font-weight:620; }
 .ai-space-explore-copy small { overflow:hidden; color:var(--muted); font-size:10.5px; text-overflow:ellipsis; white-space:nowrap; }
 .ai-space-explore-entry>svg { flex:none; color:var(--muted); }
+
+/* 作者主页合集区 / 我的收藏合集：与合集详情同一套克制的卡片语言 */
+.public-profile-collections { margin:14px 0 4px; }
+.public-profile-collections-head,
+.mine-collections-head { display:flex; align-items:baseline; justify-content:space-between; padding:0 2px 8px; }
+.public-profile-collections-head strong,
+.mine-collections-head strong { color:var(--ink); font-size:13px; font-weight:640; }
+.public-profile-collections-head small,
+.mine-collections-head small { color:var(--muted); font-size:11px; }
+.public-profile-collection-row { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none; }
+.public-profile-collection-row::-webkit-scrollbar { display:none; }
+.public-profile-collection { display:flex; align-items:center; gap:9px; flex:none; width:196px; padding:8px 10px; border:1px solid var(--line); border-radius:12px; background:var(--surface); text-align:left; }
+.public-profile-collection-cover { flex:none; width:34px; height:34px; border-radius:9px; background:linear-gradient(150deg,color-mix(in srgb,var(--action) 20%,transparent),transparent); background-size:cover; background-position:center; }
+.public-profile-collection-copy { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.public-profile-collection-copy strong { overflow:hidden; color:var(--ink); font-size:12.5px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+.public-profile-collection-copy small { color:var(--muted); font-size:10.5px; }
+.mine-collections { margin-top:14px; }
+.mine-collection-row { display:flex; flex-direction:column; gap:6px; }
+.mine-collection-card { display:flex; align-items:center; gap:10px; width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); text-align:left; }
+.mine-collection-copy { display:flex; flex:1; flex-direction:column; gap:2px; min-width:0; }
+.mine-collection-copy strong { overflow:hidden; color:var(--ink); font-size:12.5px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+.mine-collection-copy small { color:var(--muted); font-size:10.5px; }
+.mine-collection-card>svg { flex:none; color:var(--muted); }
