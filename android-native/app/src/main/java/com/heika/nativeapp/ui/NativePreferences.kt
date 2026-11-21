@@ -29,6 +29,7 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val searchHistoryKey = stringPreferencesKey("search_history")
     private val networkNoticeVersionKey = stringPreferencesKey("network_notice_seen_version")
     private val skippedUpdateCodeKey = intPreferencesKey("skipped_update_code")
+    private val decorKey = stringPreferencesKey("decor_config")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
@@ -57,6 +58,15 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
 
     suspend fun setTheme(theme: String) { dataStore.edit { it[themeKey] = theme } }
     suspend fun setImageCacheMb(value: Int) { dataStore.edit { it[imageCacheKey] = value.coerceIn(256, 512) } }
+
+    /** 上次成功同步到的装扮配置，冷启动时先读它，避免底栏闪回默认样式。 */
+    suspend fun decorJson(): String? = dataStore.data.map { it[decorKey] }.first()
+
+    suspend fun setDecorJson(value: String?) {
+        dataStore.edit { prefs ->
+            if (value.isNullOrBlank()) prefs.remove(decorKey) else prefs[decorKey] = value
+        }
+    }
     suspend fun setFeedLayout(value: String) { dataStore.edit { it[feedLayoutKey] = if (value == "single") "single" else "waterfall" } }
     suspend fun setReadingMode(value: String) { dataStore.edit { it[readingModeKey] = value.takeIf { it in setOf("standard", "focus", "night") } ?: "standard" } }
     suspend fun setPageTransition(value: String) { dataStore.edit { it[pageTransitionKey] = HeikaPageTransitions.normalize(value) } }

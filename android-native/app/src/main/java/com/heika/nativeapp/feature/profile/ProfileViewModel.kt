@@ -24,6 +24,8 @@ data class NativeProfile(
     val nickname: String,
     val bio: String,
     val avatar: String?,
+    /** 个人封面：保留完整原图，取景由 cover_meta 决定；null 表示还没设置。 */
+    val cover: String? = null,
     val tier: String,
     val showBookmarks: Boolean,
 )
@@ -390,7 +392,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
     }
 
     private fun encodeSnapshot(state: ProfileState) = JSONObject()
-        .put("profile", JSONObject().put("id", state.profile?.id).put("nickname", state.profile?.nickname).put("bio", state.profile?.bio).put("avatar_url", state.profile?.avatar).put("membership_tier", state.profile?.tier).put("show_bookmarks", state.profile?.showBookmarks))
+        .put("profile", JSONObject().put("id", state.profile?.id).put("nickname", state.profile?.nickname).put("bio", state.profile?.bio).put("avatar_url", state.profile?.avatar).put("cover_url", state.profile?.cover).put("membership_tier", state.profile?.tier).put("show_bookmarks", state.profile?.showBookmarks))
         .put("posts", JSONArray(state.posts.map { JSONObject(it.rawJson) }))
         .put("bookmarks", JSONArray(state.bookmarks.map { JSONObject(it.rawJson) }))
         .put("liked", JSONArray(state.liked.map { JSONObject(it.rawJson) }))
@@ -405,6 +407,7 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
     private fun JSONObject.toProfile(idFallback: String) = NativeProfile(
         id = optString("id").ifBlank { idFallback }, nickname = optString("nickname").ifBlank { "探索者" },
         bio = optString("bio"), avatar = optString("avatar_url").takeIf(String::isNotBlank),
+        cover = optString("cover_url").takeIf { it.isNotBlank() && it != "null" },
         tier = optString("membership_tier", "free"), showBookmarks = optBoolean("show_bookmarks"),
     )
 

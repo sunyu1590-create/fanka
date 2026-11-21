@@ -6,12 +6,20 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.heika.nativeapp.ui.DecorViewModel
 import com.heika.nativeapp.ui.HeikaImageCache
 import com.heika.nativeapp.ui.HeikaNativeApp
+import com.heika.nativeapp.ui.LocalDecor
 import com.heika.nativeapp.ui.HeikaTheme
 import com.heika.nativeapp.ui.NativePreferences
 import dagger.hilt.android.AndroidEntryPoint
@@ -49,7 +57,22 @@ class MainActivity : ComponentActivity() {
                     controller.isAppearanceLightStatusBars = lightSystemBars
                     controller.isAppearanceLightNavigationBars = lightSystemBars
                 }
-                HeikaNativeApp(imageLoader = loader, pageTransition = pageTransition)
+                // 装扮属于账号设置：冷启动先读缓存，再回前台时静默对齐一次，
+                // 这样网页端应用的新主题能在 App 里自然生效，而不会闪回默认。
+                val decorViewModel: DecorViewModel = hiltViewModel()
+                val decor by decorViewModel.config.collectAsState()
+                LaunchedEffect(decorViewModel) { decorViewModel.start() }
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) decorViewModel.refresh()
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+                CompositionLocalProvider(LocalDecor provides decor) {
+                    HeikaNativeApp(imageLoader = loader, pageTransition = pageTransition)
+                }
             }
         }
     }

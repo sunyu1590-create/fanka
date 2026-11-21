@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -189,33 +190,109 @@ fun ProfileScreen(
             ) {
                 item(span = StaggeredGridItemSpan.FullLine) {
                     Column {
-                        Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                            HeikaAvatar(profile.avatar, profile.nickname, 56.dp, contentDescription = "${profile.nickname}头像")
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                    Text(profile.nickname, Modifier.weight(1f, fill = false), color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    state.badges.take(3).forEach { badge ->
-                                        val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(MaterialTheme.colorScheme.primary)
-                                        Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(15.dp))
-                                    }
-                                    if (state.badges.size > 3) Text("+${state.badges.size - 3}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
-                                    if (userId == null) Text("LV${state.stats.level}", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .3.sp)
-                                }
-                                if (profile.bio.isNotBlank()) Text(profile.bio, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                                Text("用户编号 · ${profile.id.take(8).uppercase()}", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
-                                val attributes = state.profileAttributes
-                                val visibleDetails = buildList {
-                                    if (attributes.visibility["gender"] == true && attributes.gender.isNotBlank()) {
-                                        val genderLabel = when (attributes.gender) { "female" -> "女"; "male" -> "男"; "nonbinary" -> "非二元"; "undisclosed" -> "不愿透露"; else -> "" }
-                                        if (genderLabel.isNotBlank()) add("性别 $genderLabel")
-                                    }
-                                    if (attributes.visibility["mbti"] == true && attributes.mbti.isNotBlank()) add(attributes.mbti)
-                                    if (attributes.visibility["birthday"] == true && attributes.birthday.isNotBlank()) add(attributes.birthday)
-                                    if (attributes.visibility["hobbies"] == true && attributes.hobbies.isNotEmpty()) add("兴趣 ${attributes.hobbies.take(3).joinToString("、")}")
-                                }
-                                if (visibleDetails.isNotEmpty()) Text(visibleDetails.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .82f), fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+                        // 封面 + 跨边界头像：头像与昵称同处一条垂直中心线，
+                        // 昵称落在封面下缘偏下的位置，深浅色下都保持可读。
+                        Box(
+                            Modifier.fillMaxWidth().padding(top = 8.dp).height(178.dp)
+                                .clip(RoundedCornerShape(HeikaRadii.surface))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                        ) {
+                            if (profile.cover != null) {
+                                AsyncImage(
+                                    model = profile.cover,
+                                    contentDescription = "${profile.nickname}的封面",
+                                    imageLoader = LocalHeikaImageLoader.current,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                            } else {
+                                Box(
+                                    Modifier.fillMaxSize().background(
+                                        Brush.linearGradient(
+                                            listOf(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = .22f),
+                                                MaterialTheme.colorScheme.surfaceVariant,
+                                                MaterialTheme.colorScheme.surface,
+                                            ),
+                                        ),
+                                    ),
+                                )
                             }
-                            if (userId == null) Icon(HeikaIcons.Edit, "编辑资料", Modifier.size(42.dp).clip(CircleShape).clickable(onClick = onEditProfile).padding(10.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // 底部压暗：无论封面是什么图，昵称都有足够对比度。
+                            Box(
+                                Modifier.fillMaxSize().background(
+                                    Brush.verticalGradient(
+                                        0.35f to Color.Transparent,
+                                        0.72f to Color.Black.copy(alpha = .30f),
+                                        1f to Color.Black.copy(alpha = .58f),
+                                    ),
+                                ),
+                            )
+                            Row(
+                                Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                                    .padding(start = 16.dp, end = 12.dp, bottom = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    Modifier.clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.background)
+                                        .padding(2.5.dp),
+                                ) {
+                                    HeikaAvatar(profile.avatar, profile.nickname, 76.dp, contentDescription = "${profile.nickname}头像")
+                                }
+                                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(profile.nickname, Modifier.weight(1f, fill = false), color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        state.badges.take(2).forEach { badge ->
+                                            val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(Color.White)
+                                            Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(15.dp))
+                                        }
+                                        if (state.badges.size > 2) Text("+${state.badges.size - 2}", color = Color.White.copy(alpha = .8f), fontSize = 9.sp)
+                                        if (userId == null) Text("LV${state.stats.level}", color = Color.White.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .3.sp)
+                                    }
+                                    Text("用户编号 · ${profile.id.take(8).uppercase()}", color = Color.White.copy(alpha = .74f), fontSize = 9.sp, modifier = Modifier.padding(top = 3.dp))
+                                }
+                                if (userId == null) {
+                                    Icon(
+                                        HeikaIcons.Edit, "编辑资料",
+                                        Modifier.size(38.dp).clip(CircleShape)
+                                            .background(Color.Black.copy(alpha = .34f))
+                                            .clickable(onClick = onEditProfile).padding(9.dp),
+                                        tint = Color.White,
+                                    )
+                                }
+                            }
+                        }
+                        if (profile.bio.isNotBlank()) {
+                            Text(
+                                profile.bio,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                            )
+                        }
+                        val attributes = state.profileAttributes
+                        val visibleDetails = buildList {
+                            if (attributes.visibility["gender"] == true && attributes.gender.isNotBlank()) {
+                                val genderLabel = when (attributes.gender) { "female" -> "女"; "male" -> "男"; "nonbinary" -> "非二元"; "undisclosed" -> "不愿透露"; else -> "" }
+                                if (genderLabel.isNotBlank()) add("性别 $genderLabel")
+                            }
+                            if (attributes.visibility["mbti"] == true && attributes.mbti.isNotBlank()) add(attributes.mbti)
+                            if (attributes.visibility["birthday"] == true && attributes.birthday.isNotBlank()) add(attributes.birthday)
+                            if (attributes.visibility["hobbies"] == true && attributes.hobbies.isNotEmpty()) add("兴趣 ${attributes.hobbies.take(3).joinToString("、")}")
+                        }
+                        if (visibleDetails.isNotEmpty()) {
+                            Text(
+                                visibleDetails.joinToString(" · "),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .82f),
+                                fontSize = 10.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 6.dp),
+                            )
                         }
                         if (state.own) {
                             Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceAround) {

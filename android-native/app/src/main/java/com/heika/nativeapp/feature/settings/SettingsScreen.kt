@@ -102,6 +102,12 @@ private fun CertificationSettingsContent() {
 private val SettingGroups = listOf(
     "账号" to listOf(SettingsEntry("account", "账号与安全", HeikaIconRes.Profile), SettingsEntry("certification", "兑换认证码", HeikaIconRes.Shield), SettingsEntry("membership", "会员与支持", HeikaIconRes.StarOutline)),
     "偏好" to listOf(SettingsEntry("appearance", "外观与阅读", HeikaIconRes.Magic), SettingsEntry("notifications", "通知与消息", HeikaIconRes.Notifications), SettingsEntry("storage", "存储与缓存", HeikaIconRes.Storage)),
+    // 装扮与工坊只在网页端编辑，APP 用统一容器打开，应用后原生底栏与卡片同步生效。
+    "个性化" to listOf(
+        SettingsEntry("decor-bar", "底栏装扮", HeikaIconRes.Magic),
+        SettingsEntry("decor-card", "卡片装扮", HeikaIconRes.Image),
+        SettingsEntry("decor-gallery", "创意工坊", HeikaIconRes.StarOutline),
+    ),
     "其他" to listOf(SettingsEntry("privacy", "隐私与权限", HeikaIconRes.Privacy), SettingsEntry("about", "关于黑卡", HeikaIconRes.Info)),
 )
 

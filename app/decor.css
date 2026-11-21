@@ -430,3 +430,22 @@
   :root[data-decor-bar="custom"] .bottom-nav button,
   :root[data-decor-bar="custom"] .bottom-nav button::before { transition: none !important; }
 }
+
+/* ==========================================================================
+   APP 内嵌模式：网页只负责业务内容，导航由原生容器提供
+   ========================================================================== */
+:root[data-app-embed="1"] .bottom-nav,
+:root[data-app-embed="1"] .topline,
+:root[data-app-embed="1"] .compose {
+  display: none !important;
+}
+
+:root[data-app-embed="1"] .app {
+  padding-bottom: 0;
+  box-shadow: none;
+}
+
+:root[data-app-embed="1"] .decor-center {
+  position: static;
+  min-height: 100vh;
+}

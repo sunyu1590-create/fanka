@@ -90,6 +90,8 @@ import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.HeikaPalette
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaRadii
+import com.heika.nativeapp.ui.LocalDecor
+import com.heika.nativeapp.ui.LocalHeikaDark
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 import com.heika.nativeapp.ui.LocalHeikaTitleTextScale
 import com.heika.nativeapp.ui.heikaSharedPostImage
@@ -531,6 +533,7 @@ private fun PreviewCardBack(
 ) {
     val pressScale = remember { Animatable(1f) }
     val pressScope = rememberCoroutineScope()
+    val cardPalette = LocalDecor.current.card.palette(LocalHeikaDark.current)
     Box(Modifier.fillMaxSize().alpha(alpha)) {
         CardBack(number, preview = true)
         Column(
@@ -560,10 +563,10 @@ private fun PreviewCardBack(
                 },
                 shape = RoundedCornerShape(10.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFC7D4D9),
-                    contentColor = Color(0xFF17191C),
-                    disabledContainerColor = Color(0xFF69777B),
-                    disabledContentColor = Color(0xFF25292B),
+                    containerColor = cardPalette.actionBg,
+                    contentColor = cardPalette.actionText,
+                    disabledContainerColor = cardPalette.actionBg.copy(alpha = .45f),
+                    disabledContentColor = cardPalette.actionText.copy(alpha = .55f),
                 ),
             ) {
                 if (opening) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp, color = Color(0xFF25292B))
@@ -704,31 +707,104 @@ private fun PreviewCardFront(
     }
 }
 
+/**
+ * 卡背：小卡与放大确认卡共用同一套绘制，底色/底图/纹理/图案/描边/编号与提示文字全部来自
+ * 当前卡片主题，保证「翻开前」在各种尺寸下都是同一个视觉身份。
+ */
 @Composable
 private fun CardBack(number: Int, preview: Boolean = false) {
-    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(HeikaPalette.DailyCardStart, HeikaPalette.DailyCardMiddle, HeikaPalette.DailyCardEnd)))) {
+    val dark = LocalHeikaDark.current
+    val palette = LocalDecor.current.card.palette(dark)
+    Box(Modifier.fillMaxSize().background(palette.backBg)) {
+        if (palette.backImage != null) {
+            AsyncImage(
+                model = palette.backImage,
+                contentDescription = null,
+                imageLoader = LocalHeikaImageLoader.current,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            )
+        }
         Canvas(Modifier.fillMaxSize().padding(6.dp)) {
-            val inset = 1.dp.toPx()
-            drawRoundRect(color = HeikaPalette.DailyCardRim.copy(alpha = 0.60f), topLeft = androidx.compose.ui.geometry.Offset(inset, inset), size = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()), style = Stroke(1.dp.toPx()))
-            val path = Path().apply {
-                moveTo(size.width * .5f, size.height * .26f)
-                lineTo(size.width * .84f, size.height * .5f)
-                lineTo(size.width * .5f, size.height * .73f)
-                lineTo(size.width * .16f, size.height * .5f)
-                close()
+            when (palette.texture) {
+                "grid" -> {
+                    val step = size.width / 7f
+                    var x = 0f
+                    while (x <= size.width) {
+                        drawLine(palette.backBorder.copy(alpha = .38f), androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = 1.dp.toPx())
+                        x += step
+                    }
+                    var y = 0f
+                    while (y <= size.height) {
+                        drawLine(palette.backBorder.copy(alpha = .38f), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                        y += step
+                    }
+                }
+                "noise" -> {
+                    var y = 0f
+                    var row = 0
+                    while (y <= size.height) {
+                        var x = if (row % 2 == 0) 0f else size.width / 24f
+                        while (x <= size.width) {
+                            drawCircle(palette.backBorder.copy(alpha = .22f), radius = 0.9.dp.toPx(), center = androidx.compose.ui.geometry.Offset(x, y))
+                            x += size.width / 12f
+                        }
+                        y += size.height / 22f
+                        row++
+                    }
+                }
+                "none" -> Unit
+                else -> {
+                    for (line in 0..16) {
+                        val x = size.width * (line / 16f)
+                        drawLine(Color.White.copy(alpha = 0.045f), start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x - size.height * .24f, size.height), strokeWidth = 1.dp.toPx())
+                    }
+                }
             }
-            drawPath(path, HeikaPalette.DailyCardMuted.copy(alpha = .25f), style = Stroke(1.dp.toPx()))
-            for (line in 0..16) {
-                val x = size.width * (line / 16f)
-                drawLine(Color.White.copy(alpha = 0.035f), start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x - size.height * .24f, size.height), strokeWidth = 1.dp.toPx())
+            if (palette.pattern == "diamond") {
+                val path = Path().apply {
+                    moveTo(size.width * .5f, size.height * .26f)
+                    lineTo(size.width * .84f, size.height * .5f)
+                    lineTo(size.width * .5f, size.height * .73f)
+                    lineTo(size.width * .16f, size.height * .5f)
+                    close()
+                }
+                drawPath(path, palette.backBorder.copy(alpha = .55f), style = Stroke(1.dp.toPx()))
             }
+            if (palette.pattern == "frame") {
+                val inset = 12.dp.toPx()
+                drawRoundRect(
+                    color = palette.backBorder.copy(alpha = .55f),
+                    topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
+                    size = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()),
+                    style = Stroke(1.dp.toPx()),
+                )
+            }
+            val rim = 1.dp.toPx()
+            drawRoundRect(
+                color = palette.backBorder.copy(alpha = 0.9f),
+                topLeft = androidx.compose.ui.geometry.Offset(rim, rim),
+                size = androidx.compose.ui.geometry.Size(size.width - rim * 2, size.height - rim * 2),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
+                style = Stroke(1.dp.toPx()),
+            )
         }
-        if (!preview) Text(number.toString().padStart(2, '0'), Modifier.align(Alignment.TopStart).padding(18.dp), color = HeikaPalette.DailyCardMuted, fontSize = 14.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+        if (palette.pattern == "monogram") {
+            Text(
+                "H",
+                Modifier.align(Alignment.Center),
+                color = palette.backBorder.copy(alpha = .55f),
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                fontSize = if (preview) 132.sp else 62.sp,
+            )
+        }
+        if (!preview) Text(number.toString().padStart(2, '0'), Modifier.align(Alignment.TopStart).padding(18.dp), color = palette.numberColor, fontSize = 14.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("黑卡", color = HeikaPalette.Ink, fontSize = if (preview) 40.sp else 18.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
-            Text("H E I K A", Modifier.padding(top = if (preview) 6.dp else 0.dp), color = HeikaPalette.DailyCardMuted, fontSize = if (preview) 10.sp else 18.sp, letterSpacing = if (preview) 2.3.sp else 1.5.sp)
+            Text("黑卡", color = if (preview) palette.numberColor else palette.numberColor, fontSize = if (preview) 40.sp else 18.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+            Text("H E I K A", Modifier.padding(top = if (preview) 6.dp else 0.dp), color = palette.hintColor, fontSize = if (preview) 10.sp else 18.sp, letterSpacing = if (preview) 2.3.sp else 1.5.sp)
         }
-        if (!preview) Text("轻触翻开", Modifier.align(Alignment.BottomStart).padding(18.dp), color = HeikaPalette.DailyCardMuted, fontSize = 12.sp, letterSpacing = 1.1.sp)
+        if (!preview) Text("轻触翻开", Modifier.align(Alignment.BottomStart).padding(18.dp), color = palette.hintColor, fontSize = 12.sp, letterSpacing = 1.1.sp)
     }
 }
 
@@ -770,7 +846,13 @@ private fun CardFront(
                 )
             }
         } else {
-            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF55594F), Color(0xFF292B29), Color(0xFF171A1D)))))
+            val contentPalette = LocalDecor.current.card.palette(LocalHeikaDark.current)
+            Box(Modifier.fillMaxSize().background(contentPalette.contentBg))
+            // 没有封面时用标题色自然填充，保证文字仍然可读。
+            Column(Modifier.align(Alignment.Center).padding(horizontal = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("黑卡", color = contentPalette.titleColor.copy(alpha = .92f), fontSize = 20.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+                Text("H E I K A", Modifier.padding(top = 4.dp), color = contentPalette.hintColor, fontSize = 11.sp, letterSpacing = 2.4.sp)
+            }
         }
         if (imageFailed) Text("图片暂不可用", Modifier.align(Alignment.Center).clip(RoundedCornerShape(9.dp)).background(Color.Black.copy(alpha = .58f)).padding(horizontal = 10.dp, vertical = 7.dp), color = Color.White.copy(alpha = .9f), fontSize = 10.sp)
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {

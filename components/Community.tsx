@@ -1871,6 +1871,22 @@ export default function Community() {
   };
   const openPostRef = useRef(openPost);
   openPostRef.current = openPost;
+  // APP 内嵌打开时，网页只保留业务内容：顶栏、底栏与发布按钮由原生容器提供，
+  // 避免出现两套导航和重复的下载入口。
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("app") === "1") document.documentElement.dataset.appEmbed = "1";
+  }, []);
+  // 从 APP 的「底栏装扮 / 卡片装扮 / 创意工坊」直接进入对应页面，不经过网页首页。
+  const sharedDecorHandled = useRef<string | null>(null);
+  useEffect(() => {
+    const target = new URLSearchParams(location.search).get("decor");
+    if (!ready || !target || sharedDecorHandled.current === target) return;
+    sharedDecorHandled.current = target;
+    setDecorKind(target === "card" ? "card" : target === "bar" ? "bottom" : "all");
+    setDecorTab(target === "gallery" ? "official" : "studio");
+    setDecorOpen(true);
+  }, [ready]);
   useEffect(() => {
     const sharedId = new URLSearchParams(location.search).get("profile");
     if (!ready || !sharedId || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sharedId) || sharedProfileHandled.current === sharedId) return;

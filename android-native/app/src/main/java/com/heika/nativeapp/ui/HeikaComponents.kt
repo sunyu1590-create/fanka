@@ -37,7 +37,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -184,7 +187,10 @@ fun GlassNavigationBar(
 ) {
     val tabShape = RoundedCornerShape(36.dp)
     val dark = LocalHeikaDark.current
-    val surface = MaterialTheme.colorScheme.surface
+    val decor = LocalDecor.current
+    val palette = decor.bar.palette(dark)
+    val surface = palette.bg
+    val containerAlpha = if (previewBackdropActive) minOf(1f, palette.bgOpacity + .12f) else palette.bgOpacity
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(horizontal = 14.dp)
@@ -201,45 +207,68 @@ fun GlassNavigationBar(
                     if (blurEnabled) Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeStyle(
-                            backgroundColor = surface.copy(alpha = if (previewBackdropActive) .88f else if (dark) .93f else .96f),
-                            tint = HazeTint(surface.copy(alpha = if (previewBackdropActive) .10f else if (dark) .06f else .08f)),
+                            backgroundColor = surface.copy(alpha = containerAlpha),
+                            tint = HazeTint(surface.copy(alpha = if (previewBackdropActive) .10f else .06f)),
                             blurRadius = 18.dp,
-                            fallbackTint = HazeTint(surface.copy(alpha = if (dark) .96f else .98f)),
+                            fallbackTint = HazeTint(surface.copy(alpha = minOf(1f, containerAlpha + .04f))),
                         ),
                     ) else Modifier,
                 )
-                .background(surface.copy(alpha = if (previewBackdropActive) { if (dark) .88f else .92f } else if (dark) .93f else .96f), tabShape)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (dark) .38f else .42f), tabShape)
+                .background(surface.copy(alpha = containerAlpha), tabShape)
+                .border(1.dp, palette.border.copy(alpha = palette.borderOpacity.coerceAtLeast(if (dark) .06f else .05f)), tabShape)
                 .padding(horizontal = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            NavigationItem("home", "首页", selected, onSelect)
-            NavigationItem("discovery", "发现", selected, onSelect)
-            NavigationItem("messages", "消息", selected, onSelect)
-            NavigationItem("profile", "我的", selected, onSelect)
+            NavigationItem("home", "首页", selected, onSelect, palette, decor.bar.icon("home"))
+            NavigationItem("discovery", "发现", selected, onSelect, palette, decor.bar.icon("discover"))
+            NavigationItem("messages", "消息", selected, onSelect, palette, decor.bar.icon("messages"))
+            NavigationItem("profile", "我的", selected, onSelect, palette, decor.bar.icon("mine"))
         }
         Surface(
             modifier = Modifier.size(58.dp).clickable(onClick = onPublish),
             shape = CircleShape,
-            color = Color(0xFFF5F4F0),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+            color = decor.bar.publishBg,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = if (dark) 0.9f else 0.55f)),
             shadowElevation = 4.dp,
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(HeikaIcons.Add, contentDescription = "发布内容", tint = Color(0xFF202125), modifier = Modifier.size(29.dp))
+                val publishIcon = decor.bar.publishIconUrl
+                if (publishIcon != null) {
+                    AsyncImage(
+                        model = publishIcon,
+                        contentDescription = "发布内容",
+                        imageLoader = LocalHeikaImageLoader.current,
+                        modifier = Modifier.size(27.dp),
+                        colorFilter = if (decor.bar.publishTinted) ColorFilter.tint(decor.bar.publishIcon) else null,
+                    )
+                } else {
+                    Icon(HeikaIcons.Add, contentDescription = "发布内容", tint = decor.bar.publishIcon, modifier = Modifier.size(29.dp))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RowScope.NavigationItem(key: String, label: String, selected: String, onSelect: (String) -> Unit) {
+private fun RowScope.NavigationItem(
+    key: String,
+    label: String,
+    selected: String,
+    onSelect: (String) -> Unit,
+    palette: com.heika.nativeapp.data.BarPalette,
+    custom: com.heika.nativeapp.data.DecorIcon?,
+) {
     val active = selected == key
     val scale by animateFloatAsState(if (active) 1f else 0.96f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 560f), label = "nav-scale")
     val iconColor by animateColorAsState(
-        if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        if (active) palette.activeIcon else palette.icon,
         tween(HeikaMotion.control),
         label = "nav-icon-color-$key",
+    )
+    val pillColor by animateColorAsState(
+        palette.activePill.copy(alpha = if (active) palette.activePillOpacity else 0f),
+        tween(HeikaMotion.control),
+        label = "nav-pill-$key",
     )
     Column(
         modifier = Modifier
@@ -247,12 +276,36 @@ private fun RowScope.NavigationItem(key: String, label: String, selected: String
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(24.dp))
             .clickable(onClickLabel = label) { onSelect(key) }
-            .padding(vertical = 8.dp),
+            .padding(vertical = 6.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        AnimatedContent(targetState = active, label = "nav-icon") { isSelected ->
-            NavigationGlyph(key, if (isSelected) iconColor else MaterialTheme.colorScheme.onSurfaceVariant, label)
+        Box(
+            modifier = Modifier
+                .height(38.dp)
+                .widthIn(min = 44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(pillColor),
+            contentAlignment = Alignment.Center,
+        ) {
+            AnimatedContent(targetState = active, label = "nav-icon") { isSelected ->
+                val source = custom?.source(isSelected)
+                val tint = if (isSelected) palette.activeIcon else palette.icon
+                if (source != null) {
+                    val size = (25f * (custom.scale)).dp
+                    AsyncImage(
+                        model = source,
+                        contentDescription = label,
+                        imageLoader = LocalHeikaImageLoader.current,
+                        modifier = Modifier.size(size),
+                        contentScale = if (custom.fitCover) ContentScale.Crop else ContentScale.Fit,
+                        // 单色图标跟随主题色；彩色图标保留原色，不做任何滤镜。
+                        colorFilter = if (custom.tint) ColorFilter.tint(tint) else null,
+                    )
+                } else {
+                    NavigationGlyph(key, tint, label)
+                }
+            }
         }
     }
 }

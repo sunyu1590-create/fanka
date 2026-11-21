@@ -67,6 +67,9 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.HeikaCollection
 import com.heika.nativeapp.feature.collection.CollectionScreen
 import com.heika.nativeapp.feature.profile.ProfileScreen
+import com.heika.nativeapp.feature.web.NativeWebScreen
+import com.heika.nativeapp.feature.web.WebContainerViewModel
+import com.heika.nativeapp.ui.DecorViewModel
 import com.heika.nativeapp.feature.profile.ProfileViewModel
 import com.heika.nativeapp.feature.profile.EditProfileScreen
 import com.heika.nativeapp.feature.exploration.CoExploreScreen
@@ -99,6 +102,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
         val networkRegionNoticeViewModel: NetworkRegionNoticeViewModel = hiltViewModel()
         val networkRegionWarning by networkRegionNoticeViewModel.warning.collectAsState()
         val appUpdateViewModel: AppUpdateViewModel = hiltViewModel()
+        val decorViewModel: DecorViewModel = hiltViewModel()
         val appUpdate by appUpdateViewModel.update.collectAsState()
         AnnouncementHost()
         val nav = rememberNavController()
@@ -466,7 +470,37 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                 composable("settings") {
                     SettingsScreen(
                         onBack = { nav.popBackStack() },
-                        onSection = { section -> when (section) { "about" -> nav.navigate("about"); "admin" -> nav.navigate("admin"); else -> nav.navigate("settings/$section") } },
+                        onSection = { section ->
+                            when (section) {
+                                "about" -> nav.navigate("about")
+                                "admin" -> nav.navigate("admin")
+                                // 装扮与工坊走网页容器：网页端编辑，原生读取同一份账号设置。
+                                "decor-bar", "decor-card", "decor-gallery" -> nav.navigate("web/$section")
+                                else -> nav.navigate("settings/$section")
+                            }
+                        },
+                    )
+                }
+                composable(
+                    route = "web/{feature}",
+                    arguments = listOf(navArgument("feature") { type = NavType.StringType }),
+                ) { entry ->
+                    val webViewModel: WebContainerViewModel = hiltViewModel()
+                    val webSession by webViewModel.session.collectAsState()
+                    val feature = entry.arguments?.getString("feature").orEmpty()
+                    NativeWebScreen(
+                        title = webTitle(feature),
+                        path = webPath(feature),
+                        sessionJson = webSession,
+                        onBack = { nav.popBackStack() },
+                        onEvent = { type, _ ->
+                            when (type) {
+                                // 网页完成装扮应用：native 侧立即失效缓存并重新拉取设置。
+                                "decor-applied" -> { decorViewModel.invalidate(); decorViewModel.refresh() }
+                                "close" -> nav.popBackStack()
+                                "open-native" -> Unit
+                            }
+                        },
                     )
                 }
                 composable(
@@ -719,4 +753,19 @@ private fun navigateTopLevel(nav: androidx.navigation.NavHostController, target:
         launchSingleTop = true
         restoreState = true
     }
+}
+
+/** APP 内网页容器的目标页：只直达功能子页，不经过网页首页。 */
+private fun webTitle(feature: String): String = when (feature) {
+    "decor-bar" -> "底栏装扮"
+    "decor-card" -> "卡片装扮"
+    "decor-gallery" -> "创意工坊"
+    else -> "黑卡"
+}
+
+private fun webPath(feature: String): String = when (feature) {
+    "decor-bar" -> "/?app=1&decor=bar"
+    "decor-card" -> "/?app=1&decor=card"
+    "decor-gallery" -> "/?app=1&decor=gallery"
+    else -> "/?app=1"
 }
