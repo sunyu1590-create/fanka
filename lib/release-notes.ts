@@ -7,6 +7,18 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.56.2",
+    date: "2026.11.21",
+    notes: [
+      { category: "问题修复", text: "修复「确认翻开」按钮点击无响应：装扮图案不再挡住按钮，失败时显示原因并可重试。" },
+      { category: "问题修复", text: "应用装扮后返回 APP 立即生效：保存后自动同步到原生端，状态区分「已保存到账户」与「APP 已应用」。" },
+      { category: "问题修复", text: "纯文字作品卡不再留大片灰色空位；个人主页等级标签不再显示为灰色方块。" },
+      { category: "体验优化", text: "装扮中心重排：单条预览可点击切换底栏/卡片/卡包，高级设置收进折叠区，颜色与透明度支持一键恢复默认。" },
+      { category: "新功能", text: "卡背纹理增加到八种（亚麻、点阵、网格、纸张、噪点、圆环、菱形等），纹理颜色跟随描边。" },
+      { category: "新功能", text: "四套官方预设上新：黑曜原生、雾松漫游、银白档案、月下电台，配精确配色与专属图标素材。" },
+    ],
+  },
+  {
     version: "2.56.1",
     date: "2026.11.21",
     notes: [
