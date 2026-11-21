@@ -3365,6 +3365,40 @@ export default function Community() {
     scrollPositions.current.collection = 0;
     startPageTransition(() => setTabState("collection"));
   };
+  // 正文里点「目录」时，先无动画收起详情再切到合集页，避免遮罩挡住合集。
+  const openCollectionFromDetail = (seriesId: string) => {
+    imageSwitchSequence.current += 1;
+    setImageLoading(false);
+    setDetail(null);
+    setDetailReady(false);
+    setDetailImageTransition(null);
+    setTransitionPhase(null);
+    transitionBusy.current = false;
+    if (history.state?.heikaDetail != null) {
+      history.replaceState({ ...history.state, heikaDetail: null }, "");
+    }
+    openCollection(seriesId);
+  };
+  // 详情已经打开时直接换章：openPost 有「详情已打开就返回」的守卫，不能复用它，
+  // 否则合集正文里的「上一章 / 下一章」点了没反应。
+  const switchDetailChapter = (post: Post) => {
+    setPublicFeed((current) => current.some((item) => item.id === post.id) ? current : [...current, post]);
+    detailPostCache.current.set(post.id, { post, at: Date.now() });
+    setDetailPostOverride(post);
+    setDetailImageTransition(null);
+    imageSwitchSequence.current += 1;
+    setImageLoading(false);
+    setDetailReady(true);
+    setTransitionPhase(null);
+    transitionBusy.current = false;
+    setDetail(post.id);
+    history.replaceState({ ...history.state, heikaDetail: post.id }, "");
+    void cloudRequest("/api/v1/library-state", { action: "view", id: post.id }).catch(() => {});
+    requestAnimationFrame(() => {
+      const scroller = document.querySelector<HTMLElement>(".overlay .detail");
+      if (scroller) scroller.scrollTop = 0;
+    });
+  };
   // 合集章节可能不在当前 feed 的 all 里，先拉取真实作品再作为 resolvedPost 打开。
   const openCollectionChapter = async (chapter: { id: string }) => {
     try {
@@ -3373,7 +3407,8 @@ export default function Community() {
       const post = result?.data as Post | undefined;
       if (!response.ok || !post) throw new Error("章节暂不可用");
       setPublicFeed((current) => current.some((item) => item.id === post.id) ? current : [...current, post]);
-      openPost(post.id, "discover", null, post);
+      if (detail !== null) switchDetailChapter(post);
+      else openPost(post.id, "discover", null, post);
     } catch {
       toast("这一章暂时无法打开，请稍后重试");
     }
@@ -5328,7 +5363,7 @@ export default function Community() {
                   seriesId={post.seriesId}
                   postId={post.cloudId}
                   onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
-                  onOpenCollection={openCollection}
+                  onOpenCollection={openCollectionFromDetail}
                 />}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
                 {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}

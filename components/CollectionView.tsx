@@ -184,7 +184,7 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
     <header className={`collection-hero${series.coverUrl ? " has-cover" : ""}`}>
       {series.coverUrl && <div className="collection-hero-cover" style={{ backgroundImage: `url(${series.coverUrl})` }} aria-hidden="true"/>}
       <div className="collection-hero-copy">
-        <div className="collection-hero-eyebrow"><span>{KIND_LABEL[series.kind] || "连载"}</span><span>{series.status === "completed" ? "已完结" : "连载中"}</span><span>{series.publishedCount} 章</span></div>
+        <div className="collection-hero-eyebrow">{series.kind !== "serial" && <span>{KIND_LABEL[series.kind] || "连载"}</span>}<span>{series.status === "completed" ? "已完结" : series.kind === "serial" ? "连载中" : "更新中"}</span><span>{series.publishedCount} 章</span></div>
         <h1>{series.title}</h1>
         {series.description && <p>{series.description}</p>}
         <div className="collection-hero-meta">{series.creator && <span>{series.creator.nickname}</span>}<span>{series.followCount} 人收藏</span></div>
