@@ -7799,3 +7799,9 @@ img, video, canvas, iframe { max-width:100%; }
   color: var(--brand-accent);
 }
 .collection-cover-fallback em { color: color-mix(in srgb, var(--brand-accent) 80%, var(--ink)); }
+/* 封面图显式继承卡片顶部圆角（不是靠外层裁剪兜底） */
+.heika-discovery-card .discovery-cover:not(.is-text-only),
+.heika-discovery-card .discovery-cover:not(.is-text-only) > img,
+.heika-discovery-card .discovery-cover:not(.is-text-only) .discovery-cover-image {
+  border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0;
+}
