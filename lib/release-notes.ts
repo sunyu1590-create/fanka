@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.56.1",
+    date: "2026.11.21",
+    notes: [
+      { category: "问题修复", text: "从 APP 打开装扮中心与创意工坊时不再出现网页端的兴趣引导页，也不重复显示网页自己的底部导航。" },
+      { category: "问题修复", text: "修正原生端读取装扮主题编号的字段，底栏与卡片主题能正确套用账号已保存的装扮。" },
+    ],
+  },
+  {
     version: "2.56.0",
     date: "2026.11.21",
     notes: [
