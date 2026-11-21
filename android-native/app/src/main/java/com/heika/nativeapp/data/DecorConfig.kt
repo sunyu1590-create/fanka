@@ -45,7 +45,7 @@ data class BarSkin(
     val publishIconUrl: String?,
     val publishTinted: Boolean,
 ) {
-    fun palette(dark: Boolean): BarPalette = if (split && !dark) light else dark
+    fun palette(darkMode: Boolean): BarPalette = if (split && !darkMode) light else dark
     fun icon(slot: String): DecorIcon? = icons[slot]?.takeIf { it.usable }
 }
 
@@ -74,7 +74,7 @@ data class CardSkin(
     val dark: CardPalette,
     val light: CardPalette,
 ) {
-    fun palette(dark: Boolean): CardPalette = if (split && !dark) light else dark
+    fun palette(darkMode: Boolean): CardPalette = if (split && !darkMode) light else dark
 }
 
 data class DecorConfig(

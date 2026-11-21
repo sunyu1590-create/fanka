@@ -444,8 +444,3 @@
   padding-bottom: 0;
   box-shadow: none;
 }
-
-:root[data-app-embed="1"] .decor-center {
-  position: static;
-  min-height: 100vh;
-}

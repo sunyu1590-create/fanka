@@ -118,7 +118,7 @@ fun NativeWebScreen(
             LaunchedEffect(path, reloadKey) {
                 progress = 0f
                 failed = null
-                webView?.loadUrl(BuildConfig.WEB_APP_URL.trimEnd('/') + path)
+                webView?.loadUrl(BuildConfig.API_BASE_URL.trimEnd('/') + path)
             }
             // 过渡页只在「还没有真实进度」或加载未完成时出现，进度是真实值。
             if (progress < 1f && failed == null) {
