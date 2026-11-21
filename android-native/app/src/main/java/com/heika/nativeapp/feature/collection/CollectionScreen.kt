@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,8 +23,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,11 +69,13 @@ import com.heika.nativeapp.ui.HeikaIcons
 import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaNoticeKind
 import com.heika.nativeapp.ui.HeikaPulseRow
+import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
 
 /**
- * 合集详情：封面 / 作者 / 类型 / 状态 / 章节目录 / 继续阅读 / 收藏与更新提醒，
- * 作者本人额外拥有章节排序、移除、加入已有作品与资料编辑。
+ * 合集详情分两种形态，不再混在一起：
+ * 阅读态 —— 紧凑竖版封面 + 基础信息 + 开始/继续阅读、收藏、分享 + 章节目录；
+ * 管理态 —— 合集资料 / 章节管理 / 发布与审核三个分组，删除收进右上角「更多」。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,10 +93,13 @@ fun CollectionScreen(
     var pickerOpen by remember { mutableStateOf(false) }
     var metaOpen by remember { mutableStateOf(false) }
     var deleteOpen by remember { mutableStateOf(false) }
+    var moreOpen by remember { mutableStateOf(false) }
+    var manageMode by remember { mutableStateOf(false) }
     var expandedChapter by remember { mutableStateOf<String?>(null) }
     var selectedWorks by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(seriesId) { seriesId?.let(viewModel::load) }
+    LaunchedEffect(collection?.id) { if (collection == null) manageMode = false }
     LaunchedEffect(state.notice) {
         val message = state.notice ?: return@LaunchedEffect
         val kind = if (message.contains("失败") || message.contains("无法")) HeikaNoticeKind.ERROR else HeikaNoticeKind.SUCCESS
@@ -98,12 +109,31 @@ fun CollectionScreen(
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(
-            title = collection?.let { "${it.kindLabel}合集" } ?: "合集",
-            onBack = onBack,
+            title = if (manageMode) "管理合集" else collection?.let { "${it.kindLabel}合集" } ?: "合集",
+            onBack = { if (manageMode) manageMode = false else onBack() },
             trailing = collection?.let { value ->
                 {
-                    androidx.compose.material3.IconButton(onClick = { onShare(value) }) {
-                        Icon(HeikaIcons.Share, contentDescription = "分享合集", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(19.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { onShare(value) }) {
+                            Icon(HeikaIcons.Share, contentDescription = "分享合集", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(19.dp))
+                        }
+                        if (value.isOwner) {
+                            Box {
+                                IconButton(onClick = { moreOpen = true }) {
+                                    Icon(HeikaIcons.More, contentDescription = "更多", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(19.dp))
+                                }
+                                DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (manageMode) "返回阅读页" else "管理合集", fontSize = 12.sp) },
+                                        onClick = { moreOpen = false; manageMode = !manageMode },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("删除合集", fontSize = 12.sp, color = MaterialTheme.colorScheme.error) },
+                                        onClick = { moreOpen = false; deleteOpen = true },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -116,100 +146,44 @@ fun CollectionScreen(
                 Text(state.error ?: "合集暂时无法显示", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 TextButton(onClick = { seriesId?.let { viewModel.load(it, force = true) } }) { Text("重试") }
             }
-            else -> LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 120.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
-            ) {
-                item {
-                    CollectionHero(
-                        collection = collection,
-                        imageLoader = imageLoader,
-                        onAuthor = { onAuthor(collection.creatorId) },
-                    )
-                }
-                if (collection.awaitingReview || collection.isOwner && collection.reviewNote != null) {
-                    item {
-                        Column(
-                            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f))
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                            Text(
-                                if (collection.awaitingReview) "公开信息正在审核" else "上次审核意见",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                collection.reviewNote ?: "标题、简介、封面等公开信息的修改需要审核，通过后才会替换线上版本。已发布章节不受影响。",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 10.sp,
-                                lineHeight = 15.sp,
-                            )
-                        }
+            manageMode -> ManageBody(
+                collection = collection,
+                busy = state.busy,
+                expandedChapter = expandedChapter,
+                onEditMeta = { metaOpen = true },
+                onAddWorks = { selectedWorks = emptySet(); viewModel.loadOwnWorks(); pickerOpen = true },
+                onToggleChapterMenu = { id -> expandedChapter = if (expandedChapter == id) null else id },
+                onMoveChapter = { chapter, delta -> expandedChapter = null; viewModel.move(chapter, delta) },
+                onRemoveChapter = { chapter -> expandedChapter = null; viewModel.removeChapter(chapter) },
+                onOpenChapter = { chapter ->
+                    viewModel.recordProgress(chapter.id)
+                    manageMode = false
+                    onOpenChapter(chapter)
+                },
+                onResubmit = {
+                    viewModel.saveMeta(
+                        collection.title, collection.description, collection.kind, collection.status, collection.coverUrl,
+                    ) {}
+                },
+            )
+            else -> ReadBody(
+                collection = collection,
+                busy = state.busy,
+                imageLoader = imageLoader,
+                onAuthor = { onAuthor(collection.creatorId) },
+                onManage = { manageMode = true },
+                onResume = { collection.resumeChapter?.let(onOpenChapter) },
+                onToggleFollow = viewModel::toggleFollow,
+                onToggleNotify = viewModel::setNotify,
+                onOpenChapter = { chapter ->
+                    if (chapter.published) {
+                        viewModel.recordProgress(chapter.id)
+                        onOpenChapter(chapter)
+                    } else {
+                        HeikaNoticeBus.show("本章还在审核中，通过后才会公开", HeikaNoticeKind.WARNING)
                     }
-                }
-                item { CollectionActions(collection, state.busy, viewModel, onResume = { collection.resumeChapter?.let(onOpenChapter) }) }
-                if (collection.isOwner) {
-                    item {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            CollectionOwnerChip("加入作品", HeikaIcons.Add) { selectedWorks = emptySet(); viewModel.loadOwnWorks(); pickerOpen = true }
-                            CollectionOwnerChip("编辑资料", HeikaIcons.Edit) { metaOpen = true }
-                            Spacer(Modifier.weight(1f))
-                            CollectionOwnerChip("删除", HeikaIcons.Delete, danger = true) { deleteOpen = true }
-                        }
-                    }
-                }
-                item {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("目录", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.width(6.dp))
-                        Text("${collection.publishedCount} 章", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                        Spacer(Modifier.weight(1f))
-                        if (collection.status == "completed") {
-                            Text("已完结", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                        }
-                    }
-                }
-                if (collection.chapters.isEmpty()) {
-                    item {
-                        Text(
-                            if (collection.isOwner) "还没有章节，点「加入作品」把已有作品放进来。" else "作者还没有公开章节。",
-                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp,
-                        )
-                    }
-                }
-                items(collection.chapters.size, key = { collection.chapters[it].id }) { index ->
-                    val chapter = collection.chapters[index]
-                    ChapterRow(
-                        chapter = chapter,
-                        active = chapter.id == collection.progressPostId,
-                        expanded = expandedChapter == chapter.id,
-                        owner = collection.isOwner,
-                        canMoveUp = index > 0,
-                        canMoveDown = index < collection.chapters.lastIndex,
-                        onClick = {
-                            if (chapter.published || collection.isOwner) {
-                                viewModel.recordProgress(chapter.id)
-                                onOpenChapter(chapter)
-                            } else {
-                                HeikaNoticeBus.show("本章还在审核中，通过后才会公开", HeikaNoticeKind.WARNING)
-                            }
-                        },
-                        onToggleMenu = { expandedChapter = if (expandedChapter == chapter.id) null else chapter.id },
-                        onMove = { delta -> expandedChapter = null; viewModel.move(chapter, delta) },
-                        onRemove = { expandedChapter = null; viewModel.removeChapter(chapter) },
-                    )
-                }
-            }
+                },
+            )
         }
     }
 
@@ -232,7 +206,7 @@ fun CollectionScreen(
                             val post = state.ownWorks[index]
                             val checked = post.cloudId in selectedWorks
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.chip))
                                     .background(if (checked) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .7f) else Color.Transparent)
                                     .clickable { selectedWorks = if (checked) selectedWorks - post.cloudId else selectedWorks + post.cloudId }
                                     .padding(horizontal = 10.dp, vertical = 9.dp),
@@ -292,87 +266,225 @@ fun CollectionScreen(
     }
 }
 
+/* ------------------------------ 阅读态 ------------------------------ */
+
 @Composable
-private fun CollectionHero(collection: HeikaCollection, imageLoader: coil3.ImageLoader, onAuthor: () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        collection.coverUrl?.let { cover ->
-            val context = LocalContext.current
-            var coverFailed by remember(cover) { mutableStateOf(false) }
-            val request = remember(context, cover) {
-                ImageRequest.Builder(context).data(cover).crossfade(true).build()
+private fun ReadBody(
+    collection: HeikaCollection,
+    busy: Boolean,
+    imageLoader: coil3.ImageLoader,
+    onAuthor: () -> Unit,
+    onManage: () -> Unit,
+    onResume: () -> Unit,
+    onToggleFollow: () -> Unit,
+    onToggleNotify: (Boolean) -> Unit,
+    onOpenChapter: (HeikaChapter) -> Unit,
+) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 120.dp),
+    ) {
+        item { CollectionSummary(collection, imageLoader, onAuthor) }
+        item { CollectionActions(collection, busy, onResume = onResume, onToggleFollow = onToggleFollow, onToggleNotify = onToggleNotify, onManage = onManage) }
+        reviewNoteOrState(collection)?.let { note ->
+            item { ReviewStrip(note.title, note.text, note.tone) }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("章节目录", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(6.dp))
+                Text("${collection.publishedCount} 章已发布", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Spacer(Modifier.weight(1f))
+                if (collection.status == "completed") Text("已完结", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
             }
-            Box(Modifier.fillMaxWidth().aspectRatio(1.9f).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                if (!coverFailed) {
-                    AsyncImage(
-                        model = request,
-                        contentDescription = "${collection.title}封面",
-                        imageLoader = imageLoader,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                        onError = { coverFailed = true },
-                    )
-                } else {
-                    // 封面加载失败不留空白大块，也不伪造图片：直接退化为纯色底 + 类型文字。
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(collection.kindLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    }
-                }
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .34f))),
-                    ),
+        }
+        if (collection.chapters.isEmpty()) {
+            item {
+                Text(
+                    if (collection.isOwner) "还没有章节，可以在「管理」里加入已有作品。" else "作者还没有公开章节。",
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
                 )
             }
         }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(collection.chapters.size, key = { collection.chapters[it].id }) { index ->
+            val chapter = collection.chapters[index]
+            ChapterRow(
+                chapter = chapter,
+                active = chapter.id == collection.progressPostId,
+                expanded = false,
+                owner = false,
+                canMoveUp = false,
+                canMoveDown = false,
+                onClick = { onOpenChapter(chapter) },
+                onToggleMenu = {},
+                onMove = {},
+                onRemove = {},
+            )
+        }
+    }
+}
+
+private data class ReviewNote(val title: String, val text: String, val tone: String)
+
+/**
+ * 审核提示只按真实状态渲染：通过或没有记录时不渲染；审核中只写「审核中」；
+ * 退回修改才展示真实原因，绝不把 null / undefined 当成文案显示。
+ */
+private fun reviewNoteOrState(collection: HeikaCollection): ReviewNote? {
+    if (!collection.isOwner) return null
+    return when {
+        collection.reviewRejected -> ReviewNote(
+            title = "退回修改",
+            text = collection.reviewNote?.let { "审核意见：$it" } ?: "合集资料未通过审核，请按平台规范修改后重新提交。",
+            tone = "rejected",
+        )
+        collection.reviewPending -> ReviewNote(
+            title = "审核中",
+            text = if (collection.publishedCount > 0) "公开信息修改已提交，线上版本继续展示。" else "新合集待审核，仅自己可见。",
+            tone = "pending",
+        )
+        else -> null
+    }
+}
+
+@Composable
+private fun ReviewStrip(title: String, text: String, tone: String) {
+    val accent = if (tone == "rejected") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp)
+            .clip(RoundedCornerShape(HeikaRadii.chip))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f))
+            .border(.8.dp, accent.copy(alpha = .35f), RoundedCornerShape(HeikaRadii.chip))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(title, color = accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 15.sp)
+    }
+}
+
+/** 紧凑封面：竖版 3:4 放在左侧，右侧是名称 / 作者 / 类型 / 状态 / 章数，没有封面时用品牌色渐变占位。 */
+@Composable
+private fun CollectionSummary(collection: HeikaCollection, imageLoader: coil3.ImageLoader, onAuthor: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+            Box(
+                Modifier.width(88.dp).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                val cover = collection.coverUrl
+                if (cover != null) {
+                    val context = LocalContext.current
+                    var coverFailed by remember(cover) { mutableStateOf(false) }
+                    val request = remember(context, cover) { ImageRequest.Builder(context).data(cover).crossfade(true).build() }
+                    if (!coverFailed) {
+                        AsyncImage(
+                            model = request,
+                            contentDescription = "${collection.title}封面",
+                            imageLoader = imageLoader,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                            onError = { coverFailed = true },
+                        )
+                    } else {
+                        CoverFallback(collection)
+                    }
+                } else {
+                    CoverFallback(collection)
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        collection.kindLabel,
+                        Modifier.clip(RoundedCornerShape(5.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = .13f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(collection.statusLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                    Text("· ${collection.publishedCount} 章", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                }
                 Text(
-                    collection.kindLabel,
-                    Modifier.clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = .14f))
-                        .padding(horizontal = 7.dp, vertical = 3.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium,
+                    collection.title,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 24.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Text(collection.statusLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
-                Text("·", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f), fontSize = 9.sp)
-                Text("${collection.publishedCount} 章 · ${collection.followCount} 人收藏", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                Row(Modifier.fillMaxWidth().clickable(onClick = onAuthor).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    HeikaAvatar(collection.creatorAvatar, collection.creatorName, 24.dp, contentDescription = "${collection.creatorName}头像")
+                    Text(collection.creatorName, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${collection.followCount} 人收藏", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 9.sp)
+                }
             }
-            Text(collection.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, lineHeight = 27.sp)
-            if (collection.description.isNotBlank()) {
-                Text(collection.description, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 17.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
-            }
-            Row(Modifier.fillMaxWidth().clickable(onClick = onAuthor).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HeikaAvatar(collection.creatorAvatar, collection.creatorName, 28.dp, contentDescription = "${collection.creatorName}头像")
-                Text(collection.creatorName, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.weight(1f))
-                Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-            }
+        }
+        if (collection.description.isNotBlank()) {
+            Text(
+                collection.description,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.5.sp,
+                lineHeight = 17.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
 @Composable
-private fun CollectionActions(collection: HeikaCollection, busy: Boolean, viewModel: CollectionViewModel, onResume: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun CoverFallback(collection: HeikaCollection) {
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.linearGradient(
+                listOf(
+                    MaterialTheme.colorScheme.primary.copy(alpha = .22f),
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f),
+                ),
+            ),
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(HeikaIcons.List, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Text(collection.kindLabel, color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, letterSpacing = 1.sp)
+        }
+    }
+}
+
+@Composable
+private fun CollectionActions(
+    collection: HeikaCollection,
+    busy: Boolean,
+    onResume: () -> Unit,
+    onToggleFollow: () -> Unit,
+    onToggleNotify: (Boolean) -> Unit,
+    onManage: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             val resumeLabel = if (collection.progressIndex >= 0) "继续阅读 · 第 ${collection.progressIndex + 1} 章" else "开始阅读"
             Text(
                 resumeLabel,
-                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                Modifier.weight(1f).clip(RoundedCornerShape(HeikaRadii.chip))
                     .background(MaterialTheme.colorScheme.primary)
                     .clickable(enabled = !busy && collection.resumeChapter != null, onClick = onResume)
                     .padding(vertical = 12.dp),
                 color = MaterialTheme.colorScheme.surface,
-                fontSize = 12.sp,
+                fontSize = 12.5.sp,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
             )
             Row(
-                Modifier.clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, if (collection.following) MaterialTheme.colorScheme.primary.copy(alpha = .55f) else MaterialTheme.colorScheme.outline.copy(alpha = .6f), RoundedCornerShape(12.dp))
-                    .clickable(enabled = !busy, onClick = viewModel::toggleFollow)
+                Modifier.clip(RoundedCornerShape(HeikaRadii.chip))
+                    .border(1.dp, if (collection.following) MaterialTheme.colorScheme.primary.copy(alpha = .55f) else MaterialTheme.colorScheme.outline.copy(alpha = .6f), RoundedCornerShape(HeikaRadii.chip))
+                    .clickable(enabled = !busy, onClick = onToggleFollow)
                     .padding(horizontal = 13.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -385,13 +497,26 @@ private fun CollectionActions(collection: HeikaCollection, busy: Boolean, viewMo
                 )
                 Text(if (collection.following) "已收藏" else "收藏", color = if (collection.following) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
+            if (collection.isOwner) {
+                Row(
+                    Modifier.clip(RoundedCornerShape(HeikaRadii.chip))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable(onClick = onManage)
+                        .padding(horizontal = 13.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(HeikaIcons.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                    Text("管理", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
+            }
         }
         if (collection.following) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("新章节过审后提醒我", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 Switch(
                     checked = collection.notify,
-                    onCheckedChange = { viewModel.setNotify(it) },
+                    onCheckedChange = onToggleNotify,
                     enabled = !busy,
                     modifier = Modifier.height(26.dp),
                 )
@@ -400,19 +525,127 @@ private fun CollectionActions(collection: HeikaCollection, busy: Boolean, viewMo
     }
 }
 
+/* ------------------------------ 管理态 ------------------------------ */
+
 @Composable
-private fun CollectionOwnerChip(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, danger: Boolean = false, onClick: () -> Unit) {
-    val tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        Modifier.clip(RoundedCornerShape(9.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+private fun ManageBody(
+    collection: HeikaCollection,
+    busy: Boolean,
+    expandedChapter: String?,
+    onEditMeta: () -> Unit,
+    onAddWorks: () -> Unit,
+    onToggleChapterMenu: (String) -> Unit,
+    onMoveChapter: (HeikaChapter, Int) -> Unit,
+    onRemoveChapter: (HeikaChapter) -> Unit,
+    onOpenChapter: (HeikaChapter) -> Unit,
+    onResubmit: () -> Unit,
+) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 120.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(13.dp))
-        Text(text, color = tint, fontSize = 10.sp)
+        item {
+            ManageGroup("合集资料") {
+                Row(Modifier.fillMaxWidth().clickable(onClick = onEditMeta).padding(horizontal = 13.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Box(Modifier.width(44.dp).aspectRatio(0.75f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                        CoverFallback(collection)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(collection.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "${collection.kindLabel} · ${collection.statusLabel} · ${collection.chapters.size} 章",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 10.sp,
+                        )
+                    }
+                    Text("编辑", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
+                    Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f), modifier = Modifier.size(15.dp))
+                }
+            }
+        }
+        item {
+            ManageGroup("章节管理") {
+                if (collection.chapters.isEmpty()) {
+                    Text(
+                        "还没有章节，先加入一篇已有作品。",
+                        Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                    )
+                } else {
+                    collection.chapters.forEachIndexed { index, chapter ->
+                        if (index > 0) HorizontalDivider(Modifier.padding(start = 44.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
+                        ChapterRow(
+                            chapter = chapter,
+                            active = chapter.id == collection.progressPostId,
+                            expanded = expandedChapter == chapter.id,
+                            owner = true,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < collection.chapters.lastIndex,
+                            onClick = { onOpenChapter(chapter) },
+                            onToggleMenu = { onToggleChapterMenu(chapter.id) },
+                            onMove = { delta -> onMoveChapter(chapter, delta) },
+                            onRemove = { onRemoveChapter(chapter) },
+                        )
+                    }
+                }
+                HorizontalDivider(Modifier.padding(start = 13.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
+                Row(
+                    Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = onAddWorks).padding(horizontal = 13.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Icon(HeikaIcons.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                    Text("添加已有作品", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+        item {
+            ManageGroup("发布与审核") {
+                val note = reviewNoteOrState(collection)
+                val title = note?.title ?: "已通过审核"
+                val text = note?.text ?: "合集公开可见，新章节发布后自动进入审核。"
+                val accent = when (note?.tone) {
+                    "rejected" -> MaterialTheme.colorScheme.error
+                    "pending" -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, lineHeight = 15.sp)
+                }
+                HorizontalDivider(Modifier.padding(start = 13.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
+                Row(
+                    Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = onResubmit).padding(horizontal = 13.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Icon(HeikaIcons.Upload, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                    Text(if (busy) "提交中…" else "重新提交审核", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                }
+            }
+        }
+        item {
+            Text(
+                "删除合集在右上角「更多」里；删除后作品仍会保留。",
+                Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f),
+                fontSize = 10.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManageGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 7.dp)) {
+        Text(title, Modifier.padding(start = 3.dp, bottom = 7.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = .35f), RoundedCornerShape(HeikaRadii.group)),
+            content = content,
+        )
     }
 }
 
@@ -431,7 +664,7 @@ private fun ChapterRow(
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 11.dp),
+            Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 13.dp, end = 20.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
@@ -482,7 +715,7 @@ private fun ChapterRow(
         }
         if (expanded && owner) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 52.dp, end = 20.dp, bottom = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 44.dp, end = 20.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 TextButton(onClick = { onMove(-1) }, enabled = canMoveUp) { Text("上移", fontSize = 10.sp) }

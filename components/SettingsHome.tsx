@@ -2,7 +2,7 @@
 
 import { memo, useMemo, useState } from "react";
 import {
-  BadgeCheck, Bell, BookOpen, ChevronLeft, ChevronRight, Database, FileText, Hash, Inbox,
+  BadgeCheck, Bell, BookOpen, ChevronRight, Database, FileText, Hash, Inbox,
   Info, LayoutGrid, Megaphone, MessageSquare, Moon, PanelBottom, PenLine, Search,
   Shield, ShieldCheck, Sparkles, Type, UserRound, UserSquare,
 } from "lucide-react";
@@ -133,7 +133,6 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
           <span>{row.label}</span>{row.value && <small>{row.value}</small>}<ChevronRight size={16} aria-hidden="true"/>
         </button>;
       })}
-      <button type="button" className="settings-center-back" onClick={() => setCenter(null)}><ChevronLeft size={15} aria-hidden="true"/><span>返回设置中心</span></button>
     </div>}
 
     {accountId && <p className="fineprint settings-local-note">外观和阅读偏好保存在此设备；部分账号偏好会同步至账号。</p>}

@@ -58,6 +58,10 @@ data class HeikaCollection(
         }
     val statusLabel: String get() = if (status == "completed") "已完结" else "连载中"
     val awaitingReview: Boolean get() = reviewStatus != "approved"
+    /** 审核中：只展示「审核中」，不展示任何意见文案。 */
+    val reviewPending: Boolean get() = reviewStatus == "pending"
+    /** 退回修改：只有存在真实审核意见时才展示意见文本。 */
+    val reviewRejected: Boolean get() = reviewStatus == "rejected"
 
     /** 上次读到的章节下标；没有进度时返回 -1。 */
     val progressIndex: Int get() = chapters.indexOfFirst { it.id == progressPostId }
@@ -81,7 +85,7 @@ data class HeikaCollection(
                 categoryId = json.optInt("categoryId").takeIf { it > 0 },
                 status = json.optString("status", "ongoing"),
                 reviewStatus = json.optString("reviewStatus", "approved"),
-                reviewNote = json.optString("reviewNote").takeIf(String::isNotBlank),
+                reviewNote = if (json.isNull("reviewNote")) null else json.optString("reviewNote").trim().takeIf { it.isNotEmpty() && it != "null" && it != "undefined" },
                 isOwner = json.optBoolean("isOwner"),
                 creatorId = json.optString("creatorId"),
                 creatorName = creator?.optString("nickname").orEmpty().ifBlank { "黑卡作者" },

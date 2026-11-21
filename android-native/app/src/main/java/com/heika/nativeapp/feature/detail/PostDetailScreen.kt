@@ -118,6 +118,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import com.heika.nativeapp.ui.HeikaGlassTokens
 import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaIcons
+import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.heikaSharedPostImage
 import com.heika.nativeapp.ui.heikaSharedPostMeta
 import com.heika.nativeapp.ui.HeikaImageRatioCache
@@ -390,38 +391,33 @@ fun PostDetailScreen(
                         val seriesId = state.seriesId
                         val seriesTitle = state.seriesTitle
                         if (seriesId != null && seriesTitle != null) {
-                            Column(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f))
+                            // 顶部只留一张轻量合集卡：合集名 + 章节进度 + 目录。
+                            // 上一章/下一章移到正文末尾，阅读时不必一直被两个按钮占位。
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.chip))
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .border(.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = .4f), RoundedCornerShape(HeikaRadii.chip))
+                                    .clickable { onOpenCollection(seriesId) }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Row(
-                                    Modifier.fillMaxWidth().clickable { onOpenCollection(seriesId) },
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Icon(HeikaIcons.List, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                Icon(HeikaIcons.List, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    if (state.chapterIndex > 0) {
+                                        Text("第 ${state.chapterIndex} / ${state.chapterCount} 章 · 合集", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.5.sp)
+                                    }
                                     Text(
-                                        "《${seriesTitle}》",
-                                        Modifier.weight(1f, fill = false),
+                                        seriesTitle,
                                         color = MaterialTheme.colorScheme.onBackground,
-                                        fontSize = 11.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    if (state.chapterIndex > 0) {
-                                        Text("第 ${state.chapterIndex} / ${state.chapterCount} 章", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                                    }
-                                    Spacer(Modifier.weight(1f))
-                                    Text("目录", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                                    Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
                                 }
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    ChapterNavButton("上一章", state.prevChapterKey, Modifier.weight(1f), onOpenChapter)
-                                    ChapterNavButton("下一章", state.nextChapterKey, Modifier.weight(1f), onOpenChapter)
-                                }
+                                Text("目录", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                                Icon(HeikaIcons.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
                             }
                         }
                         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -435,6 +431,25 @@ fun PostDetailScreen(
                             if (state.ratingSending) CircularProgressIndicator(Modifier.padding(start = 4.dp).size(14.dp), strokeWidth = 1.8.dp)
                         }
                         state.ratingError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                        val prevKey = state.prevChapterKey
+                        val nextKey = state.nextChapterKey
+                        if (state.seriesId != null && (prevKey != null || nextKey != null)) {
+                            Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (prevKey != null) ChapterNavButton("上一章", prevKey, Modifier.weight(1f), onOpenChapter)
+                                if (prevKey != null && nextKey != null) {
+                                    Row(
+                                        Modifier.clip(RoundedCornerShape(HeikaRadii.chip))
+                                            .background(MaterialTheme.colorScheme.surface)
+                                            .clickable { state.seriesId?.let(onOpenCollection) }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(HeikaIcons.List, contentDescription = "目录", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                                    }
+                                }
+                                if (nextKey != null) ChapterNavButton("下一章", nextKey, Modifier.weight(1f), onOpenChapter)
+                            }
+                        }
                         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             Icon(HeikaIcons.Comment, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
                             Text("评论 ${state.comments.size}", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -571,7 +586,7 @@ fun PostDetailScreen(
                     hazeState = dockHaze,
                     modifier = Modifier.heightIn(min = 54.dp),
                     shape = RoundedCornerShape(27.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
                     drawTopHighlight = false,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

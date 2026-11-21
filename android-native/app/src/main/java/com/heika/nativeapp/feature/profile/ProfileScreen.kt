@@ -5,7 +5,10 @@ package com.heika.nativeapp.feature.profile
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -78,7 +81,7 @@ import com.heika.nativeapp.ui.HeikaAvatar
 import com.heika.nativeapp.ui.HeikaPulseBlock
 import com.heika.nativeapp.ui.HeikaPulseRow
 
-private val ProfileTabs = listOf("我的作品" to "works", "我的收藏" to "bookmarks", "我的点赞" to "liked")
+private val ProfileTabs = listOf("我的作品" to "works", "我的收藏" to "bookmarks", "我的点赞" to "liked", "合集" to "collections")
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -160,7 +163,7 @@ fun ProfileScreen(
     }
 
     val profile = state.profile!!
-    val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; else -> state.posts }
+    val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
         Box(Modifier.fillMaxSize()) {
@@ -290,17 +293,17 @@ fun ProfileScreen(
                         Text("作品管理", Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onManageWorks).padding(horizontal = 10.dp, vertical = 7.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                     }
                 }
-                if (selected == "works") item(span = StaggeredGridItemSpan.FullLine) {
-                    // 作者主页合集区：连载 / 教程 / 资源合集的入口，点进去看目录与进度。
+                if (selected == "collections") item(span = StaggeredGridItemSpan.FullLine) {
+                    // 合集是独立标签：作者本人可新建与管理，他人只看得到公开合集。
                     AuthorCollectionsSection(
                         creatorId = profile.id,
                         own = state.own,
                         onOpenCollection = onCollection,
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
                     )
                 }
                 if (posts.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
-                    Text(when (selected) { "works" -> "还没有公开作品。"; "bookmarks" -> "还没有可见收藏。"; else -> "还没有点赞内容。" }, Modifier.fillMaxWidth().padding(vertical = 28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    Text(when (selected) { "works" -> "还没有公开作品。"; "bookmarks" -> "还没有可见收藏。"; "liked" -> "还没有点赞内容。"; else -> "" }, Modifier.fillMaxWidth().padding(vertical = 28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 }
                 items(posts, key = { it.cloudId.ifBlank { it.id.toString() } }) { post ->
                     val isDraft = post.rawJson.let { runCatching { org.json.JSONObject(it).optString("status") == "draft" }.getOrDefault(false) }
@@ -337,22 +340,37 @@ fun ProfileScreen(
     }
 }
 
+/**
+ * 个人页四个同级标签（作品 / 收藏 / 点赞 / 合集）：
+ * 与发现页分类同一套圆角选中态，不再使用底部横线指示器。
+ */
 @Composable
 private fun ProfileTabBar(selected: String, modifier: Modifier = Modifier, compact: Boolean = false, onSelect: (String) -> Unit) {
-    Column(modifier) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            ProfileTabs.forEach { (title, key) ->
-                Box(Modifier.weight(1f).clickable { onSelect(key) }.padding(vertical = if (compact) 10.dp else 13.dp), contentAlignment = Alignment.Center) {
-                    Text(title, color = if (selected == key) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = if (selected == key) FontWeight.SemiBold else FontWeight.Normal)
-                }
+    Row(
+        modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp, vertical = if (compact) 6.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ProfileTabs.forEach { (title, key) ->
+            val active = selected == key
+            val shape = RoundedCornerShape(HeikaRadii.chip)
+            Box(
+                Modifier.height(32.dp).clip(shape)
+                    .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = .13f) else Color.Transparent)
+                    .border(.8.dp, if (active) MaterialTheme.colorScheme.primary.copy(alpha = .50f) else Color.Transparent, shape)
+                    .clickable { onSelect(key) }
+                    .padding(horizontal = 13.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    title,
+                    color = if (active) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                )
             }
         }
-        BoxWithConstraints(Modifier.fillMaxWidth().height(2.dp)) {
-            val tabWidth = maxWidth / 3
-            val indicatorOffset by animateDpAsState(tabWidth * ProfileTabs.indexOfFirst { it.second == selected }.coerceAtLeast(0), label = "profile-tab-indicator")
-            Box(Modifier.offset(x = indicatorOffset).width(tabWidth).height(2.dp).background(MaterialTheme.colorScheme.primary))
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .45f))
     }
 }
 

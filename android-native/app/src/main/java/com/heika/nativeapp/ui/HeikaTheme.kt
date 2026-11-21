@@ -23,13 +23,17 @@ import androidx.compose.ui.text.font.FontWeight
 import com.heika.nativeapp.R
 
 object HeikaRadii {
-    val feedCard = 12.dp
-    val dailyCard = 12.dp
+    /** 2026-11-21：与网页端统一——内容卡 16dp、设置分组 18dp、分类与按钮 11dp。 */
+    val feedCard = 16.dp
+    val dailyCard = 16.dp
     val categoryTag = 8.dp
     val ratingTag = 9.dp
-    val control = 10.dp
-    val surface = 12.dp
-    val dialog = 16.dp
+    val control = 11.dp
+    val surface = 16.dp
+    val group = 18.dp
+    val chip = 11.dp
+    val collectionCard = 16.dp
+    val dialog = 18.dp
 }
 
 /** Shared material and motion values for transient HEIKA solid-glass surfaces. */

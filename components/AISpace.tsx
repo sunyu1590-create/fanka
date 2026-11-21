@@ -5,6 +5,7 @@ import { ArrowLeft, Blocks, Bookmark, Bot, BrainCircuit, ChevronRight, Code2, Co
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import type { Post } from "@/lib/content";
 import { ProfileBadgeMarks } from "./ProfileBadgeList";
+import MasonryFeed from "./MasonryFeed";
 
 type Category = { id: number; name: string; description: string; sort_order: number; is_featured: boolean; parent_id: number | null };
 type FeedResult = { items: Post[]; total: number; page: number; limit: number };
@@ -51,7 +52,7 @@ function ResultsSection({ heading, eyebrow, total, error, loading, items, card, 
 }) {
   return <section className="ai-space-section ai-space-results">
     <div className="ai-space-section-head"><div><small>{eyebrow}</small><h2>{heading}</h2></div><span>{total} 项</span></div>
-    {error ? <div className="ai-space-empty">{error}</div> : items.length ? <div className="ai-resource-grid">{items.map(card)}</div> : loading ? <div className="ai-space-empty">正在加载 AI 内容…</div> : <div className="ai-space-empty">还没有相关内容，欢迎发布第一篇。</div>}
+    {error ? <div className="ai-space-empty">{error}</div> : items.length ? <MasonryFeed items={items} getKey={(post) => String(post.id)} render={(post) => card(post)} /> : loading ? <div className="ai-space-empty">正在加载 AI 内容…</div> : <div className="ai-space-empty">还没有相关内容，欢迎发布第一篇。</div>}
     {hasMore && <button type="button" className="ai-space-more" disabled={loading} onClick={onMore}>{loading ? "正在加载…" : "加载更多"}</button>}
   </section>;
 }

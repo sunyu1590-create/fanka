@@ -2632,8 +2632,6 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .mine-works-count { flex: none; color: var(--muted); font-size: 10px; }
 
 /* Straight edges keep settings separators aligned with the editorial grid. */
-.settings-page .settings-list,
-.settings-page .settings-list button,
 .settings-page .settings-entry-card,
 .settings-entry-card,
 .debug-settings,
@@ -3211,7 +3209,6 @@ body { line-height: 1.5; }
 .shared-collection-grid>button, .rarity-album-card, .empty { border-radius: var(--radius-card); }
 .modal, .composer-modal, .report-dialog, .subscription-dialog { border-radius: var(--radius-dialog); }
 hr, [class*="divider"], .section-head, .editorial-section-head,
-.settings-page .settings-list, .settings-page .settings-list button,
 .settings-entry-card, .account-profile-field, .conversation-row,
 .conversation-item, .notification-list, .notification-row,
 .experience-total-card, .experience-rule-note, .experience-level-row,
@@ -7180,3 +7177,510 @@ img, video, canvas, iframe { max-width:100%; }
 .mine-collection-copy strong { overflow:hidden; color:var(--ink); font-size:12.5px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
 .mine-collection-copy small { color:var(--muted); font-size:10.5px; }
 .mine-collection-card>svg { flex:none; color:var(--muted); }
+
+/* =========================================================================
+   2026-11-21 视觉统一层（Round 5）
+   目标：页面不再各自定义容器，全部走同一套 Token。
+   只新增语义变量与覆盖规则，不删除任何业务样式。
+   ========================================================================= */
+:root {
+  --radius-card: 16px;       /* 内容作品卡、AI 资源卡、合集卡 */
+  --radius-card-lg: 18px;    /* 设置分组、合集管理分组 */
+  --radius-chip: 11px;       /* 分类选中态、普通按钮 */
+  --card-bg: #1B1D22;
+  --card-bg-raised: #212329;
+  --card-border: rgba(255, 255, 255, .075);
+  --card-border-strong: rgba(255, 255, 255, .12);
+  --card-sunken: #16181D;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, .28), 0 10px 22px -14px rgba(0, 0, 0, .55);
+  --group-divider: rgba(255, 255, 255, .06);
+  --feed-gap: 12px;
+}
+:root[data-theme="light"] {
+  --card-bg: #FCFCFD;
+  --card-bg-raised: #FFFFFF;
+  --card-border: #E7E9EE;
+  --card-border-strong: #D9DCE3;
+  --card-sunken: #F2F3F6;
+  --card-shadow: 0 1px 2px rgba(24, 30, 44, .05), 0 10px 22px -16px rgba(24, 30, 44, .28);
+  --group-divider: #EEF0F4;
+}
+
+/* ---- 作品卡：图片 + 正文 + 作者互动栏包在同一个外壳里 ---- */
+.heika-discovery-card {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 var(--feed-gap);
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  break-inside: avoid;
+  vertical-align: top;
+  transition: transform 150ms var(--ease), border-color 180ms var(--ease);
+}
+.heika-discovery-card:hover { border-color: var(--card-border-strong); }
+.heika-discovery-card .discovery-cover {
+  border-radius: 0;
+  background: var(--card-sunken);
+}
+.heika-discovery-card .discovery-cover-open { background: var(--card-sunken); }
+/* 图片卡信息栏：与图片同一外壳，内部留出稳定内边距，不再漂浮在页面底色上。 */
+.heika-discovery-card .discovery-post-meta {
+  padding: 7px 10px 8px;
+  background: var(--card-bg);
+}
+.heika-discovery-card .discovery-author-name { max-width: 46%; font-size: 11px; }
+.heika-discovery-card .discovery-cover-labels { top: 8px; right: 8px; left: 8px; }
+.heika-discovery-card .discovery-glass-label {
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  letter-spacing: .01em;
+}
+.heika-discovery-card .discovery-cover-title {
+  right: 11px;
+  bottom: 11px;
+  left: 11px;
+  font-size: clamp(14px, 3.7vw, 15.5px);
+  line-height: 1.4;
+  -webkit-line-clamp: 3;
+}
+
+/* 纯文本卡：无图片容器、无占位高度、无灰封面，正文直接在卡片内展开。 */
+.heika-discovery-card .discovery-cover.is-text-only {
+  min-height: 0;
+  aspect-ratio: auto;
+  background: transparent;
+}
+.heika-discovery-card .discovery-text-cover {
+  min-height: 0;
+  padding: 40px 13px 10px;
+  background: transparent;
+}
+.heika-discovery-card .discovery-text-copy { gap: 8px; }
+.heika-discovery-card .discovery-text-copy strong {
+  font-size: 16.5px;
+  line-height: 1.42;
+  -webkit-line-clamp: 3;
+}
+.heika-discovery-card .discovery-text-copy > span {
+  font-size: 11.5px;
+  line-height: 1.68;
+  -webkit-line-clamp: 5;
+}
+
+/* 信息流节奏：列间距与卡片下间距统一为 12px。 */
+.stable-editorial-feed { gap: var(--feed-gap); }
+.stable-editorial-column { display: flex; flex-direction: column; gap: var(--feed-gap); }
+.stable-editorial-column .heika-discovery-card { margin-bottom: 0; }
+
+/* ---- AI 资源卡：同一套圆角、描边与容器底色，高度自然计算 ---- */
+.ai-resource-card {
+  border-radius: var(--radius-card);
+  border-color: var(--card-border);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+.ai-resource-card:hover { border-color: var(--card-border-strong); transform: translateY(-1px); }
+.ai-resource-card .ai-resource-cover { background: var(--card-sunken); }
+.ai-resource-card.is-text-only .ai-resource-open { min-height: 0; padding: 44px 13px 12px; }
+.ai-resource-grid { gap: var(--feed-gap); }
+
+/* ---- 设置：一级 / 二级 / 三级共用同一个圆角分组 ---- */
+.settings-page.settings-home-page .settings-list,
+.settings-page .settings-center-detail,
+.settings-page .settings-group {
+  margin: 0 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card-lg);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+.settings-page.settings-home-page .settings-list > button,
+.settings-page .settings-center-detail > button,
+.settings-page .settings-group > button {
+  height: auto;
+  min-height: 54px;
+  border-radius: 0;
+  background: transparent;
+}
+.settings-page .settings-list > * + *,
+.settings-center-detail > * + *,
+.settings-group > * + * {
+  border-top: 1px solid var(--group-divider);
+}
+.settings-page .settings-list button:active,
+.settings-center-detail > button:active { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+/* 三级页面只保留顶部返回，列表内不再重复一个「返回」。 */
+.settings-center-back { display: none !important; }
+.settings-detail-page .settings-list { margin-top: 2px; }
+.settings-page .settings-list button > span:first-child { border-radius: 0; }
+
+/* ---- 详情页：紧凑合集导航卡 + 正文末尾的章节切换 ---- */
+.detail-series-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+}
+.detail-series-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.detail-series-copy small { color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.detail-series-copy strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-series-actions { display: flex; flex: none; align-items: center; gap: 6px; }
+.detail-series-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-chip);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.detail-series-actions button.is-on {
+  border-color: color-mix(in srgb, var(--action) 48%, transparent);
+  background: color-mix(in srgb, var(--action) 12%, transparent);
+  color: var(--action);
+}
+.detail-series-steps {
+  display: flex;
+  gap: 8px;
+  margin: 22px 0 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--divider, var(--line));
+}
+.detail-series-steps button {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-chip);
+  background: var(--card-bg);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+.detail-series-steps button.detail-series-steps-toc { flex: 0 0 84px; color: var(--muted); }
+.detail-series-steps button:only-child { flex: 0 0 auto; min-width: 140px; }
+
+/* ---- 详情双悬浮栏：同高、同圆角、同一玻璃材质 ---- */
+.detail-dock { align-items: stretch; }
+.detail-dock-comment,
+.detail-dock-actions {
+  height: 54px;
+  min-height: 54px;
+  padding: 5px;
+  border-radius: 27px;
+}
+.detail-dock-actions { align-items: center; padding: 5px 7px; }
+.detail-dock-comment .detail-comment-input {
+  height: 44px;
+  min-height: 44px;
+  border-radius: 22px;
+}
+.detail-dock-comment .detail-comment-input.expanded { height: auto; min-height: 44px; }
+.detail-dock-actions .bar-icon { width: 44px; height: 44px; }
+.detail-dock-actions .bar-icon.like-action { height: 44px; min-width: 50px; }
+
+/* ---- 个人主页：四级内容标签统一为圆角选中态 ---- */
+.mine-content-tabs { display: flex; gap: 6px; overflow-x: auto; margin: 2px 0 14px; padding-bottom: 2px; scrollbar-width: none; }
+.mine-content-tabs::-webkit-scrollbar { display: none; }
+.mine-content-tabs button {
+  flex: none;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.mine-content-tabs button[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--action) 42%, transparent);
+  background: color-mix(in srgb, var(--action) 13%, transparent);
+  color: color-mix(in srgb, var(--action) 82%, var(--ink));
+  font-weight: 620;
+}
+
+/* 我的页四个同级内容标签：与分类选中态同一套圆角语言，不再用下划线指示器。 */
+.mine-page .mine-tabs-shell,
+.mine-tabs-shell:has(.mine-content-tabs) {
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+}
+.mine-page .mine-tabs.mine-content-tabs,
+.mine-tabs.mine-content-tabs {
+  display: flex;
+  grid-template-columns: none;
+  gap: 6px;
+  min-height: 0;
+  padding: 6px 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mine-tabs.mine-content-tabs::-webkit-scrollbar { display: none; }
+.mine-page .mine-tabs.mine-content-tabs button,
+.mine-tabs.mine-content-tabs button {
+  flex: none;
+  max-width: none;
+  min-height: 32px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.mine-page .mine-tabs.mine-content-tabs button[aria-selected="true"],
+.mine-tabs.mine-content-tabs button[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--action) 42%, transparent);
+  background: color-mix(in srgb, var(--action) 13%, transparent);
+  color: color-mix(in srgb, var(--action) 82%, var(--ink));
+  font-weight: 620;
+}
+.mine-tab-indicator { display: none !important; }
+.mine-series-create { margin-bottom: 12px; }
+
+/* 合集顶卡里的订阅按钮收敛成与目录同尺寸的轻量开关 */
+.detail-series-actions .series-subscribe-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-chip);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 520;
+  gap: 4px;
+}
+.detail-series-actions .series-subscribe-button.is-following {
+  border-color: color-mix(in srgb, var(--action) 48%, transparent);
+  background: color-mix(in srgb, var(--action) 12%, transparent);
+  color: var(--action);
+}
+.detail-series-actions .series-subscribe-button svg { width: 13px; height: 13px; }
+
+/* 瀑布流容器：列间距与卡片间距统一 12px，列内卡片紧跟上一张 */
+.heika-masonry {
+  display: grid;
+  align-items: start;
+  gap: var(--feed-gap);
+}
+.heika-masonry-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--feed-gap);
+}
+.heika-masonry-item { min-width: 0; }
+@media (max-width: 640px) {
+  .heika-masonry { gap: 11px; }
+  .heika-masonry-column { gap: 11px; }
+}
+
+/* ---- 合集阅读页：紧凑竖版封面 + 右侧信息，且不再用整块灰底占位 ---- */
+.collection-page .collection-hero,
+.collection-hero {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+  margin: 4px 0 14px;
+  padding: 14px;
+  overflow: visible;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card-lg);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+.collection-hero.has-cover { min-height: 0; }
+.collection-hero.has-cover::after,
+.collection-hero::after { display: none; }
+.collection-hero .collection-hero-cover { display: none; }
+.collection-cover {
+  position: relative;
+  width: 92px;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--card-sunken);
+}
+.collection-cover-image { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.collection-cover-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background:
+    radial-gradient(120% 90% at 20% 0%, color-mix(in srgb, var(--action) 22%, transparent), transparent 62%),
+    linear-gradient(160deg, var(--card-bg-raised), var(--card-sunken));
+  color: var(--action);
+}
+.collection-cover-fallback em { font-style: normal; font-size: 11px; letter-spacing: .12em; color: color-mix(in srgb, var(--action) 78%, var(--ink)); }
+.collection-hero .collection-hero-copy { display: flex; flex-direction: column; gap: 7px; padding: 0; min-width: 0; align-content: start; }
+.collection-hero.has-cover .collection-hero-copy { min-height: 0; }
+.collection-hero .collection-hero-eyebrow { gap: 5px; }
+.collection-hero .collection-hero-eyebrow span {
+  padding: 2px 8px;
+  border-color: var(--card-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  font-size: 9.5px;
+}
+.collection-hero h1 { margin: 0; font-size: 20px; line-height: 1.26; letter-spacing: -.02em; }
+.collection-hero p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.62;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.collection-hero-meta { margin-top: auto; font-size: 11px; }
+.collection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.collection-actions .collection-primary { flex: 1 1 132px; justify-content: center; }
+.collection-actions .collection-ghost { flex: 0 0 auto; }
+.collection-actions .collection-manage-entry { margin-left: auto; color: var(--muted); }
+.collection-review-note.is-pending { color: color-mix(in srgb, var(--action) 75%, var(--muted)); }
+.collection-review-note.is-rejected { color: #C96D72; }
+.collection-toc { margin-top: 4px; }
+.collection-toc-head { justify-content: space-between; }
+.collection-toc-head > span { color: var(--muted); font-size: 10.5px; }
+.collection-chapter-list { gap: 8px; }
+.collection-chapter-list li {
+  border-color: var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+}
+.collection-chapter-list li.is-unpublished { opacity: .62; }
+.collection-chapter-index {
+  flex: none;
+  width: 26px;
+  color: var(--muted);
+  font: 600 11px/1.9 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+}
+.collection-chapter-list li.is-progress .collection-chapter-index { color: var(--action); }
+.collection-chapter-current {
+  flex: none;
+  align-self: center;
+  margin-right: 10px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--action) 16%, transparent);
+  color: var(--action);
+  font-size: 9.5px;
+  font-style: normal;
+}
+
+/* ---- 合集管理页：三个分组，与阅读页视觉同一套容器 ---- */
+.collection-manage-title { margin: 2px 0 14px; }
+.collection-manage-title h1 { margin: 0 0 4px; font-size: 24px; }
+.collection-manage-title p { margin: 0; color: var(--muted); font-size: 12px; }
+.collection-manage-group {
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card-lg);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+.collection-manage-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.collection-manage-head h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 14px; font-weight: 620; }
+.collection-manage-head span { color: var(--muted); font-size: 10.5px; }
+.collection-manage-group .collection-edit-form { margin: 0; padding: 0; border: 0; background: transparent; }
+.collection-manage-group .collection-chapter-list { margin-bottom: 10px; }
+.collection-manage-group .collection-add-first { width: 100%; justify-content: center; }
+.collection-review-state {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--card-sunken);
+}
+.collection-review-state strong { font-size: 12.5px; color: var(--ink); }
+.collection-review-state small { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.collection-review-state.is-pending { border-color: color-mix(in srgb, var(--action) 40%, transparent); }
+.collection-review-state.is-pending strong { color: var(--action); }
+.collection-review-state.is-rejected { border-color: color-mix(in srgb, #C96D72 45%, transparent); }
+.collection-review-state.is-rejected strong { color: #C96D72; }
+.collection-review-note-text { margin: 4px 0 0; color: var(--ink); font-size: 11.5px; line-height: 1.65; }
+.collection-danger-note { margin: 0 0 10px; color: var(--muted); font-size: 11.5px; line-height: 1.65; }
+.collection-danger-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, #C96D72 45%, transparent);
+  border-radius: var(--radius-chip);
+  background: color-mix(in srgb, #C96D72 10%, transparent);
+  color: #C96D72;
+  font-size: 12px;
+  font-weight: 560;
+}
+
+/* ---- 作者主页：横向图文与瀑布流卡片同样带外壳，图片与文字不分离 ---- */
+.public-profile-grid.profile-layout-list { gap: 10px; }
+.public-profile-grid.profile-layout-list .public-profile-post {
+  grid-template-columns: 74px minmax(0, 1fr) 16px;
+  gap: 4px 11px;
+  padding: 9px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+}
+.public-profile-grid.profile-layout-list .public-profile-post > img,
+.public-profile-grid.profile-layout-list .public-profile-post > video {
+  width: 74px;
+  height: 74px;
+  border-radius: 11px;
+  object-fit: cover;
+}
+.public-profile-grid.profile-layout-list .public-profile-post:last-child { border-bottom: 1px solid var(--card-border); }
+.public-profile-grid.profile-layout-masonry .public-profile-post {
+  margin-bottom: var(--feed-gap);
+  padding-bottom: 9px;
+  border-color: var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+}
+
+/* 设置分组内不再逐行画底边：只由分组容器的分割线负责，避免 2px 双线。 */
+.settings-page.settings-home-page .settings-list > button,
+.settings-page .settings-center-detail > button,
+.settings-page .settings-group > button { border-bottom: 0; }
+.settings-page.settings-home-page .settings-list > button:last-child,
+.settings-page .settings-center-detail > button:last-child { border-bottom: 0; }

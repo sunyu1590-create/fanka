@@ -223,7 +223,7 @@ fun DiscoveryScreen(
                     LazyRow(
                         Modifier.weight(1f).height(42.dp),
                         contentPadding = PaddingValues(end = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(22.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                     item(key = "all-categories") {
@@ -274,7 +274,7 @@ fun DiscoveryScreen(
                     LazyRow(
                         Modifier.height(38.dp),
                         contentPadding = PaddingValues(horizontal = 19.dp),
-                        horizontalArrangement = Arrangement.spacedBy(22.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         items(extraCategories, key = { "category-extra-${it.id}" }) { category ->
@@ -371,15 +371,16 @@ fun DiscoveryScreen(
     }
 }
 
+/**
+ * 探索 AI 资源入口：一张紧凑的横向功能卡（左图标 / 中间两行文案 / 右箭头），
+ * 不再单独铺一排六个图标，也不做金色高亮。它随信息流滚动，不固定吸顶。
+ */
 @Composable
 private fun AiResourceSpaceEntry(hazeState: HazeState, onClick: () -> Unit) {
-    val entries = listOf(
-        HeikaIcons.Robot to "Agent", HeikaIcons.Blocks to "Skills", HeikaIcons.Terminal to "Prompt",
-        HeikaIcons.Wrench to "工具", HeikaIcons.BrainCircuit to "知识", HeikaIcons.Text to "案例",
-    )
-    Column(
-        Modifier.fillMaxWidth().height(96.dp).padding(horizontal = 16.dp, vertical = 3.dp)
-            .clip(RoundedCornerShape(15.dp))
+    val shape = RoundedCornerShape(HeikaRadii.collectionCard)
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)
+            .clip(shape)
             .hazeEffect(
                 state = hazeState,
                 style = dev.chrisbanes.haze.HazeStyle(
@@ -390,26 +391,24 @@ private fun AiResourceSpaceEntry(hazeState: HazeState, onClick: () -> Unit) {
                 ),
             )
             .background(MaterialTheme.colorScheme.surface.copy(alpha = .93f))
-            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), RoundedCornerShape(15.dp))
+            .border(.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 13.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("探索 AI 资源", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("Agent · Skills · Prompt · 更多", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1)
-            }
-            Icon(HeikaIcons.ArrowUpRight, contentDescription = "进入 AI 资源中心", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+        Box(
+            Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(HeikaIcons.BrainCircuit, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            entries.forEach { (icon, label) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
-                    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1)
-                }
-            }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("探索 AI 资源", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("Agent · Skills · Prompt · 更多", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        Icon(HeikaIcons.ArrowUpRight, contentDescription = "进入 AI 资源中心", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -436,11 +435,33 @@ private fun ChannelOption(label: String, selected: Boolean, compact: Boolean = f
     }
 }
 
+/**
+ * 分类选中态与网页端同一套规则：圆角矩形底色 + 香槟金细描边 + 轻微字重变化。
+ * 不再使用文字下方的金色横线。
+ */
 @Composable
 private fun CategoryTab(label: String, selected: Boolean, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick).padding(horizontal = 1.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(label, color = if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-        Box(Modifier.height(2.dp).width((label.length * 14).dp).background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent))
+    val accent = com.heika.nativeapp.ui.HeikaPalette.Gold
+    val color by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(200), label = "discover-category-color",
+    )
+    val shape = RoundedCornerShape(HeikaRadii.chip)
+    Box(
+        Modifier.height(34.dp).clip(shape)
+            .background(if (selected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f) else Color.Transparent)
+            .border(if (selected) .8.dp else 0.dp, accent.copy(alpha = .55f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = color,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+        )
     }
 }
 
@@ -610,7 +631,13 @@ internal fun FeedCard(
     val authorSharedModifier = if (metaSharedReady) with(sharedTransitionScope!!) {
         Modifier.heikaSharedPostMeta(this, animatedVisibilityScope!!, post.sharedAuthorKey())
     } else Modifier
-    Column(modifier.fillMaxWidth()) {
+    val cardShape = RoundedCornerShape(HeikaRadii.feedCard)
+    Column(
+        modifier.fillMaxWidth()
+            .clip(cardShape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .55f), cardShape),
+    ) {
         if (image != null) {
             var imageFailed by remember(image, post.cloudId) { mutableStateOf(false) }
             var imageRetry by remember(image, post.cloudId) { mutableStateOf(0) }
@@ -627,7 +654,7 @@ internal fun FeedCard(
                 }
             } else Modifier
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.feedCard)).clickable(onClick = onClick)
+                Modifier.fillMaxWidth().clickable(onClick = onClick)
                     .background(MaterialTheme.colorScheme.surfaceVariant).aspectRatio(ratio),
             ) {
                 val context = LocalContext.current
@@ -691,11 +718,9 @@ internal fun FeedCard(
                 }
             } else Modifier
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.feedCard)).clickable(onClick = onClick)
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .65f), RoundedCornerShape(HeikaRadii.feedCard))
-                    .then(sharedCardModifier).padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.fillMaxWidth().clickable(onClick = onClick)
+                    .then(sharedCardModifier).padding(horizontal = 13.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(post.tag, tagSharedModifier, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
@@ -708,9 +733,9 @@ internal fun FeedCard(
         }
         // 底部操作区：左侧作者与认证标识，右侧点赞与分享，两列卡片统一规则。
         Row(
-            Modifier.fillMaxWidth().padding(top = 9.dp).heightIn(min = 40.dp),
+            Modifier.fillMaxWidth().padding(start = 11.dp, end = 8.dp, top = 7.dp, bottom = 7.dp).heightIn(min = 38.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(post.author, Modifier.then(authorSharedModifier), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

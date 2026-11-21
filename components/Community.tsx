@@ -64,7 +64,7 @@ import { MarkdownContent, markdownToText } from "./MarkdownContent";
 import RecoveryCodesPage from "./RecoveryCodesPage";
 import SeriesChapterNav from "./SeriesChapterNav";
 import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelcomePage";
-import { FollowedTopicsSettings, TopicFollowButton, SeriesSubscription, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
+import { FollowedTopicsSettings, TopicFollowButton, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
 import type { ProfileDetails } from "./AccountProfile";
 const PublicProfile = dynamic(() => import("./PublicProfile"), { loading: () => <div className="empty">正在加载…</div> });
@@ -575,7 +575,7 @@ export default function Community() {
   const [feedLoadedSort, setFeedLoadedSort] = useState<string | null>(null);
   const [discoverColumnCount, setDiscoverColumnCount] = useState(2);
   const [favoriteSource, setFavoriteSource] = useState("全部"),
-    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked">("works"),
+    [mineSection, setMineSection] = useState<"works" | "favorites" | "liked" | "collections">("works"),
     [settingsDetail, setSettingsDetailState] = useState<SettingsDetail | "feedbackAdmin" | null>(null),
     [settingsReturnTab, setSettingsReturnTab] = useState<"settings" | "mine">("settings"),
     [debugReturnTab, setDebugReturnTab] = useState<"settings" | "mine">("settings"),
@@ -4970,19 +4970,13 @@ export default function Community() {
               <ChevronRight size={18}/>
             </button>
           </section>
-          {mineCollections.length > 0 && <section className="mine-collections" aria-label="我收藏的合集">
-            <div className="mine-collections-head"><strong>我收藏的合集</strong><small>{mineCollections.length} 个</small></div>
-            <div className="mine-collection-row">{mineCollections.map((item) => <button type="button" key={item.id} className="mine-collection-card" onClick={() => openCollection(item.id)}>
-              <span className="mine-collection-copy"><strong>{item.title}</strong><small>{item.publishedCount || 0} 章 · {item.kind === "tutorial" ? "教程" : item.kind === "resource" ? "资源" : "连载"}</small></span>
-              <ChevronRight size={15} aria-hidden="true"/>
-            </button>)}</div>
-          </section>}
           <div className="mine-tabs-shell">
-            <div className="mine-tabs" role="tablist" aria-label="个人内容分类">
+            <div className="mine-tabs mine-content-tabs" role="tablist" aria-label="个人内容分类">
               {([
                 ["works", "我的作品"],
                 ["favorites", "我的收藏"],
                 ["liked", "我的点赞"],
+                ["collections", "合集"],
               ] as const).map(([id, label]) => (
                 <button
                   key={id}
@@ -4992,13 +4986,11 @@ export default function Community() {
                   aria-selected={mineSection === id}
                   aria-controls="mine-category-panel"
                   tabIndex={mineSection === id ? 0 : -1}
-                  className={mineSection === id ? "active" : ""}
                   onClick={() => setMineSection(id)}
                 >
                   {label}
                 </button>
               ))}
-              <span className="mine-tab-indicator" style={{ transform: `translateX(${["works", "favorites", "liked"].indexOf(mineSection) * 100}%)` }} />
             </div>
           </div>
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
@@ -5031,6 +5023,28 @@ export default function Community() {
                   {bookmarkCollections.map((collection) => <span className="collection-chip" key={collection.id}>{editingCollection === collection.id ? <><input aria-label="收藏夹新名称" maxLength={24} value={editingCollectionName} onChange={(event) => setEditingCollectionName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameBookmarkCollection(collection); if (event.key === "Escape") setEditingCollection(null); }}/><button type="button" className="collection-delete" aria-label="保存收藏夹名称" onClick={() => void renameBookmarkCollection(collection)}><Check size={13}/></button><button type="button" className="collection-delete" aria-label="取消重命名" onClick={() => setEditingCollection(null)}><X size={12}/></button></> : <><button type="button" className={favoriteCollection === collection.id ? "selected" : ""} onClick={() => setFavoriteCollection(collection.id)}>{collection.name}{collection.role === "collaborator" ? " · 协作" : ""}</button>{collection.role !== "collaborator" && <><button type="button" className="collection-delete" aria-label={`分享收藏夹 ${collection.name}`} onClick={() => void shareBookmarkCollection(collection)}><Share2 size={12}/></button><button type="button" className="collection-delete" aria-label={`重命名收藏夹 ${collection.name}`} onClick={() => { setEditingCollection(collection.id); setEditingCollectionName(collection.name); }}><PenLine size={12}/></button><button type="button" className="collection-delete" aria-label={`删除收藏夹 ${collection.name}`} onClick={() => void deleteBookmarkCollection(collection)}><X size={12}/></button></>}</>}</span>)}
                 </div>
                 {organizedFavoritePosts.length ? <div className={`masonry${state.discoverLayout === "single" ? " single-column" : ""}`}>{organizedFavoritePosts.map((post) => <div className="organized-favorite-card" key={post.id}>{postCard(post, state.revealed[post.id] ? "today" : "discover")}{state.saved.includes(post.id) ? <label className="collection-assignment">整理到<ChoiceSelect label={`整理《${post.title}》到收藏夹`} value={bookmarkMembership[post.cloudId || ""] || ""} disabled={!accountId || !post.cloudId} onChange={(value) => void assignBookmarkCollection(post, value)} placeholder="未分类" options={[{value:"",label:"未分类"},...bookmarkCollections.map((collection) => ({value:collection.id,label:collection.name}))]}/></label> : <small className="collection-assignment shared-bookmark-note">朋友也收藏了这份灵感</small>}</div>)}</div> : <div className="empty">{favoritePostsForView.length ? "没有符合搜索条件的收藏。" : favoriteCollection !== "all" && favoriteCollection !== "uncategorized" ? "这个协作收藏夹还没有内容。" : "收藏的内容会集中保存在这里。"}</div>}
+              </div>
+            )}
+            {mineSection === "collections" && (
+              <div className="mine-tab-content">
+                <div className="mine-works-heading"><div><span>共 {creatorSeries.length} 个合集</span></div></div>
+                <div className="series-create-form mine-series-create">
+                  <input aria-label="合集名称" maxLength={48} placeholder="合集名称（必填），例如：一周城市观察" value={seriesName} onChange={(event) => setSeriesName(event.target.value)}/>
+                  <input aria-label="合集简介" maxLength={240} placeholder="一句话介绍（可选）" value={seriesDescription} onChange={(event) => setSeriesDescription(event.target.value)}/>
+                  <input aria-label="合集封面" maxLength={600} placeholder="封面图片地址（可选）" value={seriesCover} onChange={(event) => setSeriesCover(event.target.value)}/>
+                  <div className="series-create-row"><select aria-label="合集类型" value={seriesKind} onChange={(event) => setSeriesKind(event.target.value)}><option value="serial">连载</option><option value="tutorial">教程</option><option value="resource">资源</option></select><select aria-label="连载状态" value={seriesStatus} onChange={(event) => setSeriesStatus(event.target.value)}><option value="ongoing">连载中</option><option value="completed">已完结</option></select></div>
+                  <button type="button" disabled={!accountId || seriesName.trim().length < 2} onClick={() => void createPostSeries()}><Plus size={15}/>新建合集</button>
+                </div>
+                {creatorSeries.length ? <div className="series-list">{creatorSeries.map((series) => <button type="button" key={series.id} onClick={() => openCollection(series.id)}>
+                  <strong>{series.title}</strong><span>{series.description || "持续更新中"}</span><small>{series.postCount || 0} 篇</small><em className="series-manage-link">管理</em>
+                </button>)}</div> : <div className="empty">还没有合集。创建后可以把已有作品加入连载，作品仍可独立存在。</div>}
+                {mineCollections.length > 0 && <section className="mine-collections" aria-label="我收藏的合集">
+                  <div className="mine-collections-head"><strong>我收藏的合集</strong><small>{mineCollections.length} 个</small></div>
+                  <div className="mine-collection-row">{mineCollections.map((item) => <button type="button" key={item.id} className="mine-collection-card" onClick={() => openCollection(item.id)}>
+                    <span className="mine-collection-copy"><strong>{item.title}</strong><small>{item.publishedCount || 0} 章 · {item.kind === "tutorial" ? "教程" : item.kind === "resource" ? "资源" : "连载"}</small></span>
+                    <ChevronRight size={15} aria-hidden="true"/>
+                  </button>)}</div>
+                </section>}
               </div>
             )}
             {mineSection === "liked" && (
@@ -5377,13 +5391,16 @@ export default function Community() {
                 <button className="detail-reading-setting" onClick={() => setModal("reading")}>
                   阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
                 </button>
-                {post.seriesTitle && <div className="detail-series-badge"><span>系列</span>{post.seriesId ? <button type="button" className="detail-series-open" onClick={() => openCollection(post.seriesId!)}><strong>{post.seriesTitle}</strong></button> : <strong>{post.seriesTitle}</strong>}{post.seriesId && <SeriesSubscription seriesId={post.seriesId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}</div>}
-                {post.seriesId && post.cloudId && <SeriesChapterNav
+                {post.seriesId && post.cloudId ? <SeriesChapterNav
+                  slot="head"
                   seriesId={post.seriesId}
                   postId={post.cloudId}
+                  accountId={accountId}
+                  onLogin={() => setTab("messages")}
+                  onNotice={toast}
                   onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
                   onOpenCollection={openCollectionFromDetail}
-                />}
+                /> : post.seriesTitle ? <div className="detail-series-card"><div className="detail-series-copy"><small>所属合集</small><strong>{post.seriesTitle}</strong></div></div> : null}
                 {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
                 {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
                 {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} action={aiDetailAction} onActionClose={closeAiDetailAction} onVersionsAvailability={setAiVersionsAvailable}/></Suspense>}
@@ -5404,6 +5421,13 @@ export default function Community() {
                   {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
                 </section>
                 </div>
+                {post.seriesId && post.cloudId && <SeriesChapterNav
+                  slot="foot"
+                  seriesId={post.seriesId}
+                  postId={post.cloudId}
+                  onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
+                  onOpenCollection={openCollectionFromDetail}
+                />}
                 <section id="detail-comments" className="detail-comments">
                   <div className="comments-heading">
                     <h2>评论 <span>· {commentTotal}</span></h2>
