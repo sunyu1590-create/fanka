@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -679,8 +680,10 @@ private fun PreviewCardFront(
                 Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF55594F), Color(0xFF292B29), Color(0xFF171A1D)))))
             }
         }
+        // 文字区按内容取高，图片吃剩余空间：固定 40% 时，标题 3 行 + 按钮会把
+        // 文字压出容器，末行只露出半个字；改为自适应后标题永远是完整的整行。
         Column(
-            Modifier.fillMaxWidth().weight(0.40f).padding(horizontal = 17.dp, vertical = 11.dp),
+            Modifier.fillMaxWidth().wrapContentHeight().padding(horizontal = 17.dp, vertical = 11.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -707,7 +710,7 @@ private fun PreviewCardFront(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(post?.author ?: "HEIKA", authorSharedModifier, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(3.dp))
             Button(
                 onClick = onOpenDetails,
                 enabled = enabled,
