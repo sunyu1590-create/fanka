@@ -108,6 +108,9 @@ import { applyDecorToDocument, installDecorThemeSync, loadDecor, resetDecor, use
 import { countDrafts, getDraftFile, migrateLegacyDrafts, saveDraft, deleteDraft, type LocalDraft } from "@/lib/local-drafts";
 import AccountSwitcher from "./AccountSwitcher";
 import ProfileBadgeList, { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
+import CardBackFace, { type CardContentState } from "./CardFace";
+import { normalizeCachedPost, normalizeRevealedSnapshots, stableCardMediaUrl } from "@/lib/card-media";
+import { cacheCoverFromUrl, clearCoverCache, coverCacheObjectUrl, readCoverCache, type CoverCacheRecord } from "@/lib/cover-cache";
 import { rememberSession } from "@/lib/saved-accounts";
 import MembershipCenter from "./MembershipCenter";
 import CertificationSettings from "./CertificationSettings";
@@ -1020,6 +1023,59 @@ export default function Community({
     ).values(),
   ], [publicFeed, topicPosts, searchPosts, bookmarkedPosts, state.revealed, state.own]);
   const opened = state.opened[today] || [];
+  // 已翻开过的全部卡片：判断卡面状态必须看历史全量，只看今天会把旧卡误判成「未翻开」。
+  const openedEverKey = useMemo(
+    () => [...new Set([...Object.values(state.opened).flat(), ...Object.keys(state.revealed).map(Number)])].sort((a, b) => a - b),
+    [state.opened, state.revealed],
+  );
+  const openedEver = useMemo(() => new Set(openedEverKey), [openedEverKey]);
+  // 已翻开但内容尚未恢复时的状态：pending 自动补拉，failed 等用户点重试。
+  const [revealRepair, setRevealRepair] = useState<Record<number, "pending" | "failed">>({});
+  /** 按卡片 id 补拉内容：缓存被清、签名图过期、云端内容更新后都靠它恢复。 */
+  const repairRevealed = useCallback(async (ids: number[]) => {
+    const targets = [...new Set(ids)].filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 40);
+    if (!targets.length) return;
+    setRevealRepair((current) => ({ ...current, ...Object.fromEntries(targets.map((id) => [id, "pending" as const])) }));
+    try {
+      const response = await cloudFetch("/api/demo/cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: targets }),
+      });
+      const payload = await response.json().catch(() => ({} as { data?: { items?: Post[] } }));
+      if (!response.ok) throw new Error("卡片内容恢复失败");
+      const items = Array.isArray(payload?.data?.items) ? (payload.data.items as Post[]) : [];
+      const recovered = items
+        .filter((post) => targets.includes(post.id))
+        .map((post) => [post.id, normalizeCachedPost(post)] as const);
+      if (recovered.length) {
+        setState((current) => ({
+          ...current,
+          revealed: { ...current.revealed, ...Object.fromEntries(recovered) },
+          rarityTiers: {
+            ...current.rarityTiers,
+            ...Object.fromEntries(recovered.filter(([, post]) => post.rarityTier).map(([id, post]) => [id, post.rarityTier!])),
+          },
+        }));
+      }
+      const found = new Set(recovered.map(([id]) => id));
+      setRevealRepair((current) => {
+        const next = { ...current };
+        for (const id of targets) {
+          if (found.has(id)) delete next[id];
+          else next[id] = "failed";
+        }
+        return next;
+      });
+    } catch {
+      setRevealRepair((current) => ({ ...current, ...Object.fromEntries(targets.map((id) => [id, "failed" as const])) }));
+    }
+  }, []);
+  useEffect(() => {
+    if (!ready) return;
+    const missing = openedEverKey.filter((id) => !state.revealed[id] && !revealRepair[id]);
+    if (missing.length) void repairRevealed(missing.slice(0, 24));
+  }, [ready, openedEverKey, state.revealed, revealRepair, repairRevealed]);
   const latestOpenedDay = Object.keys(state.opened)
     .filter((day) => state.opened[day]?.length)
     .sort()
@@ -1112,7 +1168,7 @@ export default function Community({
         const saved = JSON.parse(raw);
         loaded = {
           ...initial, ...saved, comments: [], dailyCount: 5,
-          revealed: saved.revealed || {}, rarityTiers: saved.rarityTiers || {},
+          revealed: normalizeRevealedSnapshots(saved.revealed), rarityTiers: saved.rarityTiers || {},
           notifications: saved.notifications || initial.notifications,
           readingMode: saved.readingMode || (saved.compactReading ? "focus" : "standard"),
         };
@@ -4277,18 +4333,26 @@ export default function Community({
   };
 
   const renderCandidate = (p: Post, deckPosition = candidates.findIndex((candidate) => candidate.id === p.id), showHistoricalReveal = false) => {
-    const historical = showHistoricalReveal || (deckPosition < 0 && Boolean(state.revealed[p.id]));
-    const unlocked = historical || opened.includes(p.id),
-      revealed = unlocked ? state.revealed[p.id] : undefined,
-      rarityTier = unlocked ? state.rarityTiers[p.id] || revealed?.rarityTier || p.rarityTier : undefined,
-      rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" || !rarityTier ? "" : rarityTier,
-      rareTier = rarityTier === "S" || rarityTier === "SS" || rarityTier === "SSS" ? rarityTier : null;
+    const unlocked = showHistoricalReveal || openedEver.has(p.id);
+    const revealed = unlocked ? state.revealed[p.id] : undefined;
+    const rarityTier = unlocked ? state.rarityTiers[p.id] || revealed?.rarityTier || p.rarityTier : undefined;
+    const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" || !rarityTier ? "" : rarityTier;
+    const rareTier = rarityTier === "S" || rarityTier === "SS" || rarityTier === "SSS" ? rarityTier : null;
+    // 翻卡状态、内容状态、图片状态是三个独立维度：
+    // 已翻开不等于内容已就绪，这里是「翻开后整块空白」的根源，必须分别处理。
+    const contentState: CardContentState = !unlocked ? "loading" : revealed ? "ready" : revealRepair[p.id] === "failed" ? "error" : "loading";
+    const activate = () => {
+      if (!unlocked) { flip(p.id); return; }
+      if (revealed) { openPost(p.id, "today"); return; }
+      // 内容没恢复时，点击先补拉，而不是打开一个空详情。
+      void repairRevealed([p.id]);
+    };
     return (
       <button
         key={p.id}
         data-card-id={p.id}
         className={`candidate-feed-card flip-in-place${unlocked ? " is-unlocked" : ""}${justFlippedId === p.id ? " just-flipped" : ""}${detail === p.id ? " is-detail-source" : ""}`}
-        onClick={() => historical ? openPost(p.id, "today") : flip(p.id)}
+        onClick={activate}
         aria-label={unlocked ? `阅读 ${revealed?.title || "已翻开的卡片"}${rareTier ? `，${rareTier}级稀有卡` : ""}` : opened.length >= dailyAllowance ? `今日 ${dailyAllowance} 张已翻完，点击查看提示` : "选择并翻开一张未知卡片"}
       >
         <span className="card-flip-inner">
@@ -4298,29 +4362,13 @@ export default function Community({
             <span className="card-brand">黑卡 · HEIKA</span>
             <span className="card-prompt">轻触翻开</span>
           </span>
-          <span
-            className="card-flip-face card-flip-back"
-            style={{
-              background: revealed ? coverColor(revealed.tag) : "#e7e4dd",
-            }}
-          >
-            {rarityLabel && <i className={`candidate-rarity-chip rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有卡`}>{rarityLabel}</i>}
-            {revealed?.image && (
-              <img
-                src={revealed.image}
-                alt=""
-                loading="lazy"
-                onError={(e) => {
-                  if (!e.currentTarget.dataset.fallback) { e.currentTarget.dataset.fallback = "true"; e.currentTarget.src = "/image-not-loaded.svg"; }
-                }}
-              />
-            )}
-            <span className="card-back-copy">
-              <small>{revealed?.tag}</small>
-              <strong>{revealed?.title}</strong>
-              <em>阅读 ↗</em>
-            </span>
-          </span>
+          <CardBackFace
+            post={revealed}
+            state={contentState}
+            rarityLabel={rarityLabel}
+            rarityTier={rarityTier}
+            onRetry={() => void repairRevealed([p.id])}
+          />
         </span>
       </button>
     );

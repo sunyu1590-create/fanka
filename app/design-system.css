@@ -8202,3 +8202,101 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
 }
 .discovery-post-actions a.discovery-read:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .discovery-post-actions a.discovery-read:active { transform: scale(.92); }
+
+/* ── 已翻开卡片：图片 / 文字 / 骨架 / 失败四种卡面 ────────────────────
+   视觉基准来自 APP 首页：图片铺满、标题压图、分类在上、评分在左下。
+   内容状态与图片状态分开处理，任何一态都不能渲染空白卡面。 */
+.card-flip-back { background: var(--card) !important; color: var(--ink); }
+.card-flip-back.has-image { background: #14171a !important; color: #fff; }
+.card-back-media { position: absolute; inset: 0; overflow: hidden; }
+.card-back-media img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; opacity: 0; transition: opacity 240ms ease;
+}
+.card-back-media img[data-state="ready"] { opacity: 1; }
+.card-back-media img[data-state="failed"] { display: none; }
+.card-back-scrim {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(6,8,10,.18) 0%, rgba(6,8,10,0) 26%, rgba(6,8,10,.52) 66%, rgba(6,8,10,.9) 100%);
+}
+.card-back-body {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 13px 13px 14px; text-align: left; min-width: 0;
+}
+.card-back-meta { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.card-back-meta small {
+  font-size: 10px; letter-spacing: .04em; color: rgba(255,255,255,.82);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.card-back-kind {
+  flex: none; padding: 1px 5px; border-radius: 3px;
+  background: rgba(197,166,101,.22); color: var(--action) !important;
+}
+.card-back-title {
+  font-size: 16px; line-height: 1.34; font-weight: 620; letter-spacing: -.015em;
+  color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.42);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+.card-back-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
+.card-back-rating {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: var(--action);
+  font-variant-numeric: tabular-nums;
+}
+.card-back-rating.is-pending { color: rgba(255,255,255,.62); font-weight: 500; }
+.card-back-cta { font-size: 10px; color: rgba(255,255,255,.72); }
+/* 无图：文字卡。分类 / 标题 / 摘要 / 评分占满卡面，不留大块空底色。 */
+.card-flip-back.is-text { background: var(--card) !important; color: var(--ink); }
+.card-flip-back.is-text .card-back-body {
+  top: 0; bottom: 0; justify-content: flex-start; gap: 8px; padding: 15px 14px 14px;
+}
+.card-flip-back.is-text .card-back-meta small { color: var(--muted); }
+.card-flip-back.is-text .card-back-title {
+  font-size: 17px; color: var(--ink); text-shadow: none; -webkit-line-clamp: 4;
+}
+.card-back-excerpt {
+  font-size: 11.5px; line-height: 1.6; color: var(--muted);
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere; flex: 1 1 auto; min-height: 0;
+}
+.card-flip-back.is-text .card-back-foot { margin-top: auto; }
+.card-flip-back.is-text .card-back-cta { color: var(--muted); }
+/* 骨架与失败：内容未就绪时给明确状态，而不是空白。 */
+.card-back-placeholder {
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; flex-direction: column; justify-content: center; gap: 9px;
+  padding: 18px 16px; text-align: left;
+}
+.card-back-skeleton {
+  display: block; border-radius: 4px;
+  background: linear-gradient(100deg, rgba(255,255,255,.07), rgba(255,255,255,.16), rgba(255,255,255,.07));
+  background-size: 220% 100%; animation: card-skeleton 1.25s ease-in-out infinite;
+}
+.card-back-skeleton.is-line { height: 9px; }
+.card-back-skeleton.is-line.w-24 { width: 28%; }
+.card-back-skeleton.is-line.w-40 { width: 44%; }
+.card-back-skeleton.is-line.w-64 { width: 66%; }
+.card-back-skeleton.is-line.w-80 { width: 82%; height: 13px; }
+.card-back-skeleton.is-media { position: absolute; inset: 0; border-radius: 0; }
+.card-back-placeholder-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.card-back-placeholder-note { font-size: 10.5px; line-height: 1.6; color: var(--muted); }
+.card-back-retry {
+  align-self: flex-start; margin-top: 2px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 999px;
+  font-size: 11px; color: var(--ink); background: transparent; cursor: pointer;
+}
+.card-back-retry:active { transform: scale(.96); }
+@keyframes card-skeleton { 0% { background-position: 120% 0; } 100% { background-position: -20% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .card-back-skeleton { animation: none; }
+  .card-back-media img { transition: none; }
+}
+
+/* 卡面细描边：对齐 APP 卡片的 1px 内轮廓（不新增伪元素，避开装扮纹理层） */
+.card-back-media { border-radius: inherit; }
+.card-back-media::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); pointer-events: none;
+}
