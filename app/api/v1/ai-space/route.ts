@@ -165,13 +165,26 @@ export async function POST(req: NextRequest) {
         if (error && !/已存在|刚刚被创建/i.test(error.message)) throw new ApiError(400, error.message || "话题创建失败，请换一个名称");
       }
     }
-    let current: { id: string; status: string; resource_data?: unknown; usage_scenarios?: string[] | null } | null = null;
+    let current: { id: string; status: string; series_id?: string | null; resource_data?: unknown; usage_scenarios?: string[] | null } | null = null;
     if (body.id) {
       const id = uuid(body.id);
-      const result = await db.from("posts").select("id,status,resource_data,usage_scenarios").eq("id", id).eq("author_id", user!.id).eq("channel", "ai").maybeSingle();
+      const result = await db.from("posts").select("id,status,series_id,resource_data,usage_scenarios").eq("id", id).eq("author_id", user!.id).eq("channel", "ai").maybeSingle();
       dbError(result.error);
       current = result.data;
       if (!current) throw new ApiError(404, "AI 内容不存在");
+    }
+    // 合集关联：AI 内容与社区内容共用 posts.series_id → post_series 这一套逻辑，
+    // 只能加入自己的合集；undefined 表示这次不改动（保留原值）。
+    let seriesId: string | null | undefined;
+    if (body.seriesId !== undefined) {
+      if (body.seriesId === null || body.seriesId === "") seriesId = null;
+      else {
+        const target = uuid(body.seriesId, "合集");
+        const ownedSeries = await db.from("post_series").select("id,creator_id").eq("id", target).maybeSingle();
+        dbError(ownedSeries.error);
+        if (!ownedSeries.data || ownedSeries.data.creator_id !== user!.id) throw new ApiError(403, "只能加入自己的合集");
+        seriesId = target;
+      }
     }
     if (body.attachments === undefined && current) {
       const kept = readAttachments(current.resource_data);
@@ -192,7 +205,7 @@ export async function POST(req: NextRequest) {
       const oldMedia = Array.isArray(body.mediaPaths) ? mediaPaths : await db.from("post_media").select("storage_path").eq("post_id", current.id).order("sort_order").then((result) => {
         dbError(result.error); return (result.data || []).map((item) => item.storage_path);
       });
-      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: null, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData, usageScenarios: finalScenarios };
+      const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: seriesId === undefined ? (current.series_id ?? null) : seriesId, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData, usageScenarios: finalScenarios };
       const revision = await db.from("post_revisions").upsert({ post_id: current.id, author_id: user!.id, payload, status: "pending", review_note: null, reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString() }, { onConflict: "post_id" }).select("status,review_note").single();
       dbError(revision.error);
       if (!revision.data) throw new ApiError(500, "修改已提交但审核记录读取失败，请刷新后重试");
@@ -202,10 +215,10 @@ export async function POST(req: NextRequest) {
       return { ...post, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload } };
     }
     if (current && current.status !== "draft" && current.status !== "pending_review") throw new ApiError(409, "此 AI 內容目前不可編輯");
-    const values = { channel: "ai", content_type: contentType, resource_data: resourceData, usage_scenarios: finalScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString() };
+    const values = { channel: "ai", content_type: contentType, resource_data: resourceData, usage_scenarios: finalScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString(), ...(seriesId === undefined ? {} : { series_id: seriesId }) };
     const saved = current
       ? await db.from("posts").update(values).eq("id", current.id).eq("author_id", user!.id).select(libraryFields).single()
-      : await db.from("posts").insert({ ...values, author_id: user!.id, is_demo: false }).select(libraryFields).single();
+      : await db.from("posts").insert({ ...values, author_id: user!.id, is_demo: false, ...(seriesId === undefined ? {} : { series_id: seriesId }) }).select(libraryFields).single();
     dbError(saved.error);
     const postId = (saved.data as unknown as LibraryRow).id;
     if (action === "submit") {

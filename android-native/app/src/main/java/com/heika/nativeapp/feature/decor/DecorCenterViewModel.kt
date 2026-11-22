@@ -76,6 +76,19 @@ class DecorCenterViewModel @Inject constructor(
     init {
         // 工作室从「当前已应用」起步，与网页一致。
         _working.value = repository.config.value
+        // 上次没点「应用装扮」就离开的编辑态：恢复出来继续改，不用重新上传图片。
+        viewModelScope.launch {
+            repository.restoreWorkingDraft()?.let { draft ->
+                _working.value = draft
+                _dirty.value = true
+            }
+        }
+    }
+
+    /** 编辑态落本地草稿：只写 DataStore，不触发网络。 */
+    private fun persistDraft() {
+        val snapshot = _working.value
+        viewModelScope.launch { repository.saveWorkingDraft(snapshot) }
     }
 
     private fun say(message: String) {
@@ -177,11 +190,13 @@ class DecorCenterViewModel @Inject constructor(
     fun updateBarSkin(transform: (BarSkin) -> BarSkin) {
         _working.value = _working.value.copy(bar = transform(_working.value.bar))
         _dirty.value = true
+        persistDraft()
     }
 
     fun updateCardSkin(transform: (CardSkin) -> CardSkin) {
         _working.value = _working.value.copy(card = transform(_working.value.card))
         _dirty.value = true
+        persistDraft()
     }
 
     fun updateBarPalette(darkSide: Boolean, transform: (BarPalette) -> BarPalette) = updateBarSkin { skin ->
@@ -249,6 +264,7 @@ class DecorCenterViewModel @Inject constructor(
             val workingConfig = _working.value
             // 1. 本地保存立即应用（不依赖网络）
             repository.applyLocal(workingConfig)
+            repository.clearWorkingDraft()
             _dirty.value = false
             _savePhase.value = DecorSavePhase.Success
             // 2. 云端同步（单独执行，失败不撤销本地效果）

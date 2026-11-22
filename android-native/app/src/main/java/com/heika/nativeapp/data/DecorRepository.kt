@@ -59,6 +59,12 @@ class DecorRepository @Inject constructor(
     private var lastSyncedAt = 0L
     /** 本地有未同步到云端的修改时为 true，refresh() 不会用旧云端数据覆盖本地。 */
     private var localDirty = false
+    /**
+     * 本地写入序号：每次 applyLocal / saveSettings 成功都 +1。
+     * refresh() 发起时记下序号，响应回来若已变化就整份丢弃——
+     * 否则「上传图片触发 ON_RESUME 发起的旧 GET」会把刚保存的装扮覆盖回旧值（含 pendingSync 一起踩掉）。
+     */
+    private var editSeq = 0L
 
     /** 冷启动先读缓存，保证首帧就是用户上次的装扮，不会闪回默认。 */
     suspend fun restore() {
@@ -79,12 +85,34 @@ class DecorRepository @Inject constructor(
      * 云端同步由 [saveSettings] 单独执行，失败不影响本地效果。
      */
     suspend fun applyLocal(config: DecorConfig) {
+        editSeq += 1
         _config.value = config
         localDirty = true
+        persist(config, pendingSync = true)
+    }
+
+    /** 工作室未应用的编辑态：按账号存本地草稿，离开页面/杀进程后仍能接着改。 */
+    suspend fun saveWorkingDraft(config: DecorConfig) {
         val json = JSONObject()
             .put("bottomBar", config.bar.toJson())
             .put("card", config.card.toJson())
-            .put("pendingSync", true)
+        config.barThemeId?.let { json.put("bottomBarThemeId", it) }
+        config.cardThemeId?.let { json.put("cardThemeId", it) }
+        prefs.setDecorDraftJson(json.toString())
+    }
+
+    suspend fun restoreWorkingDraft(): DecorConfig? = prefs.decorDraftJson()?.let { raw ->
+        runCatching { DecorConfig.fromSettings(JSONObject(raw)) }.getOrNull()
+    }
+
+    suspend fun clearWorkingDraft() = prefs.setDecorDraftJson(null)
+
+    /** 本地缓存是渲染的唯一依据：服务端回包只用于对齐版本，不反向覆盖用户刚保存的效果。 */
+    private suspend fun persist(config: DecorConfig, pendingSync: Boolean) {
+        val json = JSONObject()
+            .put("bottomBar", config.bar.toJson())
+            .put("card", config.card.toJson())
+            .put("pendingSync", pendingSync)
         config.barThemeId?.let { json.put("bottomBarThemeId", it) }
         config.cardThemeId?.let { json.put("cardThemeId", it) }
         prefs.setDecorJson(json.toString())
@@ -99,6 +127,7 @@ class DecorRepository @Inject constructor(
         if (!force && now - lastSyncedAt < 30_000L) return true
         // 本地有未同步修改时不用旧云端数据覆盖本地（force 除外，如网页端强制同步）
         if (localDirty && !force) return true
+        val startedSeq = editSeq
         return try {
             val token = auth.currentToken()?.let { "Bearer $it" }
             val response = api.get(BuildConfig.API_BASE_URL + "/api/v1/decor/settings", token)
@@ -109,6 +138,12 @@ class DecorRepository @Inject constructor(
             }
             val raw = response.body()?.use { it.string() }.orEmpty()
             if (raw.isBlank()) return false
+            // 请求在途期间用户又保存过装扮（editSeq 变了）或本地已有未同步修改：
+            // 这份响应是旧数据，整份丢弃，绝不覆盖本地缓存与渲染结果。
+            if (startedSeq != editSeq || localDirty) {
+                lastSyncedAt = now
+                return true
+            }
             val parsed = DecorConfig.fromSettings(JSONObject(raw))
             prefs.setDecorJson(raw)
             _config.value = parsed
@@ -167,8 +202,10 @@ class DecorRepository @Inject constructor(
             }
             val raw = response.body()?.use { it.string() }.orEmpty()
             if (raw.isNotBlank()) {
-                prefs.setDecorJson(raw)
-                _config.value = DecorConfig.fromSettings(JSONObject(raw))
+                // 以本地为准（见 persist 注释）：服务端 normalize 会按白名单丢弃图片字段，
+                // 用响应覆盖本地会让「刚上传的图」在保存成功的一瞬间消失。
+                editSeq += 1
+                persist(_config.value, pendingSync = false)
                 _lastError.value = null
                 lastSyncedAt = System.currentTimeMillis()
                 localDirty = false

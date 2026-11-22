@@ -77,11 +77,11 @@ function ResourceCard({ post, saved, onOpen, onToggleSave }: {
       {rawCover ? <>
         {coverFailed ? <span className="ai-resource-cover-failed"><ImageOff size={15}/><strong>封面加载失败</strong><button type="button" onClick={(event) => { event.stopPropagation(); setCoverAttempt((value) => value + 1); setCoverFailed(false); }}><RotateCcw size={12}/>重试</button></span>
           : <span className="ai-resource-cover"><img key={coverAttempt} src={rawCover} alt="" loading="lazy" onError={() => setCoverFailed(true)} /><span className="ai-resource-cover-labels"><span className="discovery-glass-label"><Icon size={13}/>{typeLabel}</span></span></span>}
-        <span className="ai-resource-copy"><small>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/></small><strong>{post.title}</strong><span>{excerpt}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
+        <span className="ai-resource-copy"><small>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/>{post.seriesTitle ? <em className="ai-resource-series">合集 · {post.seriesTitle}</em> : null}</small><strong>{post.title}</strong><span>{excerpt}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
       </> : <>
         <span className="ai-resource-text-type"><Icon size={13}/>{typeLabel}</span>
         <span className="ai-resource-copy"><strong>{post.title}</strong><span>{excerpt}</span></span>
-        <span className="ai-resource-text-meta">{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
+        <span className="ai-resource-text-meta">{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/>{post.seriesTitle ? <em className="ai-resource-series">合集 · {post.seriesTitle}</em> : null}<i>{post.date} · {post.viewCount || 0} 阅读</i></span>
       </>}
     </button>
     <button type="button" className={`ai-resource-save${saved ? " saved" : ""}`} aria-label={saved ? "取消收藏" : "收藏资源"} onClick={(event) => onToggleSave(post, event)}><Bookmark size={16} fill={saved ? "currentColor" : "none"}/></button>

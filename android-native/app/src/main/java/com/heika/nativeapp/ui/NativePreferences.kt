@@ -30,6 +30,7 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val networkNoticeVersionKey = stringPreferencesKey("network_notice_seen_version")
     private val skippedUpdateCodeKey = intPreferencesKey("skipped_update_code")
     private val decorKey = stringPreferencesKey("decor_config")
+    private val decorDraftKey = stringPreferencesKey("decor_working_draft")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
@@ -65,6 +66,15 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     suspend fun setDecorJson(value: String?) {
         dataStore.edit { prefs ->
             if (value.isNullOrBlank()) prefs.remove(decorKey) else prefs[decorKey] = value
+        }
+    }
+
+    /** 装扮工作室里「还没点应用」的编辑态：退出页面不该丢，下次进来接着改。 */
+    suspend fun decorDraftJson(): String? = dataStore.data.map { it[decorDraftKey] }.first()
+
+    suspend fun setDecorDraftJson(value: String?) {
+        dataStore.edit { prefs ->
+            if (value.isNullOrBlank()) prefs.remove(decorDraftKey) else prefs[decorDraftKey] = value
         }
     }
     suspend fun setFeedLayout(value: String) { dataStore.edit { it[feedLayoutKey] = if (value == "single") "single" else "waterfall" } }
