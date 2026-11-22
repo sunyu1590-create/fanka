@@ -12,7 +12,7 @@ const { libraryFields, libraryFeedFields, present, presentMany } = await import(
 
 test("content queries disambiguate category and topic foreign keys", () => {
   assert.match(libraryFields, /interest_tags!posts_tag_id_fkey\(name\)/);
-  assert.match(libraryFields, /profiles!posts_author_id_fkey\(nickname,avatar_url\)/);
+  assert.match(libraryFields, /profiles!posts_author_id_fkey\(nickname,avatar_url,bio\)/);
   assert.match(libraryFields, /post_topics\(interest_tags!post_topics_topic_id_fkey\(name\)\)/);
   assert.match(libraryFeedFields, /body_excerpt/);
   assert.doesNotMatch(libraryFeedFields, /,body,/);
