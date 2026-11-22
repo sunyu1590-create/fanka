@@ -703,7 +703,7 @@ private fun PreviewCardFront(
                 fontSize = 17.sp * titleScale,
                 lineHeight = 22.sp * titleScale,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(post?.author ?: "HEIKA", authorSharedModifier, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

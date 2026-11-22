@@ -100,6 +100,7 @@ fun ProfileScreen(
     onExplore: () -> Unit = {},
     onDailyTasks: () -> Unit = onExplore,
     onManageWorks: () -> Unit = {},
+    onDrafts: () -> Unit = {},
     onCollection: (String) -> Unit = {},
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
@@ -109,8 +110,6 @@ fun ProfileScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var selected by remember(userId) { mutableStateOf("works") }
-    // 草稿箱：弹出本地草稿列表由用户选择恢复，不自动加载旧草稿（需求 3.3）。
-    var draftPickerOpen by remember { mutableStateOf(false) }
     var hasResumedOnce by remember(userId) { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val worksState = rememberLazyStaggeredGridState()
@@ -168,11 +167,6 @@ fun ProfileScreen(
 
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
-    if (draftPickerOpen) DraftPickerSheet(
-        drafts = state.drafts,
-        onPick = { draft -> draftPickerOpen = false; onDraft(draft) },
-        onDismiss = { draftPickerOpen = false },
-    )
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
         Box(Modifier.fillMaxSize()) {
@@ -330,7 +324,7 @@ fun ProfileScreen(
                                     title = "草稿箱",
                                     detail = if (state.drafts.isNotEmpty()) "${state.drafts.size} 篇草稿" else "暂无草稿",
                                     modifier = Modifier.weight(1f),
-                                    onClick = { draftPickerOpen = true },
+                                    onClick = onDrafts,
                                 )
                                 QuickEntry(
                                     title = "今日任务",

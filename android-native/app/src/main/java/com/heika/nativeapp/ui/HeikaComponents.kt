@@ -31,6 +31,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -291,16 +294,21 @@ private fun RowScope.NavigationItem(
             AnimatedContent(targetState = active, label = "nav-icon") { isSelected ->
                 val source = custom?.source(isSelected)
                 val tint = if (isSelected) palette.activeIcon else palette.icon
-                if (source != null) {
+                // 相对路径（/decor/...）补全为完整 URL
+                val resolvedUrl = source?.let { if (it.startsWith("/")) com.heika.nativeapp.BuildConfig.API_BASE_URL + it else it }
+                var iconFailed by remember(resolvedUrl) { mutableStateOf(false) }
+                if (resolvedUrl != null && !iconFailed) {
                     val size = (25f * (custom.scale)).dp
                     AsyncImage(
-                        model = source,
+                        model = resolvedUrl,
                         contentDescription = label,
                         imageLoader = LocalHeikaImageLoader.current,
                         modifier = Modifier.size(size),
                         contentScale = if (custom.fitCover) ContentScale.Crop else ContentScale.Fit,
                         // 单色图标跟随主题色；彩色图标保留原色，不做任何滤镜。
                         colorFilter = if (custom.tint) ColorFilter.tint(tint) else null,
+                        // 图标加载失败时回落到默认图标，不显示空白
+                        onError = { iconFailed = true },
                     )
                 } else {
                     NavigationGlyph(key, tint, label)

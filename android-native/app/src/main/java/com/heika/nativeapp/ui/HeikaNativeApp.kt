@@ -82,6 +82,7 @@ import com.heika.nativeapp.feature.exploration.ExplorationChainsViewModel
 import com.heika.nativeapp.feature.exploration.StoryChainDetailScreen
 import com.heika.nativeapp.feature.exploration.StoryChainListScreen
 import com.heika.nativeapp.feature.profile.ManageWorksScreen
+import com.heika.nativeapp.feature.profile.DraftBoxScreen
 import com.heika.nativeapp.feature.publish.PublishScreen
 import com.heika.nativeapp.feature.search.SearchScreen
 import com.heika.nativeapp.feature.FeedbackScreen
@@ -291,10 +292,11 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onMessage = { id -> openDestination(HeikaDestination.StartConversation(id)) },
                         onLogin = { nav.navigate("account") },
                         onEditProfile = { nav.navigate("edit-profile") },
-                        // 任务与探索入口进网页容器（需求 6.3），不再进旧原生页。
+                        // 今日任务进原生二级页（需求 7），探索中心也进原生页
                         onExplore = { nav.navigate("web/explore-center") },
-                        onDailyTasks = { nav.navigate("web/missions") },
+                        onDailyTasks = { nav.navigate("exploration/tasks") },
                         onManageWorks = { nav.navigate("manage-works") },
+                        onDrafts = { nav.navigate("drafts") },
                         onCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
@@ -630,6 +632,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     val profileEntry = remember(currentEntry) { nav.getBackStackEntry("profile") }
                     val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(profileEntry)
                     ManageWorksScreen(onBack = { nav.popBackStack() }, onEdit = { post -> nav.navigate("publish?channel=${post.channel}&draftId=${post.id}") }, viewModel = profileViewModel)
+                }
+                composable("drafts") {
+                    val currentEntry by nav.currentBackStackEntryAsState()
+                    val profileEntry = remember(currentEntry) { nav.getBackStackEntry("profile") }
+                    val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(profileEntry)
+                    DraftBoxScreen(onBack = { nav.popBackStack() }, onEdit = { post -> nav.navigate("publish?channel=${post.channel}&draftId=${post.id}") }, viewModel = profileViewModel)
                 }
                 composable("about") {
                     AboutScreen(onBack = { nav.popBackStack() }, onFeedback = { openDestination(HeikaDestination.Feedback) })

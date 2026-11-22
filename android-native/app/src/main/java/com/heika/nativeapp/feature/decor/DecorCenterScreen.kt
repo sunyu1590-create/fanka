@@ -288,10 +288,16 @@ private fun ThemeDetailOverlay(
 ) {
     // 主题配置 → DecorConfig（只用于预览展示）
     val previewConfig = remember(item.id, item.config.toString()) {
+        val cfg = item.config
+        val resolved = when {
+            // config 含 bottomBar/card 子对象 → 直接解析
+            cfg.optJSONObject("bottomBar") != null || cfg.optJSONObject("card") != null -> cfg
+            // 官方主题 DB 可能只存 {"preset":"slug"} 标识 → 用内置预设解析
+            cfg.has("preset") -> com.heika.nativeapp.data.OfficialDecorPresets.resolveToJson(cfg.optString("preset")) ?: cfg
+            else -> cfg
+        }
         runCatching {
-            com.heika.nativeapp.data.DecorConfig.fromSettings(
-                org.json.JSONObject().put("data", org.json.JSONObject().put("bottomBar", item.config.optJSONObject("bottomBar")).put("card", item.config.optJSONObject("card"))),
-            )
+            com.heika.nativeapp.data.DecorConfig.fromSettings(resolved)
         }.getOrDefault(com.heika.nativeapp.data.DecorConfig.DEFAULT)
     }
     Column(

@@ -33,7 +33,8 @@ class DecorViewModel @Inject constructor(
     fun start() {
         viewModelScope.launch {
             repository.restore()
-            repository.refresh(force = true)
+            // force = false：本地有未同步修改时不用旧云端数据覆盖
+            repository.refresh(force = false)
         }
     }
 

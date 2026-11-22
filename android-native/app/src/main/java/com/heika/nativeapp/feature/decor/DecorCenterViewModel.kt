@@ -101,25 +101,39 @@ class DecorCenterViewModel @Inject constructor(
         }
     }
 
-    /** 应用主题：写入账号配置并立即渲染（6.3 区分「已保存到账户」「当前客户端已应用」）。 */
+    /** 应用主题：本地立即生效，云端同步单独执行（6.3 区分「已保存到账户」「当前客户端已应用」）。 */
     fun applyTheme(theme: DecorThemeItem) {
         if (_busy.value) return
         viewModelScope.launch {
             _busy.value = true
             try {
-                val config = theme.config
-                val ok = repository.saveSettings(
-                    bottomBar = if (theme.kind != "card") config.optJSONObject("bottomBar") else null,
-                    card = if (theme.kind != "bottom") config.optJSONObject("card") else null,
+                val configJson = theme.config
+                val barJson = if (theme.kind != "card") configJson.optJSONObject("bottomBar") else null
+                val cardJson = if (theme.kind != "bottom") configJson.optJSONObject("card") else null
+                // 构建本地配置（缺省部分保留当前值）
+                val current = repository.config.value
+                val settingsJson = org.json.JSONObject().apply {
+                    put("bottomBar", barJson ?: current.bar.toJson())
+                    put("card", cardJson ?: current.card.toJson())
+                    if (theme.kind != "card") put("bottomBarThemeId", theme.id)
+                    if (theme.kind != "bottom") put("cardThemeId", theme.id)
+                }
+                val newConfig = DecorConfig.fromSettings(settingsJson)
+                // 1. 本地保存立即应用（不依赖网络）
+                repository.applyLocal(newConfig)
+                _working.value = newConfig
+                _dirty.value = false
+                // 2. 云端同步（单独执行，失败不撤销本地效果）
+                val cloudOk = repository.saveSettings(
+                    bottomBar = barJson,
+                    card = cardJson,
                     bottomBarThemeId = if (theme.kind != "card") theme.id else null,
                     cardThemeId = if (theme.kind != "bottom") theme.id else null,
                 )
-                if (ok) {
-                    _working.value = repository.config.value
-                    _dirty.value = false
+                if (cloudOk) {
                     say("已应用「${theme.title}」· 已保存到账户并应用到本机")
                 } else {
-                    say(repository.lastError.value ?: "应用失败，已保留原有装扮")
+                    say("已应用「${theme.title}」到本机 · 账户同步稍后自动重试")
                 }
             } finally {
                 _busy.value = false
@@ -226,31 +240,33 @@ class DecorCenterViewModel @Inject constructor(
         }
     }
 
-    /** 应用工作区配置到账号（手工配置不挂主题 id）。 */
+    /** 应用工作区配置（本地保存立即应用，云端同步单独执行）。 */
     fun saveWorking() {
         if (_busy.value) return
         viewModelScope.launch {
             _busy.value = true
             _savePhase.value = DecorSavePhase.Loading
             val workingConfig = _working.value
-            val ok = repository.saveSettings(
+            // 1. 本地保存立即应用（不依赖网络）
+            repository.applyLocal(workingConfig)
+            _dirty.value = false
+            _savePhase.value = DecorSavePhase.Success
+            // 2. 云端同步（单独执行，失败不撤销本地效果）
+            val cloudOk = repository.saveSettings(
                 bottomBar = workingConfig.bar.toJson(),
                 card = workingConfig.card.toJson(),
                 clearBottomTheme = true,
                 clearCardTheme = true,
             )
             _busy.value = false
-            if (ok) {
-                _dirty.value = false
-                _savePhase.value = DecorSavePhase.Success
+            if (cloudOk) {
                 say("已保存到账户 · 当前客户端已应用")
-                viewModelScope.launch {
-                    kotlinx.coroutines.delay(1800)
-                    if (_savePhase.value == DecorSavePhase.Success) _savePhase.value = DecorSavePhase.Idle
-                }
             } else {
-                _savePhase.value = DecorSavePhase.Error
-                say(repository.lastError.value ?: "保存失败，请重试（预览内容已保留）")
+                say("已应用到本机 · 账户同步稍后自动重试")
+            }
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(1800)
+                if (_savePhase.value == DecorSavePhase.Success) _savePhase.value = DecorSavePhase.Idle
             }
         }
     }

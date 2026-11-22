@@ -57,15 +57,37 @@ class DecorRepository @Inject constructor(
 
     private var restored = false
     private var lastSyncedAt = 0L
+    /** 本地有未同步到云端的修改时为 true，refresh() 不会用旧云端数据覆盖本地。 */
+    private var localDirty = false
 
     /** 冷启动先读缓存，保证首帧就是用户上次的装扮，不会闪回默认。 */
     suspend fun restore() {
         if (restored) return
         restored = true
         prefs.decorJson()?.let { raw ->
-            runCatching { DecorConfig.fromSettings(JSONObject(raw)) }
-                .onSuccess { _config.value = it }
+            runCatching {
+                val json = JSONObject(raw)
+                // 如果上次本地修改未同步到云端，恢复 localDirty 防止旧云端数据覆盖
+                localDirty = json.optBoolean("pendingSync", false)
+                DecorConfig.fromSettings(json)
+            }.onSuccess { _config.value = it }
         }
+    }
+
+    /**
+     * 将配置立即应用到本地（持久化 + 更新渲染），不依赖网络。
+     * 云端同步由 [saveSettings] 单独执行，失败不影响本地效果。
+     */
+    suspend fun applyLocal(config: DecorConfig) {
+        _config.value = config
+        localDirty = true
+        val json = JSONObject()
+            .put("bottomBar", config.bar.toJson())
+            .put("card", config.card.toJson())
+            .put("pendingSync", true)
+        config.barThemeId?.let { json.put("bottomBarThemeId", it) }
+        config.cardThemeId?.let { json.put("cardThemeId", it) }
+        prefs.setDecorJson(json.toString())
     }
 
     /**
@@ -75,8 +97,10 @@ class DecorRepository @Inject constructor(
     suspend fun refresh(force: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
         if (!force && now - lastSyncedAt < 30_000L) return true
+        // 本地有未同步修改时不用旧云端数据覆盖本地（force 除外，如网页端强制同步）
+        if (localDirty && !force) return true
         return try {
-            val token = auth.currentToken()
+            val token = auth.currentToken()?.let { "Bearer $it" }
             val response = api.get(BuildConfig.API_BASE_URL + "/api/v1/decor/settings", token)
             if (!response.isSuccessful) {
                 response.errorBody()?.close()
@@ -90,6 +114,7 @@ class DecorRepository @Inject constructor(
             _config.value = parsed
             _lastError.value = null
             lastSyncedAt = now
+            localDirty = false
             true
         } catch (cause: IOException) {
             _lastError.value = cause.message ?: "装扮同步失败"
@@ -105,6 +130,7 @@ class DecorRepository @Inject constructor(
         _config.value = DecorConfig.DEFAULT
         prefs.setDecorJson(null)
         lastSyncedAt = 0L
+        localDirty = false
     }
 
     fun invalidate() {
@@ -121,7 +147,7 @@ class DecorRepository @Inject constructor(
         clearCardTheme: Boolean = false,
     ): Boolean {
         return try {
-            val token = auth.currentToken()
+            val token = auth.currentToken()?.let { "Bearer $it" }
             val body = JSONObject()
             bottomBar?.let { body.put("bottomBar", it) }
             card?.let { body.put("card", it) }
@@ -145,6 +171,7 @@ class DecorRepository @Inject constructor(
                 _config.value = DecorConfig.fromSettings(JSONObject(raw))
                 _lastError.value = null
                 lastSyncedAt = System.currentTimeMillis()
+                localDirty = false
             }
             true
         } catch (cause: Exception) {
@@ -155,7 +182,7 @@ class DecorRepository @Inject constructor(
 
     /** 主题列表：scope = official / community / mine / favorites（与网页一致）。 */
     suspend fun listThemes(scope: String, kind: String = "all", query: String = ""): List<DecorThemeItem> {
-        val token = auth.currentToken()
+        val token = auth.currentToken()?.let { "Bearer $it" }
         val url = buildString {
             append(BuildConfig.API_BASE_URL).append("/api/v1/decor/themes?scope=").append(scope)
             append("&kind=").append(kind)
@@ -175,17 +202,20 @@ class DecorRepository @Inject constructor(
     private fun parseTheme(node: JSONObject?): DecorThemeItem? {
         if (node == null) return null
         val tags = node.optJSONArray("tags")?.let { array -> (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) } }.orEmpty()
+        // org.json 的 optString 对 JSON null 返回字符串 "null"，须显式过滤
+        fun safe(key: String, fallback: String = ""): String =
+            node.optString(key).takeIf { it.isNotBlank() && it != "null" } ?: fallback
         return DecorThemeItem(
             id = node.optString("id"),
-            title = node.optString("title").ifBlank { "未命名主题" },
-            description = node.optString("description"),
-            origin = node.optString("origin"),
-            kind = node.optString("kind").ifBlank { "bundle" },
-            authorName = node.optString("authorName").ifBlank { "黑卡官方" },
-            status = node.optString("status").ifBlank { "approved" },
+            title = safe("title", "未命名主题"),
+            description = safe("description"),
+            origin = safe("origin"),
+            kind = safe("kind", "bundle"),
+            authorName = safe("authorName", "黑卡官方"),
+            status = safe("status", "approved"),
             tags = tags,
             config = node.optJSONObject("config") ?: JSONObject(),
-            reviewNote = node.optString("reviewNote").takeIf { it.isNotBlank() && it != "null" },
+            reviewNote = safe("reviewNote").takeIf { it.isNotBlank() },
             favorite = node.optBoolean("favorite"),
             favoriteCount = node.optInt("favoriteCount"),
             installCount = node.optInt("installCount"),
@@ -197,7 +227,7 @@ class DecorRepository @Inject constructor(
     /** 收藏开关。返回最新计数；失败返回 null。 */
     suspend fun toggleFavorite(id: String, favorite: Boolean): Pair<Boolean, Int>? {
         return try {
-            val token = auth.currentToken()
+            val token = auth.currentToken()?.let { "Bearer $it" }
             val body = JSONObject().put("favorite", favorite)
             val response = api.post(
                 BuildConfig.API_BASE_URL + "/api/v1/decor/themes/$id/favorite",
@@ -220,7 +250,7 @@ class DecorRepository @Inject constructor(
     /** 撤回未上架的投稿。 */
     suspend fun deleteTheme(id: String): Boolean {
         return try {
-            val token = auth.currentToken()
+            val token = auth.currentToken()?.let { "Bearer $it" }
             val response = api.delete(
                 BuildConfig.API_BASE_URL + "/api/v1/decor/themes/$id",
                 token,
@@ -234,7 +264,7 @@ class DecorRepository @Inject constructor(
 
     /** 从当前方案投稿。返回新主题条目；失败抛出带原因的异常。 */
     suspend fun submitTheme(title: String, description: String, tags: List<String>, kind: String, config: JSONObject): DecorThemeItem {
-        val token = auth.currentToken()
+        val token = auth.currentToken()?.let { "Bearer $it" }
         val body = JSONObject()
             .put("title", title)
             .put("description", description)
@@ -259,7 +289,7 @@ class DecorRepository @Inject constructor(
 
     /** 上传装扮资源（icon / card-back / content-image / publish-icon），返回公网地址。 */
     suspend fun uploadAsset(bytes: ByteArray, fileName: String, mimeType: String, kind: String): String {
-        val token = auth.currentToken()
+        val token = auth.currentToken()?.let { "Bearer $it" }
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("kind", kind)
             .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))

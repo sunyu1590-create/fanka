@@ -72,6 +72,59 @@ import java.io.ByteArrayOutputStream
 import com.heika.nativeapp.ui.HeikaPulsePage
 import com.heika.nativeapp.ui.HeikaPulseRow
 
+/** 草稿箱二级页：独立展示本机/云端草稿，点击进入编辑（需求 7：草稿与我的作品彻底分离）。 */
+@Composable
+fun DraftBoxScreen(
+    onBack: () -> Unit,
+    onEdit: (HeikaPost) -> Unit,
+    viewModel: ProfileViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var deleteTarget by remember { mutableStateOf<HeikaPost?>(null) }
+    LaunchedEffect(Unit) { if (state.profile == null) viewModel.load(null) }
+
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        BackHeader("草稿箱", onBack)
+        if (state.drafts.isEmpty() && !state.loading) {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text("暂无草稿", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text("在编辑器中保存的内容会出现在这里", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        } else {
+            LazyColumn(Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    Text("点击草稿继续编辑。草稿会自动保存到本机。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 7.dp))
+                    state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp)) }
+                }
+                items(state.drafts.size, key = { state.drafts[it].cloudId.ifBlank { state.drafts[it].id.toString() } }) { index ->
+                    val draft = state.drafts[index]
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).clickable { onEdit(draft) }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(draft.title.ifBlank { "未命名草稿" }, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 2)
+                            if (draft.body.isNotBlank()) {
+                                Text(draft.body, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 2, lineHeight = 14.sp, modifier = Modifier.padding(top = 4.dp))
+                            }
+                        }
+                        TextButton(onClick = { deleteTarget = draft }) { Text("删除", color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                    }
+                }
+                if (state.loading) item { HeikaPulseRow(Modifier.padding(vertical = 8.dp), height = 56.dp) }
+            }
+        }
+    }
+    deleteTarget?.let { draft ->
+        HeikaGlassDialog(
+            title = "删除这篇草稿？",
+            message = "「${draft.title.ifBlank { "未命名草稿" }}」将被删除。此操作不可撤销。",
+            confirmText = "删除",
+            destructive = true,
+            loading = state.saving,
+            onConfirm = { viewModel.deleteOwnPost(draft); deleteTarget = null },
+            onCancel = { deleteTarget = null },
+        )
+    }
+}
+
 @Composable
 fun ManageWorksScreen(
     onBack: () -> Unit,
@@ -81,7 +134,8 @@ fun ManageWorksScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var deleteTarget by remember { mutableStateOf<HeikaPost?>(null) }
     LaunchedEffect(Unit) { if (state.profile == null) viewModel.load(null) }
-    val allWorks = state.posts + state.drafts
+    // 草稿已独立到草稿箱二级页，此处只展示已提交内容（需求 7：彻底分离）
+    val allWorks = state.posts
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("作品管理", onBack)
