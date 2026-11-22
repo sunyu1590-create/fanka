@@ -1,0 +1,116 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { cachedPostNeedsRefresh, normalizeCachedPost, stableCardMediaUrl } from "../lib/card-media.ts";
+
+const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+const native = "android-native/app/src/main/java/com/heika/nativeapp";
+
+test("卡片图片缓存只接受稳定地址：临时地址丢弃，签名地址改走站内媒体路由", () => {
+  assert.equal(stableCardMediaUrl("blob:https://moonclean.shop/2f1c"), undefined);
+  assert.equal(stableCardMediaUrl("file:///data/user/0/tmp.jpg"), undefined);
+  assert.equal(stableCardMediaUrl(""), undefined);
+
+  const signed = stableCardMediaUrl(
+    "https://dnotobyltytpgplfimzo.supabase.co/storage/v1/object/sign/post-covers/u1/card-1.jpg?token=abc.def",
+  );
+  assert.ok(signed, "签名地址必须能还原成稳定地址");
+  assert.ok(signed.startsWith("/api/v1/media?path="), signed);
+  assert.match(signed, /redirect=1/);
+  assert.match(signed, /variant=card/);
+  assert.doesNotMatch(signed, /token=/);
+
+  // 站内路由同样补齐参数，避免同一张图出现多种地址
+  assert.match(
+    stableCardMediaUrl("/api/v1/media?path=post-covers%2Fu1%2Fcard-1.jpg"),
+    /redirect=1&variant=card$/,
+  );
+  // 外链保持原样
+  assert.equal(stableCardMediaUrl("https://cdn.example.com/a.png"), "https://cdn.example.com/a.png");
+});
+
+test("历史缓存快照会把签名地址换成稳定地址，并用 images 回填 image", () => {
+  const legacy = {
+    id: 7,
+    title: "旧缓存",
+    body: "正文",
+    image: "",
+    images: ["https://dnotobyltytpgplfimzo.supabase.co/storage/v1/object/sign/post-covers/u1/a.jpg?token=t"],
+  };
+  assert.equal(cachedPostNeedsRefresh(legacy), false, "已经是可修复地址时不强制刷新");
+  const fixed = normalizeCachedPost(legacy);
+  assert.ok(fixed.image?.startsWith("/api/v1/media?path="), fixed.image);
+  assert.ok(fixed.images?.every((source) => source.startsWith("/api/v1/media?path=")));
+
+  assert.equal(cachedPostNeedsRefresh({ ...legacy, images: ["blob:https://moonclean.shop/x"] }), true);
+  assert.equal(normalizeCachedPost({ ...legacy, images: ["blob:https://moonclean.shop/x"] }).image, undefined);
+});
+
+test("封面双保险：云端版本字段、IndexedDB 缓存与 blob 不入库", async () => {
+  const migration = await read("supabase/migrations/20261122180000_profile_cover_version.sql");
+  assert.match(migration, /cover_version integer not null default 0/);
+  assert.match(migration, /cover_updated_at timestamptz/);
+
+  const coverRoute = await read("app/api/v1/me/cover/route.ts");
+  assert.match(coverRoute, /export async function GET/);
+  assert.match(coverRoute, /cover_version/);
+  // 上传与删除都要推进版本，删除后才能压过本地旧图
+  const bumpCount = coverRoute.match(/cover_version[\s\S]{0,40}\+\s*1|update\(\{[^}]*cover_version/g) ?? [];
+  assert.ok(bumpCount.length >= 2, "PUT 与 DELETE 都必须推进 cover_version");
+
+  const libraryState = await read("app/api/v1/library-state/route.ts");
+  assert.match(libraryState, /cover_url/);
+  assert.match(libraryState, /cover_version/);
+  assert.match(libraryState, /cover_updated_at/);
+
+  const cache = await read("lib/cover-cache.ts");
+  assert.match(cache, /indexedDB/);
+  assert.match(cache, /heika-profile-cover-v1/);
+
+  const community = await read("components/Community.tsx");
+  // blob 地址只能活在内存里，写本地存储前必须换成云端地址
+  assert.match(community, /startsWith\("blob:"\)/);
+  assert.match(community, /coverRemoteRef\.current/);
+  assert.doesNotMatch(community, /localStorage\.setItem\([^)]*createObjectURL/);
+});
+
+test("探索中心三指标、28 天热力图与历史分页双端一致", async () => {
+  const community = await read("components/Community.tsx");
+  assert.match(community, /explore-metrics/);
+  assert.match(community, /explore-heatmap/);
+  assert.match(community, /explorationHistoryLimit/);
+  assert.match(community, /累计翻卡/);
+
+  const screens = await read(`${native}/feature/exploration/ExplorationScreens.kt`);
+  assert.match(screens, /累计翻卡/);
+  assert.match(screens, /28 天探索轨迹/);
+  assert.match(screens, /探索月报/);
+  assert.match(screens, /加载更多/);
+  // 月报入口要有真实页面，不能只是按钮
+  assert.match(screens, /fun ExplorationRecapScreen/);
+
+  const api = await read("app/api/v1/exploration-calendar/route.ts");
+  assert.match(api, /lifetimeTotal/);
+  assert.match(api, /windowDays/);
+  assert.match(api, /recentRecords/);
+});
+
+test("发布分类只在提交时触发，服务端用 routeConfirmed 去重", async () => {
+  for (const path of ["app/api/v1/library-state/route.ts", "app/api/v1/ai-space/route.ts"]) {
+    const route = await read(path);
+    assert.match(route, /routeConfirmed !== true/, `${path} 必须跳过重复分类`);
+    assert.match(route, /enqueuePostReview/, `${path} 不能跳过人工复审`);
+  }
+  const vm = await read(`${native}/feature/publish/PublishViewModel.kt`);
+  assert.match(vm, /resolveRoute/);
+  assert.match(vm, /routeConfirmed = current\.routeSource == "ai"/);
+});
+
+test("APP 个人中心按网页版式：通栏封面、跨封面头像与下划线标签", async () => {
+  const profile = await read(`${native}/feature/profile/ProfileScreen.kt`);
+  assert.match(profile, /height\(220\.dp\)/);
+  assert.match(profile, /Brush\.verticalGradient/);
+  assert.match(profile, /fun ProfileStat/);
+  assert.match(profile, /fun ProfileTabBar/);
+  assert.match(profile, /82\.dp/);
+});

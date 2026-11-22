@@ -30,8 +30,20 @@ test("AI 发布检测只在点击发布后触发，并推荐已有话题", async
   // 不再有输入防抖自动检测
   assert.doesNotMatch(community, /setTimeout\(\(\) => \{ void detectComposerRouteRef\.current\(\); \}, 1100\)/);
   assert.match(community, /runComposerSuggest/);
-  assert.match(community, /composer-suggest/);
-  assert.match(community, /确认发布/);
+  // 发布面板改为五态状态提示：常驻的 AI 建议块与二次确认已移除
+  assert.doesNotMatch(community, /composer-suggest/);
+  assert.doesNotMatch(community, /确认发布<\/button>/);
+  assert.doesNotMatch(community, /重新检测/);
+  assert.match(community, /composerCheckPhase/);
+  // 分类结果在同一次点击内用掉，并随提交体回传，服务端不再重复入队
+  assert.match(community, /routeClassifiedByAi/);
+  assert.match(community, /routeConfirmed: routeClassifiedByAi/);
+  assert.match(community, /正在检查内容/);
+  assert.match(community, /内容检查暂时失败/);
+  // 原生端同样只在点击发布后判断分类
+  const publishScreen = await read(`${native}/feature/publish/PublishScreen.kt`);
+  assert.doesNotMatch(publishScreen, /delay\(1200\)/);
+  assert.match(publishScreen, /发布状态/);
   // 话题优先复用 Supabase 已有话题，且不硬凑
   assert.match(api, /pickTopicsByRules/);
   assert.match(api, /normalizeTopicSuggestions/);
