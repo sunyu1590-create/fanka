@@ -123,3 +123,47 @@ test("APP 个人中心按网页版式：通栏封面、跨封面头像与下划�
   assert.match(profile, /fun ProfileTabBar/);
   assert.match(profile, /82\.dp/);
 });
+
+test("卡片文字只按整行截断：标题不收缩，摘要行数按卡面高度取整", async () => {
+  const css = await read("app/design-system.css");
+  // 标题/元信息/底部不参与 flex 压缩，否则会被压成半行
+  assert.match(css, /\.card-back-meta, \.card-back-title, \.card-back-foot \{ flex: none; \}/);
+  assert.match(css, /max-height: calc\(1\.34em \* 3\)/);
+  // 摘要行数由组件算出并写进 CSS 变量，末行不会只露半个字
+  assert.match(css, /-webkit-line-clamp: var\(--card-excerpt-lines, 4\)/);
+  assert.match(css, /\.card-back-excerpt[^}]*flex: 0 0 auto/);
+
+  const face = await read("components/CardFace.tsx");
+  assert.match(face, /ResizeObserver/);
+  assert.match(face, /--card-excerpt-lines/);
+  assert.match(face, /Math\.floor\(available \/ lineHeight\)/);
+
+  // 原生端：文字区自适应，图片吃剩余空间
+  const home = await read(`${native}/feature/home/HomeScreen.kt`);
+  assert.match(home, /wrapContentHeight\(\)\.padding\(horizontal = 17\.dp/);
+  assert.doesNotMatch(home, /weight\(0\.40f\)/);
+});
+
+test("探索中心长标题不再撑破页面：网格列宽锁定 1fr", async () => {
+  const css = await read("app/design-system.css");
+  assert.match(css, /\.explore-day-posts \{ display: grid; grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.explore-history-day \{ display: grid; grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.explore-day-posts button \{\n  min-width: 0;/);
+});
+
+test("个人中心头像与昵称同一条水平线：两列网格，不再整块换行", async () => {
+  const css = await read("app/profile.css");
+  assert.match(css, /\.profile-hero-identity \{[\s\S]*?display: grid;[\s\S]*?grid-template-columns: var\(--profile-avatar-size\) minmax\(0, 1fr\)/);
+  assert.doesNotMatch(css, /\.profile-hero-identity \{ flex-wrap: wrap/);
+  // 小屏变量必须在 .profile-hero 上，头像自身声明无法影响身份区的负边距
+  assert.match(css, /\.profile-hero \{\n  --profile-avatar-size: 88px;/);
+  assert.match(css, /@media \(max-width: 430px\) \{[\s\S]*?--profile-avatar-size: 78px/);
+});
+
+test("底栏自定义图标加载失败会回退，不会点击后消失", async () => {
+  const community = await read("components/Community.tsx");
+  assert.match(community, /function BottomNavDecorIcon/);
+  assert.match(community, /probe\.onerror/);
+  assert.match(community, /onError=\{\(\) => setFailed/);
+  assert.match(community, /if \(!src\) return <Fallback size=\{21\}/);
+});

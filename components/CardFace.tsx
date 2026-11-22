@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Post } from "@/lib/content";
 import type { CardRarityTier } from "@/lib/progression";
 
@@ -47,6 +47,37 @@ export default function CardBackFace({ post, state, rarityLabel, rarityTier, onR
   const [imageState, setImageState] = useState<"loading" | "ready" | "failed">("loading");
   const image = post?.image;
   useEffect(() => { setImageState(image ? "loading" : "failed"); }, [image]);
+
+  // 卡面是固定 3:4 的，摘要能放几行取决于「卡有多宽」。用实际剩余高度除以行高，
+  // 取整数行，末行就不会被容器裁掉半行；窗口尺寸变化时同步重算。
+  const bodyRef = useRef<HTMLSpanElement | null>(null);
+  const excerptRef = useRef<HTMLSpanElement | null>(null);
+  const [excerptLines, setExcerptLines] = useState(4);
+  useEffect(() => {
+    const body = bodyRef.current;
+    const excerpt = excerptRef.current;
+    if (!body || !excerpt) return;
+    const measure = () => {
+      const style = window.getComputedStyle(excerpt);
+      const bodyStyle = window.getComputedStyle(body);
+      const lineHeight = Number.parseFloat(style.lineHeight) || 18;
+      const rowGap = Number.parseFloat(bodyStyle.rowGap) || 0;
+      const padding = (Number.parseFloat(bodyStyle.paddingTop) || 0) + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
+      let used = 0;
+      for (const child of Array.from(body.children) as HTMLElement[]) {
+        if (child !== excerpt) used += child.offsetHeight;
+      }
+      const gaps = rowGap * Math.max(0, body.children.length - 1);
+      // 留 2px 余量吸收行高小数，避免刚好卡在边界上多算一行。
+      const available = body.clientHeight - padding - used - gaps - 2;
+      const lines = Math.floor(available / lineHeight);
+      setExcerptLines(Math.max(1, Math.min(8, lines)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [post?.id, post?.title, post?.body, imageState]);
 
   if (state !== "ready" || !post) {
     return (
@@ -104,13 +135,15 @@ export default function CardBackFace({ post, state, rarityLabel, rarityTier, onR
         </span>
       )}
       {rarityLabel && <i className={`candidate-rarity-chip rarity-tier-${rarityTier}`} aria-label={`${rarityLabel}稀有卡`}>{rarityLabel}</i>}
-      <span className="card-back-body">
+      <span className="card-back-body" ref={bodyRef}>
         <span className="card-back-meta">
           <small>{post.tag || "黑卡内容"}</small>
           {post.contentType && post.contentType !== "community_post" && <small className="card-back-kind">AI</small>}
         </span>
         <strong className="card-back-title">{post.title || "未命名内容"}</strong>
-        {!hasImage && excerpt && <span className="card-back-excerpt">{excerpt}</span>}
+        {!hasImage && excerpt && (
+          <span className="card-back-excerpt" ref={excerptRef} style={{ "--card-excerpt-lines": excerptLines } as CSSProperties}>{excerpt}</span>
+        )}
         <span className="card-back-foot">
           {rating ? (
             <span className="card-back-rating" aria-label={`评分 ${rating}`}>

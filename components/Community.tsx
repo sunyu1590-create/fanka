@@ -105,6 +105,7 @@ import DraftBox from "./DraftBox";
 import ProfileHeader from "./ProfileHeader";
 import type { CoverMeta } from "./CoverEditor";
 import { applyDecorToDocument, installDecorThemeSync, loadDecor, resetDecor, useDecor } from "@/lib/decor/store";
+import type { DecorIcon } from "@/lib/decor/types";
 import { countDrafts, getDraftFile, migrateLegacyDrafts, saveDraft, deleteDraft, type LocalDraft } from "@/lib/local-drafts";
 import AccountSwitcher from "./AccountSwitcher";
 import ProfileBadgeList, { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
@@ -305,6 +306,44 @@ const nav = [
   ["messages", "消息", MessageSquare],
   ["mine", "我的", UserRound],
 ] as const;
+/**
+ * 底栏自定义图标。
+ *
+ * 之前直接把 <img src> 在 normal / active 之间切换：只要 active 图缺失、404
+ * 或加载失败，点击后图标就整块消失（normal 已缓存所以未点击时看起来正常）。
+ * 现在预加载两张图，失败即回退 normal，再失败退回内置线性图标，任何情况都有图标。
+ */
+function BottomNavDecorIcon({ icon, active, fallback: Fallback }: { icon?: DecorIcon; active: boolean; fallback: (typeof nav)[number][2] }) {
+  const normal = icon?.normal;
+  const activeSrc = icon?.active;
+  const [failed, setFailed] = useState<Record<string, true>>({});
+  const srcs = useMemo(() => [normal, activeSrc].filter((src): src is string => Boolean(src)), [normal, activeSrc]);
+  const srcKey = srcs.join("|");
+  useEffect(() => {
+    let cancelled = false;
+    const probes = srcs.map((src) => {
+      const probe = new Image();
+      probe.onerror = () => {
+        if (!cancelled) setFailed((prev) => (prev[src] ? prev : { ...prev, [src]: true }));
+      };
+      probe.src = src;
+      return probe;
+    });
+    return () => {
+      cancelled = true;
+      probes.forEach((probe) => { probe.onerror = null; });
+    };
+  }, [srcKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const preferred = active ? activeSrc || normal : normal;
+  const src = preferred && !failed[preferred] ? preferred : undefined;
+  if (!src) return <Fallback size={21} strokeWidth={1.8} />;
+  const size = 21 * (icon?.scale || 1);
+  if (icon?.tint) {
+    return <span className={`decor-nav-icon is-mask${icon.fit === "cover" ? " is-cover" : ""}`} aria-hidden="true" style={{ width: size, height: size, WebkitMaskImage: `url("${src}")`, maskImage: `url("${src}")` }} />;
+  }
+  return <img className={`decor-nav-icon${icon?.fit === "cover" ? " is-cover" : ""}`} src={src} alt="" aria-hidden="true" style={{ width: size, height: size }} onError={() => setFailed((prev) => (prev[src] ? prev : { ...prev, [src]: true }))} />;
+}
+
 const topicOptions = [
   {
     tag: "生活",
@@ -4400,8 +4439,6 @@ export default function Community({
     const navActive = tab === id || (tab === "settings" && id === "mine") || ((tab === "topic" || tab === "shared-collection") && id === "discover") || ((tab === "exploration-center" || tab === "co-explore" || tab === "monthly-recap" || tab === "card-chain") && id === "mine") || (tab === "notifications" && id === "messages");
     const slot = id === "today" ? "home" : id === "discover" ? "discover" : id === "messages" ? "messages" : "mine";
     const custom = decorState.decor.bottomBar.icons[slot];
-    const customSrc = navActive ? custom?.active || custom?.normal : custom?.normal;
-    const iconSize = 21 * (custom?.scale || 1);
     return (
     <button
       key={id}
@@ -4428,10 +4465,7 @@ export default function Community({
     >
       <span className="bottom-nav-icon">
         {id === "messages" && <InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} />}
-        {customSrc ? (custom?.tint
-          ? <span className={`decor-nav-icon is-mask${custom?.fit === "cover" ? " is-cover" : ""}`} aria-hidden="true" style={{ width: iconSize, height: iconSize, WebkitMaskImage: `url("${customSrc}")`, maskImage: `url("${customSrc}")` }} />
-          : <img className={`decor-nav-icon${custom?.fit === "cover" ? " is-cover" : ""}`} src={customSrc} alt="" aria-hidden="true" style={{ width: iconSize, height: iconSize }} />)
-          : <Icon size={21} strokeWidth={1.8} />}
+        <BottomNavDecorIcon icon={custom} active={navActive} fallback={Icon} />
       </span>
       {decorState.decor.bottomBar.showLabel !== false && <span className="bottom-nav-label">{label}</span>}
     </button>

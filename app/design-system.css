@@ -8168,6 +8168,13 @@ img, video, canvas, iframe { max-width:100%; }
 }
 
 /* 卡片内部：标题两行截断、图片比例固定、长英文与标签不撑破 */
+.post-card .post-meta > b {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
 .post-card .editorial-title,
 .discover-content-card .editorial-title {
   display: -webkit-box;
@@ -8224,6 +8231,8 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
   display: flex; flex-direction: column; gap: 5px;
   padding: 13px 13px 14px; text-align: left; min-width: 0;
 }
+/* 卡面高度固定，flex 压缩会把文字压成半行；除摘要外一律不收缩。 */
+.card-back-meta, .card-back-title, .card-back-foot { flex: none; }
 .card-back-meta { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .card-back-meta small {
   font-size: 10px; letter-spacing: .04em; color: rgba(255,255,255,.82);
@@ -8238,6 +8247,8 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
   color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.42);
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
   overflow: hidden; overflow-wrap: anywhere;
+  /* 最多三整行：行高与行数锁死，不再出现被父级裁掉的半行。 */
+  max-height: calc(1.34em * 3);
 }
 .card-back-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 3px; }
 .card-back-rating {
@@ -8254,12 +8265,15 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
 }
 .card-flip-back.is-text .card-back-meta small { color: var(--muted); }
 .card-flip-back.is-text .card-back-title {
-  font-size: 17px; color: var(--ink); text-shadow: none; -webkit-line-clamp: 4;
+  font-size: 16.5px; color: var(--ink); text-shadow: none;
+  -webkit-line-clamp: 3; max-height: calc(1.34em * 3);
 }
 .card-back-excerpt {
   font-size: 11.5px; line-height: 1.6; color: var(--muted);
-  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical;
-  overflow: hidden; overflow-wrap: anywhere; flex: 1 1 auto; min-height: 0;
+  display: -webkit-box; -webkit-box-orient: vertical;
+  /* 行数由 CardFace 按卡面实际剩余高度算出（整数行），避免末行被裁一半。 */
+  -webkit-line-clamp: var(--card-excerpt-lines, 4);
+  overflow: hidden; overflow-wrap: anywhere; flex: 0 0 auto;
 }
 .card-flip-back.is-text .card-back-foot { margin-top: auto; }
 .card-flip-back.is-text .card-back-cta { color: var(--muted); }
@@ -8302,7 +8316,8 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
 }
 
 /* ── 探索中心（A 极简档案 + C 编辑式工作台） ───────────────────────── */
-.explore-page { padding-bottom: 104px; }
+.explore-page { min-width: 0; padding-bottom: 104px; }
+.explore-block { min-width: 0; }
 .explore-hero { padding: 4px 0 20px; }
 .explore-hero-kicker { font: 9px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .18em; color: var(--muted); }
 .explore-hero h1 { margin: 8px 0 9px; font-size: clamp(23px, 6vw, 29px); line-height: 1.24; letter-spacing: -.04em; }
@@ -8367,8 +8382,10 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
 .explore-day-detail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .explore-day-detail-head strong { font-size: 12.5px; font-weight: 600; }
 .explore-day-detail-head span { font-size: 10px; color: var(--muted); }
-.explore-day-posts { display: grid; gap: 2px; }
+/* 隐式列默认 auto，会被 nowrap 标题撑到 max-content；必须显式 minmax(0,1fr)。 */
+.explore-day-posts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
 .explore-day-posts button {
+  min-width: 0;
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 0;
   border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink); text-align: left;
 }
@@ -8430,12 +8447,12 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
 .explore-history-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; }
 .explore-history-toggle > span { display: inline-flex; align-items: center; gap: 4px; }
 .explore-history-toggle > span svg { transition: transform 180ms ease; }
-.explore-history-day { display: grid; gap: 2px; padding: 10px 0 4px; border-top: 1px solid var(--line); }
+.explore-history-day { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 0 4px; border-top: 1px solid var(--line); }
 .explore-history-date { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 4px; }
 .explore-history-date strong { font-size: 10.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
 .explore-history-date span { font-size: 9.5px; color: var(--muted); }
 .explore-history-day button {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 0;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 8px 0;
   border: 0; background: none; color: var(--ink); text-align: left;
 }
 .explore-history-day button > span { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
