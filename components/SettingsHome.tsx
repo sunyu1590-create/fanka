@@ -13,7 +13,7 @@ type Row = { label: string; value?: string; icon: typeof Moon; action: () => voi
 type Props = {
   theme: "dark" | "light" | "system";
   fontChoice: "oppo" | "system";
-  bottomNavStyle: "glass" | "fixed";
+  bottomNavStyle?: "glass" | "fixed";
   homeMode: "waterfall" | "blackcard";
   readingMode: "standard" | "focus" | "night";
   detailTransition: "image-zoom" | "blur-rise" | "ghost-handoff";
@@ -52,7 +52,7 @@ function SettingsHome({ theme, fontChoice, bottomNavStyle, homeMode, readingMode
         id: "appearance", title: "外观与阅读", description: "主题、字体、布局与阅读体验", icon: Moon, rows: [
           { label: "主题外观", value: ({ dark: "深色", light: "浅色", system: "跟随系统" } as const)[theme], icon: Moon, action: () => onOpenDetail("theme") },
           { label: "字体设置", value: fontChoice === "oppo" ? "OPPO Sans" : "系统字体", icon: Type, action: () => onOpenDetail("font") },
-          { label: "底部导航", value: bottomNavStyle === "glass" ? "悬浮" : "固定", icon: PanelBottom, action: () => onOpenDetail("bottomNav") },
+          { label: "底部导航", value: "悬浮", icon: PanelBottom, action: () => onOpenDetail("bottomNav") },
           { label: "底栏装扮", value: "颜色、图标与预设", icon: Palette, action: () => onOpenDecor("bottom") },
           { label: "卡片装扮", value: "卡背与内容面", icon: Layers, action: () => onOpenDecor("card") },
           { label: "创意工坊", value: "官方与玩家主题", icon: Sparkles, action: () => onOpenDecor("official") },

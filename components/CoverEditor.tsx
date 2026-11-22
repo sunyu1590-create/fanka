@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Image as ImageIcon, Maximize2, Move, RotateCcw, X, ZoomIn } from "lucide-react";
-import { cloudRequest } from "@/lib/cloud";
 
 export type CoverMeta = { focusX: number; focusY: number; zoom: number; ratio: number; collapsedHeight: number };
 
 export const DEFAULT_COVER_META: CoverMeta = { focusX: 50, focusY: 50, zoom: 1, ratio: 16 / 9, collapsedHeight: 176 };
+
+/** 保存链路分阶段：处理图片 → 上传 → 保存资料 → 成功 / 失败（需求五界面区分）。 */
+export type CoverSavePhase = "processing" | "idle" | "uploading" | "saving" | "success" | "error";
 
 type Props = {
   file: File;
@@ -42,21 +44,38 @@ async function readImage(file: File): Promise<{ url: string; width: number; heig
   return { url, width: image.naturalWidth, height: image.naturalHeight };
 }
 
+const PHASE_TEXT: Record<CoverSavePhase, string> = {
+  processing: "正在处理图片…",
+  idle: "调整好取景后保存，原图会完整保留",
+  uploading: "正在上传…",
+  saving: "正在保存资料…",
+  success: "保存成功",
+  error: "上传或保存失败",
+};
+
 export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved, onNotice }: Props) {
   const [source, setSource] = useState<{ url: string; width: number; height: number } | null>(null);
   const [meta, setMeta] = useState<CoverMeta>(DEFAULT_COVER_META);
+  const [phase, setPhase] = useState<CoverSavePhase>("processing");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [fullView, setFullView] = useState(false);
   const dragRef = useRef<{ x: number; y: number; focusX: number; focusY: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
+    setPhase("processing");
+    setError("");
     void readImage(file).then((result) => {
       if (!alive) { URL.revokeObjectURL(result.url); return; }
       setSource(result);
       setMeta((current) => ({ ...current, ratio: result.width / result.height }));
-    }).catch((cause) => { if (alive) setError(cause instanceof Error ? cause.message : "图片无法读取"); });
+      setPhase("idle");
+    }).catch((cause) => {
+      if (!alive) return;
+      setPhase("error");
+      setError(cause instanceof Error ? cause.message : "图片无法读取");
+    });
     return () => { alive = false; };
   }, [file]);
 
@@ -80,38 +99,63 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
 
   const dragEnd = () => { dragRef.current = null; };
 
-  const save = async () => {
-    if (!source) return;
-    setBusy(true);
+  // 上传与保存分两段反馈：请求体传完（upload 结束）后是「正在保存资料」，
+  // 失败绝不会提示保存成功（需求五）。失败保留取景与文件，可直接重试。
+  const save = () => {
+    if (!source || phase === "uploading" || phase === "saving") return;
+    setPhase("uploading");
     setError("");
-    try {
-      const form = new FormData();
-      // 保留完整原图，取景参数单独保存，展开时才有更多画面可看。
-      form.set("file", file);
-      form.set("meta", JSON.stringify(meta));
-      const { browserDb } = await import("@/lib/browser-db");
-      const db = await browserDb();
-      const { data } = await db.auth.getSession();
-      if (!data.session) throw new Error("登录后才能上传封面");
-      const response = await fetch("/api/v1/me/cover", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-        body: form,
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error((payload as { error?: string }).error || "封面上传失败");
-      const url = (payload as { data?: { cover_url?: string } }).data?.cover_url;
-      if (!url) throw new Error("封面上传未完成，请重试");
-      onSaved(url, meta);
-      onNotice("封面已更新");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "封面上传失败，请重试");
-    } finally {
-      setBusy(false);
-    }
+    setUploadProgress(0);
+    void (async () => {
+      try {
+        const { browserDb } = await import("@/lib/browser-db");
+        const db = await browserDb();
+        const { data } = await db.auth.getSession();
+        if (!data.session) throw new Error("登录后才能上传封面");
+        const result = await new Promise<{ url: string } | { message: string }>((resolve) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/v1/me/cover");
+          xhr.setRequestHeader("Authorization", `Bearer ${data.session!.access_token}`);
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) setUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+          };
+          xhr.upload.onloadend = () => {
+            // 请求体传完：进入「正在保存资料」等待服务端落库。
+            setPhase("saving");
+          };
+          xhr.onload = () => {
+            let payload: { error?: string; data?: { cover_url?: string } } = {};
+            try { payload = JSON.parse(xhr.responseText || "{}"); } catch { /* 非 JSON 响应按失败处理 */ }
+            const url = payload.data?.cover_url;
+            if (xhr.status >= 200 && xhr.status < 300 && url) resolve({ url });
+            else resolve({ message: payload.error || (xhr.status === 413 ? "封面图片不能超过 12 MB" : `封面上传失败（${xhr.status || "网络异常"}）`) });
+          };
+          xhr.onerror = () => resolve({ message: "网络异常，上传未完成，请重试" });
+          xhr.onabort = () => resolve({ message: "上传已中断，请重试" });
+          const form = new FormData();
+          // 保留完整原图，取景参数单独保存，展开时才有更多画面可看。
+          form.set("file", file);
+          form.set("meta", JSON.stringify(meta));
+          xhr.send(form);
+        });
+        if ("message" in result) throw new Error(result.message);
+        setPhase("success");
+        onSaved(result.url, meta);
+        onNotice("封面已更新");
+      } catch (cause) {
+        setPhase("error");
+        setError(cause instanceof Error ? cause.message : "上传或保存失败，请重试");
+      }
+    })();
   };
 
   const background = useMemo(() => source ? coverBackground(source.url, meta) : undefined, [source, meta]);
+  const busy = phase === "processing" || phase === "uploading" || phase === "saving" || phase === "success";
+  const saveLabel = phase === "uploading" ? `正在上传… ${uploadProgress}%`
+    : phase === "saving" ? "正在保存资料…"
+    : phase === "success" ? "保存成功"
+    : phase === "error" ? "重试保存"
+    : "保存封面";
 
   return (
     <div className="cover-editor" role="dialog" aria-modal="true" aria-label="编辑个人封面">
@@ -122,8 +166,8 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
           <button type="button" onClick={() => setFullView((value) => !value)} aria-label={fullView ? "返回取景" : "查看完整封面"}>
             {fullView ? <ImageIcon size={17} /> : <Maximize2 size={17} />}
           </button>
-          <button type="button" className="cover-editor-save" disabled={!source || busy} onClick={() => void save()}>
-            {busy ? "上传中…" : <><Check size={16} /> 保存</>}
+          <button type="button" className={`cover-editor-save${phase === "success" ? " is-success" : ""}${phase === "error" ? " is-error" : ""}`} disabled={busy || !source} onClick={save}>
+            {phase === "success" ? <><Check size={16} /> 保存成功</> : saveLabel}
           </button>
         </div>
       </div>
@@ -171,7 +215,8 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
           </button>
         </div>
       )}
-      {error && <p className="cover-editor-error" role="alert">{error}</p>}
+      <p className="cover-editor-phase" role="status" aria-live="polite">{PHASE_TEXT[phase]}</p>
+      {error && <p className="cover-editor-error" role="alert">上传或保存失败：{error}。取景和已填内容已保留，可直接重试。</p>}
     </div>
   );
 }

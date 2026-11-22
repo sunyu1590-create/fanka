@@ -31,10 +31,10 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextField
@@ -50,8 +50,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -68,7 +70,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.discovery.FeedCard
-import com.heika.nativeapp.feature.exploration.ExplorationLogic
 import com.heika.nativeapp.ui.BackHeader
 import androidx.compose.ui.zIndex
 import com.heika.nativeapp.feature.collection.AuthorCollectionsSection
@@ -108,6 +109,8 @@ fun ProfileScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var selected by remember(userId) { mutableStateOf("works") }
+    // 草稿箱：弹出本地草稿列表由用户选择恢复，不自动加载旧草稿（需求 3.3）。
+    var draftPickerOpen by remember { mutableStateOf(false) }
     var hasResumedOnce by remember(userId) { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val worksState = rememberLazyStaggeredGridState()
@@ -165,6 +168,11 @@ fun ProfileScreen(
 
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
+    if (draftPickerOpen) DraftPickerSheet(
+        drafts = state.drafts,
+        onPick = { draft -> draftPickerOpen = false; onDraft(draft) },
+        onDismiss = { draftPickerOpen = false },
+    )
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
         Box(Modifier.fillMaxSize()) {
@@ -198,12 +206,22 @@ fun ProfileScreen(
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                         ) {
                             if (profile.cover != null) {
+                                // 需求 4.2：按网页保存的取景（焦点与缩放）展示封面。
+                                val coverMeta = profile.coverMeta
+                                val focusX = (coverMeta?.focusX ?: 50f) / 100f
+                                val focusY = (coverMeta?.focusY ?: 50f) / 100f
+                                val coverZoom = (coverMeta?.zoom ?: 1f).coerceIn(1f, 3f)
                                 AsyncImage(
                                     model = profile.cover,
                                     contentDescription = "${profile.nickname}的封面",
                                     imageLoader = LocalHeikaImageLoader.current,
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                                        scaleX = coverZoom
+                                        scaleY = coverZoom
+                                        transformOrigin = TransformOrigin(focusX, focusY)
+                                    },
                                     contentScale = ContentScale.Crop,
+                                    alignment = Alignment(focusX * 2f - 1f, focusY * 2f - 1f),
                                 )
                             } else {
                                 Box(
@@ -243,6 +261,17 @@ fun ProfileScreen(
                                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Text(profile.nickname, Modifier.weight(1f, fill = false), color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        // 昵称旁小铅笔编辑入口（需求 3.2）：视觉紧凑、点击范围充足。
+                                        if (userId == null) {
+                                            Box(
+                                                Modifier.size(26.dp).clip(CircleShape)
+                                                    .background(Color.Black.copy(alpha = .34f))
+                                                    .clickable(onClick = onEditProfile),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(HeikaIcons.Edit, "编辑资料", Modifier.size(13.dp), tint = Color.White)
+                                            }
+                                        }
                                         state.badges.take(2).forEach { badge ->
                                             val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(Color.White)
                                             Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(15.dp))
@@ -251,15 +280,6 @@ fun ProfileScreen(
                                         if (userId == null) Text("LV${state.stats.level}", color = Color.White.copy(alpha = .9f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .3.sp)
                                     }
                                     Text("用户编号 · ${profile.id.take(8).uppercase()}", color = Color.White.copy(alpha = .74f), fontSize = 9.sp, modifier = Modifier.padding(top = 3.dp))
-                                }
-                                if (userId == null) {
-                                    Icon(
-                                        HeikaIcons.Edit, "编辑资料",
-                                        Modifier.size(38.dp).clip(CircleShape)
-                                            .background(Color.Black.copy(alpha = .34f))
-                                            .clickable(onClick = onEditProfile).padding(9.dp),
-                                        tint = Color.White,
-                                    )
                                 }
                             }
                         }
@@ -300,40 +320,30 @@ fun ProfileScreen(
                                 ProfileStat(state.stats.streak.toString(), "连续探索")
                                 ProfileStat(state.stats.bookmarks.toString(), "我的收藏")
                             }
-                            val levelProgress = ExplorationLogic.progression(state.stats.experience)
-                            Column(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 8.dp).clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 7.dp)) {
-                                Row(
-                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onExplore).padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(9.dp),
-                                ) {
-                                    // 等级用小号金字与昵称同行，不做灰色/彩色方块（与网页统一）。
-                                    Text("LV${levelProgress.current.level}", Modifier.padding(end = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                                    Column(Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(levelProgress.current.reward, Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(levelProgress.next?.let { "${state.stats.experience}/${it.threshold} EXP" } ?: "${state.stats.experience} EXP · 满级", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1)
-                                        }
-                                        LinearProgressIndicator(
-                                            progress = { levelProgress.percent / 100f },
-                                            modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(3.dp).clip(CircleShape),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        )
-                                    }
-                                    Icon(HeikaIcons.Forward, "进入探索中心", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
-                                }
-                                HorizontalDivider(Modifier.padding(vertical = 3.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
-                                Row(
-                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onDailyTasks).padding(vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(9.dp),
-                                ) {
-                                    Text("今日探索任务", color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                                    Text(state.stats.dailyTasks?.let { "${state.stats.completedDailyTasks}/$it 已完成" } ?: "进度同步中", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1)
-                                    Text(state.stats.dailyExperience?.let { "可得 $it EXP" } ?: "", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, maxLines = 1)
-                                    Icon(HeikaIcons.Forward, "进入今日任务", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
-                                }
+                            // 三个快捷入口横向三等分（需求 3.3）：草稿箱 / 今日任务 / 探索中心。
+                            // 移除了旧的成长大卡片与「继续编辑」重复提醒，功能入口收拢在这里。
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                QuickEntry(
+                                    title = "草稿箱",
+                                    detail = if (state.drafts.isNotEmpty()) "${state.drafts.size} 篇草稿" else "暂无草稿",
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { draftPickerOpen = true },
+                                )
+                                QuickEntry(
+                                    title = "今日任务",
+                                    detail = state.stats.dailyTasks?.let { "${state.stats.completedDailyTasks}/$it 已完成" } ?: "查看进度",
+                                    modifier = Modifier.weight(1f),
+                                    onClick = onDailyTasks,
+                                )
+                                QuickEntry(
+                                    title = "探索中心",
+                                    detail = "好友 · 月报 · 接龙",
+                                    modifier = Modifier.weight(1f),
+                                    onClick = onExplore,
+                                )
                             }
                         } else {
                             Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -353,9 +363,6 @@ fun ProfileScreen(
                         if (!state.own) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 10.dp)) {
                             Text(if (state.following) "已关注 · ${state.followerCount}" else "关注 · ${state.followerCount}", Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).clickable(onClick = viewModel::toggleFollow).padding(11.dp), color = MaterialTheme.colorScheme.onBackground)
                             Text("发私信", Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).clickable { onMessage(profile.id) }.padding(11.dp), color = MaterialTheme.colorScheme.onBackground)
-                        }
-                        if (state.own && selected == "works" && state.drafts.isNotEmpty()) {
-                            Text("草稿 ${state.drafts.size} 篇 · 继续编辑", Modifier.fillMaxWidth().clickable { onDraft(state.drafts.first()) }.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp)
                         }
                     }
                 }
@@ -471,12 +478,67 @@ private fun ProfileBrandHeader(onSettings: () -> Unit, onMembership: () -> Unit)
     }
 }
 
+/** 三等分快捷入口（需求 3.3）：统一图标大小、标题基线、说明位置与点击区域，不套大卡片。 */
+@Composable
+private fun QuickEntry(title: String, detail: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(HeikaRadii.control))
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
 @Composable
 private fun ProfileStat(value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(value, color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
     }
+}
+
+/** 草稿箱弹窗：列出本地草稿由用户选择恢复（需求 3.3，不自动加载）。 */
+@Composable
+private fun DraftPickerSheet(
+    drafts: List<HeikaPost>,
+    onPick: (HeikaPost) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    if (drafts.isEmpty()) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } },
+            title = { Text("草稿箱") },
+            text = { Text("暂无草稿。") },
+        )
+        return
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("草稿箱") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("选择一篇草稿继续编辑", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                drafts.forEach { draft ->
+                    Text(
+                        draft.title.ifBlank { "未命名草稿" },
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.control)).clickable { onPick(draft) }.padding(vertical = 10.dp, horizontal = 8.dp),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+    )
 }
 
 @Composable

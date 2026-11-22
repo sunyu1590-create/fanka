@@ -487,6 +487,25 @@
 }
 
 /* 单项恢复默认（需求九） */
+.decor-row-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+}
+.decor-row-toggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.decor-row-toggle > span small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .decor-row-reset {
   flex: 0 0 auto;
   width: 24px;
@@ -501,3 +520,26 @@
   cursor: pointer;
 }
 .decor-row-reset:hover { color: var(--ink); }
+
+/* 按钮六态（需求 11）：默认/按下/加载/成功/失败重试/禁用。尺寸固定不跳动。 */
+.decor-action-button {
+  min-width: 118px;
+  min-height: 36px;
+}
+.decor-action-button.is-success { background: #2f7d4f; border-color: #2f7d4f; color: #fff; }
+.decor-action-button.is-error { background: #a4432f; border-color: #a4432f; color: #fff; }
+.decor-action-button.is-loading { cursor: progress; opacity: .82; }
+.decor-action-button:active:not(:disabled) { transform: scale(.96); }
+.decor-button-spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: decor-button-spin .7s linear infinite;
+}
+@keyframes decor-button-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .decor-button-spinner { animation-duration: 1.4s; }
+}

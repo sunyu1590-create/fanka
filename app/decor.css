@@ -59,6 +59,19 @@
   z-index: 1;
 }
 
+/* 底栏文字开关（需求十）：关闭后仅图标，图标在按钮区域自然居中；
+   点击区域不随文字隐藏而缩小，四个按钮仍等宽等距，角标位置稳定。 */
+:root[data-decor-bar-label="hide"] .bottom-nav .bottom-nav-label {
+  display: none;
+}
+:root[data-decor-bar-label="hide"] .bottom-nav button {
+  gap: 0;
+  justify-content: center;
+}
+:root[data-decor-bar-label="hide"] .bottom-nav button svg {
+  margin: 0;
+}
+
 /* 自定义图标：既支持彩色原图，也支持单色蒙版跟随主题色 */
 .decor-nav-icon {
   display: block;
@@ -265,6 +278,51 @@
   color: var(--decor-card-title) !important;
 }
 
+/* 内容区域遮罩：压暗自定义底图，保证标题/摘要可读。只作用装饰底图层，作者封面在独立图层不受影响。 */
+:root[data-decor-card="custom"] .candidate-feed-card .card-flip-back::before,
+:root[data-decor-card="custom"] .flip-window-revealed::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--decor-card-content-bg) calc(var(--decor-card-content-scrim, 0) * 100%), transparent);
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+/* 内容面低强度纹理：装饰层，pointer-events:none，不拦截「确认翻开」等按钮。 */
+:root[data-decor-card="custom"][data-decor-card-content-texture="linen"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"][data-decor-card-content-texture="linen"] .flip-window-revealed {
+  background-image: var(--decor-card-content-image), repeating-linear-gradient(105deg, transparent 0 2px, color-mix(in srgb, var(--decor-card-content-border) 14%, transparent) 2px 3px);
+}
+:root[data-decor-card="custom"][data-decor-card-content-texture="dots"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"][data-decor-card-content-texture="dots"] .flip-window-revealed {
+  background-image: var(--decor-card-content-image), radial-gradient(color-mix(in srgb, var(--decor-card-content-border) 22%, transparent) 1px, transparent 1.4px);
+  background-size: auto, 12px 12px;
+}
+:root[data-decor-card="custom"][data-decor-card-content-texture="grid"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"][data-decor-card-content-texture="grid"] .flip-window-revealed {
+  background-image: var(--decor-card-content-image), repeating-linear-gradient(0deg, transparent 0 6px, color-mix(in srgb, var(--decor-card-content-border) 14%, transparent) 6px 7px), repeating-linear-gradient(90deg, transparent 0 6px, color-mix(in srgb, var(--decor-card-content-border) 14%, transparent) 6px 7px);
+}
+:root[data-decor-card="custom"][data-decor-card-content-texture="paper"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"][data-decor-card-content-texture="paper"] .flip-window-revealed {
+  background-image: var(--decor-card-content-image), radial-gradient(color-mix(in srgb, var(--decor-card-content-border) 16%, transparent) .7px, transparent 1px), radial-gradient(color-mix(in srgb, var(--decor-card-content-border) 12%, transparent) .6px, transparent .9px);
+  background-size: auto, 10px 10px, 14px 14px;
+}
+:root[data-decor-card="custom"][data-decor-card-content-texture="noise"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"][data-decor-card-content-texture="noise"] .flip-window-revealed {
+  background-image: var(--decor-card-content-image), repeating-conic-gradient(color-mix(in srgb, var(--decor-card-content-border) 12%, transparent) 0% .0001%, transparent .0002% .0004%);
+  background-size: auto, 3px 3px;
+}
+:root[data-decor-card="custom"][data-decor-card-content-texture="rings"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"][data-decor-card-content-texture="rings"] .flip-window-revealed {
+  background-image: var(--decor-card-content-image), repeating-radial-gradient(circle at 50% 46%, transparent 0 9px, color-mix(in srgb, var(--decor-card-content-border) 16%, transparent) 9px 10px);
+}
+:root[data-decor-card="custom"][data-decor-card-content-texture="diamonds"] .candidate-feed-card .card-flip-back,
+:root[data-decor-card="custom"][data-decor-card-content-texture="diamonds"] .flip-window-revealed {
+  background-image: var(--decor-card-content-image), repeating-linear-gradient(45deg, transparent 0 9px, color-mix(in srgb, var(--decor-card-content-border) 13%, transparent) 9px 10px), repeating-linear-gradient(-45deg, transparent 0 9px, color-mix(in srgb, var(--decor-card-content-border) 13%, transparent) 9px 10px);
+}
+
 :root[data-decor-card="custom"] .candidate-feed-card .card-flip-back:has(img)::after {
   background: linear-gradient(transparent 26%, color-mix(in srgb, var(--decor-card-content-bg) 88%, transparent)) !important;
 }
@@ -365,7 +423,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 4;
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   overflow: hidden;
   border: 1px solid var(--decor-card-back-border);
   background-color: var(--decor-card-back-bg);
@@ -479,7 +537,8 @@
    ========================================================================== */
 :root[data-app-embed="1"] .bottom-nav,
 :root[data-app-embed="1"] .topline,
-:root[data-app-embed="1"] .compose {
+:root[data-app-embed="1"] .compose,
+:root[data-app-embed="1"] .settings-back {
   display: none !important;
 }
 

@@ -23,6 +23,8 @@
   --space-6: 32px;
   --space-7: 48px;
   --radius: 6px;
+  /* 卡片三态统一圆角：以已翻开内容卡（flip-window-revealed）为基准 */
+  --radius-card: 15px;
   --radius-page: 12px;
   --radius-control: 10px;
   --radius-group: 13px;
@@ -73,7 +75,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .candidate-feed-card.flip-in-place:nth-child(3n),
 .candidate-feed-card.flip-in-place:nth-child(4n) { aspect-ratio: 3 / 4; }
 .card-flip-inner { transition: transform var(--motion-flip) var(--ease); }
-.card-flip-face, .flip-face, .flip-stage { border-radius: var(--radius); }
+.card-flip-face, .flip-face, .flip-stage { border-radius: var(--radius-card); }
 .card-flip-front, .flip-window-face {
   background-color: #0d1113;
   background-image: repeating-linear-gradient(104deg, transparent 0 2px, rgba(201,211,215,.018) 2px 3px),
@@ -163,7 +165,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Flip window and continuous reading surface */
 .flip-overlay { background: rgba(4,6,7,.88); backdrop-filter: blur(5px); }
 .flip-stage { box-shadow: 0 22px 56px rgba(0,0,0,.35); }
-.flip-face { border-radius: var(--radius); }
+.flip-face { border-radius: var(--radius-card); }
 .flip-window-face { position: absolute; }
 .window-brand-cn { color: var(--ink); font-size: 38px; font-weight: 600; }
 .window-brand-en { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
@@ -335,7 +337,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 /* User-selectable bottom navigation presentation. */
 .bottom-nav{transition:width .22s ease,bottom .22s ease,border-radius .22s ease,background-color .22s ease,box-shadow .22s ease}
-.bottom-nav.fixed-bar{left:0;right:0;bottom:0;transform:none;width:100%;max-width:none;border-radius:0;border-inline:0;border-bottom:0;box-shadow:none}
 .bottom-nav.floating-glass{left:50%;right:auto;bottom:calc(10px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(520px,calc(100% - 28px));max-width:520px;height:62px;padding:0;border:1px solid var(--line);border-radius:18px;background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:0 8px 32px #0002;overflow:hidden}
 .bottom-nav.floating-glass button{background:transparent}
 :root[data-theme="dark"] .bottom-nav.floating-glass{background:color-mix(in srgb,#171b1e 76%,transparent);border-color:#ffffff20;box-shadow:0 8px 32px #0005,inset 0 1px 0 #ffffff18}
@@ -951,7 +952,7 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 .editorial-post .post-summary{line-height:1.7}
 .candidate-feed{column-gap:10px}
 .candidate-feed-card.flip-in-place{margin-bottom:13px}
-.card-flip-face,.flip-face,.flip-stage{border-radius:1px}
+.card-flip-face,.flip-face,.flip-stage{border-radius:var(--radius-card)}
 .card-flip-front,.candidate-feed-card:nth-child(n) .card-flip-front{border-color:rgba(194,213,220,.38);background-image:linear-gradient(145deg,rgba(181,204,212,.18),transparent 28%),repeating-linear-gradient(105deg,transparent 0 3px,rgba(215,228,232,.025) 3px 4px),linear-gradient(145deg,#27343a,#10171b 65%,#303e44);box-shadow:inset 0 0 0 3px #0a0e10,inset 0 0 0 4px rgba(191,211,218,.3)}
 .card-flip-front::after{border-color:rgba(208,223,227,.35)}
 .card-number,.card-prompt{color:#aebdc2}
@@ -1014,7 +1015,7 @@ body{font-family:var(--font-sans,-apple-system,BlinkMacSystemFont,"PingFang SC",
 .flip-window-face{border:1px solid rgba(198,216,222,.55);background:linear-gradient(145deg,#31383a,#171b1c 66%,#282e30);box-shadow:inset 0 0 0 4px #181c1d,inset 0 0 0 5px #aeb9ba44}
 .flip-window-face .window-brand-cn{font-family:Georgia,"Songti SC",serif;font-weight:560}
 .flip-window-face .flip-button{border-radius:0;background:#c8d4d8;color:#101619}
-.flip-window-revealed,.window-reveal-copy{border-radius:0}
+.flip-window-revealed{border-radius:var(--radius-card)}.window-reveal-copy{border-radius:0}
 .release-note ul{line-height:1.8}
 :root[data-theme="light"] .black-facet-card{box-shadow:0 12px 32px #414b4e26,inset 0 0 0 3px #161d20,inset 0 0 0 4px #c1ced1}
 :root[data-theme="light"] .black-facet.unlocked{fill:#d1dcde;filter:brightness(1.08)}
@@ -1304,7 +1305,6 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .bottom-nav .compose { align-self: center; justify-self: center; }
 .bottom-nav .compose, .bottom-nav.floating-glass .compose { background: #c6a647; color: #17191b; border-color: #d4b450; }
 .bottom-nav button:nth-child(3), .bottom-nav button:nth-child(4) { grid-column: auto; }
-.bottom-nav.fixed-bar { border-radius: 12px 12px 0 0; }
 .primary-button, .soft-button, .load-button, .subscription-continue,
 .settings-page .settings-list button, .settings-entry-card, .font-option, .theme-option,
 .discover-layout-options button, .moderation-filters button, .moderation-actions button,
@@ -1621,6 +1621,15 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .account-profile-actions { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 5; display: flex; gap: 9px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(14px); }
 .account-profile-actions .primary-button { flex: 1; min-height: 46px; }
 .account-profile-actions .soft-button { min-width: 84px; min-height: 46px; }
+/* 4.1 精简：头像与封面并排两个图片入口；更多资料折叠区；保存按钮六态。 */
+.account-image-row { display: grid; gap: 13px; }
+@media (min-width: 700px) { .account-image-row { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+.account-profile-more-panel { display: grid; gap: 16px; padding: 6px 0 8px; }
+.account-certification-block { display: grid; gap: 8px; }
+.account-certification-empty { margin: 0; color: var(--muted); font-size: 11px; }
+.account-save-button.is-success { background: #2f7d4f; border-color: #2f7d4f; color: #fff; }
+.account-save-button.is-error { background: #a4432f; border-color: #a4432f; color: #fff; }
+.account-save-button.is-loading { cursor: progress; opacity: .85; }
 .interest-page-note { display: flex; align-items: center; gap: 9px; margin-bottom: 15px; color: var(--muted); font-size: 11px; }
 .interest-page-note svg { color: var(--action); }
 .account-interest-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
@@ -2353,7 +2362,7 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
   .candidate-feed-card { margin-bottom: 22px; }
   .editorial-filters { margin-block: 18px 28px; }
   .discover-topic-list { gap: 10px; }
-  .bottom-nav,.bottom-nav.fixed-bar {
+  .bottom-nav {
     position: fixed; z-index: 50; inset: 0 auto 0 0; width: 220px; max-width: 220px; height: 100dvh;
     padding: 88px 16px 24px; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 7px;
     transform: none; border: 0; border-right: 1px solid var(--line); border-radius: 0;
@@ -3526,10 +3535,12 @@ hr, [class*="divider"], .section-head, .editorial-section-head,
   .profile-facts-editor-grid>.profile-birthday-field { grid-column: 1/-1; }
 }
 @media (min-width: 1024px) {
-  .account-profile-form.page { grid-template-columns: minmax(0,1.12fr) minmax(300px,.88fr); gap: 18px 34px; align-items: start; }
-  .account-profile-form.page>.profile-live-preview { position: sticky; top: 88px; grid-column: 2; grid-row: 1 / span 4; }
-  .account-profile-form.page>.account-profile-basics,.account-profile-form.page>.profile-detail-fields,.account-profile-form.page>.profile-visibility-settings { grid-column: 1; }
-  .account-profile-form.page>.account-profile-actions,.account-profile-form.page>.animated-notice { grid-column: 1/-1; }
+  .account-profile-form.page { grid-template-columns: minmax(0, 1fr); max-width: 760px; gap: 18px; align-items: start; }
+  .account-profile-form.page>.account-profile-section,
+  .account-profile-form.page>.profile-detail-fields,
+  .account-profile-form.page>.profile-visibility-settings,
+  .account-profile-form.page>.account-profile-actions,
+  .account-profile-form.page>.animated-notice { grid-column: 1 / -1; }
   .account-profile-actions { bottom: 18px; }
 }
 @media (min-width: 1180px) {
@@ -3928,7 +3939,7 @@ img, video, canvas, iframe { max-width:100%; }
   .page,.page.editorial-home { width:100%; max-width:1120px; margin-inline:auto; padding:clamp(30px,4vw,46px) clamp(24px,4vw,48px) calc(96px + env(safe-area-inset-bottom)); }
   .page h1,.editorial-home h1,.today-heading h1 { font-size:clamp(32px,4.4vw,44px); }
   .app-nav-hidden-mobile .bottom-nav { display:grid; }
-  .bottom-nav,.bottom-nav.fixed-bar,.bottom-nav.floating-glass {
+  .bottom-nav,.bottom-nav.floating-glass {
     position:fixed; inset:auto 0 0; z-index:200; width:100%; max-width:none; height:calc(68px + env(safe-area-inset-bottom));
     display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); flex-direction:row; align-items:stretch; justify-content:initial; gap:0;
     padding:0 0 env(safe-area-inset-bottom); transform:none; overflow:visible; border:0; border-top:1px solid var(--line); border-radius:0;
@@ -3987,7 +3998,7 @@ img, video, canvas, iframe { max-width:100%; }
   .topline { position:sticky; top:0; z-index:24; height:68px; padding-inline:clamp(28px,3vw,48px); }
   .topline:not(.secondary-topline) .brand { display:flex; }
   .topline .demo-pill { margin-left:auto; font-size:10px; }
-  .bottom-nav,.bottom-nav.fixed-bar {
+  .bottom-nav {
     position:fixed; inset:0 auto 0 0; z-index:200; width:220px; max-width:220px; height:100dvh; min-height:0;
     display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:7px; padding:76px 16px 24px;
     transform:none; border:0; border-right:1px solid var(--line); border-radius:0; overflow:auto;
@@ -4666,11 +4677,11 @@ img, video, canvas, iframe { max-width:100%; }
 }
 
 /* Today reveal: one continuous card shell, with an adaptive media/text layout. */
-.flip-stage,.flip-inner,.flip-face { border-radius:15px; }
+.flip-stage,.flip-inner,.flip-face { border-radius:var(--radius-card); }
 .flip-stage { box-shadow:0 16px 42px #0004; }
 .flip-window-revealed {
   position:absolute; inset:0; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,65fr) minmax(0,35fr);
-  overflow:hidden; padding:0; border:1px solid color-mix(in srgb,var(--ink) 16%,transparent); border-radius:15px;
+  overflow:hidden; padding:0; border:1px solid color-mix(in srgb,var(--ink) 16%,transparent); border-radius:var(--radius-card);
   background:var(--surface); color:var(--ink); contain:layout paint; isolation:isolate;
 }
 .flip-window-revealed.has-image>img {

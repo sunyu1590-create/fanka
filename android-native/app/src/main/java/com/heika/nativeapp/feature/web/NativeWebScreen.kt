@@ -1,13 +1,19 @@
 package com.heika.nativeapp.feature.web
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,6 +78,24 @@ fun NativeWebScreen(
     val latestSession = rememberUpdatedState(sessionJson)
     val latestEvent = rememberUpdatedState(onEvent)
 
+    // 需求五：APP 内网页的文件选择支持。网页 <input type="file"> 由系统选择器接管，
+    // 选中的图片回传给 WebView；取消时必须回传 null，否则网页侧回调泄漏。
+    var pendingFileChooser by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    val fileChooserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val callback = pendingFileChooser
+        pendingFileChooser = null
+        val data = result.data
+        val uris: Array<Uri>? = when {
+            result.resultCode != Activity.RESULT_OK -> null
+            data?.clipData != null -> Array(data.clipData!!.itemCount) { index -> data.clipData!!.getItemAt(index).uri }
+            data?.data != null -> arrayOf(data.data!!)
+            else -> null
+        }
+        callback?.onReceiveValue(uris)
+    }
+
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(title, onBack)
         Box(Modifier.fillMaxSize()) {
@@ -89,6 +113,32 @@ fun NativeWebScreen(
                         webChromeClient = object : WebChromeClient() {
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
                                 progress = newProgress / 100f
+                            }
+
+                            override fun onShowFileChooser(
+                                webView: WebView?,
+                                filePathCallback: ValueCallback<Array<Uri>>?,
+                                fileChooserParams: FileChooserParams?,
+                            ): Boolean {
+                                pendingFileChooser?.onReceiveValue(null)
+                                pendingFileChooser = null
+                                val intent = try {
+                                    fileChooserParams?.createIntent()
+                                } catch (_: Exception) {
+                                    null
+                                } ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    type = "image/*"
+                                }
+                                return try {
+                                    pendingFileChooser = filePathCallback
+                                    fileChooserLauncher.launch(intent)
+                                    true
+                                } catch (_: Exception) {
+                                    pendingFileChooser = null
+                                    filePathCallback?.onReceiveValue(null)
+                                    false
+                                }
                             }
                         }
                         webViewClient = object : WebViewClient() {

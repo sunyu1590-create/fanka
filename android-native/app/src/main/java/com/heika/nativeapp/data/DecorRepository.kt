@@ -9,7 +9,31 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
+
+/** 玩家工坊 / 我的投稿里的主题条目（服务端 decor_themes 契约）。 */
+data class DecorThemeItem(
+    val id: String,
+    val title: String,
+    val description: String,
+    val origin: String,
+    val kind: String,
+    val authorName: String,
+    val status: String,
+    val tags: List<String>,
+    /** 完整装扮配置 { bottomBar, card }，作者看最新稿、其他人看线上版。 */
+    val config: JSONObject,
+    val reviewNote: String?,
+    val favorite: Boolean,
+    val favoriteCount: Int,
+    val installCount: Int,
+    val mine: Boolean,
+    val hasLiveVersion: Boolean,
+)
 
 /**
  * 账号级装扮同步。
@@ -85,5 +109,170 @@ class DecorRepository @Inject constructor(
 
     fun invalidate() {
         lastSyncedAt = 0L
+    }
+
+    /** 保存装扮配置到账号（与网页 saveDecor 同一契约）。成功后刷新本地渲染。 */
+    suspend fun saveSettings(
+        bottomBar: JSONObject? = null,
+        card: JSONObject? = null,
+        bottomBarThemeId: String? = null,
+        cardThemeId: String? = null,
+        clearBottomTheme: Boolean = false,
+        clearCardTheme: Boolean = false,
+    ): Boolean {
+        return try {
+            val token = auth.currentToken()
+            val body = JSONObject()
+            bottomBar?.let { body.put("bottomBar", it) }
+            card?.let { body.put("card", it) }
+            if (clearBottomTheme) body.put("bottomBarThemeId", JSONObject.NULL)
+            else bottomBarThemeId?.let { body.put("bottomBarThemeId", it) }
+            if (clearCardTheme) body.put("cardThemeId", JSONObject.NULL)
+            else cardThemeId?.let { body.put("cardThemeId", it) }
+            val response = api.patch(
+                BuildConfig.API_BASE_URL + "/api/v1/decor/settings",
+                token,
+                body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()),
+            )
+            if (!response.isSuccessful) {
+                response.errorBody()?.close()
+                _lastError.value = "装扮保存失败（HTTP ${response.code()}）"
+                return false
+            }
+            val raw = response.body()?.use { it.string() }.orEmpty()
+            if (raw.isNotBlank()) {
+                prefs.setDecorJson(raw)
+                _config.value = DecorConfig.fromSettings(JSONObject(raw))
+                _lastError.value = null
+                lastSyncedAt = System.currentTimeMillis()
+            }
+            true
+        } catch (cause: Exception) {
+            _lastError.value = cause.message ?: "装扮保存失败"
+            false
+        }
+    }
+
+    /** 主题列表：scope = official / community / mine / favorites（与网页一致）。 */
+    suspend fun listThemes(scope: String, kind: String = "all", query: String = ""): List<DecorThemeItem> {
+        val token = auth.currentToken()
+        val url = buildString {
+            append(BuildConfig.API_BASE_URL).append("/api/v1/decor/themes?scope=").append(scope)
+            append("&kind=").append(kind)
+            if (query.isNotBlank()) append("&q=").append(java.net.URLEncoder.encode(query.trim(), "UTF-8"))
+        }
+        val response = api.get(url, token)
+        if (!response.isSuccessful) {
+            response.errorBody()?.close()
+            throw IOException("主题列表加载失败（HTTP ${response.code()}）")
+        }
+        val raw = response.body()?.use { it.string() }.orEmpty()
+        val root = JSONObject(raw)
+        val items = (root.optJSONObject("data") ?: root).optJSONArray("items") ?: JSONArray()
+        return (0 until items.length()).mapNotNull { index -> parseTheme(items.optJSONObject(index)) }
+    }
+
+    private fun parseTheme(node: JSONObject?): DecorThemeItem? {
+        if (node == null) return null
+        val tags = node.optJSONArray("tags")?.let { array -> (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) } }.orEmpty()
+        return DecorThemeItem(
+            id = node.optString("id"),
+            title = node.optString("title").ifBlank { "未命名主题" },
+            description = node.optString("description"),
+            origin = node.optString("origin"),
+            kind = node.optString("kind").ifBlank { "bundle" },
+            authorName = node.optString("authorName").ifBlank { "黑卡官方" },
+            status = node.optString("status").ifBlank { "approved" },
+            tags = tags,
+            config = node.optJSONObject("config") ?: JSONObject(),
+            reviewNote = node.optString("reviewNote").takeIf { it.isNotBlank() && it != "null" },
+            favorite = node.optBoolean("favorite"),
+            favoriteCount = node.optInt("favoriteCount"),
+            installCount = node.optInt("installCount"),
+            mine = node.optBoolean("mine"),
+            hasLiveVersion = node.optBoolean("hasLiveVersion"),
+        )
+    }
+
+    /** 收藏开关。返回最新计数；失败返回 null。 */
+    suspend fun toggleFavorite(id: String, favorite: Boolean): Pair<Boolean, Int>? {
+        return try {
+            val token = auth.currentToken()
+            val body = JSONObject().put("favorite", favorite)
+            val response = api.post(
+                BuildConfig.API_BASE_URL + "/api/v1/decor/themes/$id/favorite",
+                token,
+                body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()),
+            )
+            if (!response.isSuccessful) {
+                response.errorBody()?.close()
+                return null
+            }
+            val raw = response.body()?.use { it.string() }.orEmpty()
+            val root = JSONObject(raw)
+            val json = root.optJSONObject("data") ?: root
+            json.optBoolean("favorite", favorite) to json.optInt("favoriteCount")
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 撤回未上架的投稿。 */
+    suspend fun deleteTheme(id: String): Boolean {
+        return try {
+            val token = auth.currentToken()
+            val response = api.delete(
+                BuildConfig.API_BASE_URL + "/api/v1/decor/themes/$id",
+                token,
+                JSONObject().toString().toRequestBody("application/json; charset=utf-8".toMediaType()),
+            )
+            response.isSuccessful
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 从当前方案投稿。返回新主题条目；失败抛出带原因的异常。 */
+    suspend fun submitTheme(title: String, description: String, tags: List<String>, kind: String, config: JSONObject): DecorThemeItem {
+        val token = auth.currentToken()
+        val body = JSONObject()
+            .put("title", title)
+            .put("description", description)
+            .put("tags", JSONArray(tags))
+            .put("kind", kind)
+            .put("config", config)
+        val response = api.post(
+            BuildConfig.API_BASE_URL + "/api/v1/decor/themes",
+            token,
+            body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()),
+        )
+        val raw = response.body()?.use { it.string() }.orEmpty()
+        if (!response.isSuccessful) {
+            response.errorBody()?.close()
+            val message = runCatching { JSONObject(raw).optString("error") }.getOrNull().orEmpty()
+            throw IOException(message.ifBlank { "投稿失败（HTTP ${response.code()}）" })
+        }
+        val root = JSONObject(raw)
+        return parseTheme(root.optJSONObject("data") ?: root)
+            ?: throw IOException("投稿结果无法解析")
+    }
+
+    /** 上传装扮资源（icon / card-back / content-image / publish-icon），返回公网地址。 */
+    suspend fun uploadAsset(bytes: ByteArray, fileName: String, mimeType: String, kind: String): String {
+        val token = auth.currentToken()
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("kind", kind)
+            .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
+            .build()
+        val response = api.post(BuildConfig.API_BASE_URL + "/api/v1/decor/upload", token, body)
+        val raw = response.body()?.use { it.string() }.orEmpty()
+        if (!response.isSuccessful) {
+            response.errorBody()?.close()
+            val message = runCatching { JSONObject(raw).optString("error") }.getOrNull().orEmpty()
+            throw IOException(message.ifBlank { "资源上传失败（HTTP ${response.code()}）" })
+        }
+        val root = JSONObject(raw)
+        return (root.optJSONObject("data") ?: root).optString("url")
+            .takeIf { it.isNotBlank() } ?: throw IOException("上传结果缺少资源地址")
     }
 }

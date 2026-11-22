@@ -127,6 +127,8 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var preview by remember { mutableStateOf<DailyCardPreview?>(null) }
+    // 收起动画期间提前恢复原卡片可见性，避免「预览已淡出、原卡片未恢复」的黑闪空档。
+    var dismissingPreviewId by remember { mutableStateOf<Int?>(null) }
     var closeRequest by remember { mutableIntStateOf(0) }
     var containerOrigin by remember { mutableStateOf(Offset.Zero) }
     // 背景模糊不跟着 preview 是否存在走：preview 要等退场动画播完才置空，
@@ -219,7 +221,7 @@ fun HomeScreen(
                         hazeState = previewHaze,
                         opened = opened,
                         opening = state.openingId == id,
-                        visible = preview?.id != id,
+                        visible = preview?.id != id || dismissingPreviewId == id,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         sharedElementsEnabled = sharedElementsEnabled && preview == null && opened,
@@ -251,8 +253,8 @@ fun HomeScreen(
                 onConfirm = { viewModel.flip(selected.id) },
                 onOpenDetails = { state.posts[selected.id]?.let(onPost) },
                 // 退场动画开始时立刻撤掉背景模糊，不再等 onDismiss。
-                onDismissStart = { backdropBlurOn = false },
-                onDismiss = { preview = null },
+                onDismissStart = { backdropBlurOn = false; dismissingPreviewId = selected.id },
+                onDismiss = { preview = null; dismissingPreviewId = null },
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,
                 sharedElementsEnabled = sharedElementsEnabled,
@@ -426,6 +428,23 @@ private fun FlipPreviewOverlay(
                     onClick = { requestDismiss() },
                 ),
         )
+        // 显式关闭按钮：与系统返回、手势返回、点击遮罩共用同一状态机（requestDismiss），
+        // 三条路径行为一致，都不扣次数、不标记已翻开。
+        Box(
+            Modifier.align(Alignment.TopEnd).padding(top = 14.dp, end = 14.dp)
+                .size(38.dp)
+                .clip(RoundedCornerShape(19.dp))
+                .background(Color.White.copy(alpha = .12f * expand))
+                .clickable(
+                    enabled = !opening && !revealing && !dismissing,
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    onClick = { requestDismiss() },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(HeikaIcons.Close, contentDescription = "关闭", tint = Color.White.copy(alpha = .82f), modifier = Modifier.size(21.dp))
+        }
         Box(
             Modifier.align(Alignment.Center)
                 .width(targetWidth)
@@ -534,10 +553,12 @@ private fun PreviewCardBack(
     val pressScale = remember { Animatable(1f) }
     val pressScope = rememberCoroutineScope()
     val cardPalette = LocalDecor.current.card.palette(LocalHeikaDark.current)
-    Box(Modifier.fillMaxSize().alpha(alpha)) {
+    // 卡面本体保持不透明：alpha 只作用于底部控件。此前整卡跟随进度淡出，
+    // 收起动画尾段会露出后方空档（原卡片此时仍隐藏），形成黑闪。
+    Box(Modifier.fillMaxSize()) {
         CardBack(number, preview = true)
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().alpha(alpha).padding(horizontal = 20.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -638,8 +659,9 @@ private fun PreviewCardFront(
     val authorSharedModifier = if (metaSharedReady) with(sharedTransitionScope!!) {
         Modifier.heikaSharedPostMeta(this, animatedVisibilityScope!!, post!!.sharedAuthorKey())
     } else Modifier
-    Box(modifier.fillMaxSize().alpha(alpha).background(MaterialTheme.colorScheme.surface)) {
-      Column(Modifier.fillMaxSize()) {
+    // 背景层保持不透明，alpha 只作用于内容：收起动画时卡面不露空档（黑闪）。
+    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+      Column(Modifier.fillMaxSize().alpha(alpha)) {
         val image = post?.thumbnail
         Box(Modifier.fillMaxWidth().weight(0.60f).background(MaterialTheme.colorScheme.surfaceVariant)) {
             if (image != null) {
@@ -712,7 +734,7 @@ private fun PreviewCardFront(
  * 当前卡片主题，保证「翻开前」在各种尺寸下都是同一个视觉身份。
  */
 @Composable
-private fun CardBack(number: Int, preview: Boolean = false) {
+fun CardBack(number: Int, preview: Boolean = false) {
     val dark = LocalHeikaDark.current
     val palette = LocalDecor.current.card.palette(dark)
     Box(Modifier.fillMaxSize().background(palette.backBg)) {
@@ -826,13 +848,15 @@ private fun CardBack(number: Int, preview: Boolean = false) {
                 }
                 drawPath(path, palette.backBorder.copy(alpha = .55f), style = Stroke(1.dp.toPx()))
             }
+            // 内部图案与描边的圆角跟随卡片统一圆角（HeikaRadii.dailyCard），
+            // 保证内部轮廓与外壳一致，不出现「外圆内直」的变形。
             if (palette.pattern == "frame") {
                 val inset = 12.dp.toPx()
                 drawRoundRect(
                     color = palette.backBorder.copy(alpha = .55f),
                     topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
                     size = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius((HeikaRadii.dailyCard - 12.dp).toPx().coerceAtLeast(2f)),
                     style = Stroke(1.dp.toPx()),
                 )
             }
@@ -841,7 +865,7 @@ private fun CardBack(number: Int, preview: Boolean = false) {
                 color = palette.backBorder.copy(alpha = 0.9f),
                 topLeft = androidx.compose.ui.geometry.Offset(rim, rim),
                 size = androidx.compose.ui.geometry.Size(size.width - rim * 2, size.height - rim * 2),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx()),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius((HeikaRadii.dailyCard - 1.dp).toPx()),
                 style = Stroke(1.dp.toPx()),
             )
         }
@@ -902,7 +926,20 @@ private fun CardFront(
             }
         } else {
             val contentPalette = LocalDecor.current.card.palette(LocalHeikaDark.current)
-            Box(Modifier.fillMaxSize().background(contentPalette.contentBg))
+            // 自定义底图属于装扮，只铺在卡片背景层；作者封面属于内容（上方 if 分支），两者严格区分。
+            Box(Modifier.fillMaxSize().background(contentPalette.contentBg)) {
+                if (contentPalette.contentImage != null) {
+                    AsyncImage(
+                        model = contentPalette.contentImage,
+                        contentDescription = null,
+                        imageLoader = LocalHeikaImageLoader.current,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    )
+                    // 内容区域遮罩：只压暗装饰底图，保证标题/摘要可读。
+                    Box(Modifier.fillMaxSize().background(contentPalette.contentBg.copy(alpha = contentPalette.contentScrim)))
+                }
+            }
             // 没有封面时用标题色自然填充，保证文字仍然可读。
             Column(Modifier.align(Alignment.Center).padding(horizontal = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("黑卡", color = contentPalette.titleColor.copy(alpha = .92f), fontSize = 20.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)

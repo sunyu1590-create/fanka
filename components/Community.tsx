@@ -379,7 +379,8 @@ const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
-  const [bottomNavStyle, setBottomNavStyle] = useState<"glass" | "fixed">("glass");
+  // 只保留悬浮底栏（需求九）：fixed 模式已移除，旧配置统一迁移到悬浮。
+  const bottomNavStyle = "glass" as const;
   const [discoverSettingsOpen, setDiscoverSettingsOpen] = useState(false);
   const [discoverNavCollapsed, setDiscoverNavCollapsed] = useState(false);
   const [mineCollections, setMineCollections] = useState<{ id: string; title: string; kind: string; publishedCount?: number }[]>([]);
@@ -400,14 +401,9 @@ export default function Community() {
     const savedFont = localStorage.getItem("heika-font");
     if (savedFont === "oppo" || savedFont === "system") setFontChoice(savedFont);
     setFontReady(true);
-    const savedBottomNavStyle = localStorage.getItem("heika-bottom-nav-style");
-    if (savedBottomNavStyle === "glass") setBottomNavStyle("glass");
-    if (savedBottomNavStyle === "fixed") {
-      const explicitlyChosen = localStorage.getItem("heika-bottom-nav-style-explicit") === "1";
-      const nextStyle = explicitlyChosen ? "fixed" : "glass";
-      setBottomNavStyle(nextStyle);
-      if (!explicitlyChosen) localStorage.setItem("heika-bottom-nav-style", nextStyle);
-    }
+    // 旧用户配置统一迁移到悬浮模式，清除历史标记。
+    localStorage.setItem("heika-bottom-nav-style", "glass");
+    localStorage.removeItem("heika-bottom-nav-style-explicit");
     setBottomNavStyleReady(true);
     const savedDetailTransition = localStorage.getItem("heika-detail-transition");
     if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise" || savedDetailTransition === "ghost-handoff") {
@@ -439,8 +435,7 @@ export default function Community() {
   }, [fontChoice, fontReady]);
   useEffect(() => {
     if (!bottomNavStyleReady) return;
-    document.documentElement.dataset.bottomNav = bottomNavStyle;
-    localStorage.setItem("heika-bottom-nav-style", bottomNavStyle);
+    document.documentElement.dataset.bottomNav = "glass";
   }, [bottomNavStyle, bottomNavStyleReady]);
   useEffect(() => {
     if (!detailTransitionLoaded) return;
@@ -1738,7 +1733,7 @@ export default function Community() {
       setPublicBookmarksLoaded(true);
       setTheme("dark");
       setFontChoice("oppo");
-      setBottomNavStyle("glass");
+      localStorage.setItem("heika-bottom-nav-style", "glass");
       setDetailTransition("blur-rise");
       setSelectedCalendarDate("");
       setTab("today");
@@ -1899,7 +1894,7 @@ export default function Community() {
     setDecorTab(target === "gallery" ? "official" : "studio");
     setDecorOpen(true);
   }, [ready]);
-  // 从 APP 的「今日任务 / 探索中心」直接进入对应页面（需求 6.3，替换旧原生页）。
+  // 从 APP 的「今日任务 / 探索中心 / 编辑资料」直接进入对应页面（需求 4.2 / 6.3）。
   const sharedMineHandled = useRef<string | null>(null);
   useEffect(() => {
     const target = new URLSearchParams(location.search).get("mine");
@@ -1910,6 +1905,9 @@ export default function Community() {
     } else if (target === "missions") {
       setTab("mine");
       setMissionsOpen(true);
+    } else if (target === "profile") {
+      // APP 小铅笔进入应用内网页编辑个人资料，保存成功后由桥接返回并刷新原生主页。
+      openSettingsDetail("profile", "mine");
     }
   }, [ready]);
   useEffect(() => {
@@ -4125,7 +4123,7 @@ export default function Community() {
           : <img className={`decor-nav-icon${custom?.fit === "cover" ? " is-cover" : ""}`} src={customSrc} alt="" aria-hidden="true" style={{ width: iconSize, height: iconSize }} />)
           : <Icon size={21} strokeWidth={1.8} />}
       </span>
-      <span>{label}</span>
+      <span className="bottom-nav-label">{label}</span>
     </button>
   );
   };
@@ -4999,7 +4997,7 @@ export default function Community() {
           )}
           {settingsDetail === "bottomNav" && (
             <div className="preference-options" role="radiogroup" aria-label="底部导航样式">
-              {([['glass','悬浮玻璃','轻透悬浮，保留页面呼吸感'],['fixed','固定底栏','贴合屏幕底部，稳定易触达']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={bottomNavStyle===value} className={`preference-option${bottomNavStyle===value?' selected':''}`} onClick={()=>{localStorage.setItem("heika-bottom-nav-style-explicit","1");setBottomNavStyle(value)}}>{renderPreferencePreview('bottomNav',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{bottomNavStyle===value?'✓':''}</i></button>)}
+              <button role="radio" aria-checked={true} className="preference-option selected">{renderPreferencePreview('bottomNav','glass')}<span className="preference-option-copy"><strong>悬浮底栏</strong><small>轻透悬浮，保留页面呼吸感</small></span><i className="preference-check">✓</i></button>
             </div>
           )}
           {settingsDetail === "discoverLayout" && (
@@ -5093,7 +5091,7 @@ export default function Community() {
             bio={state.bio}
             accountLine={accountId ? `黑卡编号 · ${accountId.slice(0, 8).toUpperCase()}` : undefined}
             stats={<div className="profile-hero-stats"><div><strong>{openedIds.length}</strong><span>累计翻卡</span></div><div><strong>{streak}</strong><span>连续探索</span></div><div><strong>{state.saved.length}</strong><span>我的收藏</span></div></div>}
-            actions={<button type="button" onClick={() => openSettingsDetail("profile", "mine")}><PenLine size={16} /> 编辑资料</button>}
+            onEditProfile={() => openSettingsDetail("profile", "mine")}
             onEditCover={() => openSettingsDetail("profile", "mine")}
           />
           <section className="mine-exploration-hub" aria-label="常用入口">
@@ -5295,7 +5293,7 @@ export default function Community() {
           </span>
         </div>
       )}
-      <div className={`bottom-nav-shell${bottomNavStyle === "glass" ? " floating-glass" : " fixed-bar"}`}>
+      <div className="bottom-nav-shell floating-glass">
         <nav className="bottom-nav" aria-label="主导航">
           {nav.slice(0, 2).map(renderNavButton)}
           {nav.slice(2).map(renderNavButton)}

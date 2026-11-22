@@ -209,6 +209,7 @@ export function applyDecorToDocument(decor: DecorConfig): void {
   set("--decor-card-content-bg", card.contentBg);
   set("--decor-card-content-border", card.contentBorder);
   set("--decor-card-content-image", card.contentImage ? `url("${card.contentImage}")` : "none");
+  set("--decor-card-content-scrim", String(card.contentScrim));
   set("--decor-card-title", card.titleColor);
   set("--decor-card-body", card.bodyColor);
   set("--decor-card-chip-bg", card.chipBg);
@@ -219,6 +220,9 @@ export function applyDecorToDocument(decor: DecorConfig): void {
   root.dataset.decorCard = "custom";
   root.dataset.decorCardTexture = card.texture;
   root.dataset.decorCardPattern = card.pattern;
+  root.dataset.decorCardContentTexture = card.contentTexture;
+  // 网页端底栏文字开关（需求十）：只加 data 属性，APP 不消费。
+  root.dataset.decorBarLabel = decor.bottomBar.showLabel ? "show" : "hide";
 }
 
 /** 深浅色切换后重算（透明度与主题色不同步会导致对比度失真）。 */

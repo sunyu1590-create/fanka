@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Camera, ChevronDown, Image as ImageIcon, X } from "lucide-react";
+import { Camera, ChevronDown, Image as ImageIcon, PenLine, X } from "lucide-react";
 import { coverBackground, type CoverMeta } from "./CoverEditor";
 
 type Props = {
@@ -18,6 +18,8 @@ type Props = {
   facts?: ReactNode;
   stats?: ReactNode;
   actions?: ReactNode;
+  /** 昵称旁小铅笔：进入资料编辑 */
+  onEditProfile?: () => void;
   /** 自己的主页显示「更换封面」按钮 */
   onEditCover?: () => void;
   onNotice?: (message: string) => void;
@@ -33,7 +35,7 @@ const MAX_EXTRA = 190;
  * 并通过 --profile-avatar-shift 略微下移，让昵称自然地落在纯色区。
  */
 export default function ProfileHeader({
-  mode, nickname, avatar, coverUrl, coverMeta, badges, level, bio, accountLine, facts, stats, actions, onEditCover, onNotice, children,
+  mode, nickname, avatar, coverUrl, coverMeta, badges, level, bio, accountLine, facts, stats, actions, onEditProfile, onEditCover, onNotice, children,
 }: Props) {
   const [extra, setExtra] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -126,6 +128,17 @@ export default function ProfileHeader({
           <div className="profile-hero-name-block">
             <div className="profile-hero-name-row">
               <h1 title={nickname}>{nickname || "探索者"}</h1>
+              {mode === "self" && onEditProfile && (
+                <button
+                  type="button"
+                  className="profile-hero-edit-pencil"
+                  aria-label="编辑资料"
+                  title="编辑资料"
+                  onClick={onEditProfile}
+                >
+                  <PenLine size={13} />
+                </button>
+              )}
               {badges}
               {level}
             </div>

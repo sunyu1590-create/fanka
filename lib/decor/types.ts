@@ -48,6 +48,8 @@ export type BottomBarConfig = {
   light: BottomBarPalette;
   icons: Partial<Record<DecorIconSlot, DecorIcon>>;
   publish: { bg: string; icon: string; iconUrl?: string; tinted: boolean };
+  /** 网页端底栏文字显示开关（需求十）：true=图标＋文字，false=仅图标。只作用网页端，APP 不受影响。 */
+  showLabel: boolean;
 };
 
 export type CardPalette = {
@@ -65,6 +67,10 @@ export type CardPalette = {
   contentBg: string;
   contentBorder: string;
   contentImage: string;
+  /** 内容面低强度纹理（需求 7.3）；与卡背纹理同枚举，强度更低，不遮盖作者封面与文字 */
+  contentTexture: "none" | "linen" | "dots" | "grid" | "paper" | "noise" | "rings" | "diamonds";
+  /** 内容区域遮罩（0 – 0.6）：压暗自定义底图/复杂背景，保证标题摘要可读；只作用装饰底图层 */
+  contentScrim: number;
   titleColor: string;
   bodyColor: string;
   chipBg: string;
@@ -159,6 +165,8 @@ const DARK_CARD: CardPalette = {
   contentBg: "#14161A",
   contentBorder: "#262A30",
   contentImage: "",
+  contentTexture: "none",
+  contentScrim: 0.28,
   titleColor: "#F2F0EA",
   bodyColor: "#B9BCC4",
   chipBg: "#1B1D22",
@@ -179,6 +187,8 @@ const LIGHT_CARD: CardPalette = {
   contentBg: "#FCFCFD",
   contentBorder: "#E4E4E2",
   contentImage: "",
+  contentTexture: "none",
+  contentScrim: 0.18,
   titleColor: "#1B1C1E",
   bodyColor: "#5C5F66",
   chipBg: "#F2F1EC",
@@ -192,6 +202,7 @@ export const DEFAULT_BOTTOM_BAR: BottomBarConfig = {
   light: LIGHT_BAR,
   icons: {},
   publish: { bg: "#F5F4F0", icon: "#202125", tinted: false },
+  showLabel: true,
 };
 
 export const DEFAULT_CARD: CardConfig = {
@@ -267,6 +278,7 @@ function normalizeCardPalette(value: unknown, fallback: CardPalette): CardPalett
   const source = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const TEXTURES = new Set(["none", "linen", "dots", "grid", "paper", "noise", "rings", "diamonds"]);
   const texture = typeof source.texture === "string" && TEXTURES.has(source.texture) ? (source.texture as CardPalette["texture"]) : fallback.texture;
+  const contentTexture = typeof source.contentTexture === "string" && TEXTURES.has(source.contentTexture) ? (source.contentTexture as CardPalette["contentTexture"]) : fallback.contentTexture;
   const pattern = source.pattern === "diamond" || source.pattern === "frame" || source.pattern === "none" ? source.pattern : source.pattern === "monogram" ? "monogram" : fallback.pattern;
   return {
     backBg: safeColor(source.backBg, fallback.backBg),
@@ -281,6 +293,11 @@ function normalizeCardPalette(value: unknown, fallback: CardPalette): CardPalett
     contentBg: safeColor(source.contentBg, fallback.contentBg),
     contentBorder: safeColor(source.contentBorder, fallback.contentBorder),
     contentImage: safeImage(source.contentImage),
+    contentTexture,
+    // 旧配置没有该字段时用默认遮罩强度，保证可读性不回退。
+    contentScrim: typeof source.contentScrim === "number" && Number.isFinite(source.contentScrim)
+      ? Math.min(0.6, Math.max(0, source.contentScrim))
+      : fallback.contentScrim,
     titleColor: safeColor(source.titleColor, fallback.titleColor),
     bodyColor: safeColor(source.bodyColor, fallback.bodyColor),
     chipBg: safeColor(source.chipBg, fallback.chipBg),
@@ -310,6 +327,8 @@ export function normalizeBottomBar(value: unknown): BottomBarConfig {
       iconUrl: safeImage(publish.iconUrl) || undefined,
       tinted: publish.tinted === true,
     },
+    // 旧配置缺少该字段时保持原来的文字显示状态（显示文字）。
+    showLabel: source.showLabel === false ? false : true,
   };
 }
 

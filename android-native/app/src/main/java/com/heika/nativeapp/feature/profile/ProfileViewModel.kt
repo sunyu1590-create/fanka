@@ -26,9 +26,14 @@ data class NativeProfile(
     val avatar: String?,
     /** 个人封面：保留完整原图，取景由 cover_meta 决定；null 表示还没设置。 */
     val cover: String? = null,
+    /** 封面取景（需求 4.2：网页保存后同步取景信息）。 */
+    val coverMeta: NativeCoverMeta? = null,
     val tier: String,
     val showBookmarks: Boolean,
 )
+
+/** 封面取景参数，与网页 cover_meta 对齐。 */
+data class NativeCoverMeta(val focusX: Float = 50f, val focusY: Float = 50f, val zoom: Float = 1f)
 data class NativeBadge(val id: String, val label: String, val description: String, val color: String)
 
 data class ProfileAttributeValue(
@@ -392,7 +397,9 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
     }
 
     private fun encodeSnapshot(state: ProfileState) = JSONObject()
-        .put("profile", JSONObject().put("id", state.profile?.id).put("nickname", state.profile?.nickname).put("bio", state.profile?.bio).put("avatar_url", state.profile?.avatar).put("cover_url", state.profile?.cover).put("membership_tier", state.profile?.tier).put("show_bookmarks", state.profile?.showBookmarks))
+        .put("profile", JSONObject().put("id", state.profile?.id).put("nickname", state.profile?.nickname).put("bio", state.profile?.bio).put("avatar_url", state.profile?.avatar).put("cover_url", state.profile?.cover)
+            .put("cover_meta", state.profile?.coverMeta?.let { JSONObject().put("focusX", it.focusX).put("focusY", it.focusY).put("zoom", it.zoom) } ?: JSONObject())
+            .put("membership_tier", state.profile?.tier).put("show_bookmarks", state.profile?.showBookmarks))
         .put("posts", JSONArray(state.posts.map { JSONObject(it.rawJson) }))
         .put("bookmarks", JSONArray(state.bookmarks.map { JSONObject(it.rawJson) }))
         .put("liked", JSONArray(state.liked.map { JSONObject(it.rawJson) }))
@@ -408,6 +415,13 @@ class ProfileViewModel @Inject constructor(private val repository: HeikaReposito
         id = optString("id").ifBlank { idFallback }, nickname = optString("nickname").ifBlank { "探索者" },
         bio = optString("bio"), avatar = optString("avatar_url").takeIf(String::isNotBlank),
         cover = optString("cover_url").takeIf { it.isNotBlank() && it != "null" },
+        coverMeta = optJSONObject("cover_meta")?.let { meta ->
+            NativeCoverMeta(
+                focusX = meta.optDouble("focusX", 50.0).toFloat().coerceIn(0f, 100f),
+                focusY = meta.optDouble("focusY", 50.0).toFloat().coerceIn(0f, 100f),
+                zoom = meta.optDouble("zoom", 1.0).toFloat().coerceIn(1f, 3f),
+            )
+        },
         tier = optString("membership_tier", "free"), showBookmarks = optBoolean("show_bookmarks"),
     )
 

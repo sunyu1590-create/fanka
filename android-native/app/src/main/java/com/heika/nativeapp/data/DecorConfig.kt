@@ -44,6 +44,8 @@ data class BarSkin(
     val publishIcon: Color,
     val publishIconUrl: String?,
     val publishTinted: Boolean,
+    /** 网页端底栏文字显示开关（需求十）：true=图标＋文字。原生保留并回写，避免覆盖网页设置。 */
+    val showLabel: Boolean = true,
 ) {
     fun palette(darkMode: Boolean): BarPalette = if (split && !darkMode) light else dark
     fun icon(slot: String): DecorIcon? = icons[slot]?.takeIf { it.usable }
@@ -62,6 +64,10 @@ data class CardPalette(
     val contentBg: Color,
     val contentBorder: Color,
     val contentImage: String?,
+    /** 内容面低强度纹理（与网页 lib/decor/types.ts 同枚举） */
+    val contentTexture: String,
+    /** 内容区域遮罩强度（0 – 0.6），只压暗装饰底图，不影响作者封面 */
+    val contentScrim: Float,
     val titleColor: Color,
     val bodyColor: Color,
     val chipBg: Color,
@@ -106,6 +112,7 @@ data class DecorConfig(
             backBorder = Color(0xFF2C3238), numberColor = Color(0xFFC9D5DA), hintColor = Color(0xFF8C969C),
             actionBg = Color(0xFFC9D5DA), actionText = Color(0xFF101619),
             contentBg = Color(0xFF14161A), contentBorder = Color(0xFF262A30), contentImage = null,
+            contentTexture = "none", contentScrim = 0.28f,
             titleColor = Color(0xFFF2F0EA), bodyColor = Color(0xFFB9BCC4),
             chipBg = Color(0xFF1B1D22), chipBorder = Color(0xFF2C3036), accent = Color(0xFFC9A961),
         )
@@ -114,6 +121,7 @@ data class DecorConfig(
             backBorder = Color(0xFFC9C3B6), numberColor = Color(0xFF4B463D), hintColor = Color(0xFF7A7468),
             actionBg = Color(0xFF2B2B28), actionText = Color(0xFFF7F5EF),
             contentBg = Color(0xFFFCFCFD), contentBorder = Color(0xFFE4E4E2), contentImage = null,
+            contentTexture = "none", contentScrim = 0.18f,
             titleColor = Color(0xFF1B1C1E), bodyColor = Color(0xFF5C5F66),
             chipBg = Color(0xFFF2F1EC), chipBorder = Color(0xFFE0DED7), accent = Color(0xFF93762F),
         )
@@ -194,6 +202,7 @@ data class DecorConfig(
                 publishIcon = parseColor(publish?.optString("icon"), Color(0xFF202125)),
                 publishIconUrl = parseImage(publish?.optString("iconUrl")),
                 publishTinted = publish?.optBoolean("tinted", false) ?: false,
+                showLabel = node.optBoolean("showLabel", true),
             )
         }
 
@@ -224,7 +233,9 @@ data class DecorConfig(
 
         private fun parseCardPalette(node: JSONObject?, fallback: CardPalette): CardPalette {
             if (node == null) return fallback
-            val texture = node.optString("texture").takeIf { it in setOf("none", "linen", "grid", "noise") } ?: fallback.texture
+            val textures = setOf("none", "linen", "dots", "grid", "paper", "noise", "rings", "diamonds")
+            val texture = node.optString("texture").takeIf { it in textures } ?: fallback.texture
+            val contentTexture = node.optString("contentTexture").takeIf { it in textures } ?: fallback.contentTexture
             val pattern = node.optString("pattern").takeIf { it in setOf("none", "monogram", "diamond", "frame") } ?: fallback.pattern
             return CardPalette(
                 backBg = parseColor(node.optString("backBg"), fallback.backBg),
@@ -239,6 +250,8 @@ data class DecorConfig(
                 contentBg = parseColor(node.optString("contentBg"), fallback.contentBg),
                 contentBorder = parseColor(node.optString("contentBorder"), fallback.contentBorder),
                 contentImage = parseImage(node.optString("contentImage")),
+                contentTexture = contentTexture,
+                contentScrim = parseOpacity(node.optDouble("contentScrim", Double.NaN).takeUnless { it.isNaN() }, fallback.contentScrim).coerceIn(0f, 0.6f),
                 titleColor = parseColor(node.optString("titleColor"), fallback.titleColor),
                 bodyColor = parseColor(node.optString("bodyColor"), fallback.bodyColor),
                 chipBg = parseColor(node.optString("chipBg"), fallback.chipBg),
@@ -248,3 +261,58 @@ data class DecorConfig(
         }
     }
 }
+
+/* ------------------------------------------------------------------
+ * 序列化：保存回服务端时与网页 lib/decor/types.ts 同一契约。
+ * 字段名与 normalizeBottomBar / normalizeCard 的输入一致，
+ * 尤其保留 showLabel 等网页专属字段，避免原生保存覆盖网页设置。
+ * ------------------------------------------------------------------ */
+
+private fun colorHex(color: Color): String {
+    val r = (color.red * 255).toInt().coerceIn(0, 255)
+    val g = (color.green * 255).toInt().coerceIn(0, 255)
+    val b = (color.blue * 255).toInt().coerceIn(0, 255)
+    return String.format("#%02X%02X%02X", r, g, b)
+}
+
+fun BarPalette.toJson(): JSONObject = JSONObject()
+    .put("bg", colorHex(bg)).put("bgOpacity", bgOpacity.toDouble())
+    .put("border", colorHex(border)).put("borderOpacity", borderOpacity.toDouble())
+    .put("icon", colorHex(icon)).put("activeIcon", colorHex(activeIcon))
+    .put("label", colorHex(label)).put("activeLabel", colorHex(activeLabel))
+    .put("activePill", colorHex(activePill)).put("activePillOpacity", activePillOpacity.toDouble())
+
+fun CardPalette.toJson(): JSONObject = JSONObject()
+    .put("backBg", colorHex(backBg)).put("backImage", backImage ?: "")
+    .put("texture", texture).put("pattern", pattern)
+    .put("backBorder", colorHex(backBorder)).put("numberColor", colorHex(numberColor)).put("hintColor", colorHex(hintColor))
+    .put("actionBg", colorHex(actionBg)).put("actionText", colorHex(actionText))
+    .put("contentBg", colorHex(contentBg)).put("contentBorder", colorHex(contentBorder)).put("contentImage", contentImage ?: "")
+    .put("contentTexture", contentTexture).put("contentScrim", contentScrim.toDouble())
+    .put("titleColor", colorHex(titleColor)).put("bodyColor", colorHex(bodyColor))
+    .put("chipBg", colorHex(chipBg)).put("chipBorder", colorHex(chipBorder)).put("accent", colorHex(accent))
+
+fun DecorIcon.toJson(): JSONObject = JSONObject()
+    .put("normal", normal ?: "").put("active", active ?: "")
+    .put("tint", tint).put("scale", scale.toDouble()).put("fit", if (fitCover) "cover" else "contain")
+
+fun BarSkin.toJson(): JSONObject {
+    val iconsJson = JSONObject()
+    icons.forEach { (slot, icon) -> iconsJson.put(slot, icon.toJson()) }
+    return JSONObject()
+        .put("mode", if (split) "split" else "follow")
+        .put("dark", dark.toJson())
+        .put("light", light.toJson())
+        .put("icons", iconsJson)
+        .put("publish", JSONObject()
+            .put("bg", colorHex(publishBg))
+            .put("icon", colorHex(publishIcon))
+            .put("iconUrl", publishIconUrl ?: "")
+            .put("tinted", publishTinted))
+        .put("showLabel", showLabel)
+}
+
+fun CardSkin.toJson(): JSONObject = JSONObject()
+    .put("mode", if (split) "split" else "follow")
+    .put("dark", dark.toJson())
+    .put("light", light.toJson())

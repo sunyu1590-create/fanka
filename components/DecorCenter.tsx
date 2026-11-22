@@ -83,7 +83,7 @@ function BarPreview({ config, mode, active = "home", compact = false, onActiveCh
                 return <Glyph size={21} strokeWidth={1.7} />;
               })()
             )}
-            <span>{SLOT_LABELS[slot]}</span>
+            {config.showLabel !== false && <span className="bottom-nav-label">{SLOT_LABELS[slot]}</span>}
           </button>
         );
       })}
@@ -228,6 +228,8 @@ export default function DecorCenter({
   const [detailSlot, setDetailSlot] = useState<DecorIconSlot>("home");
   const [demo, setDemo] = useState<{ config: DecorTheme; state: "back" | "confirm" | "content" } | null>(null);
   const [working, setWorking] = useState<{ bottomBar: BottomBarConfig; card: CardConfig }>({ bottomBar: decor.decor.bottomBar, card: decor.decor.card });
+  // 按钮六态（需求 11）：idle 默认 / :active 按下 / loading 加载 / success 成功 / error 失败重试 / disabled 禁用。
+  const [savePhase, setSavePhase] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [studioKind, setStudioKind] = useState<"bottom" | "card">(initialKind === "card" ? "card" : "bottom");
   // 单条底栏预览的选中状态切换（只预览，不改配置）。
   const [previewSlot, setPreviewSlot] = useState<DecorIconSlot>("home");
@@ -338,16 +340,23 @@ export default function DecorCenter({
 
   const saveStudio = async (apply: boolean) => {
     if (!accountId) { onLogin(); return; }
+    if (busy) return; // 加载期间防重复提交
     setBusy(true);
+    setSavePhase("loading");
     try {
       if (apply) {
         await saveDecor({ bottomBar: working.bottomBar, card: working.card, bottomBarThemeId: null, cardThemeId: null });
         setDirty(false);
+        // 成功依据真实保存结果，不按固定延时无条件显示。
+        setSavePhase("success");
+        window.setTimeout(() => setSavePhase((phase) => (phase === "success" ? "idle" : phase)), 1800);
         announceSaved(onNotice);
       } else {
         onNotice("方案已保存在本地预览，点击「应用」后才会同步到账号");
+        setSavePhase("idle");
       }
     } catch (cause) {
+      setSavePhase("error");
       onNotice(cause instanceof Error ? cause.message : "保存失败，请重试");
     } finally {
       setBusy(false);
@@ -508,6 +517,24 @@ export default function DecorCenter({
               {studioKind === "bottom" ? (
                 <>
                   <section>
+                    <h3>基础设置</h3>
+                    <div className="decor-row decor-row-toggle">
+                      <span>显示导航文字<small>{working.bottomBar.showLabel !== false ? "图标＋文字" : "仅图标"}</small></span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={working.bottomBar.showLabel !== false}
+                        aria-label="显示导航文字"
+                        className={`toggle-switch ${working.bottomBar.showLabel !== false ? "on" : ""}`}
+                        onClick={() => {
+                          setWorking((current) => ({ ...current, bottomBar: { ...current.bottomBar, showLabel: current.bottomBar.showLabel === false } }));
+                          setDirty(true);
+                        }}
+                      ><i /></button>
+                    </div>
+                    <p className="decor-section-hint">关闭后底栏只显示图标，图标在按钮内居中，点击区域与角标位置不变。该开关只作用于网页端。</p>
+                  </section>
+                  <section>
                     <h3>基础配色</h3>
                     <ColorRow label="背景"  value={barPalette.bg} onChange={(value) => updateBar({ bg: value })} defaultValue={barDefaults.bg} />
                     <ColorRow label="图标"  value={barPalette.icon} onChange={(value) => updateBar({ icon: value })} defaultValue={barDefaults.icon} />
@@ -639,7 +666,18 @@ export default function DecorCenter({
                 </>
               )}
               <div className="decor-studio-actions">
-                <button type="button" className="is-primary" disabled={busy || !dirty} onClick={() => void saveStudio(true)}><Check size={15} />{busy ? "正在保存…" : dirty ? "应用装扮" : "已应用"}</button>
+                <button
+                  type="button"
+                  className={`is-primary decor-action-button is-${savePhase === "idle" ? (dirty ? "default" : "done") : savePhase}`}
+                  disabled={busy || savePhase === "loading" || (!dirty && savePhase !== "error")}
+                  onClick={() => void saveStudio(true)}
+                >
+                  {savePhase === "loading" ? <><i className="decor-button-spinner" aria-hidden="true" /> 正在保存…</>
+                    : savePhase === "success" ? <><Check size={15} /> 已保存</>
+                    : savePhase === "error" ? <><RotateCcw size={15} /> 保存失败，点击重试</>
+                    : dirty ? <><Check size={15} /> 应用装扮</>
+                    : <><Check size={15} /> 已应用</>}
+                </button>
                 <button type="button" onClick={() => setSubmitOpen(true)}><Upload size={15} /> 投稿</button>
                 {!dirty && isDecorAppEmbed() && (
                   <button type="button" onClick={() => {
