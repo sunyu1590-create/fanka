@@ -120,6 +120,7 @@ const NotificationSettings = dynamic(() => import("./NotificationSettings"));
 const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div className="empty">正在加载 AI 空间…</div> });
 const CollectionView = dynamic(() => import("./CollectionView"), { loading: () => <div className="empty">正在加载合集…</div> });
 const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
+const DetailAside = dynamic(() => import("./DetailAside"), { ssr: false });
 const PostAttachmentsPanel = dynamic(() => import("./PostAttachmentsPanel"));
 const AppealCenter = dynamic(() => import("./AppealCenter"));
 import type { AiContentType } from "@/lib/ai-resources";
@@ -628,6 +629,8 @@ export default function Community() {
     [searchRetry, setSearchRetry] = useState(0),
     [searchRecent, setSearchRecent] = useState<string[]>([]),
     [searchReturnTab, setSearchReturnTab] = useState("discover"),
+    [desktopSearch, setDesktopSearch] = useState(""),
+    [desktopMenuOpen, setDesktopMenuOpen] = useState(false),
     [page, setPage] = useState(12),
     [sort, setSort] = useState("精选"),
     [draft, setDraft] = useState(""),
@@ -2697,7 +2700,7 @@ export default function Community() {
         }
       }
       const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai"
-        ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, attachments: attachmentPayload, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
+        ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, contentType: writeContentType, resourceData, topics: writeTopics, attachments: attachmentPayload, seriesId: writeSeriesId || null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null
         : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag, topics: writeTopics, attachments: attachmentPayload, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败，请重试");
       const cover = composerImages[coverIndex];
@@ -2731,7 +2734,7 @@ export default function Community() {
       setUploadingImages(false);
       const mediaPaths = [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])];
       const item = writeChannel === "ai"
-        ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData, attachments: attachmentPayload, mediaPaths, coverUrl: cover?.external ? cover.url : null })
+        ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData, attachments: attachmentPayload, seriesId: writeSeriesId || null, mediaPaths, coverUrl: cover?.external ? cover.url : null })
         : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: writeTag, topics: writeTopics, attachments: attachmentPayload, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null });
       if (!item) return;
       update((s) => ({
@@ -4628,8 +4631,76 @@ export default function Community() {
       <EditorialArticle post={post} />
     </Suspense>
   ) : null;
+  // 桌面左右栏共用：点赞放在函数里，底部操作条与左侧操作栏调用同一份业务逻辑。
+  const toggleDetailLike = () => {
+    if (!post || likeBusy) return;
+    const next = !state.liked?.includes(post.id);
+    setLikeBusy(true);
+    void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => {
+      const nextCount = Math.max(0, (detailLikeCounts[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1));
+      setDetailLikeCounts((current) => ({ ...current, [post.id]: Math.max(0, (current[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1)) }));
+      setPublicFeed((current) => current.map((item) => item.id === post.id ? { ...item, likeCount: nextCount } : item));
+      update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }));
+    }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
+  };
+  const jumpToDetailComments = () => {
+    const scroller = document.querySelector<HTMLElement>(".detail-scroll");
+    const marker = document.getElementById("detail-comments");
+    if (!scroller || !marker) return;
+    const top = marker.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 60;
+    scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  };
+  // 相关内容：同标签或共享话题，最多取 6 条交给右栏再截 3 条。
+  const detailRelated = post ? all.filter((item) => item.id !== post.id && item.status !== "draft" && (
+    item.tag === post.tag || (item.topics || []).some((topic) => (post.topics || []).includes(topic))
+  )).slice(0, 6) : [];
   return (
     <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
+      <header className="desktop-topbar" aria-label="桌面主导航">
+        <div className="dtb-inner">
+          {secondaryTitle ? (
+            <button type="button" className="dtb-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}>
+              <ArrowLeft size={18} /><strong>{secondaryTitle}</strong>
+            </button>
+          ) : (
+            <button type="button" className="dtb-brand" onClick={() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}>
+              <span className="brand"><span>黑卡</span><i>HEIKA</i></span>
+            </button>
+          )}
+          <nav className="dtb-nav" aria-label="主入口">
+            <button type="button" className={tab === "today" ? "active" : ""} aria-current={tab === "today" ? "page" : undefined} onClick={() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}>首页</button>
+            <button type="button" className={tab === "discover" && discoverChannel !== "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel !== "ai" ? "page" : undefined} onClick={() => { if (tab !== "discover") setTab("discover"); if (discoverChannel === "ai") switchDiscoverChannel("community"); }}>发现</button>
+            <button type="button" className={tab === "discover" && discoverChannel === "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel === "ai" ? "page" : undefined} onClick={() => { if (tab !== "discover") { setTab("discover"); queuedDiscoverChannel.current = "ai"; } else if (discoverChannel !== "ai") switchDiscoverChannel("ai"); }}>AI 专区</button>
+            <button type="button" className={tab === "messages" ? "active" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => setTab("messages")}>消息<InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} /></button>
+          </nav>
+          <form className="dtb-search" role="search" onSubmit={(event) => { event.preventDefault(); const value = desktopSearch.trim(); if (!value) return; setSearchReturnTab(tab === "discover" ? "discover" : "today"); submitSearch(value); setTab("search"); }}>
+            <Search size={16} aria-hidden="true" />
+            <input value={desktopSearch} onChange={(event) => setDesktopSearch(event.target.value)} placeholder="搜索内容、话题或用户" maxLength={60} aria-label="搜索内容、话题或用户" />
+            {desktopSearch.trim() && <button type="submit" aria-label="开始搜索">搜索</button>}
+          </form>
+          <div className="dtb-actions">
+            <button type="button" className="dtb-publish" onClick={() => void openComposer()}><Plus size={16} /> 发布</button>
+            <button type="button" className="dtb-icon" aria-label="打开通知" onClick={() => openNotifications(tab === "today" ? "today" : "discover")}><Bell size={19} strokeWidth={1.8} /></button>
+            <div className="dtb-account">
+              <button type="button" className="dtb-avatar" aria-haspopup="menu" aria-expanded={desktopMenuOpen} aria-label="账号菜单" onClick={() => setDesktopMenuOpen((open) => !open)}>
+                {state.avatar ? <img src={state.avatar} alt="" /> : <span>{(state.name || "探").slice(0, 1)}</span>}
+              </button>
+              {desktopMenuOpen && (
+                <>
+                  <button type="button" className="dtb-menu-scrim" aria-label="关闭账号菜单" onClick={() => setDesktopMenuOpen(false)} />
+                  <div className="dtb-menu" role="menu">
+                    <div className="dtb-menu-head"><strong>{state.name || "探索者"}</strong><small>{accountId ? `会员 · ${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}` : "未登录"}</small></div>
+                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><UserRound size={16} /> 个人主页</button>
+                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); openMineSettings(); }}><Settings size={16} /> 设置</button>
+                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); openSettingsDetail("membership", "mine"); }}><Crown size={16} /> 会员中心</button>
+                    {appDownloadUrl && <a role="menuitem" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" onClick={() => setDesktopMenuOpen(false)}><Smartphone size={16} /> 下载 App</a>}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
       <header className={`topline${secondaryTitle ? " secondary-topline" : ""}${tab === "mine" && !secondaryTitle ? " mine-topline" : ""}${tab === "discover" && !secondaryTitle ? " is-discover-topline" : ""}${tab === "discover" && discoverNavCollapsed ? " is-nav-collapsed" : ""}`}>
         {secondaryTitle ? <button type="button" className="topline-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}><ArrowLeft size={19}/><strong>{secondaryTitle}</strong></button> : <><span className="brand"><span>黑卡</span><i>HEIKA</i></span>
         {tab === "discover" && !secondaryTitle ? <div className="discover-channel-tabs topline-channel-tabs" role="tablist" aria-label="发现频道">
@@ -5479,7 +5550,21 @@ export default function Community() {
             </header>
             <div className="detail-scroll" key={post.id}>
               <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
-                <div className="detail-article-column">
+                <nav className="detail-rail" aria-label="作品操作栏">
+                  <button type="button" className={`detail-rail-button${state.liked?.includes(post.id) ? " selected" : ""}`} aria-pressed={!!state.liked?.includes(post.id)} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} disabled={likeBusy} onClick={toggleDetailLike}>
+                    <Heart size={20} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span>{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span>
+                  </button>
+                  <button type="button" className="detail-rail-button" aria-label={`查看评论，共 ${commentTotal} 条`} onClick={jumpToDetailComments}>
+                    <MessageSquare size={20} /><span>{commentTotal}</span>
+                  </button>
+                  <button type="button" className={`detail-rail-button${state.saved.includes(post.id) ? " selected" : ""}`} aria-pressed={state.saved.includes(post.id)} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} onClick={() => void toggleSave(post.id)}>
+                    <Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} />
+                  </button>
+                  {post.status === "published" && <button type="button" className="detail-rail-button" aria-label="分享内容" onClick={() => void openSharePanel()}><Share2 size={20} /></button>}
+                  <button type="button" className="detail-rail-button" aria-label="更多操作" aria-expanded={detailMoreOpen} onClick={() => setDetailMoreOpen((open) => !open)}><MoreHorizontal size={20} /></button>
+                </nav>
+                <div className="detail-main">
+                <div className="detail-article-column" id="detail-article">
                 {detailImages.length > 0 && (
                   <div className="detail-gallery" aria-busy={imageLoading} onPointerDown={(event) => {
                     imageSwipeTriggered.current = false;
@@ -5610,6 +5695,16 @@ export default function Community() {
                   })()}
                   {commentHasMore && <button className="comments-load-more" disabled={commentsLoading} onClick={() => void loadMoreComments()}>{commentsLoading ? "正在加载…" : "更多评论"}</button>}
                 </section>
+                </div>
+                <DetailAside
+                  post={post}
+                  accountId={accountId}
+                  related={detailRelated}
+                  onOpenAuthor={(id) => setAuthorProfile(id)}
+                  onOpenPost={(item) => void openPost(item.id, "discover")}
+                  onMessage={(id) => { setMessagePeer(id); setTab("messages"); }}
+                  onNotice={toast}
+                />
               </div>
               <div className="detail-dock" role="group" aria-label="作品操作">
               <form className="detail-dock-comment heika-solid-glass" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
@@ -6039,7 +6134,7 @@ export default function Community() {
                   {writeChannel === "ai" ? "AI 分类" : "分类"}
                   <ChoiceSelect label={writeChannel === "ai" ? "AI 分类" : "分类"} value={writeTag} onChange={(value) => { markComposerTagTouched(); setWriteTag(value); }} options={(writeChannel === "ai" ? aiCategories.filter((item) => item.kind === "category").map((item) => item.name) : communityCategories).map((tag) => ({value:tag,label:tag}))}/>
                 </label>
-                {accountId && writeChannel === "community" && <label className="composer-series-field">加入合集<ChoiceSelect label="加入合集" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入合集"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>可选。合集在「我的 → 作品管理」中创建和管理，发布后也能随时把作品加进去。</small></label>}
+                {accountId && <label className="composer-series-field">加入合集<ChoiceSelect label="加入合集" value={writeSeriesId} onChange={setWriteSeriesId} options={[{value:"",label:"暂不加入合集"},...creatorSeries.map((series) => ({value:series.id,label:series.title}))]}/><small>可选。{writeChannel === "ai" ? "AI 内容与社区作品共用同一套合集，详情页与个人主页都会展示。" : "合集在「我的 → 作品管理」中创建和管理，发布后也能随时把作品加进去。"}</small></label>}
                 <div className="composer-advanced">
                   <div className="composer-advanced-content">
                 {writeChannel === "community" && <section className="composer-poll-editor" aria-label="添加投票">
