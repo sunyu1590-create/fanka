@@ -423,7 +423,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 4;
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-flip);
   overflow: hidden;
   border: 1px solid var(--decor-card-back-border);
   background-color: var(--decor-card-back-bg);
@@ -550,4 +550,34 @@
 /* 容器内不显示网页自己的引导页，避免从原生入口进来先看到兴趣选择 */
 :root[data-app-embed="1"] .heika-onboarding {
   display: none !important;
+}
+
+/* ==========================================================================
+   卡片三态统一圆角（需求 7.1）——最终收敛层。
+   以已翻开内容卡为基准 15px：未翻开小卡、确认翻开卡、已翻开内容卡
+   及内部描边/纹理裁切共用 --radius-flip；任何主题或内容卡令牌
+   （--radius-card 16px / 8px 等）都不能再让三态变形。
+   ========================================================================== */
+:root {
+  --radius-flip: 15px;
+}
+.card-flip-face,
+.candidate-feed-card .card-flip-face,
+.flip-face,
+.flip-stage,
+.flip-inner,
+.flip-window-face,
+.flip-window-revealed,
+.candidate-cover,
+.candidate-feed-card .candidate-cover,
+.decor-preview-card {
+  border-radius: var(--radius-flip) !important;
+}
+.flip-image {
+  border-radius: calc(var(--radius-flip) - 6px) !important;
+}
+/* 内部图案层继续 inherit 外壳圆角，不允许出现「外圆内直」 */
+.card-flip-face::before, .card-flip-face::after,
+.flip-window-face::before, .flip-window-face::after {
+  border-radius: inherit;
 }
