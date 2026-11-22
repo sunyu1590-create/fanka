@@ -622,6 +622,15 @@ export default function Community({
   const [explorationHistoryOpen, setExplorationHistoryOpen] = useState(false);
   // 历史按天分页：先展示最近 5 天，避免一次性渲染全部记录。
   const [explorationHistoryLimit, setExplorationHistoryLimit] = useState(5);
+  // 探索档案的服务端口径：本地 opened 只覆盖这台设备，换设备会全部归零。
+  const [explorationServer, setExplorationServer] = useState<null | {
+    lifetimeTotal: number;
+    streak: number;
+    windowDays: { date: string; count: number }[];
+    records: { date: string; post: Post }[];
+    recentRecords: { date: string; post: Post }[];
+  }>(null);
+  const [explorationServerLoading, setExplorationServerLoading] = useState(false);
   const [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("mine");
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
@@ -1015,13 +1024,17 @@ export default function Community({
   const zone = accountTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
   const selectedDay = selectedCalendarDate || today;
+  const serverWindow = useMemo(
+    () => new Map((explorationServer?.windowDays || []).map((day) => [day.date, day.count] as const)),
+    [explorationServer],
+  );
   const calendarDays = Array.from({ length: 28 }, (_, index) => {
     const date = new Date();
     date.setDate(date.getDate() - (27 - index));
     const key = dayKey(date, zone);
-    return { key, count: (state.opened[key] || []).length };
+    // 服务端有记录就以服务端为准（跨设备一致），否则退回本机记录。
+    return { key, count: serverWindow.get(key) ?? (state.opened[key] || []).length };
   });
-  const selectedDayIds = state.opened[selectedDay] || [];
   const all = useMemo(() => [
     ...new Map(
       [...publicFeed, ...topicPosts, ...searchPosts, ...bookmarkedPosts, ...Object.values(state.revealed), ...state.own].map(
@@ -1029,6 +1042,43 @@ export default function Community({
       ),
     ).values(),
   ], [publicFeed, topicPosts, searchPosts, bookmarkedPosts, state.revealed, state.own]);
+  const serverPostById = useMemo(() => {
+    const rows = [...(explorationServer?.records || []), ...(explorationServer?.recentRecords || [])];
+    return new Map(rows.filter((row) => row.post).map((row) => [row.post.id, row.post] as const));
+  }, [explorationServer]);
+  const serverRecordsByDate = useMemo(() => {
+    const map = new Map<string, Post[]>();
+    for (const row of explorationServer?.records || []) {
+      if (!row.post) continue;
+      map.set(row.date, [...(map.get(row.date) || []), row.post]);
+    }
+    return map;
+  }, [explorationServer]);
+  const lookupPost = (id: number) => state.revealed[id] || all.find((post) => post.id === id) || serverPostById.get(id);
+  const selectedDayLocalIds = state.opened[selectedDay] || [];
+  const selectedDayRecords: Post[] = serverRecordsByDate.get(selectedDay)
+    || selectedDayLocalIds.map((id) => lookupPost(id)).filter((post): post is Post => Boolean(post));
+  // 只有进入探索中心才拉服务端口径，首页不会多发一次请求。
+  useEffect(() => {
+    if (tab !== "exploration-center" || !accountId) {
+      setExplorationServer(null);
+      return;
+    }
+    let cancelled = false;
+    setExplorationServerLoading(true);
+    cloudFetch("/api/v1/exploration-calendar")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!cancelled && payload?.data) setExplorationServer(payload.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setExplorationServerLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, accountId]);
   const opened = state.opened[today] || [];
   // 已翻开过的全部卡片：判断卡面状态必须看历史全量，只看今天会把旧卡误判成「未翻开」。
   const openedEverKey = useMemo(
@@ -1139,21 +1189,38 @@ export default function Community({
     streak++;
     streakCursor.setDate(streakCursor.getDate() - 1);
   }
-  const recentDiscoveries = Object.entries(state.opened)
+  const serverDiscoveries = (explorationServer?.recentRecords || [])
+    .filter((row): row is { date: string; post: Post } => Boolean(row.post))
+    .map((row) => ({ date: row.date, post: row.post }));
+  const localDiscoveries = Object.entries(state.opened)
     .flatMap(([date, ids]) =>
-      ids.map((id) => ({ date, post: all.find((item) => item.id === id) })),
+      ids.map((id) => ({ date, post: lookupPost(id) })),
     )
     .filter((entry): entry is { date: string; post: Post } =>
       Boolean(entry.post),
     )
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 8);
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const recentDiscoveries = (serverDiscoveries.length ? serverDiscoveries : localDiscoveries).slice(0, 8);
   // 探索概览的三个指标全部来自真实记录；数据未就绪时由 UI 显示骨架。
   const recentSevenDayCount = calendarDays.slice(-7).reduce((sum, day) => sum + day.count, 0);
   const activeDayCount = calendarDays.filter((day) => day.count > 0).length;
-  const explorationHistoryDays = Object.entries(state.opened)
-    .filter(([, ids]) => ids.length > 0)
-    .sort(([a], [b]) => b.localeCompare(a));
+  // 服务端有全量记录时以服务端为准，避免换设备后「累计翻卡」归零。
+  const explorationTotal = explorationServer?.lifetimeTotal ?? openedIds.length;
+  const explorationStreak = explorationServer?.streak ?? streak;
+  const explorationStatsReady = Boolean(explorationServer) || !explorationServerLoading;
+  const explorationHistoryDays = (() => {
+    const byDate = new Map<string, number[]>();
+    for (const [date, ids] of Object.entries(state.opened)) {
+      if (ids.length) byDate.set(date, [...ids]);
+    }
+    for (const row of explorationServer?.records || []) {
+      if (!row.post) continue;
+      const list = byDate.get(row.date) || [];
+      if (!list.includes(row.post.id)) list.push(row.post.id);
+      byDate.set(row.date, list);
+    }
+    return [...byDate.entries()].sort(([a], [b]) => b.localeCompare(a));
+  })();
   const favoritePosts = all.filter((post) =>
     state.saved.includes(post.id) &&
     (favoriteSource === "全部" ||
@@ -5665,10 +5732,10 @@ export default function Community({
           </header>
 
           <div className="explore-metrics" aria-label="探索概览">
-            {ready ? (
+            {explorationStatsReady ? (
               <>
-                <div><strong>{openedIds.length}</strong><span>累计翻卡</span></div>
-                <div><strong>{streak}</strong><span>连续探索</span></div>
+                <div><strong>{explorationTotal}</strong><span>累计翻卡</span></div>
+                <div><strong>{explorationStreak}</strong><span>连续探索</span></div>
                 <div><strong>{recentSevenDayCount}</strong><span>最近发现</span></div>
               </>
             ) : (
@@ -5704,17 +5771,14 @@ export default function Community({
             <div className="explore-day-detail">
               <div className="explore-day-detail-head">
                 <strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong>
-                <span>{selectedDayIds.length ? `${selectedDayIds.length} 张` : "还没有记录"}</span>
+                <span>{selectedDayRecords.length ? `${selectedDayRecords.length} 张` : "还没有记录"}</span>
               </div>
-              {selectedDayIds.length ? (
+              {selectedDayRecords.length ? (
                 <div className="explore-day-posts">
-                  {selectedDayIds.map((id) => {
-                    const item = state.revealed[id] || all.find((post) => post.id === id);
-                    const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                  {selectedDayRecords.map((item) => {
+                    const tier = state.rarityTiers[item.id] || item.rarityTier;
                     const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                    return item
-                      ? <button key={id} type="button" onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button>
-                      : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
+                    return <button key={item.id} type="button" onClick={() => openPost(item.id, "today", null, item)}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button>;
                   })}
                 </div>
               ) : <p className="explore-empty-line">这一天还没有翻开新卡片。翻一张，轨迹就会多一个点。</p>}
@@ -5729,7 +5793,7 @@ export default function Community({
             {recentDiscoveries.length ? (
               <div className="explore-discoveries">
                 {recentDiscoveries.slice(0, 6).map(({ date, post }) => {
-                  const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
+                  const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier || post.rarityTier;
                   const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                   const excerpt = markdownToText(post.body || "").replace(/\s+/g, " ").trim().slice(0, 88);
                   return (
@@ -5737,7 +5801,7 @@ export default function Community({
                       key={`${date}-${post.id}`}
                       type="button"
                       className="explore-discovery"
-                      onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}
+                      onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover", null, post)}
                     >
                       <span className="explore-discovery-meta">
                         <small>{post.tag}</small>
@@ -5800,12 +5864,12 @@ export default function Community({
                     <div className="explore-history-day" key={day}>
                       <div className="explore-history-date"><strong>{day}</strong><span>{values.length} 张</span></div>
                       {values.map((id) => {
-                        const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                        const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier || lookupPost(id)?.rarityTier;
                         const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
                         return (
-                          <button key={id} type="button" onClick={() => openPost(id)}>
+                          <button key={id} type="button" onClick={() => { const resolved = lookupPost(id); if (resolved) openPost(id, undefined, null, resolved); }}>
                             {rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}
-                            <span>{all.find((post) => post.id === id)?.title || "已移除内容"}</span>
+                            <span>{lookupPost(id)?.title || "已移除内容"}</span>
                             <ChevronRight size={14} />
                           </button>
                         );
