@@ -221,7 +221,7 @@ fun ProfileScreen(
                                         transformOrigin = TransformOrigin(focusX, focusY)
                                     },
                                     contentScale = ContentScale.Crop,
-                                    alignment = Alignment(focusX * 2f - 1f, focusY * 2f - 1f),
+                                    alignment = androidx.compose.ui.BiasAlignment(focusX * 2f - 1f, focusY * 2f - 1f),
                                 )
                             } else {
                                 Box(

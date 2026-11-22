@@ -156,7 +156,7 @@ fun DecorStudioContent(viewModel: DecorCenterViewModel, initialKind: String = "b
                 darkSide = previewDark,
                 viewModel = viewModel,
                 advancedOpen = advancedOpen,
-                onAdvancedToggle = { advancedOpen = it },
+                onAdvancedToggle = { advancedOpen = !advancedOpen },
                 onPickImage = { target -> uploadTarget = target; imagePicker.launch("image/*") },
             )
         } else {
@@ -165,7 +165,7 @@ fun DecorStudioContent(viewModel: DecorCenterViewModel, initialKind: String = "b
                 darkSide = previewDark,
                 viewModel = viewModel,
                 advancedOpen = advancedOpen,
-                onAdvancedToggle = { advancedOpen = it },
+                onAdvancedToggle = { advancedOpen = !advancedOpen },
                 onPickImage = { target -> uploadTarget = target; imagePicker.launch("image/*") },
             )
         }
