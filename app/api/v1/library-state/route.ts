@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
       await Promise.all([
         db
           .from("profiles")
-          .select("nickname,bio,avatar_url,role,membership_tier,show_bookmarks,timezone")
+          .select("nickname,bio,avatar_url,cover_url,cover_meta,cover_version,cover_updated_at,role,membership_tier,show_bookmarks,timezone")
           .eq("id", user!.id)
           .single(),
         db.from("profile_attributes").select("attribute,value,is_public").eq("user_id", user!.id),

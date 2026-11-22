@@ -505,6 +505,10 @@ export default function Community({
   const [reportNote, setReportNote] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const cloudHydrated = useRef(false);
+  // 封面双保险：coverBlobUrlRef 是本地缓存生成的 blob 地址（跨会话失效，绝不能写进 localStorage）；
+  // coverRemoteRef 是最近一次确认的云端地址，用于持久化与兜底。
+  const coverBlobUrlRef = useRef<string | null>(null);
+  const coverRemoteRef = useRef<string | undefined>(undefined);
   const pullStart = useRef<number | null>(null);
   const [facetIndex, setFacetIndex] = useState(0);
   const [communityRatings, setCommunityRatings] = useState<Record<number, CommunityRating>>({});
@@ -1214,11 +1218,17 @@ export default function Community({
     const timer = window.setTimeout(() => {
       const cachedState: Partial<State> = { ...state };
       delete cachedState.comments;
-      const isSignedImage = (src?: string) => Boolean(src && (src.startsWith("/api/v1/media?") || src.includes("/storage/v1/object/sign/")));
+      // blob: 地址只在当前会话有效，写进 localStorage 后下次打开必然是坏图。
+      // 持久化时换成云端地址；云端地址也拿不到就去掉该字段，由本地缓存/云端重新填充。
+      if (cachedState.cover?.startsWith("blob:")) cachedState.cover = coverRemoteRef.current;
+      // 缓存里只保留「不会过期的媒体标识」：签名地址还原成站内媒体路由，
+      // 临时 blob 地址直接丢弃。旧实现在这里把图片字段清空，
+      // 一旦后台刷新失败，重新进入时卡片就没有图片、甚至整块空白。
       cachedState.revealed = Object.fromEntries(Object.entries(state.revealed).map(([id, post]) => [id, {
         ...post,
-        image: isSignedImage(post.image) ? undefined : post.image,
-        images: post.images?.filter((image) => !isSignedImage(image)),
+        image: stableCardMediaUrl(post.image),
+        images: post.images?.map((image) => stableCardMediaUrl(image)).filter((image): image is string => Boolean(image)),
+        thumbnailImages: post.thumbnailImages?.map((image) => stableCardMediaUrl(image)).filter((image): image is string => Boolean(image)),
       }]));
       try { localStorage.setItem(storageKey, JSON.stringify(cachedState)); } catch { /* Storage quota must not interrupt navigation. */ }
     }, 220);
@@ -4418,11 +4428,22 @@ export default function Community({
             setStorageKey("heika-demo-v1");
             if (restoredUserId === null) return;
             restoredUserId = null;
+            // 退出登录：释放上一个账号的本地封面地址，避免内存与状态串号。
+            if (coverBlobUrlRef.current) { URL.revokeObjectURL(coverBlobUrlRef.current); coverBlobUrlRef.current = null; }
+            coverRemoteRef.current = undefined;
             try {
               const guest = JSON.parse(
                 localStorage.getItem("heika-demo-v1") || "null",
               );
-              setState((s) => ({ ...initial, ...guest, comments: [], cardIds: s.cardIds }));
+              setState((s) => ({
+                ...initial,
+                ...guest,
+                cover: typeof guest?.cover === "string" && !guest.cover.startsWith("blob:") ? guest.cover : undefined,
+                coverMeta: guest?.coverMeta,
+                revealed: normalizeRevealedSnapshots(guest?.revealed),
+                comments: [],
+                cardIds: s.cardIds,
+              }));
             } catch { setState((s) => ({ ...initial, cardIds: s.cardIds })); }
             return;
           }
@@ -4431,15 +4452,37 @@ export default function Community({
           setPublicBookmarks(false);
           setExperienceSummary({ total: 0, membershipTier: "free", events: [], claimedLevels: [] });
           restoredUserId = user.id;
+          // 切换账号：先释放上一个账号的 blob，再读新账号缓存。
+          if (coverBlobUrlRef.current) { URL.revokeObjectURL(coverBlobUrlRef.current); coverBlobUrlRef.current = null; }
+          coverRemoteRef.current = undefined;
           setStorageKey(`heika-user-${user.id}`);
           setState((previous) => {
             let local;
             try { local = JSON.parse(localStorage.getItem(`heika-user-${user.id}`) || "null"); } catch {}
-            return { ...initial, ...local, comments: [], cardIds: previous.cardIds };
+            return {
+              ...initial,
+              ...local,
+              // 旧版本可能把 blob 地址写进了 localStorage：这里直接丢弃，交给 IndexedDB 缓存恢复。
+              cover: typeof local?.cover === "string" && !local.cover.startsWith("blob:") ? local.cover : undefined,
+              revealed: normalizeRevealedSnapshots(local?.revealed),
+              comments: [],
+              cardIds: previous.cardIds,
+            };
           });
           void cloudRequest("/api/v1/progression").then((summary) => {
             if (isCurrent() && summary && Number.isFinite(summary.total)) setExperienceSummary(summary);
           }).catch(() => {});
+          // 封面第一层：本地缓存先上屏，不等云端返回，完全离线也能看到上次的封面。
+          let cachedCover: CoverCacheRecord | null = null;
+          try { cachedCover = await readCoverCache(user.id); } catch { cachedCover = null; }
+          if (!isCurrent()) return;
+          const cachedCoverUrl = coverCacheObjectUrl(cachedCover);
+          if (cachedCoverUrl) {
+            if (coverBlobUrlRef.current) URL.revokeObjectURL(coverBlobUrlRef.current);
+            coverBlobUrlRef.current = cachedCoverUrl;
+            setState((current) => ({ ...current, cover: cachedCoverUrl }));
+            if (cachedCover?.url) coverRemoteRef.current = cachedCover.url;
+          }
           try {
             const data = await cloudRequest("/api/v1/library-state");
             if (!isCurrent() || !data) return;
@@ -4460,6 +4503,19 @@ export default function Community({
               else toast("当前账号没有管理员权限。");
             }
             setStorageKey(`heika-user-${user.id}`);
+            // 封面第二层：云端是权威源。
+            // 注意：字段「缺失」和「明确为 null」语义不同——缺失要保留本地状态，
+            // 只有明确 null 才代表用户删除了封面。上一版接口没查这两列，
+            // 缺失被当成空值，正是「上传成功、重开就没了」的根因。
+            const cloudCover = typeof data.profile.cover_url === "string" && data.profile.cover_url ? data.profile.cover_url : null;
+            const cloudCoverVersion = Number(data.profile.cover_version || 0);
+            const cloudCoverUpdatedAt = typeof data.profile.cover_updated_at === "string" ? data.profile.cover_updated_at : null;
+            coverRemoteRef.current = cloudCover || undefined;
+            // 同一张图、同一版本才继续用本地 blob，避免已经显示后又被云端地址替换造成闪动。
+            const reusableCover = cachedCoverUrl && cachedCover && cloudCover && cachedCover.url === cloudCover && cachedCover.version === cloudCoverVersion
+              ? cachedCoverUrl
+              : null;
+            const nextCover = cloudCover ? reusableCover || cloudCover : undefined;
             setState((previous) => {
               // Preserve local interactions made while cloud hydration was in flight.
               const s: State = previous;
@@ -4506,8 +4562,10 @@ export default function Community({
                 name: data.profile.nickname,
                 bio: data.profile.bio,
                 avatar: data.profile.avatar_url,
-                cover: data.profile.cover_url || undefined,
-                coverMeta: (data.profile.cover_meta || undefined) as CoverMeta | undefined,
+                cover: nextCover,
+                coverMeta: data.profile.cover_meta !== undefined && data.profile.cover_meta !== null
+                  ? (data.profile.cover_meta as CoverMeta)
+                  : s.coverMeta,
                 profileDetails: hydrateProfileDetails(data.profileDetails),
                 saved,
                 opened,
@@ -4581,6 +4639,26 @@ export default function Community({
               };
             });
             cloudHydrated.current = true;
+            // 封面第三层：后台对齐本地缓存与云端版本。
+            // 云端更新 → 下载新图替换缓存；云端删除 → 清空缓存，避免旧图重新出现。
+            if (cloudCover) {
+              const cacheStale = !cachedCover || cachedCover.url !== cloudCover || cachedCover.version !== cloudCoverVersion;
+              if (cacheStale) {
+                void cacheCoverFromUrl(user.id, cloudCover, cloudCoverVersion, cloudCoverUpdatedAt).then((record) => {
+                  const url = coverCacheObjectUrl(record);
+                  if (!url || !isCurrent()) return;
+                  if (coverBlobUrlRef.current) URL.revokeObjectURL(coverBlobUrlRef.current);
+                  coverBlobUrlRef.current = url;
+                  setState((current) => ({ ...current, cover: url }));
+                });
+              }
+            } else {
+              void clearCoverCache(user.id);
+              if (coverBlobUrlRef.current) {
+                URL.revokeObjectURL(coverBlobUrlRef.current);
+                coverBlobUrlRef.current = null;
+              }
+            }
           } catch (e) {
             if (!isCurrent()) return;
             setPublicBookmarksLoaded(true);
@@ -4635,6 +4713,27 @@ export default function Community({
     const syncProfile = (event: Event) => {
       const detail = (event as CustomEvent<{ id?: string; nickname?: string; bio?: string; avatar?: string; cover?: string; coverMeta?: CoverMeta }>).detail;
       if (!detail || detail.id !== accountId) return;
+      // 换封面 / 删除封面后同步本地缓存：换图先写云端地址再缓存本体，删除则清空缓存与 blob。
+      if (typeof detail.cover === "string") {
+        if (!detail.cover) {
+          coverRemoteRef.current = undefined;
+          if (coverBlobUrlRef.current) { URL.revokeObjectURL(coverBlobUrlRef.current); coverBlobUrlRef.current = null; }
+          if (accountId) void clearCoverCache(accountId);
+        } else {
+          coverRemoteRef.current = detail.cover;
+          const coverUrl = detail.cover;
+          void cloudRequest("/api/v1/me/cover").then((meta: { cover_version?: number; cover_updated_at?: string | null } | null) => {
+            if (!meta || !accountId) return;
+            void cacheCoverFromUrl(accountId, coverUrl, Number(meta.cover_version || 0), meta.cover_updated_at || null).then((record) => {
+              const blobUrl = coverCacheObjectUrl(record);
+              if (!blobUrl) return;
+              if (coverBlobUrlRef.current) URL.revokeObjectURL(coverBlobUrlRef.current);
+              coverBlobUrlRef.current = blobUrl;
+              setState((current) => ({ ...current, cover: blobUrl }));
+            });
+          }).catch(() => { /* 版本拿不到时保留云端地址显示，下次进入再对齐 */ });
+        }
+      }
       setState((current) => ({
         ...current,
         name: detail.nickname || current.name,

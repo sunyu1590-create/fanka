@@ -81,6 +81,29 @@ export async function POST(req: NextRequest) {
   });
 }
 
+/**
+ * 读取封面元数据（不返回图片本身）。
+ * 客户端用它和本地缓存做版本比较：云端版本较新才重新下载，
+ * 网络异常时继续用本地缓存，不会把旧图反向写回云端。
+ */
+export async function GET(req: NextRequest) {
+  return respond(async () => {
+    const { db, user } = await context(req);
+    const { data, error } = await db
+      .from("profiles")
+      .select("cover_url,cover_meta,cover_version,cover_updated_at")
+      .eq("id", user!.id)
+      .maybeSingle();
+    dbError(error);
+    return {
+      cover_url: data?.cover_url ?? null,
+      cover_meta: data?.cover_meta ?? {},
+      cover_version: Number(data?.cover_version || 0),
+      cover_updated_at: data?.cover_updated_at ?? null,
+    };
+  });
+}
+
 /** 保存资料（阶段：保存资料）：把已上传的封面资源写入 profiles。失败时资源保留，可原样重试。 */
 export async function PUT(req: NextRequest) {
   return respond(async () => {
@@ -89,9 +112,16 @@ export async function PUT(req: NextRequest) {
     const path = ownCoverPath(body.path, user!.id);
     const meta = sanitizeMeta(body.meta);
     const { data: publicUrl } = db.storage.from("heika-decor").getPublicUrl(path);
-    const { data: current } = await db.from("profiles").select("cover_url").eq("id", user!.id).maybeSingle();
-    const { data, error } = await db.from("profiles").update({ cover_url: publicUrl.publicUrl, cover_meta: meta }).eq("id", user!.id)
-      .select("id,cover_url,cover_meta").single();
+    const { data: current } = await db.from("profiles").select("cover_url,cover_version").eq("id", user!.id).maybeSingle();
+    // 换图即递增版本：客户端据此判断本地缓存是否过期，避免旧图长期残留。
+    const nextVersion = Math.max(0, Number(current?.cover_version || 0)) + 1;
+    const { data, error } = await db.from("profiles").update({
+      cover_url: publicUrl.publicUrl,
+      cover_meta: meta,
+      cover_version: nextVersion,
+      cover_updated_at: new Date().toISOString(),
+    }).eq("id", user!.id)
+      .select("id,cover_url,cover_meta,cover_version,cover_updated_at").single();
     // 保存失败不清除已上传资源：客户端保留 path 重试 PUT 即可（需求 6.3）。
     dbError(error);
     await removeStaleCover(db, user!.id, current?.cover_url, path);
@@ -99,13 +129,13 @@ export async function PUT(req: NextRequest) {
   });
 }
 
-/** 仅更新取景参数（拖动 / 缩放后不用重新上传图片）。 */
+/** 仅更新取景参数（拖动 / 缩放后不用重新上传图片）。图片没变，版本不变。 */
 export async function PATCH(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
     const body = await jsonBody(req);
     const { data, error } = await db.from("profiles").update({ cover_meta: sanitizeMeta(body.meta) }).eq("id", user!.id)
-      .select("id,cover_url,cover_meta").single();
+      .select("id,cover_url,cover_meta,cover_version,cover_updated_at").single();
     dbError(error);
     return data;
   });
@@ -123,9 +153,16 @@ export async function DELETE(req: NextRequest) {
       try { await db.storage.from("heika-decor").remove([path]); } catch { /* 清理失败无碍 */ }
       return { cleaned: path };
     }
-    const { data: current } = await db.from("profiles").select("cover_url").eq("id", user!.id).maybeSingle();
-    const { data, error } = await db.from("profiles").update({ cover_url: null, cover_meta: {} }).eq("id", user!.id)
-      .select("id,cover_url,cover_meta").single();
+    const { data: current } = await db.from("profiles").select("cover_url,cover_version").eq("id", user!.id).maybeSingle();
+    // 删除也是一次版本变更：本地缓存必须能识别「云端已删除」，否则旧图会重新出现。
+    const nextVersion = Math.max(0, Number(current?.cover_version || 0)) + 1;
+    const { data, error } = await db.from("profiles").update({
+      cover_url: null,
+      cover_meta: {},
+      cover_version: nextVersion,
+      cover_updated_at: new Date().toISOString(),
+    }).eq("id", user!.id)
+      .select("id,cover_url,cover_meta,cover_version,cover_updated_at").single();
     dbError(error);
     await removeStaleCover(db, user!.id, current?.cover_url, null);
     return data;
