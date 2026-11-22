@@ -103,18 +103,204 @@ fun ExplorationCenterScreen(
     onCalendar: () -> Unit,
     onCoExplore: () -> Unit,
     onStoryChains: () -> Unit,
+    onRecap: () -> Unit,
+    onRecord: (CalendarRecord) -> Unit,
     viewModel: ExplorationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel) { viewModel.load() }
     RefreshExplorationOnResume(viewModel)
+    var selectedDay by rememberSaveable { mutableStateOf<String?>(null) }
+    var historyOpen by rememberSaveable { mutableStateOf(false) }
+    var historyLimit by rememberSaveable { mutableStateOf(5) }
+    val today = state.calendarToday
+    val activeDay = selectedDay ?: today
+    val days = state.calendarDays
+    val ready = !state.loading && days.isNotEmpty()
+    val activeDayCount = days.count { it.count > 0 }
+    val recentWeekCount = days.takeLast(7).sumOf { it.count }
+    val recordsByDate = remember(state.history) { state.history.groupBy { it.date } }
+    val historyGroups = remember(state.history) {
+        state.history.groupBy { it.date }.toList().sortedByDescending { it.first }
+    }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader("探索中心", onBack) {
             androidx.compose.material3.IconButton(onClick = { viewModel.load(force = true) }, enabled = !state.refreshing) {
                 androidx.compose.material3.Icon(HeikaIcons.Retry, contentDescription = "刷新探索数据", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 6.dp, end = 18.dp, bottom = 132.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
+        LazyColumn(
+            contentPadding = PaddingValues(start = 18.dp, top = 4.dp, end = 18.dp, bottom = 132.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            item {
+                Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    Text("探索档案", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.4.sp)
+                    Row(Modifier.padding(top = 7.dp)) {
+                        Text("每一次发现，都值得留下痕迹", color = MaterialTheme.colorScheme.onBackground, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                        Text(".", color = MaterialTheme.colorScheme.error, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("从今日的卡片开始，记录属于你的探索轨迹。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+            item {
+                if (ready) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ExploreMetric(state.lifetimeTotal.toString(), "累计翻卡", Modifier.weight(1f))
+                        ExploreMetricDivider()
+                        ExploreMetric(state.streak.toString(), "连续探索", Modifier.weight(1f))
+                        ExploreMetricDivider()
+                        ExploreMetric(recentWeekCount.toString(), "最近发现", Modifier.weight(1f))
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        repeat(3) { HeikaPulseRow(Modifier.weight(1f), height = 34.dp) }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 13.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("28 天探索轨迹", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (ready) "$activeDayCount 天有记录" else "同步中", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    }
+                    if (ready) {
+                        val emptyHeat = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        val filledHeat = MaterialTheme.colorScheme.primary
+                        val selectedColor = MaterialTheme.colorScheme.primary
+                        val todayColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        Column(Modifier.fillMaxWidth().padding(top = 11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            days.chunked(7).forEach { week ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    week.forEach { day ->
+                                        val level = minOf(day.count, 5)
+                                        val selected = day.date == activeDay
+                                        val isToday = day.date == today
+                                        Box(
+                                            Modifier.weight(1f).height(30.dp)
+                                                .clip(RoundedCornerShape(7.dp))
+                                                .background(if (level == 0) emptyHeat else filledHeat.copy(alpha = 0.18f + level * 0.14f))
+                                                .then(
+                                                    if (selected || isToday) {
+                                                        Modifier.border(1.dp, if (selected) selectedColor else todayColor, RoundedCornerShape(7.dp))
+                                                    } else {
+                                                        Modifier
+                                                    },
+                                                )
+                                                .clickable { selectedDay = day.date },
+                                        )
+                                    }
+                                    repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("少", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                            repeat(6) { level ->
+                                Box(
+                                    Modifier.padding(horizontal = 2.dp).size(11.dp).clip(RoundedCornerShape(3.dp))
+                                        .background(if (level == 0) emptyHeat else filledHeat.copy(alpha = 0.18f + level * 0.14f)),
+                                )
+                            }
+                            Text("多", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                        }
+                        val dayRecords = activeDay?.let { recordsByDate[it] }.orEmpty()
+                        val dayCount = days.firstOrNull { it.date == activeDay }?.count ?: 0
+                        Column(Modifier.fillMaxWidth().padding(top = 11.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(formatExploreDate(activeDay), Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    when {
+                                        dayRecords.isNotEmpty() -> "${dayRecords.size} 张"
+                                        dayCount > 0 -> "$dayCount 张"
+                                        else -> "还没有记录"
+                                    },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp,
+                                )
+                            }
+                            if (dayRecords.isNotEmpty()) {
+                                dayRecords.take(3).forEach { record -> ExploreRecordRow(record) { onRecord(record) } }
+                                if (dayRecords.size > 3) {
+                                    Text(
+                                        "查看全部 ${dayRecords.size} 条记录",
+                                        Modifier.padding(top = 4.dp).clickable(onClick = onCalendar),
+                                        color = MaterialTheme.colorScheme.primary, fontSize = 10.sp,
+                                    )
+                                }
+                            } else if (dayCount > 0) {
+                                Text("当天记录已归档，可在探索日历回看。", Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                Text("打开探索日历", Modifier.padding(top = 5.dp).clickable(onClick = onCalendar), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                            } else {
+                                Text("这一天还没有翻开新卡片。翻一张，轨迹就会多一个点。", Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            }
+                        }
+                    } else {
+                        HeikaPulseRow(Modifier.fillMaxWidth().padding(top = 11.dp), height = 98.dp)
+                    }
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 13.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("最近发现", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (state.discoveries.isEmpty()) "暂无" else "最近 ${minOf(state.discoveries.size, 6)} 条",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp,
+                        )
+                    }
+                    if (state.discoveries.isEmpty()) {
+                        Text(
+                            if (state.loading) "正在同步" else "翻开第一张卡片后，这里会留下你的近期发现。",
+                            Modifier.padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp,
+                        )
+                    } else {
+                        state.discoveries.take(6).forEach { record -> ExploreDiscoveryRow(record) { onRecord(record) } }
+                    }
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ExplorePairCard("与好友一起探索", "共同翻卡，分享发现", HeikaIcons.CoExplore, Modifier.weight(1f), onCoExplore)
+                    ExplorePairCard("卡片接龙", "从一张卡片续写故事", HeikaIcons.StoryChain, Modifier.weight(1f), onStoryChains)
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface)
+                        .clickable(onClick = onRecap).padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.Icon(HeikaIcons.Sparkles, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    }
+                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                        Text("探索月报", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("本月探索次数、活跃天数与兴趣分布", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
+                    androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                }
+            }
+            item {
+                val summary = ExplorationLogic.dailySummary(state.missions)
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).clickable(onClick = onTasks).padding(vertical = 4.dp, horizontal = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    androidx.compose.material3.Icon(HeikaIcons.Medal, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+                    Text("今日任务", Modifier.weight(1f).padding(start = 9.dp), color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (state.loading && state.missions.isEmpty()) "同步中" else "${summary.completed}/${state.missions.size} · ${summary.totalPoints} EXP",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp,
+                    )
+                    androidx.compose.material3.Icon(HeikaIcons.Forward, "查看今日任务", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 5.dp).size(15.dp))
+                }
+            }
+            state.error?.let { message -> item { InlineError(message, onRetry = { viewModel.load(force = true) }) } }
+            state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) } }
             item {
                 val progress = ExplorationLogic.progression(state.experience)
                 val animatedProgress by animateFloatAsState(
@@ -124,9 +310,9 @@ fun ExplorationCenterScreen(
                 )
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 11.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("LV.${progress.current.level}", color = MaterialTheme.colorScheme.primary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                        Text(progress.current.reward, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 9.dp).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${state.experience} / ${progress.next?.threshold?.toString() ?: "满级"} EXP", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        Text("LV.${progress.current.level}", color = MaterialTheme.colorScheme.primary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        Text(progress.current.reward, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 9.dp).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${state.experience} / ${progress.next?.threshold?.toString() ?: "满级"} EXP", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
                     }
                     LinearProgressIndicator(
                         progress = { animatedProgress },
@@ -134,71 +320,181 @@ fun ExplorationCenterScreen(
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
-                }
-            }
-            item {
-                val summary = ExplorationLogic.dailySummary(state.missions)
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).clickable(onClick = onTasks).padding(vertical = 11.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.Icon(HeikaIcons.Medal, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        Text("今日任务", Modifier.weight(1f).padding(start = 9.dp), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val claimable = ExplorationLogic.levels.firstOrNull { it.level !in state.claimedLevels && state.experience >= it.threshold }
+                        val next = claimable ?: ExplorationLogic.levels.firstOrNull { state.experience < it.threshold }
                         Text(
-                            if (state.loading && state.missions.isEmpty()) "同步中" else "${summary.completed}/${state.missions.size} · ${summary.totalPoints} EXP",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp,
+                            next?.let { if (claimable != null) "可领取 LV.${it.level} 奖励" else "LV.${it.level} · ${it.threshold} EXP 解锁" } ?: "已达到当前最高等级",
+                            Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
-                        androidx.compose.material3.Icon(HeikaIcons.Forward, "查看今日任务", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 5.dp).size(16.dp))
+                        Text("等级奖励", Modifier.clickable(onClick = onRewards).padding(horizontal = 4.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                        if (claimable != null) {
+                            TextButton(onClick = { viewModel.claimLevel(claimable.level) }, enabled = state.busyLevel == null) {
+                                Text(if (state.busyLevel == claimable.level) "领取中" else "领取", fontSize = 10.sp)
+                            }
+                        }
                     }
                 }
             }
-            item { Text("探索功能", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
             item {
-                Column(Modifier.fillMaxWidth()) {
-                    ExplorationActionRow("探索日历", "翻卡记录", HeikaIcons.Calendar, onCalendar)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("双人探索", "和伙伴共同揭晓", HeikaIcons.CoExplore, onCoExplore)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-                    ExplorationActionRow("故事接龙", "续写社区故事", HeikaIcons.StoryChain, onStoryChains)
-                }
-            }
-            state.error?.let { message -> item { InlineError(message, onRetry = { viewModel.load(force = true) }) } }
-            state.notice?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) } }
-            item {
-                val claimable = ExplorationLogic.levels.firstOrNull { it.level !in state.claimedLevels && state.experience >= it.threshold }
-                val next = claimable ?: ExplorationLogic.levels.firstOrNull { state.experience < it.threshold }
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 13.dp, vertical = 10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("等级奖励", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text("查看全部", Modifier.clickable(onClick = onRewards).padding(horizontal = 4.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                        androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
-                    }
-                    if (next != null) Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("LV.${next.level}", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(45.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(next.reward, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (claimable != null) "可领取" else "${next.threshold} EXP 解锁", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
-                        }
-                        if (claimable != null) TextButton(onClick = { viewModel.claimLevel(claimable.level) }, enabled = state.busyLevel == null) {
-                            Text(if (state.busyLevel == claimable.level) "领取中" else "领取", fontSize = 10.sp)
-                        }
-                    } else Text("已达到当前最高等级", Modifier.padding(top = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                }
-            }
-            item {
-                Column(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("最近成长记录", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        if (state.events.isNotEmpty()) Text("查看全部", Modifier.clickable(onClick = onEvents).padding(6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                        if (state.events.isNotEmpty()) Text("查看全部", Modifier.clickable(onClick = onEvents).padding(4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                     }
                     if (state.events.isEmpty()) {
                         Text(if (state.loading) "正在同步" else "暂无记录", Modifier.padding(vertical = 9.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                    } else state.events.take(3).forEachIndexed { index, event ->
-                        ExperienceEventRow(event)
-                        if (index < minOf(3, state.events.size) - 1) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                    } else {
+                        state.events.take(3).forEachIndexed { index, event ->
+                            ExperienceEventRow(event)
+                            if (index < minOf(3, state.events.size) - 1) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                        }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).clickable { historyOpen = !historyOpen }.padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("探索历史", Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${historyGroups.size} 天 · ${if (historyOpen) "收起" else "展开"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    }
+                    if (historyOpen) {
+                        if (historyGroups.isEmpty()) {
+                            Text(if (state.loading) "正在同步" else "翻开第一张卡，开始记录。", Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                        } else {
+                            historyGroups.take(historyLimit).forEach { (date, values) ->
+                                Column(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(date, Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        Text("${values.size} 张", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                                    }
+                                    values.forEach { record -> ExploreHistoryRow(record) { onRecord(record) } }
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                if (historyGroups.size > historyLimit) {
+                                    TextButton(onClick = { historyLimit += 5 }) {
+                                        Text("加载更多（还有 ${historyGroups.size - historyLimit} 天）", fontSize = 10.sp)
+                                    }
+                                }
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = onCalendar) { Text("完整日历", fontSize = 10.sp) }
+                            }
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("按日期归档的全部探索记录，展开后可以回到任意一天。", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                            Text("完整日历", Modifier.clickable(onClick = onCalendar).padding(start = 8.dp, top = 4.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ExploreMetric(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp))
+    }
+}
+
+@Composable
+private fun ExploreMetricDivider() {
+    Box(Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)))
+}
+
+@Composable
+private fun ExplorePairCard(title: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier.clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 12.dp),
+    ) {
+        Box(Modifier.size(30.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+        }
+        Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 9.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.5.sp, modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.padding(top = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("进入", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+            androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
+        }
+    }
+}
+
+@Composable
+private fun ExploreRecordRow(record: CalendarRecord, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(record.title.ifBlank { "已移除内容" }, Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (record.rarityTier == "S" || record.rarityTier == "SS" || record.rarityTier == "SSS") {
+            Text(record.rarityTier, Modifier.padding(start = 6.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)).padding(horizontal = 4.dp, vertical = 1.dp), color = MaterialTheme.colorScheme.primary, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+        }
+        androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp).size(13.dp))
+    }
+}
+
+@Composable
+private fun ExploreDiscoveryRow(record: CalendarRecord, onClick: () -> Unit) {
+    val excerpt = remember(record.postId, record.post?.body) { exploreExcerpt(record) }
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(top = 9.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(record.tag.ifBlank { "未分类" }, color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+            Text(" · ${record.date.takeLast(5).replace('-', '.')}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+            if (record.rarityTier == "S" || record.rarityTier == "SS" || record.rarityTier == "SSS") {
+                Text(record.rarityTier, Modifier.padding(start = 5.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)).padding(horizontal = 4.dp, vertical = 1.dp), color = MaterialTheme.colorScheme.primary, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Text(record.title.ifBlank { "已移除内容" }, color = MaterialTheme.colorScheme.onBackground, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 3.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (excerpt.isNotBlank()) {
+            Text(excerpt, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, modifier = Modifier.padding(top = 3.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("查看详情", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+            androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(12.dp))
+        }
+        HorizontalDivider(Modifier.padding(top = 9.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    }
+}
+
+@Composable
+private fun ExploreHistoryRow(record: CalendarRecord, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (record.rarityTier == "S" || record.rarityTier == "SS" || record.rarityTier == "SSS") {
+            Text(record.rarityTier, Modifier.padding(end = 6.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)).padding(horizontal = 4.dp, vertical = 1.dp), color = MaterialTheme.colorScheme.primary, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Text(record.title.ifBlank { "已移除内容" }, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        androidx.compose.material3.Icon(HeikaIcons.Forward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.size(12.dp))
+    }
+}
+
+private fun formatExploreDate(value: String?): String {
+    if (value.isNullOrBlank()) return "今天"
+    val parts = value.split("-")
+    if (parts.size != 3) return value
+    val month = parts[1].trimStart('0').ifBlank { "0" }
+    val day = parts[2].trimStart('0').ifBlank { "0" }
+    return "${parts[0]}年${month}月${day}日"
+}
+
+private fun exploreExcerpt(record: CalendarRecord): String {
+    val body = record.post?.body.orEmpty()
+    if (body.isBlank()) return ""
+    // 卡片摘要只需纯文本：去掉 Markdown 标记，避免列表里出现符号噪声。
+    val plain = buildString(body.length) {
+        body.forEach { char -> append(if (char in "#>*`[]()!_~|") ' ' else char) }
+    }
+    return plain.replace(Regex("\\s+"), " ").trim().take(88)
 }
 
 @Composable
@@ -865,4 +1161,120 @@ private fun copyText(context: Context, label: String, value: String) {
 private fun shareText(context: Context, title: String, text: String) {
     val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, title); putExtra(Intent.EXTRA_TEXT, text) }
     runCatching { context.startActivity(Intent.createChooser(intent, title)) }
+}
+
+@Composable
+fun ExplorationRecapScreen(
+    onBack: () -> Unit,
+    onRecord: (CalendarRecord) -> Unit = {},
+    viewModel: ExplorationViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(viewModel) { viewModel.load() }
+    RefreshExplorationOnResume(viewModel)
+    val month = state.calendarToday?.take(7)
+    val monthDays = state.calendarDays.filter { month != null && it.date.startsWith(month) }
+    val monthRecords = state.history.filter { month != null && it.date.startsWith(month) }
+    val monthTotal = if (monthRecords.isNotEmpty()) monthRecords.size else monthDays.sumOf { it.count }
+    val activeDays = monthDays.count { it.count > 0 }
+    val topTags = monthRecords.groupingBy { it.tag.ifBlank { "未分类" } }.eachCount().entries
+        .sortedByDescending { it.value }.take(5)
+    val maxDay = monthDays.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
+    val monthLabel = month?.let { value ->
+        val parts = value.split("-")
+        if (parts.size == 2) "${parts[0]}年${parts[1].trimStart('0')}月" else value
+    } ?: "本月"
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        BackHeader("探索月报", onBack) {
+            androidx.compose.material3.IconButton(onClick = { viewModel.load(force = true) }, enabled = !state.refreshing) {
+                androidx.compose.material3.Icon(HeikaIcons.Retry, contentDescription = "刷新探索月报", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 6.dp, end = 18.dp, bottom = 132.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(monthLabel, color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.4.sp)
+                    Row(Modifier.padding(top = 7.dp)) {
+                        Text("这个月，你翻开了", color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        Text("$monthTotal", color = MaterialTheme.colorScheme.primary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        Text(" 张卡片", color = MaterialTheme.colorScheme.onBackground, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text(
+                        if (activeDays > 0) "分布在 $activeDays 天里，最近连续探索 ${state.streak} 天。" else "本月还没有翻开记录，今天就可以开始。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ExploreMetric(monthTotal.toString(), "本月翻卡", Modifier.weight(1f))
+                    ExploreMetricDivider()
+                    ExploreMetric(activeDays.toString(), "活跃天数", Modifier.weight(1f))
+                    ExploreMetricDivider()
+                    ExploreMetric(state.lifetimeTotal.toString(), "累计翻卡", Modifier.weight(1f))
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 13.dp)) {
+                    Text("每日节奏", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    if (monthDays.isEmpty()) {
+                        Text(if (state.loading) "正在同步" else "本月还没有记录", Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    } else {
+                        Row(Modifier.fillMaxWidth().height(72.dp).padding(top = 12.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            monthDays.forEach { day ->
+                                val fraction = day.count.toFloat() / maxDay
+                                Box(
+                                    Modifier.weight(1f).height((6 + fraction * 54).dp).clip(RoundedCornerShape(3.dp))
+                                        .background(if (day.count == 0) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.35f + fraction * 0.5f)),
+                                )
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(monthDays.first().date.takeLast(5), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                            Spacer(Modifier.weight(1f))
+                            Text(monthDays.last().date.takeLast(5), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                        }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 13.dp)) {
+                    Text("兴趣分布", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    if (topTags.isEmpty()) {
+                        Text(if (state.loading) "正在同步" else "翻开卡片后，这里会显示你本月关注的主题。", Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    } else {
+                        val total = topTags.sumOf { it.value }.coerceAtLeast(1)
+                        topTags.forEach { entry ->
+                            Column(Modifier.fillMaxWidth().padding(top = 9.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(entry.key, Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp)
+                                    Text("${entry.value} 张", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                                }
+                                LinearProgressIndicator(
+                                    progress = { entry.value.toFloat() / total },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(4.dp).clip(CircleShape),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.surface)).background(MaterialTheme.colorScheme.surface).padding(horizontal = 14.dp, vertical = 13.dp)) {
+                    Text("本月稀有发现", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    val rare = monthRecords.filter { it.rarityTier == "S" || it.rarityTier == "SS" || it.rarityTier == "SSS" }.take(4)
+                    if (rare.isEmpty()) {
+                        Text("本月还没有 S 级以上的卡片，继续翻开试试。", Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    } else {
+                        rare.forEach { record -> ExploreRecordRow(record) { onRecord(record) } }
+                    }
+                }
+            }
+        }
+    }
 }

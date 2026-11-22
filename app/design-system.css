@@ -8300,3 +8300,155 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
   content: ""; position: absolute; inset: 0; border-radius: inherit;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); pointer-events: none;
 }
+
+/* ── 探索中心（A 极简档案 + C 编辑式工作台） ───────────────────────── */
+.explore-page { padding-bottom: 104px; }
+.explore-hero { padding: 4px 0 20px; }
+.explore-hero-kicker { font: 9px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .18em; color: var(--muted); }
+.explore-hero h1 { margin: 8px 0 9px; font-size: clamp(23px, 6vw, 29px); line-height: 1.24; letter-spacing: -.04em; }
+.explore-hero p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.explore-metrics {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px;
+  margin: 0 0 28px; border: 1px solid var(--line); border-radius: var(--radius-card);
+  overflow: hidden; background: var(--line);
+}
+.explore-metrics > div {
+  display: grid; gap: 3px; justify-items: center; padding: 15px 8px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+.explore-metrics strong { font-size: 24px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.explore-metrics span { font-size: 10px; color: var(--muted); }
+.explore-metrics-skeleton { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; }
+.explore-metrics-skeleton span { display: grid; gap: 6px; justify-items: center; padding: 16px 8px; background: color-mix(in srgb, var(--surface) 86%, transparent); }
+.explore-metrics-skeleton i, .explore-metrics-skeleton b {
+  display: block; border-radius: 4px; background: linear-gradient(100deg, var(--surface), color-mix(in srgb, var(--surface) 70%, var(--line)), var(--surface));
+  background-size: 220% 100%; animation: explore-skeleton 1.3s ease-in-out infinite;
+}
+.explore-metrics-skeleton i { width: 42px; height: 20px; }
+.explore-metrics-skeleton b { width: 56px; height: 9px; }
+@keyframes explore-skeleton { 0% { background-position: 120% 0; } 100% { background-position: -20% 0; } }
+
+.explore-block { margin: 0 0 30px; }
+.explore-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.explore-block-head h2 { margin: 0; font-size: 15px; font-weight: 620; letter-spacing: -.01em; }
+.explore-block-head > span, .explore-block-head > button span { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 28 天热力图：7 列 4 行，当天有克制但明确的标记 */
+.explore-heatmap { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; max-width: 560px; }
+.explore-heat-day {
+  position: relative; aspect-ratio: 1 / 1; border: 0; border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--line)); cursor: pointer;
+  transition: transform 140ms ease, box-shadow 160ms ease;
+}
+.explore-heat-day:active { transform: scale(.94); }
+.explore-heat-day.level-1 { background: color-mix(in srgb, var(--action) 18%, var(--surface)); }
+.explore-heat-day.level-2 { background: color-mix(in srgb, var(--action) 34%, var(--surface)); }
+.explore-heat-day.level-3 { background: color-mix(in srgb, var(--action) 52%, var(--surface)); }
+.explore-heat-day.level-4 { background: color-mix(in srgb, var(--action) 72%, var(--surface)); }
+.explore-heat-day.level-5 { background: var(--action); }
+.explore-heat-day.is-today { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ink) 62%, transparent); }
+.explore-heat-day.is-today::after {
+  content: ""; position: absolute; left: 50%; bottom: 5px; width: 3px; height: 3px;
+  margin-left: -1.5px; border-radius: 50%; background: var(--ink); opacity: .72;
+}
+.explore-heat-day.is-selected { box-shadow: 0 0 0 2px var(--action), 0 0 0 4px color-mix(in srgb, var(--action) 22%, transparent); }
+.explore-heat-legend { display: flex; align-items: center; gap: 4px; margin: 10px 0 14px; color: var(--muted); font-size: 9px; }
+.explore-heat-legend i { width: 12px; height: 12px; border-radius: 3px; background: color-mix(in srgb, var(--surface) 92%, var(--line)); }
+.explore-heat-legend i.level-1 { background: color-mix(in srgb, var(--action) 18%, var(--surface)); }
+.explore-heat-legend i.level-2 { background: color-mix(in srgb, var(--action) 34%, var(--surface)); }
+.explore-heat-legend i.level-3 { background: color-mix(in srgb, var(--action) 52%, var(--surface)); }
+.explore-heat-legend i.level-4 { background: color-mix(in srgb, var(--action) 72%, var(--surface)); }
+.explore-heat-legend i.level-5 { background: var(--action); }
+
+.explore-day-detail {
+  padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+}
+.explore-day-detail-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.explore-day-detail-head strong { font-size: 12.5px; font-weight: 600; }
+.explore-day-detail-head span { font-size: 10px; color: var(--muted); }
+.explore-day-posts { display: grid; gap: 2px; }
+.explore-day-posts button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 0;
+  border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink); text-align: left;
+}
+.explore-day-posts button:first-child { border-top: 0; }
+.explore-day-posts button > span { font-size: 9.5px; color: var(--action); flex: none; }
+.explore-day-posts button > strong { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explore-day-posts button > svg { color: var(--muted); flex: none; }
+.explore-empty-line { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+
+/* 最近发现：编辑式预览，窄屏单列保证可读 */
+.explore-discoveries { display: grid; gap: 10px; }
+@media (min-width: 760px) { .explore-discoveries { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.explore-discovery {
+  display: grid; gap: 7px; padding: 15px 15px 13px; text-align: left;
+  border: 1px solid var(--line); border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  backdrop-filter: blur(var(--blur-panel)); -webkit-backdrop-filter: blur(var(--blur-panel));
+  color: var(--ink); transition: transform 160ms ease, border-color 160ms ease;
+}
+.explore-discovery:active { transform: scale(.99); }
+.explore-discovery-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.explore-discovery-meta small { font-size: 9.5px; color: var(--muted); letter-spacing: .02em; }
+.explore-discovery-meta small:first-child { color: var(--action); }
+.explore-discovery > strong { font-size: 14.5px; line-height: 1.4; font-weight: 600; letter-spacing: -.015em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.explore-discovery-excerpt { font-size: 11px; line-height: 1.65; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.explore-discovery-open { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+
+/* 好友探索 + 接龙：并排两个模块 */
+.explore-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 4px 0 12px; }
+.explore-pair button {
+  display: grid; gap: 5px; align-content: start; padding: 15px; min-height: 132px;
+  text-align: left; border: 1px solid var(--line); border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--surface) 80%, transparent); color: var(--ink);
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+.explore-pair button:active { transform: scale(.985); }
+.explore-pair-icon {
+  display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 4px;
+  border-radius: 10px; background: color-mix(in srgb, var(--action) 14%, transparent); color: var(--action);
+}
+.explore-pair strong { font-size: 13px; font-weight: 600; }
+.explore-pair small { font-size: 10.5px; line-height: 1.55; color: var(--muted); }
+.explore-pair em { display: inline-flex; align-items: center; gap: 2px; margin-top: auto; padding-top: 8px; font-style: normal; font-size: 10px; color: var(--action); }
+
+/* 月报：重点二级入口 */
+.explore-recap-entry {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 15px; margin: 0 0 22px;
+  border: 1px solid color-mix(in srgb, var(--action) 30%, var(--line));
+  border-radius: var(--radius-card); text-align: left; color: var(--ink);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--action) 12%, transparent), color-mix(in srgb, var(--surface) 86%, transparent));
+}
+.explore-recap-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 11px; background: color-mix(in srgb, var(--action) 18%, transparent); color: var(--action); }
+.explore-recap-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.explore-recap-copy strong { font-size: 13px; font-weight: 600; }
+.explore-recap-copy small { font-size: 10.5px; color: var(--muted); }
+.explore-recap-entry > svg { color: var(--muted); flex: none; }
+
+/* 历史：按日期分组、可折叠、分页加载 */
+.explore-history-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; }
+.explore-history-toggle > span { display: inline-flex; align-items: center; gap: 4px; }
+.explore-history-toggle > span svg { transition: transform 180ms ease; }
+.explore-history-day { display: grid; gap: 2px; padding: 10px 0 4px; border-top: 1px solid var(--line); }
+.explore-history-date { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 4px; }
+.explore-history-date strong { font-size: 10.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.explore-history-date span { font-size: 9.5px; color: var(--muted); }
+.explore-history-day button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 0;
+  border: 0; background: none; color: var(--ink); text-align: left;
+}
+.explore-history-day button > span { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explore-history-day button > svg { color: var(--muted); flex: none; }
+.explore-history-more {
+  width: 100%; margin-top: 10px; padding: 11px; border: 1px solid var(--line);
+  border-radius: 999px; background: transparent; color: var(--ink); font-size: 11.5px;
+}
+@media (max-width: 380px) {
+  .explore-pair { grid-template-columns: 1fr; }
+  .explore-pair button { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .explore-heat-day, .explore-discovery, .explore-pair button, .explore-history-toggle > span svg { transition: none; }
+  .explore-metrics-skeleton i, .explore-metrics-skeleton b { animation: none; }
+}

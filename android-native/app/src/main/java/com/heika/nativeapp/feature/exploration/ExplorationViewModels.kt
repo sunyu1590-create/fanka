@@ -36,6 +36,9 @@ data class MissionItem(
 
 data class ExperienceEvent(val type: String, val points: Int, val createdAt: String)
 
+/** 探索热力图的单日格子：date 为服务端时区的 yyyy-MM-dd。 */
+data class CalendarDayCount(val date: String, val count: Int)
+
 data class ExplorationCenterState(
     val accountId: String? = null,
     val loading: Boolean = true,
@@ -51,6 +54,22 @@ data class ExplorationCenterState(
     val busyLevel: Int? = null,
     val error: String? = null,
     val notice: String? = null,
+    /** 累计翻卡：来自服务端全量记录，不能用本地当天数据推算。 */
+    val lifetimeTotal: Int = 0,
+    val calendarToday: String? = null,
+    val calendarDays: List<CalendarDayCount> = emptyList(),
+    val discoveries: List<CalendarRecord> = emptyList(),
+    val history: List<CalendarRecord> = emptyList(),
+)
+
+/** 探索中心需要的日历切片，服务端一次返回，避免为了 28 天窗口再拉上个月。 */
+private data class CenterCalendar(
+    val today: String?,
+    val streak: Int,
+    val lifetimeTotal: Int,
+    val days: List<CalendarDayCount>,
+    val discoveries: List<CalendarRecord>,
+    val history: List<CalendarRecord>,
 )
 
 @HiltViewModel
@@ -134,19 +153,25 @@ class ExplorationViewModel @Inject constructor(
             val events = progressionJson.optJSONArray("events").jsonObjects().map { event ->
                 ExperienceEvent(event.optString("type"), event.optInt("points"), event.optString("createdAt"))
             }
+            val center = parseCenterCalendar(calendarJson, mutableState.value)
             val next = ExplorationCenterState(
                 accountId = userId,
                 loading = false,
                 serverDate = missionsJson.optString("date").takeIf(String::isNotBlank),
                 updatedAtMillis = System.currentTimeMillis(),
-                streak = calendarJson?.optInt("streak") ?: mutableState.value.streak,
+                streak = center.streak,
                 missions = missions,
                 experience = progressionJson.optInt("total"),
                 claimedLevels = (0 until (claimed?.length() ?: 0)).mapNotNull { claimed?.optInt(it)?.takeIf { value -> value in 1..10 } }.toSet(),
                 events = events,
+                lifetimeTotal = center.lifetimeTotal,
+                calendarToday = center.today,
+                calendarDays = center.days,
+                discoveries = center.discoveries,
+                history = center.history,
             )
             mutableState.value = next
-            repository.saveExplorationSnapshot(userId, encodeSnapshot(next, missionsJson, progressionJson, calendarJson))
+            repository.saveExplorationSnapshot(userId, encodeSnapshot(next, missionsJson, progressionJson))
             lastLoadedAtByUser[userId] = System.currentTimeMillis()
         } catch (error: Exception) {
             if (activeUserId == userId && requestGeneration == generation) {
@@ -209,15 +234,106 @@ class ExplorationViewModel @Inject constructor(
             experience = json.optInt("total"),
             claimedLevels = (0 until (claimed?.length() ?: 0)).mapNotNull { claimed?.optInt(it)?.takeIf { value -> value in 1..10 } }.toSet(),
             events = events,
+            lifetimeTotal = json.optInt("lifetimeTotal"),
+            calendarToday = json.optString("calendarToday").takeIf(String::isNotBlank),
+            calendarDays = parseDayCounts(json.optJSONArray("windowDays")),
+            discoveries = parseSnapshotRecords(json.optJSONArray("discoveries")),
+            history = parseSnapshotRecords(json.optJSONArray("history")),
         )
     }
 
-    private fun encodeSnapshot(state: ExplorationCenterState, missions: JSONObject, progression: JSONObject, calendar: JSONObject?): JSONObject =
-        JSONObject().put("date", state.serverDate).put("streak", calendar?.optInt("streak") ?: state.streak)
+    private fun parseDayCounts(array: JSONArray?): List<CalendarDayCount> =
+        (0 until (array?.length() ?: 0)).mapNotNull { index ->
+            val item = array?.optJSONObject(index) ?: return@mapNotNull null
+            val date = item.optString("date")
+            if (date.isBlank()) null else CalendarDayCount(date, item.optInt("count"))
+        }
+
+    private fun parseSnapshotRecords(array: JSONArray?): List<CalendarRecord> =
+        (0 until (array?.length() ?: 0)).mapNotNull { index ->
+            val item = array?.optJSONObject(index) ?: return@mapNotNull null
+            val postId = item.optString("postId")
+            if (postId.isBlank()) return@mapNotNull null
+            CalendarRecord(
+                date = item.optString("date"),
+                openedAt = item.optString("openedAt"),
+                postId = postId,
+                clientId = item.optInt("clientId"),
+                title = item.optString("title"),
+                tag = item.optString("tag"),
+                channel = item.optString("channel", "community"),
+                image = item.optString("image").takeIf(String::isNotBlank),
+                rarityTier = item.optString("rarityTier", "pending"),
+            )
+        }
+
+    private fun parseCenterCalendar(json: JSONObject?, fallback: ExplorationCenterState): CenterCalendar {
+        if (json == null) {
+            return CenterCalendar(
+                today = fallback.calendarToday,
+                streak = fallback.streak,
+                lifetimeTotal = fallback.lifetimeTotal,
+                days = fallback.calendarDays,
+                discoveries = fallback.discoveries,
+                history = fallback.history,
+            )
+        }
+        val window = parseDayCounts(json.optJSONArray("windowDays"))
+        val days = window.ifEmpty { parseDayCounts(json.optJSONArray("days")) }
+        val history = parseCalendarRecords(json.optJSONArray("records"))
+        val recent = parseCalendarRecords(json.optJSONArray("recentRecords"))
+        return CenterCalendar(
+            today = json.optString("today").takeIf(String::isNotBlank),
+            streak = json.optInt("streak", fallback.streak),
+            lifetimeTotal = json.optInt("lifetimeTotal", fallback.lifetimeTotal),
+            days = days,
+            discoveries = recent.ifEmpty { history.take(8) },
+            history = history,
+        )
+    }
+
+    private fun parseCalendarRecords(array: JSONArray?): List<CalendarRecord> =
+        (0 until (array?.length() ?: 0)).mapNotNull { index ->
+            val row = array?.optJSONObject(index) ?: return@mapNotNull null
+            val post = row.optJSONObject("post") ?: return@mapNotNull null
+            val mapped = runCatching { HeikaPost.from(post) }.getOrNull() ?: return@mapNotNull null
+            CalendarRecord(
+                date = row.optString("date"),
+                openedAt = row.optString("openedAt"),
+                postId = mapped.cloudId,
+                clientId = mapped.id,
+                title = mapped.title,
+                tag = mapped.tag,
+                channel = mapped.channel,
+                image = mapped.thumbnail,
+                rarityTier = mapped.rarityTier,
+                post = mapped,
+            )
+        }
+
+    private fun encodeSnapshot(state: ExplorationCenterState, missions: JSONObject, progression: JSONObject): JSONObject =
+        JSONObject().put("date", state.serverDate).put("streak", state.streak)
             .put("missions", missions.optJSONArray("missions") ?: JSONArray())
             .put("total", progression.optInt("total"))
             .put("claimedLevels", progression.optJSONArray("claimedLevels") ?: JSONArray())
             .put("events", progression.optJSONArray("events") ?: JSONArray())
+            .put("lifetimeTotal", state.lifetimeTotal)
+            .put("calendarToday", state.calendarToday)
+            .put("windowDays", JSONArray(state.calendarDays.map { JSONObject().put("date", it.date).put("count", it.count) }))
+            .put("discoveries", JSONArray(state.discoveries.take(8).map(::encodeRecord)))
+            // 历史只保留最近 60 条，避免快照无限增长。
+            .put("history", JSONArray(state.history.take(60).map(::encodeRecord)))
+
+    private fun encodeRecord(record: CalendarRecord): JSONObject = JSONObject()
+        .put("date", record.date)
+        .put("openedAt", record.openedAt)
+        .put("postId", record.postId)
+        .put("clientId", record.clientId)
+        .put("title", record.title)
+        .put("tag", record.tag)
+        .put("channel", record.channel)
+        .put("image", record.image ?: JSONObject.NULL)
+        .put("rarityTier", record.rarityTier)
 }
 
 data class CalendarRecord(

@@ -619,8 +619,9 @@ export default function Community({
       "default" | "granted" | "denied" | "unsupported"
     >("default");
   const [recentExperienceOpen, setRecentExperienceOpen] = useState(false);
-  const [explorationCalendarOpen, setExplorationCalendarOpen] = useState(true);
   const [explorationHistoryOpen, setExplorationHistoryOpen] = useState(false);
+  // 历史按天分页：先展示最近 5 天，避免一次性渲染全部记录。
+  const [explorationHistoryLimit, setExplorationHistoryLimit] = useState(5);
   const [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("mine");
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
@@ -1145,6 +1146,12 @@ export default function Community({
     )
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 8);
+  // 探索概览的三个指标全部来自真实记录；数据未就绪时由 UI 显示骨架。
+  const recentSevenDayCount = calendarDays.slice(-7).reduce((sum, day) => sum + day.count, 0);
+  const activeDayCount = calendarDays.filter((day) => day.count > 0).length;
+  const explorationHistoryDays = Object.entries(state.opened)
+    .filter(([, ids]) => ids.length > 0)
+    .sort(([a], [b]) => b.localeCompare(a));
   const favoritePosts = all.filter((post) =>
     state.saved.includes(post.id) &&
     (favoriteSource === "全部" ||
@@ -5628,43 +5635,169 @@ export default function Community({
         </section>
       )}
       {tab === "exploration-center" && (
-        <section className="page exploration-center-page">
-          <div className="exploration-center-intro"><h1>探索中心</h1><p>和朋友一起发现，也回看自己的探索轨迹。</p></div>
-          <div className="exploration-center-actions" aria-label="探索功能">
-            <button type="button" onClick={() => openCoExplore("exploration-center")}><span><UsersRound size={18}/></span><span><strong>和朋友一起探索</strong><small>共同翻卡，分享发现</small></span><ChevronRight size={17}/></button>
-            <button type="button" onClick={() => openMineFeature("monthly-recap", "exploration-center")}><span><Sparkles size={18}/></span><span><strong>探索月报</strong><small>回看本月发现与稀有卡</small></span><ChevronRight size={17}/></button>
-            <button type="button" onClick={() => openMineFeature("card-chain", "exploration-center")}><span><GitBranch size={18}/></span><span><strong>卡片接龙</strong><small>从一张卡片续写故事</small></span><ChevronRight size={17}/></button>
+        <section className="page exploration-center-page explore-page">
+          <header className="explore-hero">
+            <span className="explore-hero-kicker">探索档案</span>
+            <h1>每一次发现，都值得留下痕迹<span className="red-dot">.</span></h1>
+            <p>从今日的卡片开始，记录属于你的探索轨迹。</p>
+          </header>
+
+          <div className="explore-metrics" aria-label="探索概览">
+            {ready ? (
+              <>
+                <div><strong>{openedIds.length}</strong><span>累计翻卡</span></div>
+                <div><strong>{streak}</strong><span>连续探索</span></div>
+                <div><strong>{recentSevenDayCount}</strong><span>最近发现</span></div>
+              </>
+            ) : (
+              <div className="explore-metrics-skeleton" aria-hidden="true">
+                {[0, 1, 2].map((index) => <span key={index}><i /><b /></span>)}
+              </div>
+            )}
           </div>
-          {appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="mine-download-card exploration-download-card" href={appDownloadUrl} target="_blank" rel="noopener noreferrer"><span className="mine-download-icon"><Smartphone size={17}/></span><span className="mine-download-copy"><strong>下载黑卡 App</strong><small>安卓客户端 · 原生体验，支持消息推送</small></span><span className="mine-download-go">去下载<ChevronRight size={14}/></span></a>}
-          <section className="exploration-center-section">
-            <div className="section-head exploration-calendar-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationCalendarOpen} aria-controls="exploration-calendar-content" onClick={() => setExplorationCalendarOpen((open) => !open)}><h2><CalendarDays size={17}/>探索日历</h2><span>最近 28 天 <ChevronDown size={16}/></span></button></div>
-            {explorationCalendarOpen && <div id="exploration-calendar-content"><div className="exploration-calendar" role="group" aria-label="最近 28 天的翻卡记录">
-              {calendarDays.map(({ key, count }) => <button key={key} type="button" className={`calendar-day level-${Math.min(count, 5)}${selectedDay === key ? " selected" : ""}`} aria-label={`${key}，翻开 ${count} 张`} aria-pressed={selectedDay === key} onClick={() => setSelectedCalendarDate(key)} title={`${key} · ${count} 张`} />)}
+
+          <section className="explore-block" aria-label="28 天探索轨迹">
+            <div className="explore-block-head">
+              <h2>28 天探索轨迹</h2>
+              <span>{activeDayCount} 天有记录</span>
             </div>
-            <div className="calendar-day-detail">
-              <div><strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong><span>探索：{selectedDayIds.length} 张</span></div>
-              {selectedDayIds.length ? <div className="calendar-posts">{selectedDayIds.map((id) => {
-                const item = state.revealed[id] || all.find((post) => post.id === id);
-                const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
-                const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-                return item ? <button key={id} onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15}/></button> : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
-              })}</div> : <p className="fineprint">这一天还没有翻开新卡片。</p>}
-            </div></div>}
+            <div className="explore-heatmap" role="group" aria-label="最近 28 天的探索热力图">
+              {calendarDays.map(({ key, count }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`explore-heat-day level-${Math.min(count, 5)}${selectedDay === key ? " is-selected" : ""}${key === today ? " is-today" : ""}`}
+                  aria-label={`${key}，翻开 ${count} 张${key === today ? "，今天" : ""}`}
+                  aria-pressed={selectedDay === key}
+                  title={`${key} · ${count} 张`}
+                  onClick={() => setSelectedCalendarDate(key)}
+                />
+              ))}
+            </div>
+            <div className="explore-heat-legend" aria-hidden="true">
+              <span>少</span>
+              {[0, 1, 2, 3, 4, 5].map((level) => <i key={level} className={`level-${level}`} />)}
+              <span>多</span>
+            </div>
+            <div className="explore-day-detail">
+              <div className="explore-day-detail-head">
+                <strong>{(() => { const [year, month, day] = selectedDay.split("-"); return `${year}年${Number(month)}月${Number(day)}日`; })()}</strong>
+                <span>{selectedDayIds.length ? `${selectedDayIds.length} 张` : "还没有记录"}</span>
+              </div>
+              {selectedDayIds.length ? (
+                <div className="explore-day-posts">
+                  {selectedDayIds.map((id) => {
+                    const item = state.revealed[id] || all.find((post) => post.id === id);
+                    const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                    const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                    return item
+                      ? <button key={id} type="button" onClick={() => openPost(id, "today")}><span>{item.tag}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{item.title}</strong><ChevronRight size={15} /></button>
+                      : <div key={id} className="calendar-missing">已翻开的内容当前不可用</div>;
+                  })}
+                </div>
+              ) : <p className="explore-empty-line">这一天还没有翻开新卡片。翻一张，轨迹就会多一个点。</p>}
+            </div>
           </section>
-          <section className="exploration-center-section">
-            <div className="section-head exploration-center-subhead"><h2><History size={17}/>最近发现</h2><span>最近 8 条</span></div>
-            {recentDiscoveries.length ? <div className="recent-discoveries">{recentDiscoveries.map(({ date, post }) => {
-              const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
-              const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-              return <button key={`${date}-${post.id}`} onClick={() => setRecentPreview({ post, source: state.revealed[post.id] ? "today" : "discover" })}><span>{post.tag} · {date.slice(5).replace("-", ".")}</span>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}<strong>{post.title}</strong><small>点按预览</small></button>;
-            })}</div> : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
-            <div id="flip-history" className="section-head exploration-history-heading"><button type="button" className="collapsible-panel-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}><h2>探索记录</h2><span>{Object.keys(state.opened).length} 天 <ChevronDown size={16}/></span></button></div>
-            {explorationHistoryOpen && Object.entries(state.opened).sort(([a], [b]) => b.localeCompare(a)).map(([day, values]) => <div className="history" key={day}><strong>{day}</strong>{values.map((id) => {
-              const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
-              const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
-              return <button key={id} onClick={() => openPost(id)}>{rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}{all.find((post) => post.id === id)?.title || "已移除内容"}</button>;
-            })}</div>)}
-            {explorationHistoryOpen && !Object.keys(state.opened).length && <div className="empty">翻开第一张卡，开始记录。</div>}
+
+          <section className="explore-block" aria-label="最近发现">
+            <div className="explore-block-head">
+              <h2>最近发现</h2>
+              <span>最近 {Math.min(recentDiscoveries.length, 6)} 条</span>
+            </div>
+            {recentDiscoveries.length ? (
+              <div className="explore-discoveries">
+                {recentDiscoveries.slice(0, 6).map(({ date, post }) => {
+                  const tier = state.rarityTiers[post.id] || state.revealed[post.id]?.rarityTier;
+                  const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                  const excerpt = markdownToText(post.body || "").replace(/\s+/g, " ").trim().slice(0, 88);
+                  return (
+                    <button
+                      key={`${date}-${post.id}`}
+                      type="button"
+                      className="explore-discovery"
+                      onClick={() => openPost(post.id, state.revealed[post.id] ? "today" : "discover")}
+                    >
+                      <span className="explore-discovery-meta">
+                        <small>{post.tag}</small>
+                        <small>{date.slice(5).replace("-", ".")}</small>
+                        {rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}
+                      </span>
+                      <strong>{post.title}</strong>
+                      {excerpt && <span className="explore-discovery-excerpt">{excerpt}{markdownToText(post.body || "").length > 88 ? "…" : ""}</span>}
+                      <span className="explore-discovery-open">查看详情 <ChevronRight size={14} /></span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : <div className="empty">翻开第一张卡片后，这里会留下你的近期发现。</div>}
+          </section>
+
+          <div className="explore-pair" aria-label="和探索者一起">
+            <button type="button" onClick={() => openCoExplore("exploration-center")}>
+              <span className="explore-pair-icon"><UsersRound size={18} /></span>
+              <strong>与好友一起探索</strong>
+              <small>共同翻卡，分享发现</small>
+              <em>进入 <ChevronRight size={13} /></em>
+            </button>
+            <button type="button" onClick={() => openMineFeature("card-chain", "exploration-center")}>
+              <span className="explore-pair-icon"><GitBranch size={18} /></span>
+              <strong>卡片接龙</strong>
+              <small>从一张卡片续写故事</small>
+              <em>进入 <ChevronRight size={13} /></em>
+            </button>
+          </div>
+
+          <button type="button" className="explore-recap-entry" onClick={() => openMineFeature("monthly-recap", "exploration-center")}>
+            <span className="explore-recap-icon"><Sparkles size={18} /></span>
+            <span className="explore-recap-copy">
+              <strong>探索月报</strong>
+              <small>本月探索次数、活跃天数与兴趣分布</small>
+            </span>
+            <ChevronRight size={17} />
+          </button>
+
+          {appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && (
+            <a className="mine-download-card exploration-download-card" href={appDownloadUrl} target="_blank" rel="noopener noreferrer">
+              <span className="mine-download-icon"><Smartphone size={17} /></span>
+              <span className="mine-download-copy"><strong>下载黑卡 App</strong><small>安卓客户端 · 原生体验，支持消息推送</small></span>
+              <span className="mine-download-go">去下载<ChevronRight size={14} /></span>
+            </a>
+          )}
+
+          <section className="explore-block" aria-label="探索历史">
+            <div className="explore-block-head">
+              <button type="button" className="explore-history-toggle" aria-expanded={explorationHistoryOpen} onClick={() => setExplorationHistoryOpen((open) => !open)}>
+                <h2>探索历史</h2>
+                <span>{explorationHistoryDays.length} 天 <ChevronDown size={15} style={{ transform: explorationHistoryOpen ? "rotate(180deg)" : undefined }} /></span>
+              </button>
+            </div>
+            {explorationHistoryOpen ? (
+              explorationHistoryDays.length ? (
+                <>
+                  {explorationHistoryDays.slice(0, explorationHistoryLimit).map(([day, values]) => (
+                    <div className="explore-history-day" key={day}>
+                      <div className="explore-history-date"><strong>{day}</strong><span>{values.length} 张</span></div>
+                      {values.map((id) => {
+                        const tier = state.rarityTiers[id] || state.revealed[id]?.rarityTier;
+                        const rareTier = tier === "S" || tier === "SS" || tier === "SSS" ? tier : null;
+                        return (
+                          <button key={id} type="button" onClick={() => openPost(id)}>
+                            {rareTier && <i className={`rarity-history-chip rarity-tier-${rareTier}`}>{rareTier}</i>}
+                            <span>{all.find((post) => post.id === id)?.title || "已移除内容"}</span>
+                            <ChevronRight size={14} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  {explorationHistoryDays.length > explorationHistoryLimit && (
+                    <button type="button" className="explore-history-more" onClick={() => setExplorationHistoryLimit((limit) => limit + 5)}>
+                      加载更多（还有 {explorationHistoryDays.length - explorationHistoryLimit} 天）
+                    </button>
+                  )}
+                </>
+              ) : <div className="empty">翻开第一张卡，开始记录。</div>
+            ) : <p className="explore-empty-line">按日期归档的全部探索记录，展开后可以回到任意一天。</p>}
           </section>
         </section>
       )}

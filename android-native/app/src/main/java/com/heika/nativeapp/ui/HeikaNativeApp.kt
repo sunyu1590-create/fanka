@@ -75,6 +75,7 @@ import com.heika.nativeapp.feature.profile.ProfileViewModel
 import com.heika.nativeapp.feature.exploration.CoExploreScreen
 import com.heika.nativeapp.feature.exploration.ExplorationCalendarScreen
 import com.heika.nativeapp.feature.exploration.ExplorationCenterScreen
+import com.heika.nativeapp.feature.exploration.ExplorationRecapScreen
 import com.heika.nativeapp.feature.exploration.ExplorationDailyTasksScreen
 import com.heika.nativeapp.feature.exploration.ExplorationRewardsScreen
 import com.heika.nativeapp.feature.exploration.ExplorationEventsScreen
@@ -553,6 +554,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     AdminCenterScreen(onBack = { nav.popBackStack() })
                 }
                 composable("exploration") {
+                    val openRecord: (com.heika.nativeapp.feature.exploration.CalendarRecord) -> Unit = { record ->
+                        val post = record.post
+                        if (post != null) openPost(post)
+                        else if (record.channel == "ai") openDestination(HeikaDestination.AiResource(record.clientId, record.postId))
+                        else openDestination(HeikaDestination.CommunityPost(record.clientId, record.postId))
+                    }
                     ExplorationCenterScreen(
                         onBack = { nav.popBackStack() },
                         onTasks = { nav.navigate("exploration/tasks") },
@@ -561,6 +568,19 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onCalendar = { nav.navigate("exploration/calendar") },
                         onCoExplore = { nav.navigate("exploration/co-explore?inviteCode=") },
                         onStoryChains = { nav.navigate("exploration/chains-graph") },
+                        onRecap = { nav.navigate("exploration/recap") },
+                        onRecord = openRecord,
+                    )
+                }
+                composable("exploration/recap") {
+                    ExplorationRecapScreen(
+                        onBack = { nav.popBackStack() },
+                        onRecord = { record ->
+                            val post = record.post
+                            if (post != null) openPost(post)
+                            else if (record.channel == "ai") openDestination(HeikaDestination.AiResource(record.clientId, record.postId))
+                            else openDestination(HeikaDestination.CommunityPost(record.clientId, record.postId))
+                        },
                     )
                 }
                 composable("exploration/tasks") {

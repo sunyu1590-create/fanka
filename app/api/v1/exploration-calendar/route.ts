@@ -29,14 +29,25 @@ export async function GET(req: NextRequest) {
     const requested = req.nextUrl.searchParams.get("month");
     const month = /^\d{4}-\d{2}$/.test(requested ?? "") ? requested! : today.slice(0, 7);
 
-    const { data, error } = await db
-      .from("user_interactions")
-      .select("post_id,opened_at")
-      .eq("user_id", me)
-      .not("opened_at", "is", null)
-      .order("opened_at", { ascending: false })
-      .limit(2000);
-    dbError(error);
+    const [rowsResult, lifetimeResult] = await Promise.all([
+      db
+        .from("user_interactions")
+        .select("post_id,opened_at")
+        .eq("user_id", me)
+        .not("opened_at", "is", null)
+        .order("opened_at", { ascending: false })
+        .limit(2000),
+      // 累计翻卡必须读全量记录：客户端只保留当天与近期数据，用它统计会漏掉历史。
+      db
+        .from("user_interactions")
+        .select("post_id", { count: "exact", head: true })
+        .eq("user_id", me)
+        .not("opened_at", "is", null)
+    ]);
+    dbError(rowsResult.error);
+    dbError(lifetimeResult.error);
+    const data = rowsResult.data;
+    const lifetimeTotal = lifetimeResult.count ?? 0;
 
     const rows = (data ?? []) as { post_id: string; opened_at: string }[];
     const openedDays = new Set(rows.map((row) => localDate(row.opened_at)));
@@ -51,12 +62,24 @@ export async function GET(req: NextRequest) {
 
     const monthly = rows.filter((row) => localDate(row.opened_at).startsWith(month));
     const counts = new Map<string, number>();
+    const allCounts = new Map<string, number>();
+    for (const row of rows) {
+      const date = localDate(row.opened_at);
+      allCounts.set(date, (allCounts.get(date) ?? 0) + 1);
+    }
     for (const row of monthly) {
       const date = localDate(row.opened_at);
       counts.set(date, (counts.get(date) ?? 0) + 1);
     }
 
-    const ids = [...new Set(monthly.map((row) => row.post_id))];
+    // 最近 28 天轨迹与「最近发现」不受月份边界影响，服务端一次算好供原生端直接渲染。
+    const recentRows = rows.slice(0, 8);
+    const windowDays = Array.from({ length: 28 }, (_, index) => {
+      const date = localDate(shiftDays(now, index - 27).toISOString());
+      return { date, count: allCounts.get(date) ?? 0 };
+    });
+
+    const ids = [...new Set([...monthly.map((row) => row.post_id), ...recentRows.map((row) => row.post_id)])];
     const presentById = new Map<string, Record<string, unknown>>();
     if (ids.length) {
       const result = await db.from("posts").select(libraryFields).in("id", ids);
@@ -73,13 +96,22 @@ export async function GET(req: NextRequest) {
       return [{ date: localDate(row.opened_at), openedAt: row.opened_at, post }];
     });
 
+    const recentRecords = recentRows.flatMap((row) => {
+      const post = presentById.get(row.post_id);
+      if (!post) return [];
+      return [{ date: localDate(row.opened_at), openedAt: row.opened_at, post }];
+    });
+
     return {
       month,
       timeZone: TIME_ZONE,
       today,
       streak,
+      lifetimeTotal,
       days: [...counts].map(([date, count]) => ({ date, count })),
+      windowDays,
       records,
+      recentRecords,
       total: records.length
     };
   });
