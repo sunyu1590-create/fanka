@@ -49,6 +49,13 @@ export default function DiscoveryPostCard({
       : `${source}${source.includes("?") ? "&" : "?"}retry=${retryCount}`
     : undefined;
   const textExcerpt = markdownToText(post.body || "").replace(/\s+/g, " ").trim().slice(0, 300);
+  const detailHref = `/p/${post.id}`;
+  // 修饰键 / 中键交给浏览器开新标签页；普通左键走站内切换，避免整页刷新。
+  const openDetail = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    event.preventDefault();
+    onOpen(event.currentTarget);
+  };
 
   return (
     <article className="post-card editorial-post discover-content-card heika-discovery-card" data-discover-id={post.id}>
@@ -56,12 +63,12 @@ export default function DiscoveryPostCard({
         className={`discovery-cover${source && imageFailed ? " is-failed" : ""}${!source && !coverVideo ? " is-text-only" : ""}`}
         style={source || coverVideo ? { aspectRatio: String(coverRatio) } : undefined}
       >
-        <button
-          type="button"
+        <a
           className={`discovery-cover-open${!source ? " discovery-text-cover" : ""}`}
+          href={detailHref}
           aria-label={`阅读：${post.title}`}
           onPointerDown={(event) => onPointerDown?.(event.currentTarget)}
-          onClick={(event) => onOpen(event.currentTarget)}
+          onClick={openDetail}
         >
           {source && (
             <img
@@ -98,7 +105,7 @@ export default function DiscoveryPostCard({
               <span>{textExcerpt}</span>
             </span>
           )}
-        </button>
+        </a>
         {source && imageFailed && (
           <button
             type="button"
@@ -142,14 +149,14 @@ export default function DiscoveryPostCard({
             <Heart size={15} fill={liked ? "currentColor" : "none"} aria-hidden="true" />
           </button>
           {typeof post.likeCount === "number" && <span className="discovery-like-count" aria-label={`${post.likeCount} 个赞`}>{post.likeCount}</span>}
-          <button
-            type="button"
+          <a
             className="discovery-read"
+            href={detailHref}
             aria-label={`打开详情：${post.title}`}
-            onClick={(event) => onOpen(event.currentTarget)}
+            onClick={openDetail}
           >
             <ArrowRight size={15} aria-hidden="true" />
-          </button>
+          </a>
         </span>
       </div>
     </article>

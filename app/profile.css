@@ -4,13 +4,12 @@
 
 /* 通栏封面（需求 6.4）：封面与资料区破开外层容器的左右缩进，手机上左右铺满页面；
    桌面端随内容列一起通栏（只到内容列边缘，不无限拉伸）。
-   --hero-bleed 按各容器实际水平缩进取值（浅色 .mine-page 16px / ≥700px 26px / ≤380px 14px，
-   深色主题 :root[data-theme="dark"] .page 为 20px，公开主页 .public-profile-content 为 18px），
-   下方文字与内容仍保留原有阅读边距。 */
+   --hero-bleed 按各容器实际水平缩进取值（.mine-page 16px / ≥700px 26px / ≤380px 14px，
+   公开主页 .public-profile-content 为 18px），与页面内边距一一对应；深浅色共用同一套
+   页面内边距，因此不再按主题单独取值，否则封面会超出视口。下方文字与内容仍保留原有阅读边距。 */
 .page.mine-page .profile-hero { --hero-bleed: 16px; }
 @media (min-width: 700px) { .page.mine-page .profile-hero { --hero-bleed: 26px; } }
 @media (max-width: 380px) { .page.mine-page .profile-hero { --hero-bleed: 14px; } }
-:root[data-theme="dark"] .page.mine-page .profile-hero { --hero-bleed: 20px; }
 .public-profile-content .profile-hero { --hero-bleed: 18px; margin-top: -15px; }
 
 .profile-hero {
@@ -816,4 +815,178 @@
 .composer-draft-actions button.is-danger { color: #e0897f; border-color: color-mix(in srgb, #e0897f 32%, transparent); }
 .composer-draft-actions small { flex-basis: 100%; font-size: 10.5px; color: var(--muted); }
 
-.mine-draft-entry .mine-exploration-entry-icon { color: var(--brand-accent, #C9A961); }
+/* 草稿箱入口与其它两个入口同档，不再单独用金色强调 */
+.mine-draft-entry .mine-exploration-entry-icon { color: var(--muted); }
+
+/* ==========================================================================
+   个人主页视觉收整（自己 / 他人共用）
+   目标：一套连续底色 + 轻量身份区 + 紧凑数据与入口，不再出现大灰块拼接。
+   ========================================================================== */
+
+/* 1) 资料区回到页面底色：取消独立灰色矩形，不加外框、不包大卡片 */
+.profile-hero-body {
+  background: transparent;
+  padding: 0 calc(var(--hero-bleed, 0px) + 12px) 2px;
+}
+
+/* 2) 头像：细描边 + 单层浅影，仍压在封面下沿形成自然连接 */
+.profile-hero-avatar {
+  position: relative;
+  width: var(--profile-avatar-size);
+  height: var(--profile-avatar-size);
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 6px 16px rgba(0, 0, 0, .22);
+}
+.profile-hero-avatar img { position: absolute; inset: 0; }
+.profile-hero-avatar i {
+  font-size: calc(var(--profile-avatar-size) * .34);
+  font-style: normal;
+  font-weight: 560;
+  color: var(--muted);
+}
+
+/* 3) 昵称与轻量编辑入口：去掉圆形底框，只保留图标 */
+.profile-hero-name-row h1 { font-size: 19px; font-weight: 640; letter-spacing: -.012em; }
+.profile-hero-edit-pencil {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+.profile-hero-edit-pencil:hover {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+}
+
+/* 4) 认证与等级：统一小号、低强调，不再抢昵称 */
+.profile-hero-name-row .profile-badge-list.is-compact { margin-top: 0; gap: 4px; }
+.profile-hero-name-row .profile-badge-list.is-compact > span {
+  min-height: 17px;
+  padding: 1px 6px;
+  border-color: color-mix(in srgb, var(--profile-badge-color, #78613B) 24%, transparent);
+  background: color-mix(in srgb, var(--profile-badge-color, #78613B) 7%, transparent);
+  font-size: 9px;
+  font-weight: 560;
+}
+.profile-hero-name-row .mine-level-tag {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 560;
+  letter-spacing: .02em;
+}
+.profile-hero-name-row .mine-level-tag:hover { color: var(--ink); }
+
+/* 5) 编号与签名统一为次级文字，签名单独成行 */
+.profile-hero-account { font-size: 11px; letter-spacing: .02em; color: var(--muted); }
+.profile-hero-bio {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.72;
+  color: var(--muted);
+}
+.profile-hero-facts { margin-top: 8px; gap: 5px; }
+.profile-hero-facts > span { padding: 3px 8px; font-size: 10px; }
+
+/* 6) 数据：三项等分、去掉竖线，压缩纵向占用 */
+.profile-hero-stats {
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: 0;
+  align-items: end;
+}
+.profile-hero-stats > * { gap: 1px; }
+.profile-hero-stats > * + * { border-left: 0; }
+.profile-hero-stats strong { font-size: 16px; font-weight: 620; line-height: 1.2; }
+.profile-hero-stats span,
+.profile-hero-stats small { font-size: 10px; line-height: 1.3; color: var(--muted); }
+
+/* 7) 快捷入口：三项同尺寸同档颜色，草稿箱不再单独金色，也不套独立卡片 */
+.mine-exploration-hub { margin: 2px 0 4px; }
+.mine-exploration-row { border: 0; }
+.mine-exploration-entry { min-height: 52px; gap: 4px; padding: 6px 4px; }
+.mine-exploration-entry-icon { width: 24px; height: 24px; color: var(--muted); }
+.mine-exploration-entry-icon svg { width: 18px; height: 18px; }
+.mine-exploration-entry strong { font-size: 11.5px; font-weight: 560; color: var(--ink); }
+.mine-exploration-entry small { font-size: 9.5px; color: var(--muted); }
+.mine-exploration-entry:hover .mine-exploration-entry-icon,
+.mine-exploration-entry[aria-expanded="true"] .mine-exploration-entry-icon { color: var(--ink); }
+.mine-draft-entry { color: inherit; background: transparent; }
+
+/* 8) 内容标签：轻量文字 + 短下划线，取消厚重的金色胶囊 */
+.mine-tabs-shell {
+  border-bottom: 0;
+  background: transparent;
+}
+.mine-page .mine-tabs.mine-content-tabs,
+.mine-tabs.mine-content-tabs {
+  gap: 20px;
+  margin: 0 0 12px;
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+}
+.mine-page .mine-tabs.mine-content-tabs button,
+.mine-tabs.mine-content-tabs button {
+  position: relative;
+  min-height: 38px;
+  padding: 0 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.mine-page .mine-tabs.mine-content-tabs button[aria-selected="true"],
+.mine-tabs.mine-content-tabs button[aria-selected="true"] {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 640;
+}
+.mine-page .mine-tabs.mine-content-tabs button[aria-selected="true"]::after,
+.mine-tabs.mine-content-tabs button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--action);
+}
+
+/* 9) 作品区：数量与管理入口同一行，标签到网格的间距收紧 */
+.mine-works-heading { margin: 8px 0 10px; }
+.mine-works-heading span { font-size: 11px; color: var(--muted); }
+.mine-works-manage-button { min-height: 26px; font-size: 11px; color: var(--muted); }
+.mine-works-manage-button:hover { color: var(--ink); }
+.mine-tab-content { padding: 0; }
+.mine-category-panel { min-height: 160px; }
+
+/* 10) 我的页顶部栏与页面同色，降低会员入口的金色比重 */
+.mine-topline { background: var(--bg); }
+.mine-topline .mine-membership-button {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  color: var(--ink);
+  font-size: 11.5px;
+}
+.mine-topline .mine-membership-button svg { color: var(--muted); }
+.mine-topline .mine-settings-button { color: var(--ink); }
+
+/* 11) 桌面：封面在内容区内通栏，身份/数据/入口按列对齐 */
+@media (min-width: 1024px) {
+  .page.mine-page .profile-hero { --hero-bleed: 32px; margin-bottom: 14px; }
+  .profile-hero { --profile-avatar-size: 96px; --profile-avatar-shift: -32px; margin-top: 0; }
+  .profile-hero-body { padding: 0 34px 4px; }
+  .profile-hero-name-row h1 { font-size: 22px; }
+  .profile-hero-stats { max-width: 420px; margin-top: 12px; }
+  .mine-exploration-row { max-width: 620px; }
+  .mine-exploration-entry { min-height: 56px; align-items: center; }
+  .mine-works-masonry { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important; }
+  .mine-tabs.mine-content-tabs { max-width: 620px; }
+  .mine-category-panel { scroll-margin-top: 84px; }
+}

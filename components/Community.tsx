@@ -148,9 +148,10 @@ async function fetchDailyCardIds() {
 
 function postShareUrl(post: Post) {
   const origin = typeof location === "undefined" ? "https://moonclean.shop" : location.origin;
+  // 社区作品用独立详情地址，复制出去的链接刷新后仍是同一篇内容。
   return post.channel === "ai" && post.cloudId
     ? `${origin}/?aiPost=${post.id}&cloudId=${encodeURIComponent(post.cloudId)}`
-    : `${origin}/?post=${post.id}`;
+    : `${origin}/p/${post.id}`;
 }
 
 const FLIP_RAIN_PARTICLES = 96;
@@ -377,9 +378,28 @@ const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
     return pieces.map((piece) => piece.map(([x, y]) => `${x},${y}`).join(" "));
   }),
 );
-export default function Community() {
+export default function Community({
+  initialPostId,
+  detailPath,
+}: {
+  /** /p/<id> 直达时带进来的作品编号 */
+  initialPostId?: number;
+  /** 地址里的原始片段，用于把无效地址也留在原页面提示 */
+  detailPath?: string;
+} = {}) {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
+  // 桌面（≥1024）用独立详情页；窄屏与 APP 内嵌继续用原有详情浮层。
+  const [desktopLayout, setDesktopLayout] = useState(false);
+  // APP 内嵌时容器自带导航，网页详情保持浮层，不改成独立页面。
+  const [appEmbed, setAppEmbed] = useState(false);
+  useEffect(() => {
+    const query = matchMedia("(min-width: 1024px)");
+    const sync = () => setDesktopLayout(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
   const [discoverSettingsOpen, setDiscoverSettingsOpen] = useState(false);
   const [discoverNavCollapsed, setDiscoverNavCollapsed] = useState(false);
   const [mineCollections, setMineCollections] = useState<{ id: string; title: string; kind: string; publishedCount?: number }[]>([]);
@@ -597,6 +617,8 @@ export default function Community() {
   const [myContentReturnTab, setMyContentReturnTab] = useState<"mine" | "settings">("mine");
   const readingTimer = useRef<number[]>([]),
     scrollBeforeDetail = useRef(0),
+    // 直达 /p/<id> 打开时没有自己的历史条目，关闭要走 replaceState 而不是 back()。
+    detailNoHistory = useRef(false),
     ratingPulseTimer = useRef<number | null>(null);
   const ratingBusy = useRef(false);
   const [state, setState] = useState<State>(initial),
@@ -607,6 +629,10 @@ export default function Community() {
     [detail, setDetail] = useState<number | null>(null),
     [detailPostOverride, setDetailPostOverride] = useState<Post | null>(null),
     [detailReady, setDetailReady] = useState(false),
+    // 直达链接的状态：加载中 / 内容不可用 / 请求失败，三种都要有明确出口。
+    [detailRouteState, setDetailRouteState] = useState<"loading" | "missing" | "error" | null>(
+      initialPostId ? "loading" : detailPath ? "missing" : null,
+    ),
     [transitionPhase, setTransitionPhase] = useState<
       "opening" | "closing" | null
     >(null),
@@ -1247,12 +1273,30 @@ export default function Community() {
     }).catch(() => {});
     return () => { active = false; };
   }, [ready]);
+  // 列数按「内容容器」的实际可用宽度算，而不是整屏宽度：
+  // 桌面有内边距与最大宽度限制时，按屏幕宽度取列会把卡片压窄。
   useEffect(() => {
-    const updateColumns = () => setDiscoverColumnCount(window.innerWidth >= 1600 ? 5 : window.innerWidth >= 1280 ? 4 : window.innerWidth >= 768 ? 3 : 2);
+    if (!ready) return;
+    let observer: ResizeObserver | null = null;
+    const updateColumns = () => {
+      const feed = document.querySelector<HTMLElement>(".discover-page .stable-editorial-feed");
+      const width = feed?.clientWidth || Math.max(280, Math.min(window.innerWidth, 1120) - 64);
+      setDiscoverColumnCount(width >= 1180 ? 5 : width >= 880 ? 4 : width >= 600 ? 3 : 2);
+    };
     updateColumns();
+    const timer = window.setTimeout(() => {
+      const host = document.querySelector<HTMLElement>(".discover-page .stable-editorial-feed") || document.querySelector<HTMLElement>(".discover-page");
+      if (!host || typeof ResizeObserver === "undefined") return;
+      observer = new ResizeObserver(updateColumns);
+      observer.observe(host);
+    }, 260);
     window.addEventListener("resize", updateColumns, { passive: true });
-    return () => window.removeEventListener("resize", updateColumns);
-  }, []);
+    return () => {
+      window.clearTimeout(timer);
+      observer?.disconnect();
+      window.removeEventListener("resize", updateColumns);
+    };
+  }, [ready, tab, discoverChannel]);
   useEffect(() => {
     if (!ready || tab !== "discover" || discoverChannel !== "community") return;
     const wantedTag = category;
@@ -1766,7 +1810,13 @@ export default function Community() {
       ? rect
       : null;
   };
-  const openPost = (id: number, source?: "today" | "discover", sourceElement?: Element | null, resolvedPost?: Post) => {
+  const openPost = (
+    id: number,
+    source?: "today" | "discover",
+    sourceElement?: Element | null,
+    resolvedPost?: Post,
+    options?: { instant?: boolean; fromRoute?: boolean },
+  ) => {
     if (source) detailSource.current = source;
     if (
       transitionBusy.current ||
@@ -1840,11 +1890,24 @@ export default function Community() {
     void cloudRequest("/api/v1/library-state", { action: "view", id }).catch(
       () => {},
     );
-    transitionBusy.current = true;
-    setDetailReady(false);
+    const instant = options?.instant === true;
+    transitionBusy.current = !instant;
+    setDetailReady(instant);
     setDetail(id);
-    setTransitionPhase("opening");
-    history.pushState({ ...history.state, heikaDetail: id }, "");
+    setTransitionPhase(instant ? null : "opening");
+    // 详情地址：桌面用独立页面 /p/<id>，可以刷新、复制、新标签页打开；
+    // 窄屏与 APP 内嵌仍保持浮层，只记录一条历史用于返回。
+    if (options?.fromRoute) {
+      // 从 /p/<id> 直接进来：地址已就位，关闭时用 replaceState 回列表，不再压栈。
+      detailNoHistory.current = true;
+      history.replaceState({ ...history.state, heikaDetail: undefined }, "", location.pathname + location.search);
+    } else if (desktopLayout && !appEmbed) {
+      detailNoHistory.current = false;
+      history.pushState({ ...history.state, heikaDetail: id }, "", `/p/${id}`);
+    } else {
+      detailNoHistory.current = false;
+      history.pushState({ ...history.state, heikaDetail: id }, "");
+    }
     update((s) => ({
       ...s,
       viewed: [id, ...s.viewed.filter((x) => x !== id)].slice(0, 50),
@@ -1875,6 +1938,7 @@ export default function Community() {
   useEffect(() => {
     if (!isAppEmbed()) return;
     document.documentElement.dataset.appEmbed = "1";
+    setAppEmbed(true);
     // 引导页只属于网页端首次访问，容器里直接跳过。
     update((current) => current.onboardingDone ? current : { ...current, onboardingDone: true });
   }, []);
@@ -1932,8 +1996,57 @@ export default function Community() {
       .catch(() => {})
       .finally(() => { sharedPostLoading.current = null; });
   }, [ready, all]);
+
+  // /p/<id> 直达：数据就绪后按编号打开。列表里没有时单独取一次，失败给出可重试的状态。
+  const routePostHandled = useRef(false);
+  const routeAborted = useRef(false);
+  const [routeRetry, setRouteRetry] = useState(0);
+  useEffect(() => {
+    if (!initialPostId || !ready || routePostHandled.current || detailRouteState !== "loading") return;
+    const cached = all.find((item) => item.id === initialPostId);
+    if (cached) {
+      routePostHandled.current = true;
+      setDetailRouteState(null);
+      openPostRef.current(initialPostId, "discover", null, cached, { instant: true, fromRoute: true });
+      return;
+    }
+    routePostHandled.current = true;
+    const settle = (found: Post | null) => {
+      // 用户在内容到位前已经切走：不要再弹出详情，也不要覆盖已清空的加载态。
+      if (routeAborted.current) return;
+      if (!found) { setDetailRouteState("missing"); return; }
+      setPublicFeed((current) => current.some((item) => item.id === found.id) ? current : [...current, found]);
+      setDetailRouteState(null);
+      requestAnimationFrame(() => openPostRef.current(found.id, "discover", null, found, { instant: true, fromRoute: true }));
+    };
+    void fetch("/api/v1/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [initialPostId] }),
+      cache: "no-store",
+    })
+      .then((response) => response.json().then((result) => ({ ok: response.ok, result })))
+      .then(({ ok, result }) => (ok ? ((result?.data?.items as Post[] | undefined)?.[0] ?? null) : null))
+      // 未登录访客按编号取内容会被拒；退回公开卡片接口，让分享链接和刷新对新访客同样可读。
+      .then((found) => found ?? cloudFetch("/api/demo/cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: initialPostId }),
+        cache: "no-store",
+      })
+        .then((response) => response.json().then((result) => ({ ok: response.ok, result })))
+        .then(({ ok, result }) => (ok ? ((result?.data as Post | undefined) ?? null) : null)))
+      .then((found) => settle(found ?? null))
+      .catch(() => { routePostHandled.current = false; setDetailRouteState("error"); });
+  }, [ready, initialPostId, all, detailRouteState, routeRetry]);
   const closeDetail = (fromHistory = false) => {
     if (detail === null || transitionPhase === "closing") return;
+    if (!fromHistory && detailNoHistory.current) {
+      detailNoHistory.current = false;
+      history.replaceState({ ...history.state, heikaDetail: undefined }, "", "/");
+      closeDetail(true);
+      return;
+    }
     if (!fromHistory && history.state?.heikaDetail === detail) {
       history.back();
       return;
@@ -1948,23 +2061,43 @@ export default function Community() {
     setDetailReady(false);
     setTransitionPhase("closing");
   };
+  // 顶栏入口切换：详情页模式下先离开详情，否则详情与列表会同时挂载、互相挤窄。
+  const leaveDetailThen = (run: () => void) => {
+    if (detailPageMode) {
+      detailNoHistory.current = false;
+      history.replaceState({ ...history.state, heikaDetail: undefined }, "", "/");
+      closeDetail(true);
+    } else if (detailRouteState !== null) {
+      // 直达内容还在路上就被切走：清掉加载/错误态，列表马上可见。
+      routeAborted.current = true;
+      setDetailRouteState(null);
+    }
+    run();
+  };
   useLayoutEffect(() => {
     if (detail === null) return;
+    // 独立详情页用整页滚动：不锁 body，也不保留列表滚动位置在文档里。
+    const pageMode = desktopLayout && !appEmbed;
     const body = document.body,
       previousOverflow = body.style.overflow,
       previousPadding = body.style.paddingRight,
       previousScrollRestoration = history.scrollRestoration,
       gutter = Math.max(0, innerWidth - document.documentElement.clientWidth);
     history.scrollRestoration = "manual";
-    body.style.overflow = "hidden";
-    if (gutter) body.style.paddingRight = `${gutter}px`;
+    if (!pageMode) {
+      body.style.overflow = "hidden";
+      if (gutter) body.style.paddingRight = `${gutter}px`;
+    } else {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
     return () => {
       body.style.overflow = previousOverflow;
       body.style.paddingRight = previousPadding;
+      // 返回列表时回到进入详情前的滚动位置。
       window.scrollTo({ top: scrollBeforeDetail.current, behavior: "instant" });
       history.scrollRestoration = previousScrollRestoration;
     };
-  }, [detail]);
+  }, [detail, desktopLayout, appEmbed]);
   useEffect(() => {
     const onBack = () => {
       if (detail !== null) closeDetail(true);
@@ -3483,12 +3616,17 @@ export default function Community() {
     setTransitionPhase(null);
     transitionBusy.current = false;
     setDetail(post.id);
-    history.replaceState({ ...history.state, heikaDetail: post.id }, "");
+    if (desktopLayout && !appEmbed) {
+      history.replaceState({ ...history.state, heikaDetail: post.id }, "", `/p/${post.id}`);
+      window.scrollTo({ top: 0, behavior: "instant" });
+    } else {
+      history.replaceState({ ...history.state, heikaDetail: post.id }, "");
+      requestAnimationFrame(() => {
+        const scroller = document.querySelector<HTMLElement>(".overlay .detail");
+        if (scroller) scroller.scrollTop = 0;
+      });
+    }
     void cloudRequest("/api/v1/library-state", { action: "view", id: post.id }).catch(() => {});
-    requestAnimationFrame(() => {
-      const scroller = document.querySelector<HTMLElement>(".overlay .detail");
-      if (scroller) scroller.scrollTop = 0;
-    });
   };
   // 合集章节可能不在当前 feed 的 all 里，先拉取真实作品再作为 resolvedPost 打开。
   const openCollectionChapter = async (chapter: { id: string }) => {
@@ -3994,11 +4132,22 @@ export default function Community() {
     const rarityLabel = rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier;
     const coverImage = p.image || p.images?.find(Boolean);
     const coverVideo = p.video || p.videos?.[0];
-    return <button
+    // 用真实链接承载「打开作品」：右键、新标签页、复制地址都是浏览器原生行为；
+    // 普通左键仍走站内切换，不整页刷新。草稿没有公开地址，退回按钮语义。
+    const isDraftCard = own && p.status === "draft";
+    return <a
       className={`post-card editorial-post${discoveryFeed ? " discover-content-card" : ""}`}
       key={p.id}
       data-discover-id={p.id}
-      onClick={(event) => own && p.status === "draft" ? void openComposer(p) : openPost(p.id, source, event.currentTarget)}
+      href={isDraftCard ? undefined : `/p/${p.id}`}
+      role={isDraftCard ? "button" : undefined}
+      tabIndex={isDraftCard ? 0 : undefined}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        event.preventDefault();
+        if (isDraftCard) void openComposer(p);
+        else openPost(p.id, source, event.currentTarget);
+      }}
     >
       {(coverImage || coverVideo || discoveryFeed) && <div
         className={`post-cover editorial-cover${discoveryFeed ? ` discover-post-cover${coverImage || coverVideo ? "" : " is-placeholder"}` : ""}`}
@@ -4047,7 +4196,7 @@ export default function Community() {
         </div>
         </>}
       </div>
-    </button>;
+    </a>;
   };
   const feed = (items: Post[]) => (
     <>
@@ -4107,6 +4256,10 @@ export default function Community() {
           setTransitionPhase(null);
           setDetailImageTransition(null);
           transitionBusy.current = false;
+        }
+        if (detailRouteState !== null) {
+          routeAborted.current = true;
+          setDetailRouteState(null);
         }
         requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current[id] || 0, behavior: "instant" }));
       }}
@@ -4644,36 +4797,102 @@ export default function Community() {
     }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
   };
   const jumpToDetailComments = () => {
-    const scroller = document.querySelector<HTMLElement>(".detail-scroll");
     const marker = document.getElementById("detail-comments");
-    if (!scroller || !marker) return;
-    const top = marker.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 60;
-    scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    if (!marker) return;
+    const topbar = desktopLayout ? 76 : 0;
+    const scroller = document.querySelector<HTMLElement>(".detail-scroll");
+    const pageScroll = scroller ? scroller.scrollHeight <= scroller.clientHeight + 4 : true;
+    if (scroller && !pageScroll) {
+      const top = marker.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 60;
+      scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      return;
+    }
+    const top = marker.getBoundingClientRect().top + window.scrollY - topbar;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   };
   // 相关内容：同标签或共享话题，最多取 6 条交给右栏再截 3 条。
   const detailRelated = post ? all.filter((item) => item.id !== post.id && item.status !== "draft" && (
     item.tag === post.tag || (item.topics || []).some((topic) => (post.topics || []).includes(topic))
   )).slice(0, 6) : [];
+  // 桌面独立详情页：≥1024 且不在 APP 容器里。窄屏保持原有浮层交互。
+  const detailPageMode = desktopLayout && post !== null && !appEmbed;
+  // 独立详情页里顶栏显示返回与作品名；其余页面沿用原有二级页标题。
+  const topbarTitle = detailPageMode ? (post?.title?.trim() || "作品详情") : secondaryTitle;
+  const topbarBack = detailPageMode ? () => closeDetail() : handleSecondaryBack;
+  // 「更多」菜单在浮层里挂在头部，在独立页面里挂在左操作栏，共用同一份条目。
+  const detailMoreMenu = post ? <>
+    {post.channel === "ai" && <>
+      <span className="detail-more-group">资源与版本</span>
+      {(aiVersionsAvailable || Boolean(post.resourceData?.version || post.resourceData?.changelog)) && <button onClick={() => { setAiDetailAction("versions"); setDetailMoreOpen(false); }}><History size={16} /> 查看更新记录</button>}
+      {Object.keys(post.resourceData || {}).length > 0 && <button onClick={() => { setAiDetailAction("resources"); setDetailMoreOpen(false); }}><ExternalLink size={16} /> 相关资源</button>}
+      <span className="detail-more-group">反馈与操作</span>
+      <button onClick={() => { setAiDetailAction("feedback"); setDetailMoreOpen(false); }}><Flag size={16} /> 内容纠错</button>
+    </>}
+    <button onClick={() => {
+      update((s) => ({ ...s, dismissed: [...new Set([...(s.dismissed || []), post.id])] }));
+      void cloudRequest("/api/v1/library-state", { action: "dismiss", id: post.id }).catch(() => toast("反馈同步失败"));
+      setDetailMoreOpen(false);
+      toast("已减少类似内容推荐");
+    }}><ThumbsDown size={16} /> 不感兴趣</button>
+    {post.authorId && <button onClick={() => {
+      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
+      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_author", authorId: post.authorId }).then(() => {
+        setPublicFeed((items) => items.filter((item) => item.authorId !== post.authorId));
+        void loadPublicFeed(1, true, category);
+        setDetailMoreOpen(false); toast("已减少这位创作者的推荐，可在推荐偏好中恢复");
+      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
+    }}><UserRound size={16} /> 减少此作者推荐</button>}
+    {post.topics?.[0] && (() => { const firstTopic = post.topics[0]; return <button onClick={() => {
+      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
+      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_topic", topic: firstTopic }).then(() => {
+        setPublicFeed((items) => items.filter((item) => !item.topics?.includes(firstTopic)));
+        void loadPublicFeed(1, true, category);
+        setDetailMoreOpen(false); toast(`已减少 #${firstTopic} 推荐，可在推荐偏好中恢复`);
+      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
+    }}><ThumbsDown size={16} /> 减少 #{firstTopic}</button>; })()}
+    {post.status === "published" && <>
+      <button onClick={() => {
+        const url = postShareUrl(post);
+        void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
+        setDetailMoreOpen(false);
+      }}><Share2 size={16} /> 复制链接</button>
+      <button onClick={() => void openSharePanel()}><Share2 size={16} /> 打开分享面板</button>
+    </>}
+    {post.cloudId && post.status === "published" && <button onClick={() => {
+      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以举报内容"); return; }
+      setReportPostId(post.cloudId!); setReportCommentId(null); setReportReason(""); setReportNote(""); setDetailMoreOpen(false); setModal("report");
+    }}><Flag size={16} /> 举报内容</button>}
+  </> : null;
+  // 评论输入框：浮层里是底部悬浮条，独立页面里放在评论区顶部。
+  const commentComposerForm = post ? <form className="detail-dock-comment heika-solid-glass" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
+    <div className={`detail-comment-input${reply ? " replying" : ""}${commentInputExpanded || draft ? " expanded" : ""}`}>
+      <span className="comment-compose-avatar" aria-hidden="true"><span>{(state.name || "探").slice(0, 1)}</span>{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
+      {reply && <span className="reply-label">回复 @{replyTargetName || state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => { setReply(undefined); setReplyTargetName(undefined); }}><X size={13} /></button></span>}
+      <textarea ref={commentInputRef} value={draft} onFocus={() => setCommentInputExpanded(true)} onBlur={(event) => { if (!draft.trim() && !reply && !event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setCommentInputExpanded(false); }} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={commentInputExpanded || draft ? 3 : 1} maxLength={1000} aria-label="评论内容" />
+      {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
+      {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><ArrowUp size={18} strokeWidth={2.4} /></button>}
+    </div>
+  </form> : null;
   return (
-    <main className={`app${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
+    <main className={`app${detailPageMode ? " is-detail-page" : ""}${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
       <header className="desktop-topbar" aria-label="桌面主导航">
         <div className="dtb-inner">
-          {secondaryTitle ? (
-            <button type="button" className="dtb-back" onClick={handleSecondaryBack} aria-label={`返回，当前页面：${secondaryTitle}`}>
-              <ArrowLeft size={18} /><strong>{secondaryTitle}</strong>
+          {topbarTitle ? (
+            <button type="button" className="dtb-back" onClick={topbarBack} aria-label={`返回，当前页面：${topbarTitle}`}>
+              <ArrowLeft size={18} /><strong>{topbarTitle}</strong>
             </button>
           ) : (
-            <button type="button" className="dtb-brand" onClick={() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}>
+            <button type="button" className="dtb-brand" onClick={() => leaveDetailThen(() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); })}>
               <span className="brand"><span>黑卡</span><i>HEIKA</i></span>
             </button>
           )}
           <nav className="dtb-nav" aria-label="主入口">
-            <button type="button" className={tab === "today" ? "active" : ""} aria-current={tab === "today" ? "page" : undefined} onClick={() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}>首页</button>
-            <button type="button" className={tab === "discover" && discoverChannel !== "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel !== "ai" ? "page" : undefined} onClick={() => { if (tab !== "discover") setTab("discover"); if (discoverChannel === "ai") switchDiscoverChannel("community"); }}>发现</button>
-            <button type="button" className={tab === "discover" && discoverChannel === "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel === "ai" ? "page" : undefined} onClick={() => { if (tab !== "discover") { setTab("discover"); queuedDiscoverChannel.current = "ai"; } else if (discoverChannel !== "ai") switchDiscoverChannel("ai"); }}>AI 专区</button>
-            <button type="button" className={tab === "messages" ? "active" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => setTab("messages")}>消息<InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} /></button>
+            <button type="button" className={tab === "today" ? "active" : ""} aria-current={tab === "today" ? "page" : undefined} onClick={() => leaveDetailThen(() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); })}>首页</button>
+            <button type="button" className={tab === "discover" && discoverChannel !== "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel !== "ai" ? "page" : undefined} onClick={() => leaveDetailThen(() => { if (tab !== "discover") setTab("discover"); if (discoverChannel === "ai") switchDiscoverChannel("community"); })}>发现</button>
+            <button type="button" className={tab === "discover" && discoverChannel === "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel === "ai" ? "page" : undefined} onClick={() => leaveDetailThen(() => { if (tab !== "discover") { setTab("discover"); queuedDiscoverChannel.current = "ai"; } else if (discoverChannel !== "ai") switchDiscoverChannel("ai"); })}>AI 专区</button>
+            <button type="button" className={tab === "messages" ? "active" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => leaveDetailThen(() => setTab("messages"))}>消息<InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} /></button>
           </nav>
-          <form className="dtb-search" role="search" onSubmit={(event) => { event.preventDefault(); const value = desktopSearch.trim(); if (!value) return; setSearchReturnTab(tab === "discover" ? "discover" : "today"); submitSearch(value); setTab("search"); }}>
+          <form className="dtb-search" role="search" onSubmit={(event) => { event.preventDefault(); const value = desktopSearch.trim(); if (!value) return; setSearchReturnTab(tab === "discover" ? "discover" : "today"); leaveDetailThen(() => { submitSearch(value); setTab("search"); }); }}>
             <Search size={16} aria-hidden="true" />
             <input value={desktopSearch} onChange={(event) => setDesktopSearch(event.target.value)} placeholder="搜索内容、话题或用户" maxLength={60} aria-label="搜索内容、话题或用户" />
             {desktopSearch.trim() && <button type="submit" aria-label="开始搜索">搜索</button>}
@@ -4690,9 +4909,9 @@ export default function Community() {
                   <button type="button" className="dtb-menu-scrim" aria-label="关闭账号菜单" onClick={() => setDesktopMenuOpen(false)} />
                   <div className="dtb-menu" role="menu">
                     <div className="dtb-menu-head"><strong>{state.name || "探索者"}</strong><small>{accountId ? `会员 · ${membershipTier === "pro" ? "Pro" : membershipTier === "plus" ? "Plus" : "免费版"}` : "未登录"}</small></div>
-                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }}><UserRound size={16} /> 个人主页</button>
-                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); openMineSettings(); }}><Settings size={16} /> 设置</button>
-                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); openSettingsDetail("membership", "mine"); }}><Crown size={16} /> 会员中心</button>
+                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); leaveDetailThen(() => { setTab("mine"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); }); }}><UserRound size={16} /> 个人主页</button>
+                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); leaveDetailThen(openMineSettings); }}><Settings size={16} /> 设置</button>
+                    <button type="button" role="menuitem" onClick={() => { setDesktopMenuOpen(false); leaveDetailThen(() => openSettingsDetail("membership", "mine")); }}><Crown size={16} /> 会员中心</button>
                     {appDownloadUrl && <a role="menuitem" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" onClick={() => setDesktopMenuOpen(false)}><Smartphone size={16} /> 下载 App</a>}
                   </div>
                 </>
@@ -4716,6 +4935,8 @@ export default function Community() {
         {!secondaryTitle && tab === "today" && appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="app-download-link" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" aria-label="下载黑卡 Android App"><Smartphone size={16}/><span>下载 App</span></a>}
         </div>
       </header>
+      {/* 列表与详情独立：桌面进入详情时列表只隐藏不卸载，返回后频道、筛选、分页与滚动位置都还在。 */}
+      <div className="app-views" hidden={detailPageMode || detailRouteState !== null}>
       {tab === "today" && (
         <section
           key={state.homeMode}
@@ -5485,258 +5706,260 @@ export default function Community() {
           })()}
         </div>
       )}
-      {post && (
-        <div
-          className={`overlay ${viewerId === post.id ? "from-flip-window " : ""}${detailReady ? "detail-ready" : transitionPhase ? `detail-${transitionPhase}` : "detail-preparing"}`}
-          inert={!detailReady}
-          aria-hidden={!detailReady}
-        >
-          <div className="detail">
-            <header className="detail-header">
-              <button className="detail-back" aria-label="返回" onClick={() => closeDetail()}>
-                <ArrowLeft size={21} />
-              </button>
-              <span>精选 <i>· HEIKA</i></span>
-              <div className="detail-more-wrap">
-                <button className="detail-more-button" aria-label="更多操作" aria-expanded={detailMoreOpen} onClick={() => setDetailMoreOpen((open) => !open)}>
-                  <MoreHorizontal size={22} />
-                </button>
-                {detailMoreOpen && (
-                  <div className="detail-more-menu">
-                    {post.channel === "ai" && <>
-                      <span className="detail-more-group">资源与版本</span>
-                      {(aiVersionsAvailable || Boolean(post.resourceData?.version || post.resourceData?.changelog)) && <button onClick={() => { setAiDetailAction("versions"); setDetailMoreOpen(false); }}><History size={16} /> 查看更新记录</button>}
-                      {Object.keys(post.resourceData || {}).length > 0 && <button onClick={() => { setAiDetailAction("resources"); setDetailMoreOpen(false); }}><ExternalLink size={16} /> 相关资源</button>}
-                      <span className="detail-more-group">反馈与操作</span>
-                      <button onClick={() => { setAiDetailAction("feedback"); setDetailMoreOpen(false); }}><Flag size={16} /> 内容纠错</button>
-                    </>}
-                    <button onClick={() => {
-                      update((s) => ({ ...s, dismissed: [...new Set([...(s.dismissed || []), post.id])] }));
-                      void cloudRequest("/api/v1/library-state", { action: "dismiss", id: post.id }).catch(() => toast("反馈同步失败"));
-                      setDetailMoreOpen(false);
-                      toast("已减少类似内容推荐");
-                    }}><ThumbsDown size={16} /> 不感兴趣</button>
-                    {post.authorId && <button onClick={() => {
-                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
-                      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_author", authorId: post.authorId }).then(() => {
-                        setPublicFeed((items) => items.filter((item) => item.authorId !== post.authorId));
-                        void loadPublicFeed(1, true, category);
-                        setDetailMoreOpen(false); toast("已减少这位创作者的推荐，可在推荐偏好中恢复");
-                      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
-                    }}><UserRound size={16} /> 减少此作者推荐</button>}
-                    {post.topics?.[0] && (() => { const firstTopic = post.topics[0]; return <button onClick={() => {
-                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以调整推荐偏好"); return; }
-                      void cloudRequest("/api/v1/recommendation-feedback", { action: "mute_topic", topic: firstTopic }).then(() => {
-                        setPublicFeed((items) => items.filter((item) => !item.topics?.includes(firstTopic)));
-                        void loadPublicFeed(1, true, category);
-                        setDetailMoreOpen(false); toast(`已减少 #${firstTopic} 推荐，可在推荐偏好中恢复`);
-                      }).catch((error) => toast(error instanceof Error ? error.message : "推荐偏好保存失败"));
-                    }}><ThumbsDown size={16} /> 减少 #{firstTopic}</button>; })()}
-                    {post.status === "published" && <>
-                      <button onClick={() => {
-                        const url = postShareUrl(post);
-                        void navigator.clipboard?.writeText(url).then(() => toast("链接已复制")).catch(() => toast("复制失败"));
-                        setDetailMoreOpen(false);
-                      }}><Share2 size={16} /> 复制链接</button>
-                      <button onClick={() => void openSharePanel()}><Share2 size={16} /> 打开分享面板</button>
-                    </>}
-                    {post.cloudId && post.status === "published" && <button onClick={() => {
-                      if (!accountId) { setDetailMoreOpen(false); toast("登录后可以举报内容"); return; }
-                      setReportPostId(post.cloudId!); setReportCommentId(null); setReportReason(""); setReportNote(""); setDetailMoreOpen(false); setModal("report");
-                    }}><Flag size={16} /> 举报内容</button>}
-                  </div>
-                )}
+      </div>
+      {/* 直达链接的加载 / 失效 / 失败状态：每一种都有明确出口，不留空白页。 */}
+      {!post && detailRouteState !== null && (
+        <section className="detail-page-state" aria-live="polite">
+          {detailRouteState === "loading" ? (
+            <>
+              <span className="detail-page-state-spinner" aria-hidden="true" />
+              <strong>正在打开作品…</strong>
+              <p>正在读取正文与评论。</p>
+            </>
+          ) : (
+            <>
+              <strong>{detailRouteState === "missing" ? "内容不存在或暂不可见" : "内容加载失败"}</strong>
+              <p>{detailRouteState === "missing" ? "链接可能已失效，或这篇内容还没有公开。" : "网络或服务暂时不可用，可以重试一次。"}</p>
+              <div className="detail-page-state-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    routePostHandled.current = false;
+                    setDetailRouteState(initialPostId ? "loading" : "missing");
+                    setRouteRetry((value) => value + 1);
+                  }}
+                >重试</button>
+                <button
+                  type="button"
+                  className="soft-button"
+                  onClick={() => {
+                    history.replaceState({}, "", "/");
+                    routePostHandled.current = false;
+                    setDetailRouteState(null);
+                    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+                  }}
+                >返回首页</button>
               </div>
-            </header>
-            <div className="detail-scroll" key={post.id}>
-              <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
-                <nav className="detail-rail" aria-label="作品操作栏">
-                  <button type="button" className={`detail-rail-button${state.liked?.includes(post.id) ? " selected" : ""}`} aria-pressed={!!state.liked?.includes(post.id)} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} disabled={likeBusy} onClick={toggleDetailLike}>
-                    <Heart size={20} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span>{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span>
-                  </button>
-                  <button type="button" className="detail-rail-button" aria-label={`查看评论，共 ${commentTotal} 条`} onClick={jumpToDetailComments}>
-                    <MessageSquare size={20} /><span>{commentTotal}</span>
-                  </button>
-                  <button type="button" className={`detail-rail-button${state.saved.includes(post.id) ? " selected" : ""}`} aria-pressed={state.saved.includes(post.id)} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} onClick={() => void toggleSave(post.id)}>
-                    <Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} />
-                  </button>
-                  {post.status === "published" && <button type="button" className="detail-rail-button" aria-label="分享内容" onClick={() => void openSharePanel()}><Share2 size={20} /></button>}
-                  <button type="button" className="detail-rail-button" aria-label="更多操作" aria-expanded={detailMoreOpen} onClick={() => setDetailMoreOpen((open) => !open)}><MoreHorizontal size={20} /></button>
-                </nav>
-                <div className="detail-main">
-                <div className="detail-article-column" id="detail-article">
-                {detailImages.length > 0 && (
-                  <div className="detail-gallery" aria-busy={imageLoading} onPointerDown={(event) => {
-                    imageSwipeTriggered.current = false;
-                    if (event.pointerType === "mouse" || detailImages.length < 2 || (event.target as HTMLElement).closest(".detail-gallery-controls")) return;
-                    imageTouchStart.current = { x: event.clientX, y: event.clientY };
-                  }} onPointerUp={(event) => {
-                    const start = imageTouchStart.current;
-                    imageTouchStart.current = null;
-                    if (!start || detailImages.length < 2) return;
-                    const deltaX = event.clientX - start.x;
-                    const deltaY = event.clientY - start.y;
-                    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
-                    imageSwipeTriggered.current = true;
-                    event.preventDefault();
-                    selectDetailImage(activeImageIndex + (deltaX < 0 ? 1 : -1));
-                    window.setTimeout(() => { imageSwipeTriggered.current = false; }, 0);
-                  }} onPointerCancel={() => { imageTouchStart.current = null; imageSwipeTriggered.current = false; }}>
-                  <button className={`detail-image-button detail-image-frame transition-${detailTransition} is-${detailImageDirection}`} onClick={(event) => {
-                    if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
-                    setPreviewImage(true);
-                  }} aria-label="查看大图">
-                    {(() => {
-                      const index = displayedImageIndex;
-                      const lowSrc = detailThumbnails[index] || detailImages[index];
-                      const highSrc = post.isPartial ? detailRetinaImages[index] || lowSrc : detailImages[index];
-                      return <ProgressiveImage
-                        key={`${lowSrc}:${highSrc}`}
-                        lowSrc={lowSrc}
-                        src={highSrc}
-                        alt={`${post.title}，第 ${index + 1} 张`}
-                        onHighReady={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
-                        onHighError={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
-                      />;
-                    })()}
-                    <span>查看大图</span>
-                  </button>
-                  {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
-                  {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
-                    <button type="button" aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
-                    <span>{activeImageIndex + 1} / {detailImages.length}</span>
-                    <button type="button" aria-label="下一张图片" onClick={() => selectDetailImage(activeImageIndex + 1)}><ArrowRight size={15} /></button>
-                  </div>}
-                  </div>
-                )}
-                {detailImages.length === 0 && detailVideo && <div className="detail-video"><video src={detailVideo} controls playsInline preload="metadata" aria-label={`${post.title} 视频`} /></div>}
-                {detailImages.length === 0 && !detailVideo ? <section className="detail-text-cover" aria-label="文字作品标题区域">
-                  <span>{post.tag || "社区作品"}</span>
-                  <h1>{post.title}</h1>
-                </section> : <h1>{post.title}</h1>}
-                {post.cloudId && post.status === "published" && <PostAISummary postId={post.cloudId}/>}
-                <p className="byline">
-                  {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}><span>{post.author} ↗</span><ProfileBadgeMarks badges={post.authorBadges || []}/></button> : <>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []}/></>}
-                  <span> · {post.date}</span>
-                </p>
-                <button className="detail-reading-setting" onClick={() => setModal("reading")}>
-                  阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
-                </button>
-                {post.seriesId && post.cloudId ? <SeriesChapterNav
-                  slot="head"
-                  seriesId={post.seriesId}
-                  postId={post.cloudId}
-                  accountId={accountId}
-                  onLogin={() => setTab("messages")}
-                  onNotice={toast}
-                  onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
-                  onOpenCollection={openCollectionFromDetail}
-                /> : post.seriesTitle ? <div className="detail-series-card"><div className="detail-series-copy"><small>所属合集</small><strong>{post.seriesTitle}</strong></div></div> : null}
-                {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
-                {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
-                {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} action={aiDetailAction} onActionClose={closeAiDetailAction} onVersionsAvailability={setAiVersionsAvailable}/></Suspense>}
-                {post.channel !== "ai" && <Suspense fallback={null}><PostAttachmentsPanel resourceData={post.resourceData || {}} onNotice={toast}/></Suspense>}
-                {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
-                <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
-                  <div className="detail-rating-main"><span>内容评分</span>
-                  <div className="detail-rating-stars" role="radiogroup" aria-label="选择内容星级">{[1, 2, 3, 4, 5].map((n) => (
-                    <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms`, "--star-delay": `${(n - 1) * 58}ms`, "--rating-color": RATING_COLORS[n - 1] } as CSSProperties} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
-                      <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
-                    </button>
-                  ))}</div><span className="detail-rating-current">{state.ratings[post.id] ? `${state.ratings[post.id]} 星` : "未评分"}</span></div>
-                  {(state.ratings[post.id] || ratingPulse?.postId === post.id) && (communityRatings[post.id]?.count ? (
-                    <small className="community-rating" aria-live="polite">
-                      <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人 <i className={`rarity-badge rarity-${cardRarity(communityRatings[post.id].average, communityRatings[post.id].count).replaceAll(" ", "")}`}>{cardRarity(communityRatings[post.id].average, communityRatings[post.id].count)}</i>
-                    </small>
-                  ) : null)}
-                  {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
-                </section>
-                </div>
-                {post.seriesId && post.cloudId && <SeriesChapterNav
-                  slot="foot"
-                  seriesId={post.seriesId}
-                  postId={post.cloudId}
-                  onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
-                  onOpenCollection={openCollectionFromDetail}
-                />}
-                <section id="detail-comments" className="detail-comments">
-                  <div className="comments-heading">
-                    <h2>评论 <span>· {commentTotal}</span></h2>
-                    <div role="group" aria-label="评论排序" className="comment-sort">
-                      <button className={detailSort === "热度" ? "selected" : ""} onClick={() => setDetailSort("热度")}>最热</button>
-                      <button className={detailSort === "最新" ? "selected" : ""} onClick={() => setDetailSort("最新")}>最新</button>
-                    </div>
-                  </div>
-                  {commentsError && <div className="comments-state"><span>评论加载失败</span><button onClick={() => { setCommentsError(false); setCommentsLoading(true); void fetch(`/api/library-comments?id=${post.id}&offset=${commentOffset}&limit=40&sort=${detailSort === "最新" ? "new" : "hot"}`, { cache: "no-store" }).then((r) => r.json()).then((result) => { if (!Array.isArray(result.data?.items)) throw new Error(); const items = result.data.items as Comment[]; setState((s) => ({ ...s, comments: [...s.comments.filter((c) => c.post !== post.id || !c.cloudId), ...items] })); setCommentTotal(result.data.total || 0); setCommentOffset(items.length); setCommentHasMore(items.length < (result.data.total || 0)); }).catch(() => setCommentsError(true)).finally(() => setCommentsLoading(false)); }}>重试</button></div>}
-                  {commentsLoading && commentOffset === 0 && <div className="comments-loading" aria-label="正在加载评论"><i/><i/></div>}
-                  {(() => {
-                    const comments = state.comments.filter((c) => c.post === post.id);
-                    const roots = comments.filter((c) => !c.parent).sort((a, b) => detailSort === "最新" ? b.time - a.time : b.likes - a.likes || b.time - a.time);
-                    return roots.length ? roots.map((c) => {
-                      const children = comments.filter((item) => item.parent === c.id).sort((a, b) => a.time - b.time);
-                      const displayBody = expandedComments[c.id] || c.body.length <= 280 ? c.body : `${c.body.slice(0, 280)}…`;
-                      const renderReply = (child: Comment) => <div className="comment-reply" key={child.id}>
-                        <div className="comment-avatar small" aria-hidden="true"><span>{(child.name || "探").slice(0, 1)}</span>{child.avatar && <img src={child.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
-                        <div className="comment-reply-content"><div className="comment-reply-heading"><strong title={child.name || "探索者"}>{child.name || "探索者"}</strong><span>回复</span><strong title={child.replyToName || c.name || "探索者"}>{child.replyToName || c.name || "探索者"}</strong></div><p>{child.body}</p><div className="comment-meta comment-reply-meta"><time>{relativeTime(child.time)}</time><button className="comment-reply-action" onClick={() => focusReply(child.id, child.name)}>回复</button><button type="button" className={`comment-reply-like${child.liked ? " selected" : ""}`} aria-label={`${child.liked ? "取消点赞" : "点赞回复"}，${child.likes}`} aria-pressed={!!child.liked} onClick={() => void toggleCommentLike(child)}><Heart size={14} fill={child.liked ? "currentColor" : "none"}/><span>{child.likes}</span></button><details className="comment-actions-menu"><summary aria-label="回复操作"><MoreHorizontal size={16}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(child)}>复制</button>{(!child.cloudId || child.authorId === accountId) && <button onClick={() => void deleteComment(child)}>删除回复</button>}{child.cloudId && accountId && child.authorId !== accountId && <button onClick={() => { setReportCommentId(child.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报回复</button>}</div></details></div></div>
-                      </div>;
-                      return <article className="comment" id={`comment-${c.id}`} data-comment-id={c.id} key={c.id}>
-                        <div className="comment-avatar" aria-hidden="true"><span>{(c.name || "探").slice(0, 1)}</span>{c.avatar && <img src={c.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
-                        <div className="comment-content">
-                          <div className="comment-heading"><strong className="comment-author" title={c.name || "探索者"}>{c.name || "探索者"}</strong>{post.authorId && c.authorId === post.authorId && <span className="comment-author-badge">作者</span>}</div>
-                          <p className={expandedComments[c.id] ? "comment-body expanded" : "comment-body"}>{displayBody}</p>
-                          {c.body.length > 280 && <button className="comment-expand" onClick={() => setExpandedComments((current) => ({ ...current, [c.id]: !current[c.id] }))}>{expandedComments[c.id] ? "收起" : "展开全文"}</button>}
-                          <div className="comment-meta"><time dateTime={new Date(c.time).toISOString()}>{relativeTime(c.time)}</time><button className="comment-reply-action" onClick={() => focusReply(c.id, c.name)}>回复</button><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={18}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(c)}>复制</button><button onClick={() => focusReply(c.id, c.name)}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
-                          {children.length > 0 && <div className="comment-replies">{children.slice(0, 2).map(renderReply)}<div className={`comment-replies-extra${expandedReplies[c.id] ? " is-expanded" : ""}`} aria-hidden={!expandedReplies[c.id]} inert={!expandedReplies[c.id]}><div>{children.slice(2).map(renderReply)}</div></div></div>}
-                          {children.length > 2 && <button className="expand-replies" aria-expanded={!!expandedReplies[c.id]} onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: !s[c.id] }))}>{expandedReplies[c.id] ? "收起回复" : `展开 ${children.length - 2} 条回复`}</button>}
-                        </div>
-                        <button className={`comment-like${c.liked ? " selected" : ""}`} aria-label={`${c.liked ? "取消点赞" : "点赞评论"}，${c.likes}`} aria-pressed={!!c.liked} onClick={() => void toggleCommentLike(c)}><Heart size={18} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button>
-                      </article>;
-                    }) : !commentsLoading && !commentsError && <p className="comments-empty">还没有评论，来聊聊你的想法。</p>;
-                  })()}
-                  {commentHasMore && <button className="comments-load-more" disabled={commentsLoading} onClick={() => void loadMoreComments()}>{commentsLoading ? "正在加载…" : "更多评论"}</button>}
-                </section>
-                </div>
-                <DetailAside
-                  post={post}
-                  accountId={accountId}
-                  related={detailRelated}
-                  onOpenAuthor={(id) => setAuthorProfile(id)}
-                  onOpenPost={(item) => void openPost(item.id, "discover")}
-                  onMessage={(id) => { setMessagePeer(id); setTab("messages"); }}
-                  onNotice={toast}
-                />
-              </div>
-              <div className="detail-dock" role="group" aria-label="作品操作">
-              <form className="detail-dock-comment heika-solid-glass" onSubmit={(event) => { event.preventDefault(); void addComment(); }}>
-              <div className={`detail-comment-input${reply ? " replying" : ""}${commentInputExpanded || draft ? " expanded" : ""}`}>
-                <span className="comment-compose-avatar" aria-hidden="true"><span>{(state.name || "探").slice(0, 1)}</span>{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
-                {reply && <span className="reply-label">回复 @{replyTargetName || state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => { setReply(undefined); setReplyTargetName(undefined); }}><X size={13} /></button></span>}
-                <textarea ref={commentInputRef} value={draft} onFocus={() => setCommentInputExpanded(true)} onBlur={(event) => { if (!draft.trim() && !reply && !event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setCommentInputExpanded(false); }} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={commentInputExpanded || draft ? 3 : 1} maxLength={1000} aria-label="评论内容" />
-                {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
-                {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><ArrowUp size={18} strokeWidth={2.4} /></button>}
-              </div>
-              </form>
-              <div className="detail-dock-actions heika-solid-glass">
-              <button type="button" className={`bar-icon like-action${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
-                if (likeBusy) return;
-                const next = !state.liked?.includes(post.id);
-                setLikeBusy(true);
-                void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => {
-                  const nextCount = Math.max(0, (detailLikeCounts[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1));
-                  setDetailLikeCounts((current) => ({ ...current, [post.id]: Math.max(0, (current[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1)) }));
-                  setPublicFeed((current) => current.map((item) => item.id === post.id ? { ...item, likeCount: nextCount } : item));
-                  update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }));
-                }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
-              }}><Heart size={19} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span className="detail-like-count">{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span></button>
-              <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
-              {post.status === "published" && <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => void openSharePanel()}><Share2 size={20} /></button>}
-              </div>
-              </div>
-            </div>
-          </div>
-          {previewImage && detailImages[displayedImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[displayedImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
-        </div>
+            </>
+          )}
+        </section>
       )}
+      {post && (() => {
+        // 浮层与独立页面共用同一份内容，只有外壳与滚动方式不同。
+        const detailContent = (
+          <>
+          <div className={`detail${detailPageMode ? " detail-page" : ""}`}>
+                <header className="detail-header">
+                  <button className="detail-back" aria-label="返回" onClick={() => closeDetail()}>
+                    <ArrowLeft size={21} />
+                  </button>
+                  <span>精选 <i>· HEIKA</i></span>
+                  <div className="detail-more-wrap">
+                    <button className="detail-more-button" aria-label="更多操作" aria-expanded={detailMoreOpen} onClick={() => setDetailMoreOpen((open) => !open)}>
+                      <MoreHorizontal size={22} />
+                    </button>
+                    {detailMoreOpen && <div className="detail-more-menu">{detailMoreMenu}</div>}
+                  </div>
+                </header>
+                <div className="detail-scroll" key={post.id}>
+                  <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
+                    <nav className="detail-rail" aria-label="作品操作栏">
+                      <button type="button" className={`detail-rail-button${state.liked?.includes(post.id) ? " selected" : ""}`} aria-pressed={!!state.liked?.includes(post.id)} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} disabled={likeBusy} onClick={toggleDetailLike}>
+                        <Heart size={20} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span>{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span>
+                      </button>
+                      <button type="button" className="detail-rail-button" aria-label={`查看评论，共 ${commentTotal} 条`} onClick={jumpToDetailComments}>
+                        <MessageSquare size={20} /><span>{commentTotal}</span>
+                      </button>
+                      <button type="button" className={`detail-rail-button${state.saved.includes(post.id) ? " selected" : ""}`} aria-pressed={state.saved.includes(post.id)} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} onClick={() => void toggleSave(post.id)}>
+                        <Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} />
+                      </button>
+                      {post.status === "published" && <button type="button" className="detail-rail-button" aria-label="分享内容" onClick={() => void openSharePanel()}><Share2 size={20} /></button>}
+                      <div className="detail-rail-item">
+                        <button type="button" className="detail-rail-button" aria-label="更多操作" aria-expanded={detailMoreOpen} onClick={() => setDetailMoreOpen((open) => !open)}><MoreHorizontal size={20} /></button>
+                        {detailPageMode && detailMoreOpen && <div className="detail-more-menu detail-rail-more">{detailMoreMenu}</div>}
+                      </div>
+                    </nav>
+                    <div className="detail-main">
+                    <div className="detail-article-column" id="detail-article">
+                    {detailImages.length > 0 && (
+                      <div className="detail-gallery" aria-busy={imageLoading} onPointerDown={(event) => {
+                        imageSwipeTriggered.current = false;
+                        if (event.pointerType === "mouse" || detailImages.length < 2 || (event.target as HTMLElement).closest(".detail-gallery-controls")) return;
+                        imageTouchStart.current = { x: event.clientX, y: event.clientY };
+                      }} onPointerUp={(event) => {
+                        const start = imageTouchStart.current;
+                        imageTouchStart.current = null;
+                        if (!start || detailImages.length < 2) return;
+                        const deltaX = event.clientX - start.x;
+                        const deltaY = event.clientY - start.y;
+                        if (Math.abs(deltaX) < 40 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
+                        imageSwipeTriggered.current = true;
+                        event.preventDefault();
+                        selectDetailImage(activeImageIndex + (deltaX < 0 ? 1 : -1));
+                        window.setTimeout(() => { imageSwipeTriggered.current = false; }, 0);
+                      }} onPointerCancel={() => { imageTouchStart.current = null; imageSwipeTriggered.current = false; }}>
+                      <button className={`detail-image-button detail-image-frame transition-${detailTransition} is-${detailImageDirection}`} onClick={(event) => {
+                        if (imageSwipeTriggered.current) { event.preventDefault(); imageSwipeTriggered.current = false; return; }
+                        setPreviewImage(true);
+                      }} aria-label="查看大图">
+                        {(() => {
+                          const index = displayedImageIndex;
+                          const lowSrc = detailThumbnails[index] || detailImages[index];
+                          const highSrc = post.isPartial ? detailRetinaImages[index] || lowSrc : detailImages[index];
+                          return <ProgressiveImage
+                            key={`${lowSrc}:${highSrc}`}
+                            lowSrc={lowSrc}
+                            src={highSrc}
+                            alt={`${post.title}，第 ${index + 1} 张`}
+                            onHighReady={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
+                            onHighError={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
+                          />;
+                        })()}
+                        <span>查看大图</span>
+                      </button>
+                      {imageLoading && activeImageIndex !== displayedImageIndex && <span className="detail-image-loading is-visible" role="status" aria-live="polite" aria-busy="true">正在加载</span>}
+                      {detailImages.length > 1 && <div className="detail-gallery-controls" aria-label="图片切换">
+                        <button type="button" aria-label="上一张图片" onClick={() => selectDetailImage(activeImageIndex - 1)}><ArrowLeft size={15} /></button>
+                        <span>{activeImageIndex + 1} / {detailImages.length}</span>
+                        <button type="button" aria-label="下一张图片" onClick={() => selectDetailImage(activeImageIndex + 1)}><ArrowRight size={15} /></button>
+                      </div>}
+                      </div>
+                    )}
+                    {detailImages.length === 0 && detailVideo && <div className="detail-video"><video src={detailVideo} controls playsInline preload="metadata" aria-label={`${post.title} 视频`} /></div>}
+                    {detailImages.length === 0 && !detailVideo ? <section className="detail-text-cover" aria-label="文字作品标题区域">
+                      <span>{post.tag || "社区作品"}</span>
+                      <h1>{post.title}</h1>
+                    </section> : <h1>{post.title}</h1>}
+                    {post.cloudId && post.status === "published" && <PostAISummary postId={post.cloudId}/>}
+                    <p className="byline">
+                      {post.authorId ? <button className="text-button" onClick={() => setAuthorProfile(post.authorId!)}><span>{post.author} ↗</span><ProfileBadgeMarks badges={post.authorBadges || []}/></button> : <>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []}/></>}
+                      <span> · {post.date}</span>
+                    </p>
+                    <button className="detail-reading-setting" onClick={() => setModal("reading")}>
+                      阅读模式 · {{ standard: "标准", focus: "专注", night: "夜间" }[state.readingMode]} <ChevronRight size={14} />
+                    </button>
+                    {post.seriesId && post.cloudId ? <SeriesChapterNav
+                      slot="head"
+                      seriesId={post.seriesId}
+                      postId={post.cloudId}
+                      accountId={accountId}
+                      onLogin={() => setTab("messages")}
+                      onNotice={toast}
+                      onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
+                      onOpenCollection={openCollectionFromDetail}
+                    /> : post.seriesTitle ? <div className="detail-series-card"><div className="detail-series-copy"><small>所属合集</small><strong>{post.seriesTitle}</strong></div></div> : null}
+                    {post.topics?.length ? <div className="detail-topic-list" aria-label="内容话题">{post.topics.map((topic) => <button key={topic} className="detail-topic-chip" onClick={() => void openTopic(topic)}>#{topic}</button>)}</div> : null}
+                    {post.cloudId ? <PrivateHighlights postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast}>{detailArticleContent}</PrivateHighlights> : detailArticleContent}
+                    {post.channel === "ai" && post.cloudId && <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载 AI 资源详情…</div>}><AIResourceDetails postId={post.cloudId} contentType={post.contentType || "knowledge_article"} resourceData={post.resourceData || {}} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} action={aiDetailAction} onActionClose={closeAiDetailAction} onVersionsAvailability={setAiVersionsAvailable}/></Suspense>}
+                    {post.channel !== "ai" && <Suspense fallback={null}><PostAttachmentsPanel resourceData={post.resourceData || {}} onNotice={toast}/></Suspense>}
+                    {post.cloudId && <PostPoll postId={post.cloudId} accountId={accountId} onLogin={() => setTab("messages")} onNotice={toast} />}
+                    <section className={`detail-rating${ratingPulse?.postId === post.id ? " rating-pulse" : ""}`} aria-label="内容评分">
+                      <div className="detail-rating-main"><span>内容评分</span>
+                      <div className="detail-rating-stars" role="radiogroup" aria-label="选择内容星级">{[1, 2, 3, 4, 5].map((n) => (
+                        <button className={`rating-star${ratingPulse?.postId === post.id && n <= ratingPulse.score ? " is-pulsing" : ""}`} key={n} style={{ animationDelay: `${(n - 1) * 58}ms`, "--star-delay": `${(n - 1) * 58}ms`, "--rating-color": RATING_COLORS[n - 1] } as CSSProperties} aria-label={`${n} 星`} aria-pressed={(state.ratings[post.id] || 0) === n} onClick={() => submitRating(post.id, n)}>
+                          <Star size={18} fill={(state.ratings[post.id] || 0) >= n ? "currentColor" : "none"} />
+                        </button>
+                      ))}</div><span className="detail-rating-current">{state.ratings[post.id] ? `${state.ratings[post.id]} 星` : "未评分"}</span></div>
+                      {(state.ratings[post.id] || ratingPulse?.postId === post.id) && (communityRatings[post.id]?.count ? (
+                        <small className="community-rating" aria-live="polite">
+                          <Star size={12} fill="currentColor" /> 社区均分 {communityRatings[post.id].average.toFixed(1)} · {communityRatings[post.id].count} 人 <i className={`rarity-badge rarity-${cardRarity(communityRatings[post.id].average, communityRatings[post.id].count).replaceAll(" ", "")}`}>{cardRarity(communityRatings[post.id].average, communityRatings[post.id].count)}</i>
+                        </small>
+                      ) : null)}
+                      {ratingPulse?.postId === post.id ? <small className="rating-feedback" key={ratingPulse.score} aria-live="polite">信号已校准 · {ratingPulse.score} 星</small> : state.ratings[post.id] ? <small>已评 {state.ratings[post.id]} 星</small> : null}
+                    </section>
+                    </div>
+                    {post.seriesId && post.cloudId && <SeriesChapterNav
+                      slot="foot"
+                      seriesId={post.seriesId}
+                      postId={post.cloudId}
+                      onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
+                      onOpenCollection={openCollectionFromDetail}
+                    />}
+                    <section id="detail-comments" className="detail-comments">
+                      <div className="comments-heading">
+                        <h2>评论 <span>· {commentTotal}</span></h2>
+                        <div role="group" aria-label="评论排序" className="comment-sort">
+                          <button className={detailSort === "热度" ? "selected" : ""} onClick={() => setDetailSort("热度")}>最热</button>
+                          <button className={detailSort === "最新" ? "selected" : ""} onClick={() => setDetailSort("最新")}>最新</button>
+                        </div>
+                      </div>
+                      {detailPageMode && <div className="detail-comments-composer">{commentComposerForm}</div>}
+                      {commentsError && <div className="comments-state"><span>评论加载失败</span><button onClick={() => { setCommentsError(false); setCommentsLoading(true); void fetch(`/api/library-comments?id=${post.id}&offset=${commentOffset}&limit=40&sort=${detailSort === "最新" ? "new" : "hot"}`, { cache: "no-store" }).then((r) => r.json()).then((result) => { if (!Array.isArray(result.data?.items)) throw new Error(); const items = result.data.items as Comment[]; setState((s) => ({ ...s, comments: [...s.comments.filter((c) => c.post !== post.id || !c.cloudId), ...items] })); setCommentTotal(result.data.total || 0); setCommentOffset(items.length); setCommentHasMore(items.length < (result.data.total || 0)); }).catch(() => setCommentsError(true)).finally(() => setCommentsLoading(false)); }}>重试</button></div>}
+                      {commentsLoading && commentOffset === 0 && <div className="comments-loading" aria-label="正在加载评论"><i/><i/></div>}
+                      {(() => {
+                        const comments = state.comments.filter((c) => c.post === post.id);
+                        const roots = comments.filter((c) => !c.parent).sort((a, b) => detailSort === "最新" ? b.time - a.time : b.likes - a.likes || b.time - a.time);
+                        return roots.length ? roots.map((c) => {
+                          const children = comments.filter((item) => item.parent === c.id).sort((a, b) => a.time - b.time);
+                          const displayBody = expandedComments[c.id] || c.body.length <= 280 ? c.body : `${c.body.slice(0, 280)}…`;
+                          const renderReply = (child: Comment) => <div className="comment-reply" key={child.id}>
+                            <div className="comment-avatar small" aria-hidden="true"><span>{(child.name || "探").slice(0, 1)}</span>{child.avatar && <img src={child.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
+                            <div className="comment-reply-content"><div className="comment-reply-heading"><strong title={child.name || "探索者"}>{child.name || "探索者"}</strong><span>回复</span><strong title={child.replyToName || c.name || "探索者"}>{child.replyToName || c.name || "探索者"}</strong></div><p>{child.body}</p><div className="comment-meta comment-reply-meta"><time>{relativeTime(child.time)}</time><button className="comment-reply-action" onClick={() => focusReply(child.id, child.name)}>回复</button><button type="button" className={`comment-reply-like${child.liked ? " selected" : ""}`} aria-label={`${child.liked ? "取消点赞" : "点赞回复"}，${child.likes}`} aria-pressed={!!child.liked} onClick={() => void toggleCommentLike(child)}><Heart size={14} fill={child.liked ? "currentColor" : "none"}/><span>{child.likes}</span></button><details className="comment-actions-menu"><summary aria-label="回复操作"><MoreHorizontal size={16}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(child)}>复制</button>{(!child.cloudId || child.authorId === accountId) && <button onClick={() => void deleteComment(child)}>删除回复</button>}{child.cloudId && accountId && child.authorId !== accountId && <button onClick={() => { setReportCommentId(child.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报回复</button>}</div></details></div></div>
+                          </div>;
+                          return <article className="comment" id={`comment-${c.id}`} data-comment-id={c.id} key={c.id}>
+                            <div className="comment-avatar" aria-hidden="true"><span>{(c.name || "探").slice(0, 1)}</span>{c.avatar && <img src={c.avatar} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</div>
+                            <div className="comment-content">
+                              <div className="comment-heading"><strong className="comment-author" title={c.name || "探索者"}>{c.name || "探索者"}</strong>{post.authorId && c.authorId === post.authorId && <span className="comment-author-badge">作者</span>}</div>
+                              <p className={expandedComments[c.id] ? "comment-body expanded" : "comment-body"}>{displayBody}</p>
+                              {c.body.length > 280 && <button className="comment-expand" onClick={() => setExpandedComments((current) => ({ ...current, [c.id]: !current[c.id] }))}>{expandedComments[c.id] ? "收起" : "展开全文"}</button>}
+                              <div className="comment-meta"><time dateTime={new Date(c.time).toISOString()}>{relativeTime(c.time)}</time><button className="comment-reply-action" onClick={() => focusReply(c.id, c.name)}>回复</button><details className="comment-actions-menu"><summary aria-label="评论操作"><MoreHorizontal size={18}/></summary><div className="comment-actions-panel"><button onClick={() => void copyComment(c)}>复制</button><button onClick={() => focusReply(c.id, c.name)}>回复</button>{(!c.cloudId || c.authorId === accountId) && <button onClick={() => void deleteComment(c)}>删除评论</button>}{c.cloudId && accountId && c.authorId !== accountId && <button onClick={() => { setReportCommentId(c.cloudId!); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}>举报评论</button>}</div></details></div>
+                              {children.length > 0 && <div className="comment-replies">{children.slice(0, 2).map(renderReply)}<div className={`comment-replies-extra${expandedReplies[c.id] ? " is-expanded" : ""}`} aria-hidden={!expandedReplies[c.id]} inert={!expandedReplies[c.id]}><div>{children.slice(2).map(renderReply)}</div></div></div>}
+                              {children.length > 2 && <button className="expand-replies" aria-expanded={!!expandedReplies[c.id]} onClick={() => setExpandedReplies((s) => ({ ...s, [c.id]: !s[c.id] }))}>{expandedReplies[c.id] ? "收起回复" : `展开 ${children.length - 2} 条回复`}</button>}
+                            </div>
+                            <button className={`comment-like${c.liked ? " selected" : ""}`} aria-label={`${c.liked ? "取消点赞" : "点赞评论"}，${c.likes}`} aria-pressed={!!c.liked} onClick={() => void toggleCommentLike(c)}><Heart size={18} fill={c.liked ? "currentColor" : "none"} /><span>{c.likes}</span></button>
+                          </article>;
+                        }) : !commentsLoading && !commentsError && <p className="comments-empty">还没有评论，来聊聊你的想法。</p>;
+                      })()}
+                      {commentHasMore && <button className="comments-load-more" disabled={commentsLoading} onClick={() => void loadMoreComments()}>{commentsLoading ? "正在加载…" : "更多评论"}</button>}
+                    </section>
+                    </div>
+                    <DetailAside
+                      post={post}
+                      accountId={accountId}
+                      related={detailRelated}
+                      onOpenAuthor={(id) => setAuthorProfile(id)}
+                      onOpenPost={(item) => { if (detail !== null) switchDetailChapter(item); else void openPost(item.id, "discover"); }}
+                  pageMode={detailPageMode}
+                      onMessage={(id) => { setMessagePeer(id); setTab("messages"); }}
+                      onNotice={toast}
+                    />
+                  </div>
+                  {!detailPageMode && <div className="detail-dock" role="group" aria-label="作品操作">
+                  {commentComposerForm}
+                  <div className="detail-dock-actions heika-solid-glass">
+                  <button type="button" className={`bar-icon like-action${state.liked?.includes(post.id) ? " selected" : ""}`} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} aria-pressed={!!state.liked?.includes(post.id)} disabled={likeBusy} onClick={() => {
+                    if (likeBusy) return;
+                    const next = !state.liked?.includes(post.id);
+                    setLikeBusy(true);
+                    void cloudRequest("/api/v1/library-state", { action: "like", id: post.id, value: next }).then(() => {
+                      const nextCount = Math.max(0, (detailLikeCounts[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1));
+                      setDetailLikeCounts((current) => ({ ...current, [post.id]: Math.max(0, (current[post.id] ?? post.likeCount ?? 0) + (next ? 1 : -1)) }));
+                      setPublicFeed((current) => current.map((item) => item.id === post.id ? { ...item, likeCount: nextCount } : item));
+                      update((s) => ({ ...s, liked: next ? [...(s.liked || []), post.id] : (s.liked || []).filter((id) => id !== post.id) }));
+                    }).catch(() => toast("点赞同步失败")).finally(() => setLikeBusy(false));
+                  }}><Heart size={19} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span className="detail-like-count">{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span></button>
+                  <button type="button" className={`bar-icon${state.saved.includes(post.id) ? " selected" : ""}`} aria-label={state.saved.includes(post.id) ? "取消收藏" : "收藏"} aria-pressed={state.saved.includes(post.id)} onClick={() => void toggleSave(post.id)}><Bookmark size={20} fill={state.saved.includes(post.id) ? "currentColor" : "none"} /></button>
+                  {post.status === "published" && <button type="button" className="bar-icon" aria-label="分享内容" onClick={() => void openSharePanel()}><Share2 size={20} /></button>}
+                  </div>
+                  </div>}
+                </div>
+              </div>
+              {previewImage && detailImages[displayedImageIndex] && <div className="detail-image-preview" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreviewImage(false)}><button aria-label="关闭图片预览" onClick={() => setPreviewImage(false)}><X size={23} /></button><img src={detailImages[displayedImageIndex]} alt={post.title} onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }} /></div>}
+          </>
+        );
+        return detailPageMode ? (
+          <section className="detail-page-shell" aria-label="作品详情">{detailContent}</section>
+        ) : (
+          <div
+            className={`overlay ${viewerId === post.id ? "from-flip-window " : ""}${detailReady ? "detail-ready" : transitionPhase ? `detail-${transitionPhase}` : "detail-preparing"}`}
+            inert={!detailReady}
+            aria-hidden={!detailReady}
+          >
+            {detailContent}
+          </div>
+        );
+      })()}
       <SharePanel
         open={Boolean(sharePayloadState)}
         payload={sharePayloadState}

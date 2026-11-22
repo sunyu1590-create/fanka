@@ -16,13 +16,15 @@ type Props = {
   onOpenPost: (post: Post) => void;
   onMessage: (id: string) => void;
   onNotice: (message: string) => void;
+  /** 独立详情页：用窗口滚动，目录高亮与跳转的参照系随之改变。 */
+  pageMode?: boolean;
 };
 
 /**
  * 桌面长文右辅助栏：作者 → 目录 → 少量相关内容。
  * 目录从正文真实标题生成（含 MarkdownContent 渲染出的 h2/h3），无标题时整块不出现。
  */
-export default function DetailAside({ post, accountId, related, onOpenAuthor, onOpenPost, onMessage, onNotice }: Props) {
+export default function DetailAside({ post, accountId, related, onOpenAuthor, onOpenPost, onMessage, onNotice, pageMode = false }: Props) {
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeId, setActiveId] = useState("");
   const [tocOpen, setTocOpen] = useState(true);
@@ -58,7 +60,11 @@ export default function DetailAside({ post, accountId, related, onOpenAuthor, on
           const top = visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
           setActiveId(top.target.id);
         }
-      }, { root: article.closest(".detail-scroll"), rootMargin: "-72px 0px -60% 0px", threshold: [0, 1] });
+      }, {
+        root: pageMode ? null : article.closest(".detail-scroll"),
+        rootMargin: pageMode ? "-84px 0px -58% 0px" : "-72px 0px -60% 0px",
+        threshold: [0, 1],
+      });
       headings.forEach((node) => { if (node.id) observer!.observe(node); });
     };
     scan();
@@ -67,8 +73,7 @@ export default function DetailAside({ post, accountId, related, onOpenAuthor, on
       window.clearTimeout(retry);
       observer?.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [post.id, post.title]);
+  }, [post.id, post.title, pageMode]);
 
   // 关注状态：只读接口，登录后才有 following。
   useEffect(() => {
@@ -106,12 +111,18 @@ export default function DetailAside({ post, accountId, related, onOpenAuthor, on
 
   const jumpTo = useCallback((id: string) => {
     const node = document.getElementById(id);
+    if (!node) return;
     const scroller = document.querySelector<HTMLElement>(".detail-scroll");
-    if (!node || !scroller) return;
-    const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 68;
-    scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    const pageScroll = pageMode || !scroller;
+    if (!pageScroll && scroller) {
+      const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 68;
+      scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    } else {
+      const top = node.getBoundingClientRect().top + window.scrollY - 84;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    }
     setActiveId(id);
-  }, []);
+  }, [pageMode]);
 
   const relatedItems = useMemo(() => related.filter((item) => item.id !== post.id).slice(0, 3), [related, post.id]);
 

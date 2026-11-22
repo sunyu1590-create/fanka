@@ -7824,6 +7824,9 @@ img, video, canvas, iframe { max-width:100%; }
 
   /* --- 壳层：桌面用顶栏，移动悬浮底栏与旧顶栏都退出 --- */
   .app {
+    /* 旧的左侧栏布局会给 .app 一个 240px 左偏移与 100vw-280px 的宽度，
+       顶栏方案下统一按满宽 + 居中的内容列，避免不同断点宽度跳变。 */
+    width: 100%;
     max-width: 1320px;
     margin: 0 auto;
     padding-top: var(--desktop-topbar-h);
@@ -8065,3 +8068,137 @@ img, video, canvas, iframe { max-width:100%; }
 /* AI 资源卡片上的合集徽标（与详情页合集卡同一数据源） */
 .ai-resource-series { font-style: normal; font-size: 10.5px; color: var(--muted); margin-left: 6px; padding-left: 6px; border-left: 1px solid var(--line); max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
 .ai-resource-card .ai-resource-copy small { display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; overflow: hidden; }
+
+/* ==========================================================================
+   独立详情页（/p/<id>）：桌面整页滚动，不再用浮层
+   - 列表在进入详情时只隐藏不卸载，返回时频道、筛选、分页与滚动位置都能还原
+   - 浮层（窄屏 / APP 内嵌）继续使用原有样式，这里只覆盖页面模式
+   ========================================================================== */
+/* 包裹层不产生盒：内部仍是 .app 的直接布局参与者，隐藏时整块退出文档流 */
+.app-views { display: contents; }
+.app-views[hidden] { display: none !important; }
+
+.detail-page-state {
+  max-width: 620px;
+  margin: 96px auto 120px;
+  padding: 0 24px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--muted);
+}
+.detail-page-state strong { color: var(--ink); font-size: 17px; font-weight: 620; }
+.detail-page-state p { margin: 0; font-size: 13px; line-height: 1.75; }
+.detail-page-state-actions { display: flex; gap: 10px; margin-top: 6px; }
+.detail-page-state-spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--action);
+  animation: detail-page-spin .8s linear infinite;
+}
+@keyframes detail-page-spin { to { transform: rotate(360deg); } }
+
+.detail-rail-item { position: relative; }
+.detail-comments-composer { margin: 14px 0 4px; }
+
+@media (min-width: 1024px) {
+  .detail-page-shell { max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+  /* 页面模式：内容撑开文档高度，交给窗口滚动，避免正文内滚与页面滚动并存 */
+  .detail-page { display: block; height: auto; max-height: none; min-height: 0; overflow: visible; background: transparent; }
+  .detail-page .detail-header { display: none; }
+  .detail-page .detail-scroll { height: auto; overflow: visible; overscroll-behavior: auto; }
+  .detail-page .detail-body {
+    grid-template-columns: 56px minmax(0, 780px) 280px;
+    gap: 26px;
+    padding: 24px 0 72px;
+  }
+  /* 旧版桌面长文把子项都压在左列（配右侧吸顶评论），页面模式改为三列各占一列 */
+  .detail-page .detail-rail { grid-column: 1; grid-row: 1; }
+  .detail-page .detail-main { grid-column: 2; grid-row: 1; min-width: 0; }
+  .detail-page .detail-aside { grid-column: 3; grid-row: 1; }
+  .detail-page .detail-rail { top: calc(var(--desktop-topbar-h) + 18px); }
+  .detail-page .detail-aside { top: calc(var(--desktop-topbar-h) + 18px); max-height: calc(100dvh - var(--desktop-topbar-h) - 40px); }
+  .detail-page .detail-article-column h2,
+  .detail-page .detail-article-column h3 { scroll-margin-top: calc(var(--desktop-topbar-h) + 20px); }
+  .detail-page .detail-dock { display: none; }
+  .detail-page .detail-comments { max-width: 780px; }
+  .detail-page .detail-comments { scroll-margin-top: calc(var(--desktop-topbar-h) + 16px); }
+  .detail-rail-more { position: absolute; left: 52px; top: 0; z-index: 9; min-width: 196px; }
+  .detail-comments-composer .detail-dock-comment {
+    min-height: 0; padding: 0; border-radius: 0; background: transparent; box-shadow: none;
+  }
+  .detail-comments-composer .detail-dock-comment .detail-comment-input {
+    min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+    box-shadow: none;
+  }
+  .detail-comments-composer .detail-dock-comment .detail-comment-input textarea { font-size: 13px; }
+}
+
+@media (min-width: 1024px) and (max-width: 1199px) {
+  /* 中等宽度放不下第三栏时不硬塞：保留操作栏与正文，右侧辅助信息交给 1200 以上 */
+  .detail-page .detail-body { grid-template-columns: 52px minmax(0, 760px); }
+  .detail-page .detail-aside { display: none; }
+}
+
+@media (min-width: 1440px) {
+  .detail-page .detail-body { grid-template-columns: 56px minmax(0, 820px) 300px; gap: 28px; }
+}
+
+/* ==========================================================================
+   桌面页面宽度规范与卡片自适应
+   阅读页 1320 / 内容列表 1240 / 个人主页与 AI 专区 1120 / 设置与编辑 880
+   左右边距统一 32px，列数由容器实际宽度决定。
+   ========================================================================== */
+@media (min-width: 1024px) {
+  .page { max-width: 1120px; margin-inline: auto; padding: 32px 32px 72px; }
+  .page.discover-page, .discover-page { max-width: 1240px; }
+  .mine-page { max-width: 1120px; }
+  .ai-space { max-width: 1120px; }
+  .settings-page, .settings-detail-page, .about-page, .my-content-page, .drafts-page, .draft-page { max-width: 880px; margin-inline: auto; }
+
+  /* AI 资源卡片：按容器宽度排，卡片有最小宽度，空间不足时自动减列 */
+  .ai-resource-grid { grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); }
+
+  /* 发现页：容器变宽时列数由脚本按实际宽度给出，这里只保证卡片不被压扁 */
+  .discover-page .stable-editorial-feed { align-items: start; }
+  .discover-page .discover-content-card { min-width: 0; }
+
+  /* 个人主页作品：可用宽度决定列数，不再固定 4/5 列 */
+  .mine-works-masonry { grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)) !important; }
+}
+
+/* 卡片内部：标题两行截断、图片比例固定、长英文与标签不撑破 */
+.post-card .editorial-title,
+.discover-content-card .editorial-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.post-card .post-card-footer,
+.discover-content-card .post-card-footer { min-width: 0; }
+.ai-resource-copy strong { overflow-wrap: anywhere; }
+
+/* 卡片主入口是真实链接（右键 / 新标签页可打开），视觉仍按卡片处理 */
+a.post-card,
+a.discovery-cover-open,
+a.discovery-read { text-decoration: none; }
+a.post-card {
+  display: block;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+a.post-card:focus-visible,
+a.discovery-cover-open:focus-visible,
+a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.discovery-post-actions a.discovery-read {
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  transition: color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+.discovery-post-actions a.discovery-read:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.discovery-post-actions a.discovery-read:active { transform: scale(.92); }

@@ -123,7 +123,9 @@ export default function ProfileHeader({
       <div className="profile-hero-body">
         <div className="profile-hero-identity">
           <span className={`profile-hero-avatar${avatar ? "" : " is-empty"}`}>
-            {avatar ? <img src={avatar} alt={`${nickname}的头像`} /> : <i>{(nickname || "探")[0]}</i>}
+            {/* 占位字始终在底层：头像图片加载失败时自然露出统一占位，而不是破图 */}
+            <i aria-hidden="true">{(nickname || "探")[0]}</i>
+            {avatar ? <img src={avatar} alt={`${nickname}的头像`} onError={(event) => { event.currentTarget.hidden = true; }} /> : null}
           </span>
           <div className="profile-hero-name-block">
             <div className="profile-hero-name-row">

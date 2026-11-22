@@ -89,5 +89,7 @@ test("AI 空间卡片首开详情不再被存在性守卫拦截", async () => {
   // openAiPost 必须把条目作为 resolvedPost 传给 openPost：
   // rAF 闭包里的 all 可能尚未包含该条，不带 resolvedPost 会被直接 return。
   assert.match(community, /requestAnimationFrame\(\(\) => requestAnimationFrame\(\(\) => openPost\(item\.id, "discover", source, item\)\)\)/);
-  assert.match(community, /openPost = \(id: number, source\?: "today" \| "discover", sourceElement\?: Element \| null, resolvedPost\?: Post\)/);
+  // 签名新增了 options（直达链接的 instant / fromRoute），resolvedPost 仍是绕过守卫的关键参数。
+  assert.match(community, /resolvedPost\?: Post,\s*\n\s*options\?: \{ instant\?: boolean; fromRoute\?: boolean \}/);
+  assert.match(community, /\(!resolvedPost && !all\.some/);
 });
