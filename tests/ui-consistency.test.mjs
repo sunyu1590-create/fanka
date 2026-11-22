@@ -29,6 +29,15 @@ test("卡片图片缓存只接受稳定地址：临时地址丢弃，签名地�
   assert.equal(stableCardMediaUrl("https://cdn.example.com/a.png"), "https://cdn.example.com/a.png");
 });
 
+test("媒体路由接受卡片原图变体，feed 缩略图保持原样", async () => {
+  const route = await read("app/api/v1/media/route.ts");
+  assert.match(route, /variant !== "feed" && variant !== "card"/);
+  const feed = stableCardMediaUrl("/api/v1/media?path=post-covers%2Fu1%2Fa.jpg&variant=feed");
+  assert.match(feed, /variant=feed/);
+  assert.match(feed, /redirect=1/);
+  assert.doesNotMatch(feed, /variant=card/);
+});
+
 test("历史缓存快照会把签名地址换成稳定地址，并用 images 回填 image", () => {
   const legacy = {
     id: 7,

@@ -54,8 +54,10 @@ export function stableCardMediaUrl(source: string | null | undefined): string | 
   if (isTemporaryUrl(source)) return undefined;
   const direct = mediaUrl(source);
   if (direct) {
+    // feed 缩略图是刻意加的轻量变体，保留它；其余一律按卡片原图处理。
+    const keepFeed = direct.searchParams.get("variant") === "feed";
     direct.searchParams.set("redirect", "1");
-    direct.searchParams.set("variant", "card");
+    direct.searchParams.set("variant", keepFeed ? "feed" : "card");
     return `${direct.pathname}${direct.search}`;
   }
   const objectPath = objectPathFromStorageUrl(source);

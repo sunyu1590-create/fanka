@@ -40,7 +40,9 @@ export async function GET(req: NextRequest) {
       const { db } = await context(req, false);
       const path = req.nextUrl.searchParams.get("path") || "";
       const variant = req.nextUrl.searchParams.get("variant");
-      if (variant && variant !== "feed") throw new ApiError(400, "图片尺寸无效");
+      // card 是「卡片原图」：与不传 variant 等价，保留参数只为让缓存地址自解释；
+      // 只有 feed 会走缩略图重绘，其他值一律视为非法。
+      if (variant && variant !== "feed" && variant !== "card") throw new ApiError(400, "图片尺寸无效");
       const media = await findMedia(db, path, variant === "feed");
       if (!media) throw new ApiError(404, "媒体不存在");
       const { data, error } = await db.storage.from(mediaBucketForPath(path)).createSignedUrl(path, 604800);
