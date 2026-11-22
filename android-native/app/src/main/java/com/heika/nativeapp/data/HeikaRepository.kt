@@ -979,6 +979,7 @@ class HeikaRepository @Inject constructor(
         mediaPaths: List<String>,
         usageScenarios: List<String>,
         attachments: List<JSONObject> = emptyList(),
+        routeConfirmed: Boolean = false,
     ): JSONObject = withContext(Dispatchers.IO) {
         require(action == "draft" || action == "submit") { "AI 内容操作无效" }
         require(contentType in aiResourceTypes) { "AI 内容类型无效" }
@@ -986,7 +987,7 @@ class HeikaRepository @Inject constructor(
             .put("action", action).put("title", title).put("body", body).put("category", category)
             .put("contentType", contentType).put("resourceData", resourceData)
             .put("usageScenarios", JSONArray(usageScenarios)).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths))
-            .put("attachments", JSONArray(attachments))
+            .put("attachments", JSONArray(attachments)).put("routeConfirmed", routeConfirmed)
         id?.takeIf(String::isNotBlank)?.let {
             require(isUuid(it)) { "AI 内容编号无效" }
             payload.put("id", it)
@@ -1082,8 +1083,8 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    suspend fun publishDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String>, mediaPaths: List<String>, attachments: List<JSONObject> = emptyList(), seriesId: String? = null): JSONObject = withContext(Dispatchers.IO) {
-        val payload = JSONObject().put("action", "publish").put("title", title).put("body", body).put("tag", tag).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths)).put("attachments", JSONArray(attachments))
+    suspend fun publishDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String>, mediaPaths: List<String>, attachments: List<JSONObject> = emptyList(), seriesId: String? = null, routeConfirmed: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("action", "publish").put("title", title).put("body", body).put("tag", tag).put("topics", JSONArray(topics)).put("mediaPaths", JSONArray(mediaPaths)).put("attachments", JSONArray(attachments)).put("routeConfirmed", routeConfirmed)
         id?.let { payload.put("id", it) }
         seriesId?.takeIf(String::isNotBlank)?.let { payload.put("seriesId", it) }
         request("/api/v1/library-state", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()

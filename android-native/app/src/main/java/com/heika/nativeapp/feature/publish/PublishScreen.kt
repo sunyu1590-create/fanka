@@ -168,22 +168,21 @@ fun PublishScreen(
             }
         })
         if (!state.loading && state.error != "登录后可以发布内容") {
-            // 标题或正文停下 1.2 秒后自动判断去向；判断只改分类，不动内容。
-            LaunchedEffect(state.title, state.body) {
-                if (state.title.isBlank() && state.body.isBlank()) return@LaunchedEffect
-                delay(1200)
-                if (!state.revisionMode) viewModel.detectRoute()
-            }
+            // 编辑阶段不调用模型：这里只展示状态，真正的分类与审核发生在点击发布之后。
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp).clip(RoundedCornerShape(14.dp))
                     .background(MaterialTheme.colorScheme.surface).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("发布去向", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("发布状态", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
                     Text(
-                        if (state.revisionMode) "沿用原分类" else if (state.routeChecking) "AI 正在判断…" else "AI 已判断",
+                        when {
+                            state.revisionMode -> "沿用原分类"
+                            state.publishing || state.routeChecking -> "正在检查内容"
+                            else -> "等待发布"
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 10.sp,
                     )
@@ -196,18 +195,19 @@ fun PublishScreen(
                         modifier = Modifier.size(20.dp),
                     )
                     Column(Modifier.weight(1f)) {
-                        Text(routeLabel(state), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            state.routeReason.ifBlank { "写完标题和正文会自动判断；AI 内容类型也由 AI 定。" },
+                            if (state.publishing || state.routeChecking) "正在检查内容" else routeLabel(state),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            if (state.publishing || state.routeChecking) "分类与审核完成后会直接提交，不需要再次确认。"
+                            else state.routeReason.ifBlank { "发布时将自动完成分类与审核，需要调整可到下方分类设置。" },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
                         )
-                    }
-                    if (!state.revisionMode) {
-                        TextButton(enabled = !state.routeChecking, onClick = { viewModel.detectRoute(true) }) {
-                            Text(if (state.routeChecking) "判断中" else "重新判断", fontSize = 10.sp)
-                        }
                     }
                 }
             }

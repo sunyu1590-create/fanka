@@ -232,7 +232,8 @@ export async function POST(req: NextRequest) {
         dbError(topicRows.error);
         const replaced = await db.rpc("replace_post_topics", { p_post_id: postId, p_topic_ids: (topicRows.data || []).map((item) => item.id) }); dbError(replaced.error);
       }
-      await enqueuePostClassification(postId);
+      // 发布前已完成一次 AI 分类时，不再重复入队分类任务；安全审核始终保留。
+      if (body.routeConfirmed !== true) await enqueuePostClassification(postId);
       await enqueuePostReview(postId);
     }
     const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single(); dbError(refreshed.error);

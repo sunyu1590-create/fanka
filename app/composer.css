@@ -123,3 +123,8 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
 .composer-route-refresh:disabled{opacity:.45;cursor:default}
 .composer-route-hint{margin:0;padding-left:44px;color:var(--muted);font-size:10px;line-height:1.55}
 @media(max-width:360px){.composer-route-copy small{-webkit-line-clamp:3}.composer-route-refresh{padding:0 9px;font-size:10px}}
+
+/* 发布状态：检查中的旋转图标（只在点击发布后出现一次） */
+.composer-check-spinner { animation: composer-check-spin 1s linear infinite; color: var(--action); }
+@keyframes composer-check-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .composer-check-spinner { animation: none; } }

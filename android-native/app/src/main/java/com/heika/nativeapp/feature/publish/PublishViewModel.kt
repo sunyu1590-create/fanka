@@ -59,7 +59,7 @@ data class PublishState(
     val draftId: Int? = null, val draftCloudId: String? = null, val accountId: String? = null, val revisionMode: Boolean = false,
     val serverStatus: String = "draft",
     val loading: Boolean = true, val saving: Boolean = false, val publishing: Boolean = false,
-    val routeReason: String = "", val routeChecking: Boolean = false,
+    val routeReason: String = "", val routeChecking: Boolean = false, val routeKey: String = "", val routeSource: String = "",
     val error: String? = null, val notice: String? = null, val showLeaveDialog: Boolean = false,
     val publishedPost: JSONObject? = null,
     // 发布页唯一新增的轻量选项：是否加入自己的某个合集（非必填）。
@@ -225,14 +225,15 @@ class PublishViewModel @Inject constructor(
         }
     }
 
-    /** AI 判断这条内容投精选还是 AI 空间；AI 内容类型也由它决定，作者不需要手选。 */
-    fun detectRoute(force: Boolean = false) = viewModelScope.launch(HeikaCoroutineGuard) {
-        val current = mutableState.value
-        if (current.revisionMode || current.publishing || current.loading) return@launch
-        if (current.title.isBlank() && current.body.isBlank()) return@launch
-        if (!force && current.routeReason.isNotBlank() && current.routeChecking) return@launch
+    /**
+     * 发布分类与内容类型判断。只在用户点击发布后调用一次，编辑阶段不请求模型。
+     * 返回是否得到可用结果；失败时保留规则兜底，不阻断发布。
+     */
+    private suspend fun resolveRoute(current: PublishState, force: Boolean = false): Boolean {
+        val key = current.title.trim() + "\u0000" + current.body.trim()
+        if (!force && current.routeKey == key && current.routeReason.isNotBlank()) return true
         mutableState.update { it.copy(routeChecking = true) }
-        try {
+        return try {
             val community = runCatching { repository.loadCategories("community", "category") }.getOrDefault(emptyList()).map { it.name }
             val ai = runCatching { repository.loadCategories("ai", "category") }.getOrDefault(emptyList()).map { it.name }
             val route = repository.composerRoute(current.title, current.body, community, ai)
@@ -240,11 +241,22 @@ class PublishViewModel @Inject constructor(
             val contentType = route.optString("contentType").ifBlank { "knowledge_article" }
             val category = route.optString("category")
             val reason = route.optString("reason").take(90)
+            val source = route.optString("source")
             applyRoute(channel, category, contentType)
-            mutableState.update { it.copy(routeReason = reason, routeChecking = false) }
+            mutableState.update { it.copy(routeReason = reason, routeChecking = false, routeKey = key, routeSource = source) }
+            true
         } catch (error: Exception) {
             mutableState.update { it.copy(routeChecking = false, routeReason = it.routeReason.ifBlank { "暂时无法判断，已按内容主题放入社区精选" }) }
+            false
         }
+    }
+
+    /** 仅用于「发布失败后重试」等明确场景；编辑过程中不会调用。 */
+    fun detectRoute(force: Boolean = false) = viewModelScope.launch(HeikaCoroutineGuard) {
+        val current = mutableState.value
+        if (current.revisionMode || current.publishing || current.loading) return@launch
+        if (current.title.isBlank() && current.body.isBlank()) return@launch
+        resolveRoute(current, force)
     }
 
     fun switchChannel(channel: String) = viewModelScope.launch(HeikaCoroutineGuard) {
@@ -666,9 +678,10 @@ class PublishViewModel @Inject constructor(
                 topics = topics,
                 mediaPaths = current.mediaPaths,
                 attachments = current.attachments.map { it.toJson() },
+                routeConfirmed = current.routeSource == "ai",
             )
         } else {
-            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths, current.attachments.map { it.toJson() }, current.seriesId.takeIf(String::isNotBlank))
+            repository.publishDraft(current.draftId, current.title, current.body, current.category, topics, current.mediaPaths, current.attachments.map { it.toJson() }, current.seriesId.takeIf(String::isNotBlank), routeConfirmed = current.routeSource == "ai")
         }
     }
 
@@ -813,6 +826,8 @@ class PublishViewModel @Inject constructor(
                 return@launch
             }
             mutableState.update { it.copy(publishing = true, error = null, notice = null) }
+            // 基础校验全部通过后，才做这一次正式分类；内容没变就复用上次结果。
+            if (!current.revisionMode) resolveRoute(mutableState.value)
             runCatching {
                 ensureSameAccount(current.accountId)
                 current.images.filter { it.path == null }.forEach { image ->
