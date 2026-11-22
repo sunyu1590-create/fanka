@@ -114,7 +114,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .card-back-copy { color: var(--ink); }
 .card-back-copy small, .card-back-copy em { color: var(--action); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .card-flip-back:not(:has(img:not([data-failed]))) .card-back-copy { color: var(--ink); }
-.card-flip-back:has(img)::after { background: linear-gradient(transparent 24%, rgba(9,10,11,.88)); }
 
 /* Discover and content surfaces */
 .search { margin: 30px 0 20px; background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; }
@@ -4705,15 +4704,10 @@ img, video, canvas, iframe { max-width:100%; }
 .window-reveal-copy .window-reveal-meta>small { overflow:hidden; color:var(--muted); font-family:inherit; font-size:11px; font-weight:560; line-height:1.3; letter-spacing:.03em; text-overflow:ellipsis; white-space:nowrap; }
 .window-reveal-copy .rarity-inline-chip { min-height:18px; padding:3px 7px; font-size:9px; font-weight:580; }
 .window-reveal-copy h2 {
-  display:-webkit-box; flex:none; max-width:100%; max-height:2.55em; margin:6px 0 5px; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2;
+  display:-webkit-box; flex:none; max-width:100%; max-height:3.9em; margin:6px 0 5px; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3;
   color:var(--ink); font-size:clamp(18px,4.8vw,20px); font-weight:680; line-height:1.28; letter-spacing:-.015em; text-wrap:pretty;
 }
-.window-reveal-copy p {
-  display:-webkit-box; flex:1 1 auto; min-height:0; margin:0; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:3;
-  color:color-mix(in srgb,var(--ink) 78%,var(--muted)); font-size:13px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere;
-}
 .flip-window-revealed.no-image>.window-reveal-copy h2 { margin:10px 0 8px; font-size:clamp(20px,5.4vw,24px); line-height:1.3; }
-.flip-window-revealed.no-image>.window-reveal-copy p { -webkit-line-clamp:7; font-size:15px; line-height:1.65; }
 .flip-window-revealed .window-more {
   position:relative; display:flex; flex:none; align-items:center; justify-content:center; width:100%; min-height:46px; height:46px; margin:8px 0 0;
   padding:0 42px 0 16px; border:1px solid var(--action); border-radius:7px; background:var(--action); color:var(--bg);
@@ -6986,7 +6980,7 @@ img, video, canvas, iframe { max-width:100%; }
 .settings-search-field { display:flex; align-items:center; gap:9px; margin:0 0 14px; padding:10px 13px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--muted); }
 .settings-search-field input { flex:1; min-width:0; border:0; background:transparent; color:var(--ink); font-size:13px; outline:none; }
 .settings-center-list { display:grid; gap:9px; }
-.settings-center-card { display:flex; align-items:center; gap:12px; width:100%; padding:15px 14px; border:1px solid var(--line); border-radius:16px; background:var(--surface); color:var(--ink); text-align:left; cursor:pointer; transition:border-color .18s ease,transform .18s ease; }
+.settings-center-card { display:flex; align-items:center; gap:12px; width:100%; min-height:56px; padding:15px 14px; border:1px solid var(--line); border-radius:16px; background:var(--surface); color:var(--ink); text-align:left; cursor:pointer; transition:border-color .18s ease,transform .18s ease; }
 .settings-center-card:hover { border-color:var(--metal); }
 .settings-center-card:active { transform:scale(.992); }
 .settings-center-icon { flex:none; display:grid; place-items:center; width:38px; height:38px; border-radius:12px; background:var(--card); color:var(--action); }
@@ -7308,7 +7302,23 @@ img, video, canvas, iframe { max-width:100%; }
   border-top: 1px solid var(--group-divider);
 }
 .settings-page .settings-list button:active,
-.settings-center-detail > button:active { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.settings-center-detail > button:active,
+.settings-page .settings-group > button:active { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+/* 二级页分组：组标题在容器外，组间留白；每组独立轻量容器（需求十） */
+.settings-group-block + .settings-group-block { margin-top: 22px; }
+.settings-group-title {
+  margin: 0 0 8px;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: .04em;
+}
+.settings-page .settings-list button > small {
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* 一级设置卡：独立大圆角卡，与二级/三级分组同一圆角口径 */
 .settings-page.settings-home-page .settings-center-card {
   border-radius: var(--radius-card-lg);

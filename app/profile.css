@@ -2,8 +2,17 @@
    个人主页（自己 / 他人共用）+ 头像裁剪 + 封面编辑
    ========================================================================== */
 
-/* 通栏封面（需求 6.1）：取消卡片壳与圆角，封面直角铺满内容宽度、紧接顶栏；
-   桌面双列布局里也通栏，不拉伸到整个超宽屏（只占内容列宽度）。 */
+/* 通栏封面（需求 6.4）：封面与资料区破开外层容器的左右缩进，手机上左右铺满页面；
+   桌面端随内容列一起通栏（只到内容列边缘，不无限拉伸）。
+   --hero-bleed 按各容器实际水平缩进取值（浅色 .mine-page 16px / ≥700px 26px / ≤380px 14px，
+   深色主题 :root[data-theme="dark"] .page 为 20px，公开主页 .public-profile-content 为 18px），
+   下方文字与内容仍保留原有阅读边距。 */
+.page.mine-page .profile-hero { --hero-bleed: 16px; }
+@media (min-width: 700px) { .page.mine-page .profile-hero { --hero-bleed: 26px; } }
+@media (max-width: 380px) { .page.mine-page .profile-hero { --hero-bleed: 14px; } }
+:root[data-theme="dark"] .page.mine-page .profile-hero { --hero-bleed: 20px; }
+.public-profile-content .profile-hero { --hero-bleed: 18px; margin-top: -15px; }
+
 .profile-hero {
   position: relative;
   width: 100%;
@@ -16,9 +25,15 @@
   grid-column: 1 / -1;
 }
 
+/* 封面与资料区通栏破开；文字、数据、作品区仍保留正常阅读边距。 */
+.profile-hero > .profile-hero-cover,
+.profile-hero > .profile-hero-body {
+  width: calc(100% + 2 * var(--hero-bleed, 0px));
+  margin-inline: calc(-1 * var(--hero-bleed, 0px));
+}
+
 .profile-hero-cover {
   position: relative;
-  width: 100%;
   border-radius: 0;
   background-color: var(--card-sunken, #15171b);
   background-repeat: no-repeat;
@@ -115,7 +130,7 @@
 
 .profile-hero-body {
   position: relative;
-  padding: 0 16px 15px;
+  padding: 0 calc(var(--hero-bleed, 0px) + 16px) 15px;
   border-radius: 0;
   background: var(--card-bg);
 }

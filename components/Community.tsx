@@ -379,13 +379,10 @@ const blackCardFacets = blackCardFacetRows.slice(0, -1).flatMap((top, row) =>
 export default function Community() {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [themeReady, setThemeReady] = useState(false);
-  // 只保留悬浮底栏（需求九）：fixed 模式已移除，旧配置统一迁移到悬浮。
-  const bottomNavStyle = "glass" as const;
   const [discoverSettingsOpen, setDiscoverSettingsOpen] = useState(false);
   const [discoverNavCollapsed, setDiscoverNavCollapsed] = useState(false);
   const [mineCollections, setMineCollections] = useState<{ id: string; title: string; kind: string; publishedCount?: number }[]>([]);
   const [discoverSearchOpen, setDiscoverSearchOpen] = useState(false);
-  const [bottomNavStyleReady, setBottomNavStyleReady] = useState(false);
   const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("blur-rise");
   const [detailTransitionLoaded, setDetailTransitionLoaded] = useState(false);
   const [profileLayout, setProfileLayout] = useState<"masonry" | "list">("masonry");
@@ -401,10 +398,9 @@ export default function Community() {
     const savedFont = localStorage.getItem("heika-font");
     if (savedFont === "oppo" || savedFont === "system") setFontChoice(savedFont);
     setFontReady(true);
-    // 旧用户配置统一迁移到悬浮模式，清除历史标记。
+    // 旧用户配置统一迁移到悬浮模式，清除历史标记（需求十：固定/悬浮选择项已删除）。
     localStorage.setItem("heika-bottom-nav-style", "glass");
     localStorage.removeItem("heika-bottom-nav-style-explicit");
-    setBottomNavStyleReady(true);
     const savedDetailTransition = localStorage.getItem("heika-detail-transition");
     if (savedDetailTransition === "image-zoom" || savedDetailTransition === "blur-rise" || savedDetailTransition === "ghost-handoff") {
       const explicitlyChosen = localStorage.getItem("heika-detail-transition-explicit") === "1";
@@ -433,10 +429,6 @@ export default function Community() {
     document.documentElement.dataset.font = fontChoice;
     localStorage.setItem("heika-font", fontChoice);
   }, [fontChoice, fontReady]);
-  useEffect(() => {
-    if (!bottomNavStyleReady) return;
-    document.documentElement.dataset.bottomNav = "glass";
-  }, [bottomNavStyle, bottomNavStyleReady]);
   useEffect(() => {
     if (!detailTransitionLoaded) return;
     localStorage.setItem("heika-detail-transition", detailTransition);
@@ -1618,7 +1610,6 @@ export default function Community() {
     <span className={`preference-preview preview-${kind} preview-${value}`} aria-hidden="true">
       {kind === "font" ? <><b>黑卡 HEIKA</b><span>发现值得收藏的灵感</span><small>Aa 0123</small></> :
         kind === "theme" ? <><i /><i /><i /><b /></> :
-        kind === "bottomNav" ? <><i /><i /><b>＋</b><i /><i /></> :
         kind === "reading" ? <><b>一段值得慢慢读下去的文字</b><i /><i /><i /><small>黑卡 · 阅读体验</small></> :
         kind === "notifications" ? <><b>黑卡提醒</b><i /><i /><i /></> :
         <><i /><i /><i /><i /><i /></>}
@@ -4101,6 +4092,7 @@ export default function Community() {
     <button
       key={id}
       className={navActive ? "active" : ""}
+      aria-label={label}
       onClick={() => {
         scrollPositions.current[tab] = window.scrollY;
         setTab(id);
@@ -4123,7 +4115,7 @@ export default function Community() {
           : <img className={`decor-nav-icon${custom?.fit === "cover" ? " is-cover" : ""}`} src={customSrc} alt="" aria-hidden="true" style={{ width: iconSize, height: iconSize }} />)
           : <Icon size={21} strokeWidth={1.8} />}
       </span>
-      <span className="bottom-nav-label">{label}</span>
+      {decorState.decor.bottomBar.showLabel !== false && <span className="bottom-nav-label">{label}</span>}
     </button>
   );
   };
@@ -4629,6 +4621,8 @@ export default function Community() {
     );
   const currentExperience = experienceProgress(experienceSummary.total);
   const visibleOwnPosts = selectedSeriesId ? state.own.filter((post) => post.seriesId === selectedSeriesId) : state.own;
+  // 「我的作品」瀑布流只展示已提交的内容（不含草稿），与 APP 端一致；草稿在编辑器与作品管理中查看
+  const visibleOwnWorks = visibleOwnPosts.filter((post) => post.status !== "draft");
   const detailArticleContent = post ? (
     <Suspense fallback={<div className="detail-article-loading" aria-live="polite">正在加载正文…</div>}>
       <EditorialArticle post={post} />
@@ -4922,7 +4916,6 @@ export default function Community() {
         <SettingsHome
           theme={theme}
           fontChoice={fontChoice}
-          bottomNavStyle={bottomNavStyle}
           homeMode={state.homeMode}
           readingMode={state.readingMode}
           detailTransition={detailTransition}
@@ -4949,7 +4942,7 @@ export default function Community() {
       {tab === "settings" && settingsDetail !== null && (
         <section key={settingsDetail} className={`page settings-page settings-detail-page${settingsDetail === "membership" ? " membership-settings-page" : ""}`}>
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
-          {settingsDetail !== "membership" && <><h1>{({theme:"主题外观",font:"字体设置",bottomNav:"底部导航",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理",announcement:"公告管理",certification:"兑换认证码"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : settingsDetail === "certification" ? "查看已获得的认证标识，兑换管理员发放的认证码。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
+          {settingsDetail !== "membership" && <><h1>{({theme:"主题外观",font:"字体设置",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理",announcement:"公告管理",certification:"兑换认证码"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : settingsDetail === "certification" ? "查看已获得的认证标识，兑换管理员发放的认证码。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
@@ -4993,11 +4986,6 @@ export default function Community() {
           {settingsDetail === "font" && (
             <div className="preference-options" role="radiogroup" aria-label="字体选择">
               {([['oppo','OPPO Sans 4.0','已随应用提供；字体版权归 OPPO，未选中时使用系统字体'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
-            </div>
-          )}
-          {settingsDetail === "bottomNav" && (
-            <div className="preference-options" role="radiogroup" aria-label="底部导航样式">
-              <button role="radio" aria-checked={true} className="preference-option selected">{renderPreferencePreview('bottomNav','glass')}<span className="preference-option-copy"><strong>悬浮底栏</strong><small>轻透悬浮，保留页面呼吸感</small></span><i className="preference-check">✓</i></button>
             </div>
           )}
           {settingsDetail === "discoverLayout" && (
@@ -5140,11 +5128,11 @@ export default function Community() {
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
             {mineSection === "works" && (
               <div className="mine-tab-content">
-                <div className="mine-works-heading"><div><span>共 {state.own.filter((post) => post.status === "published" || !post.status).length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
+                <div className="mine-works-heading"><div><span>共 {visibleOwnWorks.length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
-                {visibleOwnPosts.length ? <div className="masonry mine-works-masonry">{visibleOwnPosts.map((post) => <article className="mine-work-card" key={post.id}>
+                {visibleOwnWorks.length ? <div className="masonry mine-works-masonry">{visibleOwnWorks.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
-                  <div className="mine-work-actions"><span>{post.pendingRevision?.status === "pending" ? "修改审核中 · 当前版本正常展示" : post.pendingRevision?.status === "rejected" ? "修改未通过 · 当前版本正常展示" : post.status === "draft" ? "草稿" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>{post.pendingRevision?.status === "pending" ? "编辑待审修改" : "编辑"}</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
+                  <div className="mine-work-actions"><span>{post.pendingRevision?.status === "pending" ? "修改审核中 · 当前版本正常展示" : post.pendingRevision?.status === "rejected" ? "修改未通过 · 当前版本正常展示" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>{post.pendingRevision?.status === "pending" ? "编辑待审修改" : "编辑"}</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
                 </article>)}</div> : <div className="empty">{selectedSeriesId ? "这个系列还没有内容，发布时可以从系列菜单加入。" : "你发布的内容会以瀑布流卡片显示在这里。"}</div>}
               </div>
             )}
@@ -5411,7 +5399,6 @@ export default function Community() {
                     <div className={`window-reveal-copy${hasRevealImage ? " has-image" : " no-image"}${viewerRevealPhase === "rarity" ? " is-rarity-hidden" : ""}`} aria-hidden={viewerRevealPhase === "rarity" || undefined}>
                       <div className="window-reveal-meta"><small>{revealed?.tag || "HEIKA"}</small><i className={`rarity-inline-chip rarity-tier-${rarityTier}`}>{rarityTier === "ordinary" ? "普通" : rarityTier === "pending" ? "待评级" : rarityTier}</i></div>
                       <h2>{revealed?.title || ""}</h2>
-                      <p>{hasRevealImage ? revealBody.slice(0, 220) : revealBody.slice(0, 2400)}</p>
                       <button
                         className="window-more"
                         disabled={!viewerFlipped || viewerPhase !== null || viewerRevealPhase === "rarity"}

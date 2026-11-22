@@ -68,7 +68,6 @@
 .card-prompt{position:absolute;bottom:14px;left:13px;font-size:10px;color:#bbb}
 .card-flip-back{transform:rotateY(180deg);background:#e7e4dd;color:#171717}
 .card-flip-back img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.card-flip-back:has(img:not([data-failed]))::after{content:'';position:absolute;inset:35% 0 0;background:linear-gradient(transparent,#131313c9)}
 .card-back-copy{position:absolute;z-index:1;left:13px;right:13px;bottom:13px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left}
 .card-back-copy small{font-size:10px;letter-spacing:.06em}
 .card-back-copy strong{font-size:16px;line-height:1.35;letter-spacing:-.02em}

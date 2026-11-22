@@ -10,6 +10,9 @@ export const DEFAULT_COVER_META: CoverMeta = { focusX: 50, focusY: 50, zoom: 1, 
 /** 保存链路分阶段：处理图片 → 上传 → 保存资料 → 成功 / 失败（需求五界面区分）。 */
 export type CoverSavePhase = "processing" | "idle" | "uploading" | "saving" | "success" | "error";
 
+/** 已上传但未保存的资源：保存资料失败后重试直接复用，不再重复上传（需求 6.3）。 */
+type StagedCover = { path: string; url: string };
+
 type Props = {
   file: File;
   nickname: string;
@@ -58,9 +61,12 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
   const [meta, setMeta] = useState<CoverMeta>(DEFAULT_COVER_META);
   const [phase, setPhase] = useState<CoverSavePhase>("processing");
   const [error, setError] = useState("");
+  const [failStage, setFailStage] = useState<"upload" | "save" | "">("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [fullView, setFullView] = useState(false);
   const dragRef = useRef<{ x: number; y: number; focusX: number; focusY: number; width: number; height: number } | null>(null);
+  const stagedRef = useRef<StagedCover | null>(null);
+  const savedRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -99,51 +105,95 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
 
   const dragEnd = () => { dragRef.current = null; };
 
-  // 上传与保存分两段反馈：请求体传完（upload 结束）后是「正在保存资料」，
-  // 失败绝不会提示保存成功（需求五）。失败保留取景与文件，可直接重试。
+  // 取消 / 关闭时回收「已上传但未保存」的暂存图，避免存储残留。
+  const discardStaged = () => {
+    const staged = stagedRef.current;
+    if (!staged || savedRef.current) return;
+    stagedRef.current = null;
+    void (async () => {
+      try {
+        const { browserDb } = await import("@/lib/browser-db");
+        const db = await browserDb();
+        const { data } = await db.auth.getSession();
+        if (!data.session) return;
+        await fetch(`/api/v1/me/cover?path=${encodeURIComponent(staged.path)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+        });
+      } catch { /* 清理失败无碍，服务端不会引用未保存的暂存图 */ }
+    })();
+  };
+
+  useEffect(() => () => { discardStaged(); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCancel = () => {
+    discardStaged();
+    onCancel();
+  };
+
+  // 保存分两段真实反馈：上传（阶段一）→ 保存资料（阶段二）。
+  // 上传成功后保存失败：保留暂存资源，重试只补保存资料这一步，不反复上传（需求 6.3）。
   const save = () => {
     if (!source || phase === "uploading" || phase === "saving") return;
-    setPhase("uploading");
     setError("");
-    setUploadProgress(0);
+    setFailStage("");
     void (async () => {
       try {
         const { browserDb } = await import("@/lib/browser-db");
         const db = await browserDb();
         const { data } = await db.auth.getSession();
         if (!data.session) throw new Error("登录后才能上传封面");
-        const result = await new Promise<{ url: string } | { message: string }>((resolve) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", "/api/v1/me/cover");
-          xhr.setRequestHeader("Authorization", `Bearer ${data.session!.access_token}`);
-          xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) setUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
-          };
-          xhr.upload.onloadend = () => {
-            // 请求体传完：进入「正在保存资料」等待服务端落库。
-            setPhase("saving");
-          };
-          xhr.onload = () => {
-            let payload: { error?: string; data?: { cover_url?: string } } = {};
-            try { payload = JSON.parse(xhr.responseText || "{}"); } catch { /* 非 JSON 响应按失败处理 */ }
-            const url = payload.data?.cover_url;
-            if (xhr.status >= 200 && xhr.status < 300 && url) resolve({ url });
-            else resolve({ message: payload.error || (xhr.status === 413 ? "封面图片不能超过 12 MB" : `封面上传失败（${xhr.status || "网络异常"}）`) });
-          };
-          xhr.onerror = () => resolve({ message: "网络异常，上传未完成，请重试" });
-          xhr.onabort = () => resolve({ message: "上传已中断，请重试" });
-          const form = new FormData();
-          // 保留完整原图，取景参数单独保存，展开时才有更多画面可看。
-          form.set("file", file);
-          form.set("meta", JSON.stringify(meta));
-          xhr.send(form);
+        const token = data.session.access_token;
+
+        // 阶段一：上传（已有暂存资源时跳过，直接复用）。
+        let staged = stagedRef.current;
+        if (!staged) {
+          setPhase("uploading");
+          setUploadProgress(0);
+          staged = await new Promise<StagedCover>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/v1/me/cover");
+            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+            xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) setUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+            };
+            xhr.onload = () => {
+              let payload: { error?: string; data?: { cover_url?: string; path?: string } } = {};
+              try { payload = JSON.parse(xhr.responseText || "{}"); } catch { /* 非 JSON 响应按失败处理 */ }
+              const url = payload.data?.cover_url;
+              const path = payload.data?.path;
+              if (xhr.status >= 200 && xhr.status < 300 && url && path) resolve({ url, path });
+              else reject(new Error(payload.error || (xhr.status === 413 ? "封面图片不能超过 12 MB" : `封面上传失败（${xhr.status || "网络异常"}）`)));
+            };
+            xhr.onerror = () => reject(new Error("网络异常，上传未完成，请重试"));
+            xhr.onabort = () => reject(new Error("上传已中断，请重试"));
+            const form = new FormData();
+            // 保留完整原图，取景参数单独保存，展开时才有更多画面可看。
+            form.set("file", file);
+            form.set("meta", JSON.stringify(meta));
+            xhr.send(form);
+          });
+          stagedRef.current = staged;
+        }
+
+        // 阶段二：保存资料（传输 100% 不代表资料已保存）。
+        setPhase("saving");
+        const response = await fetch("/api/v1/me/cover", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ path: staged.path, meta }),
         });
-        if ("message" in result) throw new Error(result.message);
+        const payload = await response.json().catch(() => ({} as { error?: string }));
+        if (!response.ok) throw new Error(payload.error || `资料保存失败（${response.status || "网络异常"}）`);
+
+        savedRef.current = true;
         setPhase("success");
-        onSaved(result.url, meta);
+        onSaved(staged.url, meta);
         onNotice("封面已更新");
       } catch (cause) {
         setPhase("error");
+        setFailStage(stagedRef.current ? "save" : "upload");
         setError(cause instanceof Error ? cause.message : "上传或保存失败，请重试");
       }
     })();
@@ -160,7 +210,7 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
   return (
     <div className="cover-editor" role="dialog" aria-modal="true" aria-label="编辑个人封面">
       <div className="cover-editor-head">
-        <button type="button" onClick={onCancel} aria-label="取消"><X size={19} /></button>
+        <button type="button" onClick={handleCancel} aria-label="取消"><X size={19} /></button>
         <strong>{fullView ? "完整封面" : "调整封面"}</strong>
         <div>
           <button type="button" onClick={() => setFullView((value) => !value)} aria-label={fullView ? "返回取景" : "查看完整封面"}>
@@ -216,7 +266,11 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
         </div>
       )}
       <p className="cover-editor-phase" role="status" aria-live="polite">{PHASE_TEXT[phase]}</p>
-      {error && <p className="cover-editor-error" role="alert">上传或保存失败：{error}。取景和已填内容已保留，可直接重试。</p>}
+      {error && (
+        <p className="cover-editor-error" role="alert">
+          {failStage === "save" ? `资料保存失败：${error}。图片已上传，重试不会重复上传。` : `上传失败：${error}。取景和已填内容已保留，可直接重试。`}
+        </p>
+      )}
     </div>
   );
 }

@@ -32,15 +32,18 @@
   stroke: var(--decor-bar-active-icon) !important;
 }
 
-/* 选中态胶囊：只做很轻的一层，避免底栏变成彩色横条 */
-:root[data-decor-bar="custom"] .bottom-nav button::before {
+/* 选中态胶囊：只做很轻的一层，避免底栏变成彩色横条。
+   胶囊挂在图标容器上（不是按钮整体）：图标＋文字 / 仅图标两套布局里图标的
+   垂直位置不同，挂在按钮上会在隐藏文字后与图标错位；挂在图标上两套布局恒贴合，
+   侧边栏行布局下也会跟随图标左对齐。 */
+:root[data-decor-bar="custom"] .bottom-nav button .bottom-nav-icon::before {
   content: "";
   position: absolute;
   left: 50%;
-  top: 4px;
+  top: 50%;
   width: 44px;
   height: 30px;
-  transform: translateX(-50%) scale(.86);
+  transform: translate(-50%, -50%) scale(.86);
   border-radius: 10px;
   background: var(--decor-bar-pill);
   opacity: 0;
@@ -49,9 +52,9 @@
   z-index: -1;
 }
 
-:root[data-decor-bar="custom"] .bottom-nav button.active::before {
+:root[data-decor-bar="custom"] .bottom-nav button.active .bottom-nav-icon::before {
   opacity: 1;
-  transform: translateX(-50%) scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 :root[data-decor-bar="custom"] .bottom-nav button.active > span {
@@ -59,17 +62,22 @@
   z-index: 1;
 }
 
-/* 底栏文字开关（需求十）：关闭后仅图标，图标在按钮区域自然居中；
-   点击区域不随文字隐藏而缩小，四个按钮仍等宽等距，角标位置稳定。 */
+/* 底栏两套布局（需求十文字开关，需求三错位修复）：
+   布局一「图标＋文字」：默认，竖排为图标在上文字在下（悬浮胶囊），
+   侧边栏行排（≥1200px）为图标在左文字在右，由 design-system.css 提供；
+   布局二「仅图标」：切到 data-decor-bar-label="hide" 时——
+   · 导航文字与「发布」文字一律不占位，不残留半截空白；
+   · 按钮不再强改对齐方向：竖排按钮图标自然居中，侧边栏行排图标
+     保持与「发布」图标同一左轴线，不出现图标漂到行中间的错位；
+   · 按钮点击区不随文字隐藏而缩小，四个按钮仍等宽等距，角标随图标定位。 */
 :root[data-decor-bar-label="hide"] .bottom-nav .bottom-nav-label {
+  display: none;
+}
+:root[data-decor-bar-label="hide"] .bottom-nav-shell > .compose > span:last-child {
   display: none;
 }
 :root[data-decor-bar-label="hide"] .bottom-nav button {
   gap: 0;
-  justify-content: center;
-}
-:root[data-decor-bar-label="hide"] .bottom-nav button svg {
-  margin: 0;
 }
 
 /* 自定义图标：既支持彩色原图，也支持单色蒙版跟随主题色 */
@@ -321,10 +329,6 @@
 :root[data-decor-card="custom"][data-decor-card-content-texture="diamonds"] .candidate-feed-card .card-flip-back,
 :root[data-decor-card="custom"][data-decor-card-content-texture="diamonds"] .flip-window-revealed {
   background-image: var(--decor-card-content-image), repeating-linear-gradient(45deg, transparent 0 9px, color-mix(in srgb, var(--decor-card-content-border) 13%, transparent) 9px 10px), repeating-linear-gradient(-45deg, transparent 0 9px, color-mix(in srgb, var(--decor-card-content-border) 13%, transparent) 9px 10px);
-}
-
-:root[data-decor-card="custom"] .candidate-feed-card .card-flip-back:has(img)::after {
-  background: linear-gradient(transparent 26%, color-mix(in srgb, var(--decor-card-content-bg) 88%, transparent)) !important;
 }
 
 :root[data-decor-card="custom"] .card-back-copy small,

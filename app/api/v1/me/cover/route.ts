@@ -25,7 +25,41 @@ function sanitizeMeta(value: unknown): CoverMeta {
   };
 }
 
-/** 上传个人封面原图。保留完整画面，取景参数单独存 cover_meta。 */
+/** 校验封面资源归属：只允许引用自己 cover/ 目录下的对象，杜绝越权指定他人资源。 */
+function ownCoverPath(value: unknown, userId: string): string {
+  const path = typeof value === "string" ? value : "";
+  if (!path.startsWith(`${userId}/cover/`) || path.includes("..") || !/^[A-Za-z0-9/._-]+$/.test(path)) {
+    throw new ApiError(400, "封面资源无效");
+  }
+  return path;
+}
+
+/** 从历史封面地址里还原对象路径；外部地址返回 null（不动）。 */
+function coverPathFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const marker = "/storage/v1/object/public/heika-decor/";
+    const index = new URL(url).pathname.indexOf(marker);
+    if (index < 0) return null;
+    return decodeURIComponent(new URL(url).pathname.slice(index + marker.length));
+  } catch {
+    return null;
+  }
+}
+
+/** 清理被替换/删除的旧封面文件。必须传入更新「之前」读到的旧地址。 */
+async function removeStaleCover(db: Awaited<ReturnType<typeof context>>["db"], userId: string, oldUrl: string | null | undefined, keepPath: string | null) {
+  const oldPath = coverPathFromUrl(oldUrl);
+  if (oldPath && oldPath.startsWith(`${userId}/cover/`) && oldPath !== keepPath) {
+    try { await db.storage.from("heika-decor").remove([oldPath]); } catch { /* 清理失败不影响保存结果 */ }
+  }
+}
+
+/**
+ * 上传封面原图（阶段：图片处理 → 上传）。
+ * 只写存储并返回资源标识，不写资料——资料保存在 PUT 里单独进行，
+ * 上传成功后保存失败时客户端可复用资源重试，不重复上传（需求 6.3）。
+ */
 export async function POST(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
@@ -43,25 +77,24 @@ export async function POST(req: NextRequest) {
     const uploaded = await db.storage.from("heika-decor").upload(path, file, { contentType: file.type, upsert: false, cacheControl: "31536000" });
     dbError(uploaded.error);
     const { data: publicUrl } = db.storage.from("heika-decor").getPublicUrl(path);
+    return { cover_url: publicUrl.publicUrl, path, cover_meta: meta };
+  });
+}
 
+/** 保存资料（阶段：保存资料）：把已上传的封面资源写入 profiles。失败时资源保留，可原样重试。 */
+export async function PUT(req: NextRequest) {
+  return respond(async () => {
+    const { db, user } = await context(req);
+    const body = await jsonBody(req);
+    const path = ownCoverPath(body.path, user!.id);
+    const meta = sanitizeMeta(body.meta);
+    const { data: publicUrl } = db.storage.from("heika-decor").getPublicUrl(path);
     const { data: current } = await db.from("profiles").select("cover_url").eq("id", user!.id).maybeSingle();
     const { data, error } = await db.from("profiles").update({ cover_url: publicUrl.publicUrl, cover_meta: meta }).eq("id", user!.id)
       .select("id,cover_url,cover_meta").single();
-    if (error) {
-      await db.storage.from("heika-decor").remove([path]);
-      dbError(error);
-    }
-    if (current?.cover_url) {
-      try {
-        const oldUrl = new URL(current.cover_url);
-        const marker = "/storage/v1/object/public/heika-decor/";
-        const index = oldUrl.pathname.indexOf(marker);
-        if (index >= 0) {
-          const oldPath = decodeURIComponent(oldUrl.pathname.slice(index + marker.length));
-          if (oldPath.startsWith(`${user!.id}/cover/`) && oldPath !== path) await db.storage.from("heika-decor").remove([oldPath]);
-        }
-      } catch { /* 外部或历史地址不动 */ }
-    }
+    // 保存失败不清除已上传资源：客户端保留 path 重试 PUT 即可（需求 6.3）。
+    dbError(error);
+    await removeStaleCover(db, user!.id, current?.cover_url, path);
     return data;
   });
 }
@@ -78,24 +111,23 @@ export async function PATCH(req: NextRequest) {
   });
 }
 
+/**
+ * 删除封面；带 ?path= 时只清理「已上传但未保存」的暂存图（用户取消编辑的回收）。
+ */
 export async function DELETE(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
+    const staged = req.nextUrl.searchParams.get("path");
+    if (staged) {
+      const path = ownCoverPath(staged, user!.id);
+      try { await db.storage.from("heika-decor").remove([path]); } catch { /* 清理失败无碍 */ }
+      return { cleaned: path };
+    }
     const { data: current } = await db.from("profiles").select("cover_url").eq("id", user!.id).maybeSingle();
     const { data, error } = await db.from("profiles").update({ cover_url: null, cover_meta: {} }).eq("id", user!.id)
       .select("id,cover_url,cover_meta").single();
     dbError(error);
-    if (current?.cover_url) {
-      try {
-        const oldUrl = new URL(current.cover_url);
-        const marker = "/storage/v1/object/public/heika-decor/";
-        const index = oldUrl.pathname.indexOf(marker);
-        if (index >= 0) {
-          const oldPath = decodeURIComponent(oldUrl.pathname.slice(index + marker.length));
-          if (oldPath.startsWith(`${user!.id}/cover/`)) await db.storage.from("heika-decor").remove([oldPath]);
-        }
-      } catch { /* ignore */ }
-    }
+    await removeStaleCover(db, user!.id, current?.cover_url, null);
     return data;
   });
 }
