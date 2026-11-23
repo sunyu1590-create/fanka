@@ -171,8 +171,16 @@ fun ProfileScreen(
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        // 顶栏不再占位：自己主页的品牌栏透明悬浮在封面之上，下面内容整体上提一个顶栏高度，
+        // 封面因此从屏幕顶端开始。他人主页保留实心返回栏，避免压住别人的封面看不清。
+        if (userId == null) {
+            Box(Modifier.zIndex(2f)) { ProfileBrandHeader(onSettings, onMembership) }
+        } else {
+            BackHeader("用户主页", onBack)
+        }
+        BoxWithConstraints(
+            Modifier.fillMaxSize().offset(y = if (userId == null) -HeikaSpacing.headerHeight else 0.dp),
+        ) {
             // 封面要横向铺满视口，而网格的 contentPadding 会把每一项都往里收。
             // 拿到真实宽度后用 requiredWidth 顶出去，再用 offset 抵掉左内边距；
             // 比给封面加负 margin 更可控，也不影响其余卡片的栅格。
@@ -201,9 +209,9 @@ fun ProfileScreen(
                 item(span = StaggeredGridItemSpan.FullLine) {
                     Column(Modifier.requiredWidth(viewportWidth).offset(x = -pageGutter)) {
                         Box(Modifier.fillMaxWidth()) {
-                            // 通栏封面 220dp（对齐网页端比例）：底部渐变到页面背景，
-                            // 头像跨在封面下缘，昵称与认证落在纯色信息区而不是压在图片上。
-                            Box(Modifier.fillMaxWidth().height(220.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                            // 通栏封面 280dp（对齐网页端 260–320 区间）：零圆角、横向铺满，
+                            // 顶部压在悬浮顶栏后方，底部渐变到页面背景，头像跨在封面下缘。
+                            Box(Modifier.fillMaxWidth().height(280.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                 if (profile.cover != null) {
                                     val coverMeta = profile.coverMeta
                                     val focusX = (coverMeta?.focusX ?: 50f) / 100f
@@ -237,6 +245,14 @@ fun ProfileScreen(
                                 Box(
                                     Modifier.fillMaxSize().background(
                                         Brush.verticalGradient(
+                                            0f to Color.Black.copy(alpha = .46f),
+                                            0.20f to Color.Transparent,
+                                        ),
+                                    ),
+                                )
+                                Box(
+                                    Modifier.fillMaxSize().background(
+                                        Brush.verticalGradient(
                                             0f to Color.Transparent,
                                             0.48f to Color.Transparent,
                                             0.80f to MaterialTheme.colorScheme.background.copy(alpha = .78f),
@@ -245,7 +261,7 @@ fun ProfileScreen(
                                     ),
                                 )
                             }
-                            Column(Modifier.fillMaxWidth().padding(top = 178.dp, start = 18.dp, end = 18.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(top = 238.dp, start = 18.dp, end = 18.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(
                                         Modifier.clip(CircleShape)

@@ -189,9 +189,14 @@ fun HomeScreen(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("今日探索", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("本次探索", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.weight(1f))
-                            Text(if (state.remaining > 0) "还可翻开 ${state.remaining} 张" else "今日已完成", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // 额度每 24 小时自动刷新，文案不再写「今日」，并直接给出到期时间。
+                            val cycleHint = if (state.cycleHoursLeft > 0) " · ${state.cycleHoursLeft} 小时后刷新" else ""
+                            Text(
+                                if (state.remaining > 0) "还可翻开 ${state.remaining} 张$cycleHint" else "本周期已完成$cycleHint",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
                             Text("  $openedCount / ${state.allowance}", color = HeikaPalette.Gold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                         Box(Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.outline.copy(alpha = .38f))) {
@@ -203,7 +208,7 @@ fun HomeScreen(
                             Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 HeikaPulseLine(height = 13.dp, widthFraction = 0.72f)
                                 HeikaPulseLine(height = 11.dp, widthFraction = 0.48f)
-                                Text("正在恢复今日卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                                Text("正在恢复本次卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                             }
                         }
                     }
@@ -566,7 +571,7 @@ private fun PreviewCardBack(
             if (error != null) {
                 Text(error, color = Color(0xFFE6A49A), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             } else if (!canConfirm) {
-                Text("今日翻卡次数已用完", color = Color.White.copy(alpha = 0.82f), fontSize = 11.sp)
+                Text("本周期翻卡次数已用完", color = Color.White.copy(alpha = 0.82f), fontSize = 11.sp)
             }
             Button(
                 onClick = {

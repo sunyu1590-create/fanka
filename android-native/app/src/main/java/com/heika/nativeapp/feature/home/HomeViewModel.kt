@@ -30,6 +30,8 @@ data class HomeUiState(
     val posts: Map<Int, HeikaPost> = emptyMap(),
     val allowance: Int = 5,
     val luckyBonus: Int = 0,
+    /** 当前 24 小时周期剩余小时数（服务端 authoritative），0 表示无周期信息。 */
+    val cycleHoursLeft: Int = 0,
     val loading: Boolean = true,
     val openingId: Int? = null,
     val error: String? = null,
@@ -77,9 +79,11 @@ class HomeViewModel @Inject constructor(
         var posts = decodePosts(local?.openedPosts.orEmpty())
         var allowance = local?.allowance ?: 5
         var luckyBonus = local?.luckyBonus ?: 0
+        var cycleHoursLeft = 0
         mutableState.value = HomeUiState(
             userId = userId, day = day, candidateIds = candidates, openedIds = opened,
             posts = posts, allowance = allowance, luckyBonus = luckyBonus,
+            cycleHoursLeft = cycleHoursLeft,
             loading = candidates.isEmpty(),
         )
 
@@ -109,6 +113,9 @@ class HomeViewModel @Inject constructor(
                 }
                 if (flipState != null) {
                     luckyBonus = bonus?.coerceIn(0, 10) ?: 0
+                    // 24 小时周期：服务端返回剩余秒数，向上取整到小时用于展示。
+                    val secondsLeft = flipState.optInt("cycleSecondsRemaining", 0)
+                    cycleHoursLeft = if (secondsLeft > 0) ((secondsLeft + 3599) / 3600).coerceIn(1, 24) else 0
                     allowance = flipState.optInt("allowance", DailyDeckLogic.allowanceFor(library.optJSONObject("profile")?.optString("membership_tier")) + luckyBonus)
                     opened = fromServer.distinct()
                 } else {
@@ -143,6 +150,7 @@ class HomeViewModel @Inject constructor(
             posts = posts,
             allowance = allowance,
             luckyBonus = luckyBonus,
+            cycleHoursLeft = cycleHoursLeft,
             loading = false,
             error = if (candidates.isEmpty() && posts.isEmpty()) mutableState.value.error else null,
         )
