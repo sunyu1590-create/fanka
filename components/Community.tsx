@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import AppLoginGate from "./AppLoginGate";
 import { flushSync } from "react-dom";
 import {
   Home,
@@ -4978,6 +4979,17 @@ export default function Community({
         </div>
       </main>
     );
+  // APP 内嵌且该功能要求登录：不静默注入 APP 的会话（两边共用 refresh_token 会互相作废），
+  // 没登录就直接挡在这里，登录成功后 reload 继续进入原来的功能。
+  if (
+    appEmbed &&
+    accountReady &&
+    !accountId &&
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("requireAuth") === "1"
+  ) {
+    return <AppLoginGate />;
+  }
   if (pendingRecoveryCodes.length)
     return <RecoveryCodesPage
       codes={pendingRecoveryCodes}

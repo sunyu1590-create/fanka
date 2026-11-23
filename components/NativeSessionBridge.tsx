@@ -17,14 +17,16 @@ function tokenSub(token: string): string | null {
 }
 
 /**
- * APP 内嵌打开时，把原生已登录的会话接进网页。
+ * APP 内嵌打开时，只做两件事：
  *
- * 只做一件事：网页本地还没有会话、而容器提供了同一个账号的会话时，
- * 用它调用 supabase 的 setSession。令牌不经过 URL，也不进页面源码；
- * 桥接不可用或失败时，网页保持自己的登录流程，不会因此报错。
+ * 1. 安装「装扮已应用」回执钩子（APP 完成渲染后回调网页）。
+ * 2. 校验账号一致性：网页里如果还留着**别的账号**的登录态，清掉。
+ *    避免在 A 的容器里编辑 B 的资料。
  *
- * 网页历史会话属于其他账号时，切换为 APP 当前账号（4.1 账号一致性），
- * 避免装扮等账号数据串号。同时安装「APP 已应用」回执钩子（4.3）。
+ * 注意这里**不再**用 APP 的令牌调用 setSession。
+ * 原因：APP 与 WebView 共用同一个 refresh_token，Supabase 的令牌轮换会让两边互相作废，
+ * 于是每次打开网页都像没登录。登录改由 AppLoginGate 在网页内独立完成，
+ * 会话由 WebView 自己保管，与 APP 隔离。
  */
 export default function NativeSessionBridge() {
   useEffect(() => {
@@ -42,23 +44,19 @@ export default function NativeSessionBridge() {
       try {
         const db = await browserDb();
         const { data } = await db.auth.getSession();
-        if (cancelled) return;
+        // 网页没有会话：交给登录门，不做任何静默注入。
+        if (cancelled || !data.session) return;
         const raw = bridge.session?.();
         if (!raw) return;
-        const parsed = JSON.parse(raw) as { access_token?: string; refresh_token?: string };
-        if (!parsed.access_token || !parsed.refresh_token) return;
-        const nativeUser = tokenSub(parsed.access_token);
-        const webUser = data.session?.user?.id ?? null;
-        // 同一账号且网页已有会话：无需处理。
-        if (data.session && nativeUser && webUser && nativeUser === webUser) return;
-        // 无会话，或历史会话属于其他账号：统一为 APP 当前账号。
-        const { error } = await db.auth.setSession({
-          access_token: parsed.access_token,
-          refresh_token: parsed.refresh_token,
-        });
-        if (!error && !cancelled) window.location.reload();
+        const parsed = JSON.parse(raw) as { access_token?: string; user_id?: string };
+        const nativeUser = parsed.user_id || (parsed.access_token ? tokenSub(parsed.access_token) : null);
+        const webUser = data.session.user?.id ?? null;
+        if (!nativeUser || !webUser || nativeUser === webUser) return;
+        // 网页里是另一个账号：清掉本地会话，让登录门重新出现，避免串号写入。
+        await db.auth.signOut({ scope: "local" });
+        if (!cancelled) window.location.reload();
       } catch {
-        /* 桥接失败不影响网页自身的登录与浏览 */
+        /* 桥接失败不阻塞网页自身的登录与浏览 */
       }
     })();
     return () => {

@@ -123,9 +123,14 @@ test("APP 个人中心按网页版式：通栏封面、跨封面头像与下划�
   const coverHeight = Number(cover[1]);
   assert.ok(coverHeight >= 260 && coverHeight <= 320, `封面高度 ${coverHeight}dp 超出 260–320dp 区间`);
   assert.doesNotMatch(profile, /RoundedCornerShape[^\n]*cover/i, "封面不允许圆角");
-  // 顶栏透明悬浮：品牌栏抬高层级、内容整体上提一个顶栏高度
-  assert.match(profile, /zIndex\(2f\)\) \{ ProfileBrandHeader/);
-  assert.match(profile, /offset\(y = if \(userId == null\) -HeikaSpacing\.headerHeight else 0\.dp\)/);
+  // 顶栏玻璃悬浮：品牌栏抬高层级并做 haze 模糊，内容整体上提「状态栏 + 顶栏」高度
+  assert.match(profile, /zIndex\(2f\)/);
+  assert.match(profile, /hazeEffect\(/);
+  assert.match(profile, /hazeSource\(headerHaze\)/);
+  assert.match(profile, /val stickyTop = if \(userId == null\) HeikaSpacing\.headerHeight \+ statusBarTop else 0\.dp/);
+  // 封面通栏不能再靠 requiredWidth + offset（会把整块内容左移 18dp、右边少一条）
+  assert.match(profile, /bleedHorizontal\(pageGutter\)/);
+  assert.doesNotMatch(profile, /requiredWidth\(viewportWidth\)/);
   assert.match(profile, /Brush\.verticalGradient/);
   assert.match(profile, /fun ProfileStat/);
   assert.match(profile, /fun ProfileTabBar/);

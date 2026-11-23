@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,6 +61,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,6 +75,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.ui.BackHeader
@@ -87,6 +96,21 @@ import com.heika.nativeapp.ui.HeikaPulseBlock
 import com.heika.nativeapp.ui.HeikaPulseRow
 
 private val ProfileTabs = listOf("我的作品" to "works", "我的收藏" to "bookmarks", "我的点赞" to "liked", "合集" to "collections")
+
+/**
+ * 只在绘制时向左右各外扩 [gutter]，上报给 Lazy 的宽度仍然是槽位宽度。
+ *
+ * requiredWidth 会改变测量宽度，Lazy 据此把 item 的起点按槽位对齐后，
+ * 再叠加 offset 就成了整体左移；这里用 place 偏移，排版完全不受影响。
+ */
+private fun Modifier.bleedHorizontal(gutter: Dp) = layout { measurable, constraints ->
+    val extra = gutter.roundToPx()
+    val width = constraints.maxWidth + extra * 2
+    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+    layout(constraints.maxWidth, placeable.height) {
+        placeable.placeRelative(-extra, 0)
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -111,6 +135,9 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // 自己主页的封面要压到状态栏后面，顶栏自己补这个高度；
+    // 骨架屏与错误态同样需要，否则根容器去掉 Top inset 后会顶到状态栏。
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val context = androidx.compose.ui.platform.LocalContext.current
     var selected by remember(userId) { mutableStateOf("works") }
     var hasResumedOnce by remember(userId) { mutableStateOf(false) }
@@ -133,7 +160,7 @@ fun ProfileScreen(
 
     if (state.loading && state.profile == null) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
+            if (userId == null) ProfileBrandHeader(onSettings, onMembership, topInset = statusBarTop) else BackHeader("用户主页", onBack)
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(13.dp), verticalAlignment = Alignment.CenterVertically) {
                     SkeletonBlock(62.dp, CircleShape)
@@ -159,7 +186,7 @@ fun ProfileScreen(
     }
     if (state.profile == null) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
+            if (userId == null) ProfileBrandHeader(onSettings, onMembership, topInset = statusBarTop) else BackHeader("用户主页", onBack)
             Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.error ?: "个人主页暂不可用", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(if (state.error?.contains("登录") == true) "登录" else "重试", Modifier.clickable { if (state.error?.contains("登录") == true) onLogin() else viewModel.load(userId, force = true) }.padding(12.dp), color = MaterialTheme.colorScheme.primary)
@@ -170,21 +197,37 @@ fun ProfileScreen(
 
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
+    // 自己主页：封面要压到状态栏后面，顶栏做成毛玻璃悬浮条。
+    // 状态栏高度从系统读取，不写死 24dp，刘海/挖孔机型才不会错位。
+    val headerHaze = rememberHazeState()
+    val stickyTop = if (userId == null) HeikaSpacing.headerHeight + statusBarTop else 0.dp
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 顶栏不再占位：自己主页的品牌栏透明悬浮在封面之上，下面内容整体上提一个顶栏高度，
-        // 封面因此从屏幕顶端开始。他人主页保留实心返回栏，避免压住别人的封面看不清。
         if (userId == null) {
-            Box(Modifier.zIndex(2f)) { ProfileBrandHeader(onSettings, onMembership) }
+            Box(Modifier.zIndex(2f)) {
+                ProfileBrandHeader(
+                    onSettings = onSettings,
+                    onMembership = onMembership,
+                    topInset = statusBarTop,
+                    modifier = Modifier.hazeEffect(
+                        state = headerHaze,
+                        style = HazeStyle(
+                            backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = .56f),
+                            tint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .06f)),
+                            // 比底部导航（18dp）更浅一档，顶栏只是"分隔层"，不该抢内容。
+                            blurRadius = 12.dp,
+                        ),
+                    ),
+                )
+            }
         } else {
             BackHeader("用户主页", onBack)
         }
         BoxWithConstraints(
-            Modifier.fillMaxSize().offset(y = if (userId == null) -HeikaSpacing.headerHeight else 0.dp),
+            Modifier.fillMaxSize().offset(y = -stickyTop).hazeSource(headerHaze),
         ) {
-            // 封面要横向铺满视口，而网格的 contentPadding 会把每一项都往里收。
-            // 拿到真实宽度后用 requiredWidth 顶出去，再用 offset 抵掉左内边距；
-            // 比给封面加负 margin 更可控，也不影响其余卡片的栅格。
-            val viewportWidth = maxWidth
+            // 栅格的 contentPadding 会把每一项往里收 18dp。封面要通栏，
+            // 但不能像旧版那样 requiredWidth + offset：那会把整个 item 左移 18dp，
+            // 右边缘反而少一条。改成"按槽位宽度排版、绘制时左右各外扩 18dp"。
             val pageGutter = 18.dp
             val swipeThreshold = with(LocalDensity.current) { 54.dp.toPx() }
             LazyVerticalStaggeredGrid(
@@ -203,11 +246,11 @@ fun ProfileScreen(
                         onDragCancel = { dragDistance = 0f },
                     )
                 },
-                contentPadding = PaddingValues(start = pageGutter, end = pageGutter, top = 0.dp, bottom = 128.dp),
+                contentPadding = PaddingValues(start = pageGutter, end = pageGutter, top = 0.dp, bottom = 140.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalItemSpacing = 14.dp,
             ) {
                 item(span = StaggeredGridItemSpan.FullLine) {
-                    Column(Modifier.requiredWidth(viewportWidth).offset(x = -pageGutter)) {
+                    Column(Modifier.fillMaxWidth().bleedHorizontal(pageGutter)) {
                         Box(Modifier.fillMaxWidth()) {
                             // 通栏封面 280dp（对齐网页端 260–320 区间）：零圆角、横向铺满，
                             // 顶部压在悬浮顶栏后方，底部渐变到页面背景，头像跨在封面下缘。
@@ -242,20 +285,24 @@ fun ProfileScreen(
                                         ),
                                     )
                                 }
+                                // 顶部压暗必须覆盖「状态栏 + 58dp 顶栏」，约封面高度的 30%；
+                                // 旧版只压到 20%，顶栏文字直接压在亮图上，看起来像没有遮罩。
                                 Box(
                                     Modifier.fillMaxSize().background(
                                         Brush.verticalGradient(
-                                            0f to Color.Black.copy(alpha = .46f),
-                                            0.20f to Color.Transparent,
+                                            0f to Color.Black.copy(alpha = .54f),
+                                            0.16f to Color.Black.copy(alpha = .34f),
+                                            0.32f to Color.Transparent,
                                         ),
                                     ),
                                 )
+                                // 底部只留最后 22% 过渡到页面底色，避免整块黑布压在封面下半部。
                                 Box(
                                     Modifier.fillMaxSize().background(
                                         Brush.verticalGradient(
                                             0f to Color.Transparent,
-                                            0.48f to Color.Transparent,
-                                            0.80f to MaterialTheme.colorScheme.background.copy(alpha = .78f),
+                                            0.72f to Color.Transparent,
+                                            0.90f to MaterialTheme.colorScheme.background.copy(alpha = .82f),
                                             1f to MaterialTheme.colorScheme.background,
                                         ),
                                     ),
@@ -486,8 +533,14 @@ private fun ProfileTabBar(
 }
 
 @Composable
-private fun ProfileBrandHeader(onSettings: () -> Unit, onMembership: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal)) {
+private fun ProfileBrandHeader(
+    onSettings: () -> Unit,
+    onMembership: () -> Unit,
+    modifier: Modifier = Modifier,
+    topInset: Dp = 0.dp,
+) {
+    Box(modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().padding(top = topInset).height(HeikaSpacing.headerHeight).padding(horizontal = HeikaSpacing.pageHorizontal)) {
         // 与 BrandHeader 同一锁定：中英文基线对齐、同一字号与间距。
         Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
             Text("黑卡", color = MaterialTheme.colorScheme.onBackground, fontSize = HeikaType.brand, fontWeight = FontWeight.SemiBold, letterSpacing = 1.1.sp, modifier = Modifier.alignByBaseline())
@@ -501,6 +554,12 @@ private fun ProfileBrandHeader(onSettings: () -> Unit, onMembership: () -> Unit)
                 Icon(HeikaIcons.Settings, "设置", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
             }
         }
+    }
+    // 玻璃边缘：一条几乎看不见的亮线，让顶栏和封面之间有一道可辨识的分界。
+    Box(
+        Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp)
+            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = .06f)),
+    )
     }
 }
 

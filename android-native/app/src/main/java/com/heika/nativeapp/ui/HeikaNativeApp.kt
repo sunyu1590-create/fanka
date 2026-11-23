@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -158,10 +159,17 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                 openDestination(post.destination())
             }
         }
+        // 「我的」页的封面要压到状态栏后面，因此该路由不在这里扣 Top inset，
+        // 由 ProfileScreen 自己按 statusBars 高度给顶栏留位；其他页面照旧。
+        val pageSides = if (route == "profile") {
+            WindowInsetsSides.Horizontal
+        } else {
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+        }
         Box(
             Modifier.fillMaxSize()
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(pageSides)),
         ) {
             Box(
                 Modifier.fillMaxSize().hazeSource(hazeState),
@@ -538,7 +546,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     val profileViewModel: ProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(profileEntry)
                     NativeWebScreen(
                         title = "编辑个人资料",
-                        path = "/?app=1&mine=profile",
+                        path = "/?app=1&mine=profile&requireAuth=1",
                         sessionJson = webSession,
                         onBack = { nav.popBackStack() },
                         onEvent = { type, _ ->
@@ -696,7 +704,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                 )
             }
             ForegroundNoticeHost(
-                modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 14.dp, vertical = 8.dp),
+                // 根容器在「我的」页不再扣状态栏，通知条自己补，避免盖住时间与电池。
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),
                 hazeState = hazeState,
                 onOpen = { item ->
                     when {
@@ -816,7 +825,9 @@ private fun webTitle(feature: String): String = when (feature) {
 
 private fun webPath(feature: String): String = when (feature) {
     // 任务与探索中心复用网页实现（需求 6.3：替换旧原生处理）。
-    "missions" -> "/?app=1&mine=missions"
-    "explore-center" -> "/?app=1&mine=explore"
-    else -> "/?app=1"
+    // requireAuth=1：这两个入口都依赖账号数据，未登录时网页直接弹登录门，
+    // 登录完成后原地继续，不再依赖容器注入 APP 的令牌。
+    "missions" -> "/?app=1&mine=missions&requireAuth=1"
+    "explore-center" -> "/?app=1&mine=explore&requireAuth=1"
+    else -> "/?app=1&requireAuth=1"
 }

@@ -47,6 +47,36 @@ async function readImage(file: File): Promise<{ url: string; width: number; heig
   return { url, width: image.naturalWidth, height: image.naturalHeight };
 }
 
+/**
+ * 上传前压到可接受体积。
+ *
+ * 封面在页面上最宽也就 1440 逻辑像素，长边 2400 已经足够；
+ * 不压缩的话，12 MB 的原图要在「浏览器 → 我们的服务器 → Storage」走两遍，
+ * 第二遍没有任何进度反馈，用户看到的就是卡在 99%。
+ */
+async function compressCover(file: File): Promise<File> {
+  // 已经足够小就不动它，避免二次编码损失。
+  if (file.size <= 1.2 * 1024 * 1024 && /^image\/(jpeg|webp)$/.test(file.type)) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxEdge = 2400;
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    // 浏览器不支持 createImageBitmap 时退回原图，上传逻辑本身不受影响。
+    return file;
+  }
+}
+
 const PHASE_TEXT: Record<CoverSavePhase, string> = {
   processing: "正在处理图片…",
   idle: "调整好取景后保存，原图会完整保留",
@@ -151,13 +181,17 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
         if (!staged) {
           setPhase("uploading");
           setUploadProgress(0);
+          const payloadFile = await compressCover(file);
           staged = await new Promise<StagedCover>((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open("POST", "/api/v1/me/cover");
             xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+            // 服务端要把文件再转发到 Storage，这一段没有进度；给足时间并允许超时后重试。
+            xhr.timeout = 120000;
             xhr.upload.onprogress = (event) => {
-              if (event.lengthComputable) setUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+              if (event.lengthComputable) setUploadProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
             };
+            xhr.ontimeout = () => reject(new Error("上传超时，请检查网络后重试"));
             xhr.onload = () => {
               let payload: { error?: string; data?: { cover_url?: string; path?: string } } = {};
               try { payload = JSON.parse(xhr.responseText || "{}"); } catch { /* 非 JSON 响应按失败处理 */ }
@@ -170,7 +204,7 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
             xhr.onabort = () => reject(new Error("上传已中断，请重试"));
             const form = new FormData();
             // 保留完整原图，取景参数单独保存，展开时才有更多画面可看。
-            form.set("file", file);
+            form.set("file", payloadFile);
             form.set("meta", JSON.stringify(meta));
             xhr.send(form);
           });
@@ -201,7 +235,8 @@ export default function CoverEditor({ file, nickname, avatar, onCancel, onSaved,
 
   const background = useMemo(() => source ? coverBackground(source.url, meta) : undefined, [source, meta]);
   const busy = phase === "processing" || phase === "uploading" || phase === "saving" || phase === "success";
-  const saveLabel = phase === "uploading" ? `正在上传… ${uploadProgress}%`
+  const saveLabel = phase === "uploading"
+    ? (uploadProgress >= 100 ? "服务器处理中…" : `正在上传… ${uploadProgress}%`)
     : phase === "saving" ? "正在保存资料…"
     : phase === "success" ? "保存成功"
     : phase === "error" ? "重试保存"
