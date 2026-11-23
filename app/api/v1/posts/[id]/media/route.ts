@@ -16,9 +16,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const path = textField(body.path, "媒体路径", 1, 300);
     if (!path.startsWith(`${user!.id}/`) || path.includes("..")) throw new ApiError(403, "媒体不属于当前用户");
     const video = isVideoMediaPath(path);
-    if (video && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
-    if (!video && !allowedImagePath(path)) throw new ApiError(400, "媒体格式无效");
-    if (body.media_type && body.media_type !== (video ? "video" : "image")) throw new ApiError(400, "媒体类型与文件格式不符");
+    if (video) throw new ApiError(410, "视频上传功能已下线；历史视频作品仍可正常浏览");
+    if (!allowedImagePath(path)) throw new ApiError(400, "媒体格式无效");
+    if (body.media_type && body.media_type !== "image") throw new ApiError(400, "媒体类型与文件格式不符");
     const sortOrder = Number(body.sort_order || 0);
     if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 9) throw new ApiError(400, "媒体顺序无效");
 

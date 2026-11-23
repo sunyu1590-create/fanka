@@ -4,7 +4,7 @@ import { ApiError, respond } from "@/lib/server/api";
 import { processNextAiTask } from "@/lib/server/process-ai-task";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   return respond(async () => {

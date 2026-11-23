@@ -50,10 +50,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
 
 @Composable
 fun BrandHeader(
@@ -181,19 +177,18 @@ fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: 
 @Composable
 fun GlassNavigationBar(
     selected: String,
-    hazeState: HazeState,
     onSelect: (String) -> Unit,
     onPublish: () -> Unit,
     modifier: Modifier = Modifier,
-    blurEnabled: Boolean = true,
-    previewBackdropActive: Boolean = false,
 ) {
     val tabShape = RoundedCornerShape(36.dp)
     val dark = LocalHeikaDark.current
     val decor = LocalDecor.current
     val palette = decor.bar.palette(dark)
     val surface = palette.bg
-    val containerAlpha = if (previewBackdropActive) minOf(1f, palette.bgOpacity + .12f) else palette.bgOpacity
+    // 底栏改为实心胶囊：之前叠了 haze 模糊 + 半透明底色，深色内容滚到下面时
+    // 整条底栏会变成一块灰蒙蒙的遮罩。这里不再做任何模糊与透明混合。
+    val containerAlpha = 1f
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(horizontal = 14.dp)
@@ -206,17 +201,6 @@ fun GlassNavigationBar(
                 .weight(1f)
                 .height(66.dp)
                 .clip(tabShape)
-                .then(
-                    if (blurEnabled) Modifier.hazeEffect(
-                        state = hazeState,
-                        style = HazeStyle(
-                            backgroundColor = surface.copy(alpha = containerAlpha),
-                            tint = HazeTint(surface.copy(alpha = if (previewBackdropActive) .10f else .06f)),
-                            blurRadius = 18.dp,
-                            fallbackTint = HazeTint(surface.copy(alpha = minOf(1f, containerAlpha + .04f))),
-                        ),
-                    ) else Modifier,
-                )
                 .background(surface.copy(alpha = containerAlpha), tabShape)
                 .border(1.dp, palette.border.copy(alpha = palette.borderOpacity.coerceAtLeast(if (dark) .06f else .05f)), tabShape)
                 .padding(horizontal = 3.dp),

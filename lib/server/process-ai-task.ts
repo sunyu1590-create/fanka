@@ -5,6 +5,7 @@ import type { AiMessage } from "@/lib/server/ai-provider";
 import { validateAiReview } from "@/lib/ai-review-validation.mjs";
 import { validateAiClassification } from "@/lib/ai-classification-validation.mjs";
 import { validateSummary } from "@/lib/summary-validation.mjs";
+import { detectSummaryStyle, summarySystemPrompt } from "@/lib/summary-style.mjs";
 
 type ClaimedTask = {
   batchId: string; itemId: string; postId: string; title: string; body: string; channel: string;
@@ -20,6 +21,7 @@ function cleanSummaryText(value: string) {
     .replace(/\*\*|__/g, "")
     .replace(/\s*\n+\s*/g, " ")
     .trim()
+    .replace(/^(?:摘要|总结|AI\s*摘要)[:：]\s*/i, "")
     .replace(/^["“]([\s\S]*)["”]$/, "$1")
     .trim();
 }
@@ -42,11 +44,14 @@ export async function processNextAiTask() {
     }
     const purpose = task.taskType === "review_pending" ? "review" : task.taskType === "classification" ? "classification" : "summary";
     const model = typeof task.config?.model === "string" ? task.config.model : "deepseek-chat";
+    // 摘要按文章题材与语气选提示词：情感类保留温度，科普类保留准确度，
+    // 教程类保留步骤与限制，避免所有文章都被写成同一种通稿腔。
+    const summaryStyle = detectSummaryStyle(task.title, task.body);
     const system = task.taskType === "review_pending"
       ? "你是 HEIKA 内容安全审核辅助器。只依据给出的原文和现行内容审核规则，审核色情、赌博、毒品等高风险内容及明显违法有害内容。你不拥有最终审核权。输出 JSON 对象：decision(approve/review), riskLevel(clear/low/medium/high/uncertain), riskTypes(string[]), reason(简短说明), evidence(原文中的精确连续摘录数组)。不确定、存在风险、证据不明确或边界模糊必须返回 review。只有完全明确低风险时才返回 approve。evidence 必须是原文中逐字存在的短片段，不能改写或杜撰。不要返回思考过程。"
       : task.taskType === "classification"
         ? "你是 HEIKA 内容分类助手。只能使用用户消息提供的现有分类和标签 ID；不要新建或猜测 ID。结合标题、正文、频道和标签描述进行分类。只有在分类把握高时返回 confidence=high；否则返回 uncertain=true。输出 JSON 对象：confidence(high/medium/low), uncertain(boolean), categoryId(现有分类 ID), tagIds(0 到 5 个现有标签 ID), reason(不超过 120 字的简短依据)。标签应具体且相关，不要仅因正文提到某词就添加。不要返回思考过程。"
-      : "你是 HEIKA 的作品摘要助手。用作品原文语言准确概括核心内容：中文摘要控制在 80–140 个汉字，其他语言不超过 50 个单词；不得添加原文没有的事实，不得夸大或改变作者观点。只返回摘要正文，不添加标题、Markdown 标记、前言或英文解释。";
+      : summarySystemPrompt(summaryStyle);
     const messages: AiMessage[] = [
       { role: "system", content: system },
       { role: "user", content: task.taskType === "review_pending"
@@ -59,7 +64,9 @@ export async function processNextAiTask() {
       purpose,
       model,
       messages,
-      maxTokens: task.taskType === "review_pending" ? 900 : task.taskType === "classification" ? 700 : 360,
+      // deepseek-flash 会先产生推理内容，max_tokens 同时覆盖推理与正文。
+      // 之前摘要只给 360，推理刚好把额度吃光，返回 content 为空，任务全部失败。
+      maxTokens: task.taskType === "review_pending" ? 2000 : task.taskType === "classification" ? 1600 : 3000,
       temperature: task.taskType === "review_pending" || task.taskType === "classification" ? 0 : 0.2,
       jsonObject: task.taskType === "review_pending" || task.taskType === "classification",
       taskId: task.batchId,
@@ -98,14 +105,14 @@ export async function processNextAiTask() {
       const retry = await completeAiChat({
         purpose, model,
         messages: [...messages, { role: "assistant", content: completion.output }, { role: "user", content: "上面的摘要超出长度限制。请压缩成 100 个汉字以内（英文不超过 40 个单词），保留最关键的信息，只输出摘要正文。" }],
-        maxTokens: 220, temperature: 0,
+        maxTokens: 1600, temperature: 0,
         taskId: task.batchId, taskItemId: task.itemId,
       });
       summary = cleanSummaryText(retry.output);
       summaryCompletion = retry;
       if (!validateSummary(summary)) throw new Error("AI 摘要长度仍不符合要求（中文不超过 160 字）");
     }
-    await finish(admin, task, "completed", { summary }, null, summaryCompletion);
+    await finish(admin, task, "completed", { summary, style: summaryStyle.label, styleKey: summaryStyle.key }, null, summaryCompletion);
     return { processed: true, status: "completed", taskId: task.batchId, itemId: task.itemId };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 300) : "AI task failed";

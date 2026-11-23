@@ -1228,7 +1228,7 @@ class HeikaRepository @Inject constructor(
         payload.optJSONArray("items").jsonObjects().map(HeikaPost::from).filter { it.cloudId.isNotBlank() && it.id > 0 }
     }
 
-    suspend fun uploadImage(postId: String?, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int, revisionMode: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun uploadImage(postId: String?, uploadId: String, fileName: String, mimeType: String, bytes: ByteArray, sortOrder: Int, revisionMode: Boolean = false, onProgress: (Int) -> Unit = {}): JSONObject = withContext(Dispatchers.IO) {
         require(bytes.size in 1..(4 * 1024 * 1024)) { "单张图片须小于 4 MB" }
         val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
@@ -1240,8 +1240,26 @@ class HeikaRepository @Inject constructor(
             builder.addFormDataPart("staging", "1")
         } else builder.addFormDataPart("post_id", postId)
         val requestBody = builder.build()
+        // 逐字节上报进度：真机弱网下也能看到真实的已发送比例，不靠计时器假装。
+        val progressBody = object : RequestBody() {
+            override fun contentType() = requestBody.contentType()
+            override fun contentLength() = requestBody.contentLength()
+            override fun writeTo(sink: BufferedSink) {
+                val total = contentLength()
+                var written = 0L
+                val counting = object : ForwardingSink(sink) {
+                    override fun write(source: Buffer, byteCount: Long) {
+                        super.write(source, byteCount)
+                        written += byteCount
+                        if (total > 0) onProgress(((written * 100L) / total).toInt().coerceIn(0, 100))
+                    }
+                }.buffer()
+                requestBody.writeTo(counting)
+                counting.flush()
+            }
+        }
         val token = auth.currentToken() ?: throw IOException("请先登录后继续")
-        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/media", "Bearer $token", requestBody)
+        val response = api.post("${BuildConfig.API_BASE_URL}/api/v1/media", "Bearer $token", progressBody)
         val content = (if (response.isSuccessful) response.body() else response.errorBody())?.use { it.string() }.orEmpty()
         val root = if (content.isBlank()) JSONObject() else JSONTokener(content).nextValue() as? JSONObject ?: JSONObject()
         if (!response.isSuccessful || root.has("error")) throw IOException(root.optString("error").ifBlank { "图片上传失败（${response.code()}）" })

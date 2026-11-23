@@ -24,7 +24,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -39,6 +41,8 @@ data class PendingImage(
     val name: String,
     val path: String? = null,
     val progress: Boolean = false,
+    /** 真实上传百分比（0–100）：由 OkHttp 逐字节回调，不依赖计时器。 */
+    val progressPercent: Int? = null,
     val error: String? = null,
     val uploadId: String? = null,
     val mime: String? = null,
@@ -112,6 +116,9 @@ class PublishViewModel @Inject constructor(
     private val saveMutex = Mutex()
     private val publishMutex = Mutex()
     private val uploadJobs = ConcurrentHashMap<String, Job>()
+    // 一次选 9 张时不能同时开 9 条上传，弱网会把上行带宽抢空、谁都传不完。
+    // 与网页端一致的 3 路并发：既快又稳，进度条也是真实的。
+    private val uploadSlots = Semaphore(3)
     private var needsServerSync = false
 
     init {
@@ -516,7 +523,7 @@ class PublishViewModel @Inject constructor(
 
     private suspend fun uploadPendingImage(key: String) {
         val image = mutableState.value.images.firstOrNull { it.key == key } ?: return
-        mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = true, error = null) else it }) }
+        mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = true, progressPercent = 0, error = null) else it }) }
         try {
             ensureSameAccount(mutableState.value.accountId)
             val localPath = image.localFilePath?.let(::File) ?: throw IllegalStateException("图片本地副本不存在，无法重试")
@@ -524,15 +531,27 @@ class PublishViewModel @Inject constructor(
             val current = mutableState.value
             val bytes = withContext(Dispatchers.IO) { localPath.readBytes() }
             val order = mutableState.value.images.indexOfFirst { it.key == key }.coerceAtLeast(0)
-            val result = repository.uploadImage(
-                postId = current.draftCloudId.takeIf { current.revisionMode },
-                uploadId = image.uploadId!!,
-                fileName = image.name,
-                mimeType = image.mime!!,
-                bytes = bytes,
-                sortOrder = order,
-                revisionMode = current.revisionMode,
-            )
+            var reported = -1
+            val result = uploadSlots.withPermit {
+                repository.uploadImage(
+                    postId = current.draftCloudId.takeIf { current.revisionMode },
+                    uploadId = image.uploadId!!,
+                    fileName = image.name,
+                    mimeType = image.mime!!,
+                    bytes = bytes,
+                    sortOrder = order,
+                    revisionMode = current.revisionMode,
+                    onProgress = { percent ->
+                        val clamped = percent.coerceIn(0, 100)
+                        if (clamped != reported) {
+                            reported = clamped
+                            mutableState.update { state ->
+                                state.copy(images = state.images.map { if (it.key == key && it.progress) it.copy(progressPercent = clamped) else it })
+                            }
+                        }
+                    },
+                )
+            }
             val path = result.optString("path").takeIf(String::isNotBlank) ?: throw IllegalStateException("服务端未返回图片路径")
             if (mutableState.value.images.none { it.key == key }) {
                 runCatching { repository.deleteUploadedImage(null, path) }
@@ -540,14 +559,14 @@ class PublishViewModel @Inject constructor(
                 return
             }
             mutableState.update { state ->
-                val images = state.images.map { if (it.key == key) it.copy(path = path, progress = false, error = null, preview = Uri.fromFile(localPath), uploadedBySession = true) else it }
+                val images = state.images.map { if (it.key == key) it.copy(path = path, progress = false, progressPercent = null, error = null, preview = Uri.fromFile(localPath), uploadedBySession = true) else it }
                 state.copy(images = images, mediaPaths = images.mapNotNull(PendingImage::path), error = null)
             }
             needsServerSync = true
             persistLocalSnapshot()
         } catch (error: Exception) {
             if (error is CancellationException) throw error
-            mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false, error = error.message ?: "上传失败") else it }, error = error.message ?: "图片上传失败") }
+            mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false, progressPercent = null, error = error.message ?: "上传失败") else it }, error = error.message ?: "图片上传失败") }
             persistLocalSnapshot()
         }
     }

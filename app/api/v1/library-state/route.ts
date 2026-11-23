@@ -365,9 +365,9 @@ export async function POST(req: NextRequest) {
     if (action === "publish") {
       const publishMediaPaths = Array.isArray(b.mediaPaths) ? [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))] : [];
       const publishMedia = splitPostMediaPaths(publishMediaPaths);
-      if (publishMedia.videos.length && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
-      if (publishMedia.images.length > 9 || publishMedia.videos.length > 1 || (publishMedia.videos.length && publishMedia.images.length) || publishMediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes(".."))) {
-        throw new ApiError(400, "投稿媒体无效；最多添加 9 张图片，或单独 1 个视频");
+      if (publishMedia.videos.length) throw new ApiError(410, "视频上传功能已下线，请发布图文内容");
+      if (publishMedia.images.length > 9 || publishMediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes(".."))) {
+        throw new ApiError(400, "投稿媒体无效；一篇内容最多添加 9 张图片");
       }
       if (publishMediaPaths.length) {
         const uploaded = await signPostMedia(db, publishMediaPaths, 60);
@@ -416,8 +416,8 @@ export async function POST(req: NextRequest) {
         dbError(oldMedia.error);
         const mediaPaths = Array.isArray(b.mediaPaths) ? [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))] : (oldMedia.data || []).map((item) => item.storage_path);
         const splitMedia = splitPostMediaPaths(mediaPaths);
-        if (splitMedia.videos.length && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
-        if (splitMedia.images.length > 9 || splitMedia.videos.length > 1 || (splitMedia.videos.length && splitMedia.images.length) || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes(".."))) throw new ApiError(400, "投稿媒体无效；最多 9 张图片，或单独 1 个视频");
+        if (splitMedia.videos.length) throw new ApiError(410, "视频上传功能已下线，请发布图文内容");
+        if (splitMedia.images.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes(".."))) throw new ApiError(400, "投稿媒体无效；一篇内容最多 9 张图片");
         if (mediaPaths.length) {
           const storedMedia = await signPostMedia(db, mediaPaths, 60);
           dbError(storedMedia.error);
@@ -469,9 +469,9 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(b.mediaPaths)) {
         const mediaPaths = [...new Set(b.mediaPaths.filter((path): path is string => typeof path === "string"))];
         const splitMedia = splitPostMediaPaths(mediaPaths);
-        if (splitMedia.videos.length && process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA !== "1") throw new ApiError(404, "视频上传 Beta 暂未开放");
-        if (splitMedia.images.length > 9 || splitMedia.videos.length > 1 || (splitMedia.videos.length && splitMedia.images.length) || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes("..")))
-          throw new ApiError(400, "投稿媒体无效；最多 9 张图片，或单独 1 个视频");
+        if (splitMedia.videos.length) throw new ApiError(410, "视频上传功能已下线，请发布图文内容");
+        if (splitMedia.images.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes("..")))
+          throw new ApiError(400, "投稿媒体无效；一篇内容最多 9 张图片");
         const previousMedia = await db.from("post_media").select("storage_path,thumbnail_path,retina_thumbnail_path").eq("post_id", postId);
         dbError(previousMedia.error);
         const previousByPath = new Map((previousMedia.data || []).map((item) => [item.storage_path, item]));

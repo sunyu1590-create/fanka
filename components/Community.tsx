@@ -40,7 +40,6 @@ import {
   History,
   ExternalLink,
   ImagePlus,
-  Video as VideoIcon,
   LayoutGrid,
   List,
   Smartphone,
@@ -97,8 +96,7 @@ import { REPORT_REASONS } from "@/lib/report-validation";
 import { feedImageSource } from "@/lib/feed-images";
 import { userMessage } from "@/lib/user-message";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
-import { POST_VIDEO_MAX_BYTES, POST_VIDEO_TYPES, uploadVideoResumable, videoExtension } from "@/lib/video-upload";
-import { compressVideoForUpload, supportsVideoCompression, VIDEO_COMPRESSION_THRESHOLD } from "@/lib/video-compression";
+import { mapWithConcurrency, uploadMediaWithRetry } from "@/lib/media-upload";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 import DecorCenter from "./DecorCenter";
@@ -189,10 +187,19 @@ type Comment = {
   likes: number;
   liked?: boolean;
 };
-type ComposerImage = { id: string; file?: File; path?: string; url: string; status: "ready" | "uploading" | "failed"; sortOrder?: number; external?: boolean };
-type ComposerVideo = { id: string; file?: File; path?: string; url: string; name: string; size: number; type: string; status: "ready" | "compressing" | "uploading" | "failed"; progress: number; compressionProgress?: number; originalSize?: number; compressionNote?: string; existing?: boolean };
+type ComposerImage = {
+  id: string;
+  file?: File;
+  path?: string;
+  url: string;
+  status: "ready" | "uploading" | "failed";
+  sortOrder?: number;
+  external?: boolean;
+  /** 真实上传进度：按已发送字节计算，服务端处理阶段为 processing。 */
+  progress?: number;
+  uploadPhase?: "uploading" | "processing";
+};
 type PageTransitionHandle = { finished: Promise<unknown> };
-const VIDEO_UPLOAD_BETA_ENABLED = process.env.NEXT_PUBLIC_VIDEO_UPLOAD_BETA === "1";
 type TopicPageResponse = { topic: TopicSummary; items: Post[]; total: number; page: number; limit: number };
 type ExperienceSummary = { total: number; membershipTier: "free" | "plus" | "pro"; events: { type: "flip" | "rating" | "mission" | "daily_mission"; points: number; createdAt: string }[]; claimedLevels: number[] };
 type BookmarkCollection = { id: string; name: string; created_at?: string; role?: "owner" | "collaborator"; is_public?: boolean; allow_collaboration?: boolean; share_code?: string | null; user_id?: string };
@@ -795,7 +802,7 @@ export default function Community({
     [topicChoices, setTopicChoices] = useState<TopicSummary[]>([]),
     [creatingTopic, setCreatingTopic] = useState(false),
     [composerImages, setComposerImages] = useState<ComposerImage[]>([]),
-    [composerVideo, setComposerVideo] = useState<ComposerVideo | null>(null),
+    [imageUploadProgress, setImageUploadProgress] = useState<{ percent: number; done: number; total: number; phase: "uploading" | "processing" | "done" } | null>(null),
     [composerAttachments, setComposerAttachments] = useState<PostAttachment[]>([]),
     [attachmentQuota, setAttachmentQuota] = useState<{ used: number; limit: number; remaining: number } | null>(null),
     [attachmentBusy, setAttachmentBusy] = useState(false),
@@ -1077,8 +1084,6 @@ export default function Community({
   useEffect(() => { composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.clear(); }, [accountId]);
   const publishInFlight = useRef(false);
   const attachmentUploadIds = useRef(new WeakMap<File, string>());
-  const videoCompressionSequence = useRef(0);
-  const videoCompressionAbort = useRef<AbortController | null>(null);
   const draftMediaBusy = useRef(new Set<string>());
   const zone = accountTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
@@ -2898,116 +2903,79 @@ export default function Community({
       toast("点赞未保存，请重试");
     } finally { commentLikeBusy.current.delete(comment.id); }
   };
-  const uploadImageToPost = async (image: ComposerImage, postId: string, sortOrder: number): Promise<ComposerImage> => {
+  const uploadImageToPost = async (
+    image: ComposerImage,
+    postId: string,
+    sortOrder: number,
+    onProgress?: (progress: { percent: number; phase: "uploading" | "processing" | "done" }) => void,
+  ): Promise<ComposerImage> => {
     if (image.external) return image;
     if (image.path) {
-      if (composerRevisionMode) return { ...image, sortOrder };
-      await cloudRequest(`/api/v1/posts/${postId}/media`, { path: image.path, sort_order: sortOrder });
-      return { ...image, sortOrder };
+      // 已上传过的图片只需按新顺序挂到当前草稿，不再重传文件。
+      if (!composerRevisionMode) await cloudRequest(`/api/v1/posts/${postId}/media`, { path: image.path, sort_order: sortOrder });
+      onProgress?.({ percent: 100, phase: "done" });
+      return { ...image, sortOrder, progress: 100, uploadPhase: undefined };
     }
     if (!image.file || !accountId) throw new Error("登录后可同步草稿图片");
     const db = await browserDb(); const { data: session } = await db.auth.getSession();
     if (!session.session) throw new Error("登录状态已失效，请重新登录");
-    const form = new FormData(); form.set("file", image.file); form.set(composerRevisionMode ? "revision_post_id" : "post_id", postId); form.set("sort_order", String(sortOrder)); form.set("upload_id", image.id);
-    const response = await fetch("/api/v1/media", { method: "POST", headers: { Authorization: `Bearer ${session.session.access_token}` }, body: form });
-    const result = await response.json(); if (!response.ok) throw new Error(result.error || "图片上传失败");
-    if (!result.data?.path) throw new Error("图片上传未完成，请重试");
-    return { ...image, path: result.data.path, status: "ready", sortOrder };
+    const result = await uploadMediaWithRetry({
+      file: image.file,
+      token: session.session.access_token,
+      uploadId: image.id,
+      sortOrder,
+      target: composerRevisionMode ? { kind: "revision", postId } : { kind: "post", postId },
+      onProgress,
+    }, 2);
+    return { ...image, path: result.path, status: "ready", sortOrder, progress: 100, uploadPhase: undefined };
   };
-  const uploadVideoToPost = async (video: ComposerVideo, postId: string, sortOrder: number): Promise<ComposerVideo> => {
-    if (!VIDEO_UPLOAD_BETA_ENABLED) throw new Error("视频上传目前仅在 Beta 预览版开放");
-    if (!accountId) throw new Error("登录后可上传视频");
-    const file = video.file;
-    let path = video.path;
-    if (!path) {
-      if (!file) throw new Error("视频草稿文件已丢失，请重新选择视频");
-      const extension = videoExtension(file.type);
-      if (!extension) throw new Error("视频测试版仅支持 MP4、WebM 格式");
-      if (!file.size || file.size > POST_VIDEO_MAX_BYTES) throw new Error("视频大小不能超过 50 MB");
-      path = `${accountId}/${video.id}.${extension}`;
-      const db = await browserDb();
-      const clientConfig = await browserDbConfig();
-      const { data } = await db.auth.getSession();
-      if (!data.session) throw new Error("登录状态已失效，请重新登录");
-      await uploadVideoResumable({
-        file,
-        path,
-        supabaseUrl: clientConfig.url,
-        publishableKey: clientConfig.key,
-        accessToken: data.session.access_token,
-        onProgress: (progress) => setComposerVideo((current) => current?.id === video.id ? { ...current, progress, status: "uploading" } : current),
+  /**
+   * 多张图片并发上传（最多 3 张同时在途），并按真实字节汇总总进度。
+   * 之前是 for-await 一张一张传，9 张图要排 9 次队，弱网下第一张卡住后面全等着。
+   */
+  const uploadComposerImages = async (images: ComposerImage[], postId: string): Promise<ComposerImage[]> => {
+    if (!images.length) return [];
+    const totalBytes = images.reduce((sum, image) => sum + (image.file?.size || 0), 0);
+    const sentBytes = new Map<string, number>();
+    let completed = 0;
+    setUploadingImages(true);
+    setImageUploadProgress({ percent: 0, done: 0, total: images.length, phase: "uploading" });
+    const report = (imageId: string, progress: { percent: number; phase: "uploading" | "processing" | "done" }) => {
+      sentBytes.set(imageId, Math.round((images.find((item) => item.id === imageId)?.file?.size || 1) * progress.percent / 100));
+      const sent = [...sentBytes.values()].reduce((sum, value) => sum + value, 0);
+      const percent = totalBytes > 0
+        ? Math.min(99, Math.round(sent / totalBytes * 100))
+        : Math.min(99, Math.round(completed / images.length * 100));
+      setImageUploadProgress({ percent, done: completed, total: images.length, phase: progress.phase === "processing" ? "processing" : "uploading" });
+    };
+    try {
+      const uploaded = await mapWithConcurrency(images, 3, async (image, index) => {
+        draftMediaBusy.current.add(image.id);
+        setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading", progress: 0, uploadPhase: "uploading" } : item));
+        try {
+          const current = await uploadImageToPost(image, postId, index, (progress) => {
+            setComposerImages((items) => items.map((item) => item.id === image.id
+              ? { ...item, progress: progress.percent, uploadPhase: progress.phase === "processing" ? "processing" : "uploading" }
+              : item));
+            report(image.id, progress);
+          });
+          completed += 1;
+          sentBytes.set(image.id, image.file?.size || 1);
+          setComposerImages((items) => items.map((item) => item.id === image.id ? current : item));
+          report(image.id, { percent: 100, phase: "done" });
+          return current;
+        } catch (error) {
+          setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed", progress: undefined, uploadPhase: undefined } : item));
+          throw error;
+        } finally {
+          draftMediaBusy.current.delete(image.id);
+        }
       });
-      video = { ...video, path, status: "ready", progress: 100 };
-      setComposerVideo((current) => current?.id === video.id ? video : current);
+      setImageUploadProgress({ percent: 100, done: images.length, total: images.length, phase: "done" });
+      return uploaded;
+    } finally {
+      setUploadingImages(false);
     }
-    if (!composerRevisionMode || !video.existing) {
-      await cloudRequest(`/api/v1/posts/${postId}/media`, {
-        path,
-        sort_order: sortOrder,
-        media_type: "video",
-        ...(composerRevisionMode ? { revision: true } : {}),
-      });
-    }
-    return { ...video, path, status: "ready", progress: 100 };
-  };
-  const chooseComposerVideo = (file: File | null) => {
-    if (!file) return;
-    if (composerImages.length) return toast("视频 Beta 暂不与图片混发，请先移除已选图片");
-    if (!POST_VIDEO_TYPES.includes(file.type as (typeof POST_VIDEO_TYPES)[number])) return toast("视频测试版仅支持 MP4、WebM 格式");
-    if (!file.size || file.size > POST_VIDEO_MAX_BYTES) return toast("视频大小需在 1 B 到 50 MB 之间");
-    videoCompressionAbort.current?.abort();
-    const controller = new AbortController();
-    videoCompressionAbort.current = controller;
-    const sequence = ++videoCompressionSequence.current;
-    const id = crypto.randomUUID();
-    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
-    const url = URL.createObjectURL(file);
-    const wantsCompression = file.size > VIDEO_COMPRESSION_THRESHOLD;
-    const canCompress = wantsCompression && supportsVideoCompression();
-    setComposerVideo({ id, file, url, name: file.name, size: file.size, type: file.type, status: canCompress ? "compressing" : "ready", progress: 0, compressionProgress: 0, originalSize: file.size, compressionNote: wantsCompression && !canCompress ? "此浏览器暂不支持本地压缩，将保留原视频" : undefined });
-    if (!canCompress) return;
-    void compressVideoForUpload(file, (compressionProgress) => {
-      if (videoCompressionSequence.current !== sequence || controller.signal.aborted) return;
-      setComposerVideo((current) => current?.id === id ? { ...current, compressionProgress } : current);
-    }, controller.signal).then((result) => {
-      if (videoCompressionSequence.current !== sequence || controller.signal.aborted) return;
-      const nextUrl = result.file === file ? url : URL.createObjectURL(result.file);
-      if (nextUrl !== url) URL.revokeObjectURL(url);
-      setComposerVideo((current) => current?.id === id ? {
-        ...current,
-        file: result.file,
-        url: nextUrl,
-        name: result.file.name,
-        size: result.file.size,
-        type: result.file.type,
-        status: "ready",
-        compressionProgress: 100,
-        compressionNote: result.compressed
-          ? `已优化 ${(file.size / 1024 / 1024).toFixed(1)} MB → ${(result.file.size / 1024 / 1024).toFixed(1)} MB`
-          : result.reason === "unsupported" ? "此浏览器暂不支持本地压缩，将保留原视频" : "原视频画质已保留",
-      } : current);
-      videoCompressionAbort.current = null;
-    }).catch(() => {
-      if (controller.signal.aborted || videoCompressionSequence.current !== sequence) return;
-      setComposerVideo((current) => current?.id === id ? { ...current, status: "ready", compressionProgress: 100, compressionNote: "压缩未完成，已保留原视频" } : current);
-      videoCompressionAbort.current = null;
-    });
-  };
-  const removeComposerVideo = async () => {
-    if (!composerVideo) return;
-    videoCompressionAbort.current?.abort();
-    videoCompressionAbort.current = null;
-    videoCompressionSequence.current += 1;
-    const old = state.own.find((item) => item.id === editing);
-    if (composerVideo.path && old?.cloudId && composerVideo.existing && !composerRevisionMode) {
-      try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: composerVideo.path }, "DELETE"); }
-      catch (error) { toast(error instanceof Error ? error.message : "视频移除失败"); return; }
-    } else if (composerVideo.path && accountId && old?.cloudId) {
-      try { await cloudRequest("/api/v1/media", { upload_id: composerVideo.id, file_type: composerVideo.type, post_id: old.cloudId }, "DELETE"); }
-      catch (error) { toast(error instanceof Error ? error.message : "视频移除失败"); return; }
-    }
-    if (composerVideo.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
-    setComposerVideo(null);
   };
   const publish = async () => {
     if (publishInFlight.current) return;
@@ -3046,9 +3014,6 @@ export default function Community({
     if (!accountId) { await flushComposerDraft.current().catch(()=>{}); return toast("请先在消息页面登录，当前输入会保留"); }
     if (composerImages.some(image=>!image.external&&!image.path&&!image.file)) return toast("有图片文件未恢复，请替换后再提交");
     if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
-    if (composerVideo?.status === "compressing") return toast("视频正在优化，请稍后发布");
-    if (composerVideo?.status === "uploading") return toast("视频正在上传，请稍后发布");
-    if (composerVideo && composerImages.length) return toast("视频 Beta 暂不与图片混发，请移除其中一种媒体");
     if (draftSaveTimer.current !== null) {
       window.clearTimeout(draftSaveTimer.current);
       draftSaveTimer.current = null;
@@ -3075,33 +3040,8 @@ export default function Community({
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
       const orderedImages = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
-      const uploaded: ComposerImage[] = [];
-      setUploadingImages(true);
-      for (const [index, image] of orderedImages.entries()) {
-        draftMediaBusy.current.add(image.id);
-        setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading" } : item));
-        try {
-          const current = await uploadImageToPost(image, draft.cloudId, index);
-          uploaded.push(current);
-          setComposerImages((items) => items.map((item) => item.id === image.id ? current : item));
-        } catch (error) {
-          setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed" } : item));
-          throw error;
-        } finally { draftMediaBusy.current.delete(image.id); }
-      }
-      let uploadedVideo: ComposerVideo | null = null;
-      if (composerVideo) {
-        setComposerVideo((current) => current ? { ...current, status: "uploading", progress: current.path ? 100 : 0 } : current);
-        try {
-          uploadedVideo = await uploadVideoToPost({ ...composerVideo, status: "uploading" }, draft.cloudId, uploaded.length);
-          setComposerVideo(uploadedVideo);
-        } catch (error) {
-          setComposerVideo((current) => current ? { ...current, status: "failed" } : current);
-          throw error;
-        }
-      }
-      setUploadingImages(false);
-      const mediaPaths = [...uploaded.map((image) => image.path!), ...(uploadedVideo?.path ? [uploadedVideo.path] : [])];
+      const uploaded = await uploadComposerImages(orderedImages, draft.cloudId);
+      const mediaPaths = uploaded.map((image) => image.path!);
       const item = channel === "ai"
         ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: tag, topics: topics, contentType: contentType, resourceData, attachments: attachmentPayload, seriesId: writeSeriesId || null, mediaPaths, coverUrl: cover?.external ? cover.url : null, routeConfirmed: routeClassifiedByAi })
         : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: tag, topics: topics, attachments: attachmentPayload, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null, routeConfirmed: routeClassifiedByAi });
@@ -3121,8 +3061,7 @@ export default function Community({
       setPollOptions(["", ""]);
       composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
       setComposerImages([]);
-      if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
-      setComposerVideo(null);
+      setImageUploadProgress(null);
       setCoverIndex(0);
       setEditing(null);
       setComposerEditingPublished(false);
@@ -3297,7 +3236,6 @@ export default function Community({
     setTitle("");
     setBody("");
     setComposerImages([]);
-    setComposerVideo(null);
     setComposerAttachments([]);
     setPollQuestion("");
     setPollOptions(["", ""]);
@@ -3309,11 +3247,7 @@ export default function Community({
 
   const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community", localDraft?: LocalDraft) => {
     composerImages.forEach(image=>{if(image.url.startsWith("blob:"))URL.revokeObjectURL(image.url);});
-    composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false);
-    videoCompressionAbort.current?.abort();
-    videoCompressionAbort.current = null;
-    videoCompressionSequence.current += 1;
-    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
+    composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false); setImageUploadProgress(null);
     // 正常入口一律从空白开始；只有主动从草稿箱选择才会恢复内容。
     const initialPost = post;
     composerDraftRef.current = initialPost || null;
@@ -3348,7 +3282,6 @@ export default function Community({
     setWriteSeriesId(revisionPayload?.seriesId || initialPost?.seriesId || "");
     setTopicSearch("");
     setComposerImages([]);
-    setComposerVideo(null);
     setComposerValidation("");
     setCoverIndex(0);
     lastDraftPayload.current = "";
@@ -3370,19 +3303,12 @@ export default function Community({
         const mediaToLoad = revisionMedia || data?.post_media || [];
         if (mediaToLoad.length || revisionPayload?.coverUrl || data?.image_url) {
           const orderedMedia = mediaToLoad.slice().sort((a,b) => a.sort_order-b.sort_order);
+          // 历史视频作品只保留原作品展示；发布器不再加载视频，也不提供新的上传入口。
           const imageMedia = orderedMedia.filter((item) => !isVideoMediaPath(item.storage_path));
-          const videoMedia = orderedMedia.find((item) => isVideoMediaPath(item.storage_path));
           const images = await Promise.all(imageMedia.map(async (item, index) => {
             const url = await composerMediaUrl(item.storage_path);
             return {id:`saved-${index}-${item.storage_path}`,path:item.storage_path,url:url || "/image-not-loaded.svg",status:"ready" as const,sortOrder:index};
           }));
-          if (videoMedia) {
-            const url = await composerMediaUrl(videoMedia.storage_path);
-            {
-              const extension = videoMedia.storage_path.toLowerCase().split(".").pop();
-              setComposerVideo({ id: videoMedia.storage_path.split("/").pop()!.replace(/\.(?:mp4|webm)$/i, ""), path: videoMedia.storage_path, url, name: `已上传视频.${extension}`, size: 0, type: extension === "webm" ? "video/webm" : "video/mp4", status: "ready", progress: 100, existing: true });
-            }
-          }
           const externalCover = revisionPayload ? revisionPayload.coverUrl : data?.image_url;
           const external = externalCover ? [{ id: "legacy-cover", url: externalCover, status: "ready" as const, external: true }] : [];
           setComposerImages([...external, ...images.filter((image): image is NonNullable<typeof image> => Boolean(image))]);
@@ -3416,12 +3342,12 @@ export default function Community({
           restoredImages.push({ id: image.id, url: image.externalUrl, status: "ready", external: true });
         }
       }
-      setComposerImages(restoredImages);
-      if (localDraft.video?.fileId) {
-        const blob = await getDraftFile(localDraft.id, localDraft.video.fileId).catch(() => null);
-        if (blob) setComposerVideo({ id: localDraft.video.id, file: new File([blob], localDraft.video.name || "video.mp4", { type: localDraft.video.type || blob.type }), url: URL.createObjectURL(blob), name: localDraft.video.name || "视频", size: localDraft.video.size || blob.size, type: localDraft.video.type || blob.type, status: "ready", progress: 100 });
-        else setComposerVideo(null);
-      } else setComposerVideo(null);
+      // 恢复草稿时可能已经在恢复过程中又选了新图：合并而不是覆盖，避免把新图清掉。
+      setComposerImages((current) => {
+        if (!current.length) return restoredImages;
+        const existing = new Set(current.map((image) => image.id));
+        return [...current, ...restoredImages.filter((image) => !existing.has(image.id))].slice(0, 9);
+      });
       setComposerValidation("");
     }
     setDraftSaved(false);
@@ -3435,7 +3361,7 @@ export default function Community({
     const persist = async () => {
       if (publishInFlight.current || !currentSession()) return;
       const poll = { question: pollQuestion.trim(), options: pollOptions.map((option) => option.trim()).filter(Boolean) };
-      const hasContent = Boolean(title.trim() || body.trim() || composerImages.length || composerVideo || composerAttachments.length || poll.question || poll.options.length);
+      const hasContent = Boolean(title.trim() || body.trim() || composerImages.length || composerAttachments.length || poll.question || poll.options.length);
       if (!hasContent) return;
       const id = localDraftIdRef.current || crypto.randomUUID();
       const draft: LocalDraft = {
@@ -3459,13 +3385,11 @@ export default function Community({
           name: image.file?.name,
           type: image.file?.type,
         })),
-        video: composerVideo ? { id: composerVideo.id, fileId: composerVideo.file ? composerVideo.id : undefined, name: composerVideo.name, size: composerVideo.size, type: composerVideo.type } : null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       const files: { fileId: string; blob: Blob }[] = [];
       for (const image of composerImages) if (image.file) files.push({ fileId: image.id, blob: image.file });
-      if (composerVideo?.file) files.push({ fileId: composerVideo.id, blob: composerVideo.file });
       for (const attachment of composerAttachments) {
         if (!attachment.path.startsWith("local:")) continue;
         const file = pendingAttachmentFiles.current.get(attachment.path.slice(6));
@@ -3494,7 +3418,7 @@ export default function Community({
     return () => { window.clearTimeout(timer); window.removeEventListener("pagehide", save); if (draftSaveTimer.current === timer) draftSaveTimer.current = null; };
   // 面板开关等纯 UI 状态不参与依赖，避免打开面板就重启自动保存。
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerVideo, composerAttachments, composerEditingPublished, writeChannel, writeContentType, aiResourceFields]);
+  }, [modal, editing, accountId, title, body, writeTag, writeTopics, writeSeriesId, pollQuestion, pollOptions, coverIndex, composerImages, composerAttachments, composerEditingPublished, writeChannel, writeContentType, aiResourceFields]);
   const reloadComposerMedia = async () => {
     const old=composerDraftRef.current || state.own.find(item=>item.id===editing);
     if(!old?.cloudId)return;
@@ -3506,8 +3430,6 @@ export default function Community({
       const images=await Promise.all(media.filter(item=>!isVideoMediaPath(item.storage_path)).map(async(item,index)=>({id:`saved-${index}-${item.storage_path}`,path:item.storage_path,url:(await composerMediaUrl(item.storage_path)) || "/image-not-loaded.svg",status:"ready" as const,sortOrder:index})));
       const external=old.pendingRevision?old.pendingRevision.payload.coverUrl:data.image_url;
       setComposerImages(current=>[...(external&&!current.some(image=>image.external)?[{id:"legacy-cover",url:external,external:true,status:"ready" as const}]:[]),...images,...current.filter(image=>!images.some(item=>item.path===image.path))]);
-      const video=media.find(item=>isVideoMediaPath(item.storage_path));
-      if(video)setComposerVideo({id:video.storage_path,path:video.storage_path,url:await composerMediaUrl(video.storage_path),name:"已上传视频",size:0,type:video.storage_path.endsWith("webm")?"video/webm":"video/mp4",status:"ready",progress:100,existing:true});
       setComposerMediaLoadFailed(false);
     } catch(error) { toast(error instanceof Error?error.message:"附件读取失败，请重试"); } finally {setUploadingImages(false);}
   };
@@ -3625,22 +3547,23 @@ export default function Community({
 
   const chooseComposerImages = async (files: FileList | null) => {
     if (!files?.length || uploadingImages || isPublishing) return;
-    if (composerVideo) return toast("视频 Beta 暂不与图片混发，请先移除视频");
     const validation = validateComposerFiles(Array.from(files), composerImages.length);
     if (validation.error) toast(validation.error);
     if (!validation.accepted.length) return;
     setUploadingImages(true);
-    const next: ComposerImage[] = [];
     let failureMessage = "";
     try {
-      for (const file of validation.accepted) {
+      // 多张图同时压缩：原来 for-await 一张张等 canvas 编码，9 张要串行好几秒。
+      const compressed = await mapWithConcurrency(validation.accepted, 3, async (file) => {
         try {
-          const compressed = await compressUploadImage(file);
-          next.push({ id: crypto.randomUUID(), file: compressed, url: URL.createObjectURL(compressed), status: "ready" });
+          const current = await compressUploadImage(file);
+          return { id: crypto.randomUUID(), file: current, url: URL.createObjectURL(current), status: "ready" as const };
         } catch (error) {
           failureMessage ||= error instanceof Error ? error.message : "有图片压缩失败，请重新选择";
+          return null;
         }
-      }
+      });
+      const next: ComposerImage[] = compressed.flatMap((image) => image ? [image] : []);
       if (failureMessage) toast(failureMessage);
       setComposerImages((current) => [...current, ...next]);
       if (!composerImages.length && next.length) setCoverIndex(0);
@@ -3673,20 +3596,25 @@ export default function Community({
     if (draftMediaBusy.current.has(imageId)) return;
     draftMediaBusy.current.add(imageId);
     setUploadingImages(true);
-    setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "uploading" } : item));
+    setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "uploading", progress: 0, uploadPhase: "uploading" } : item));
+    setImageUploadProgress({ percent: 0, done: 0, total: 1, phase: "uploading" });
     try {
       const old = state.own.find((item) => item.id === editing);
       const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai" ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields }) as Post | null : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
       if (!draft?.cloudId) throw new Error("草稿保存失败");
-      const synced = await uploadImageToPost(image, draft.cloudId, composerImages.indexOf(image));
+      const synced = await uploadImageToPost(image, draft.cloudId, composerImages.indexOf(image), (progress) => {
+        setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, progress: progress.percent, uploadPhase: progress.phase === "processing" ? "processing" : "uploading" } : item));
+        setImageUploadProgress({ percent: progress.percent, done: 0, total: 1, phase: progress.phase });
+      });
       setEditing(draft.id); update((current) => ({ ...current, own: [draft, ...current.own.filter((item) => item.id !== draft.id)] }));
       setComposerImages((items) => items.map((item) => item.id === imageId ? synced : item));
+      setImageUploadProgress({ percent: 100, done: 1, total: 1, phase: "done" });
       toast("图片已上传");
-    } catch (error) { setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "failed" } : item)); toast(error instanceof Error ? error.message : "图片上传失败"); }
+    } catch (error) { setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "failed", progress: undefined, uploadPhase: undefined } : item)); setImageUploadProgress(null); toast(error instanceof Error ? error.message : "图片上传失败"); }
     finally { draftMediaBusy.current.delete(imageId); setUploadingImages(false); }
   };
   const discardComposerDraft = async () => {
-    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id)) || composerVideo?.status === "uploading" || composerVideo?.status === "compressing") return toast("媒体正在处理，请稍后再删除");
+    if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id))) return toast("图片正在处理，请稍后再删除");
     if (!await confirmInApp("删除这份草稿及其图片？此操作无法撤销。", {title:"删除草稿",confirmLabel:"删除草稿",danger:true})) return;
     if (draftSaveTimer.current !== null) { window.clearTimeout(draftSaveTimer.current);draftSaveTimer.current=null; }
     await draftCloudQueue.current;
@@ -3698,7 +3626,6 @@ export default function Community({
         if (draft?.cloudId) {
           old = draft;
           for (const image of composerImages) if (image.file && !image.path) await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: draft.cloudId }, "DELETE");
-          if (composerVideo?.path && !composerVideo.existing) await cloudRequest("/api/v1/media", { upload_id: composerVideo.id, file_type: composerVideo.type, post_id: draft.cloudId }, "DELETE");
           if (writeChannel === "ai") await cloudRequest(`/api/v1/posts/${draft.cloudId}`, {}, "DELETE"); else await cloudRequest("/api/v1/library-state", { action: "delete", id: draft.id });
           update((current) => ({ ...current, own: current.own.filter((item) => item.id !== draft.id) }));
         }
@@ -3707,12 +3634,8 @@ export default function Community({
     const owner = accountId || "guest";
     localStorage.removeItem(`heika-compose-${writeChannel}-${owner}`); if (writeChannel === "community") localStorage.removeItem(`heika-compose-${owner}`); await clearDraftFiles(`${owner}:${writeChannel}`).catch(() => {});
     composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
-    if (composerVideo?.url.startsWith("blob:")) URL.revokeObjectURL(composerVideo.url);
-    videoCompressionAbort.current?.abort();
-    videoCompressionAbort.current = null;
-    videoCompressionSequence.current += 1;
     composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.delete(`${owner}:${writeChannel}`);
-    setComposerVideo(null); setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
+    setComposerImages([]); setTitle(""); setBody(""); setPollQuestion(""); setPollOptions(["", ""]); setEditing(null); setModal(null); toast("草稿已删除");
   };
   const openTopic = async (name: string) => {
     setTopicLoading(true);
@@ -3939,9 +3862,10 @@ export default function Community({
     setAiWorkbenchBusy(true); setAiWorkbenchOutput(""); setAiResultApplied(false);
     try {
       setAiWorkbenchOutput("");
-      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag, prompt, messages: aiWorkbenchMessages }) as { output?: unknown } | null;
+      const result = await cloudRequest("/api/v1/ai/workbench", { mode: aiWorkbenchMode, title, content: body, category: writeTag, prompt, messages: aiWorkbenchMessages }) as { output?: unknown; warning?: unknown } | null;
       if (typeof result?.output !== "string" || !result.output.trim()) throw new Error("登录状态已失效或 AI 没有返回内容，请重试");
       setAiWorkbenchOutput(result.output);
+      if (typeof result.warning === "string" && result.warning.trim()) toast(result.warning);
       const userMessage = prompt || `请根据当前稿件执行${({ title: "标题建议", outline: "写作提纲", polish: "润色正文", continue: "内容续写", markdown: "Markdown 优化", topics: "推荐话题" } as const)[aiWorkbenchMode]}。`;
       setAiWorkbenchMessages((current) => [...current, { role: "user" as const, content: userMessage }, { role: "assistant" as const, content: result.output as string }].slice(-12));
       setAiWorkbenchPrompt("");
@@ -3985,9 +3909,10 @@ export default function Community({
     setMarkdownOptimizeError("");
     setMarkdownOptimizeOutput("");
     try {
-      const result = await cloudRequest("/api/v1/ai/workbench", { mode: "markdown", title, content: body, category: writeTag, prompt: "", messages: [] }) as { output?: unknown } | null;
+      const result = await cloudRequest("/api/v1/ai/workbench", { mode: "markdown", title, content: body, category: writeTag, prompt: "", messages: [] }) as { output?: unknown; warning?: unknown } | null;
       if (typeof result?.output !== "string" || !result.output.trim()) throw new Error("登录状态已失效或 AI 没有返回内容，请重试");
       setMarkdownOptimizeOutput(result.output.trim());
+      if (typeof result.warning === "string" && result.warning.trim()) toast(result.warning);
     } catch (error) { setMarkdownOptimizeError(error instanceof Error ? error.message : "Markdown 优化失败，请稍后重试"); }
     finally { setMarkdownOptimizeBusy(false); }
   };
@@ -6731,36 +6656,22 @@ export default function Community({
                     {!aiWorkbenchOutput && <div className="ai-workbench-placeholder">可直接输入修改要求，或从当前正文开始；生成结果会先预览，不会自动覆盖原稿。</div>}
                   </div>}
                 </section>
-                <section className="composer-media-picker" aria-label="选择图片或视频">
+                <section className="composer-media-picker is-single" aria-label="选择图片">
                   <div className="composer-media-choices" role="group" aria-label="媒体类型">
-                    <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerVideo || composerImages.length >= 9 ? " disabled" : ""}`}>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploadingImages || Boolean(composerVideo) || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
+                    <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerImages.length >= 9 ? " disabled" : ""}`}>
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploadingImages || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
                       <span className="composer-media-choice-icon"><ImagePlus size={20}/></span>
-                      <span className="composer-media-choice-copy"><strong>图片</strong><small>{composerImages.length >= 9 ? "已达最多 9 张" : composerImages.length ? `已选 ${composerImages.length}/9` : "JPG / PNG · 最多 9 张"}</small></span>
+                      <span className="composer-media-choice-copy"><strong>图片</strong><small>{composerImages.length >= 9 ? "已达最多 9 张" : composerImages.length ? `已选 ${composerImages.length}/9` : "JPG / PNG / WebP · 最多 9 张"}</small></span>
                       <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
                     </label>
-                    {VIDEO_UPLOAD_BETA_ENABLED ? <label className={`composer-media-choice video${composerVideo ? " selected" : ""}${composerImages.length ? " disabled" : ""}`}>
-                      <input type="file" accept="video/mp4,video/webm" disabled={Boolean(composerImages.length)} onChange={(event) => { chooseComposerVideo(event.target.files?.[0] || null); event.currentTarget.value = ""; }}/>
-                      <span className="composer-media-choice-icon"><VideoIcon size={20}/></span>
-                      <span className="composer-media-choice-copy"><strong>视频 <i>Beta</i></strong><small>MP4 / WebM · 50 MB</small></span>
-                      <span className="composer-media-choice-mark">{composerVideo ? "已选" : "选择"}</span>
-                    </label> : <button type="button" className="composer-media-choice video is-locked" disabled={Boolean(composerImages.length)} onClick={() => toast("视频上传正在内测，暂未开放；图片和正文可以先发")}>
-                      <span className="composer-media-choice-icon"><VideoIcon size={20}/></span>
-                      <span className="composer-media-choice-copy"><strong>视频 <i>Beta</i></strong><small>内测中 · 暂未开放</small></span>
-                      <span className="composer-media-choice-mark">敬请期待</span>
-                    </button>}
                   </div>
-                  <p className="composer-media-hint">{VIDEO_UPLOAD_BETA_ENABLED ? "图片与视频可选其一 · 视频 Beta 最大 50 MB" : "最多 9 张图片 · 自动优化上传 · 视频内测中"}</p>
-                  {composerVideo && <section className="composer-video-section" aria-label="视频 Beta" aria-busy={composerVideo.status === "compressing" || composerVideo.status === "uploading"}>
-                    <div className="composer-video-card">
-                      <video src={composerVideo.url || undefined} controls playsInline preload="metadata" aria-label="视频预览" />
-                      <div className="composer-video-info"><strong>{composerVideo.name}</strong><small>{composerVideo.status === "compressing" ? `正在优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo.status === "failed" ? "上传失败，重新发布可重试" : composerVideo.status === "uploading" ? `正在上传 ${composerVideo.progress}%` : composerVideo.size ? `${(composerVideo.size / 1024 / 1024).toFixed(1)} MB · ${composerVideo.compressionNote || (composerVideo.path ? "已同步到草稿" : "等待上传")}` : "已同步到草稿"}</small></div>
-                      <button type="button" className="composer-video-remove" onClick={() => void removeComposerVideo()}>{composerVideo.status === "compressing" ? "取消" : "移除"}</button>
-                      {(composerVideo.status === "compressing" || composerVideo.status === "uploading") && <progress max={100} value={composerVideo.status === "compressing" ? composerVideo.compressionProgress || 0 : composerVideo.progress} aria-label={composerVideo.status === "compressing" ? `视频优化 ${composerVideo.compressionProgress || 0}%` : `视频上传 ${composerVideo.progress}%`} />}
-                    </div>
-                  </section>}
+                  <p className="composer-media-hint">最多 9 张图片 · 本地自动压缩 · 多张并发上传并显示真实进度</p>
                 </section>
                 {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
+                {imageUploadProgress && imageUploadProgress.phase !== "done" && <div className="composer-upload-progress" role="status" aria-live="polite">
+                  <div><span>{imageUploadProgress.phase === "processing" ? "服务器正在生成缩略图…" : `正在上传图片 ${imageUploadProgress.done}/${imageUploadProgress.total}`}</span><b>{imageUploadProgress.percent}%</b></div>
+                  <progress max={100} value={imageUploadProgress.percent} aria-label={`图片上传 ${imageUploadProgress.percent}%`}/>
+                </div>}
                 <ComposerAttachments items={composerAttachments} quota={attachmentQuota} busy={attachmentBusy} error={attachmentError} progress={attachmentProgress} retryAvailable={attachmentRetryFiles.length > 0} onAdd={(files) => void addComposerAttachments(files)} onRetry={() => void retryComposerAttachments()} onRemove={(path) => void removeComposerAttachment(path)}/>
                 
                 <button type="button" className="composer-setting-row" onClick={() => setComposerPanel("topics")}><span># 话题</span><small>{writeTopics.length ? writeTopics.map(topic=>`#${topic}`).join(" ") : "添加话题"}</small><ChevronRight size={16}/></button>
@@ -6810,7 +6721,7 @@ export default function Community({
                   <button type="button" className="is-danger" onClick={() => void deleteCurrentDraft()}><Trash2 size={15} /> 删除当前草稿</button>
                   <small>草稿只保存在当前设备，不会上传云端。</small>
                 </section>
-</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}{composerVideo && <video src={composerVideo.url || undefined} controls playsInline preload="metadata"/>}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<PostAttachmentsPanel resourceData={{ attachments: composerAttachments }} onNotice={toast}/><div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
+</> : <article className="composer-preview detail-body"><small>{writeChannel === "ai" ? "AI 空间" : "社区作品"} · {writeTag}</small><h1>{title || "未填写标题"}</h1><div className="composer-preview-media">{[composerImages[coverIndex], ...composerImages.filter((_,index)=>index!==coverIndex)].filter(Boolean).map(image=><img key={image.id} src={image.url} alt="内容图片预览"/>)}</div><MarkdownContent source={body} className="article"/>{writeChannel === "ai" && <AIResourceDetails preview postId="" contentType={writeContentType} resourceData={aiResourceFields} accountId={accountId} onLogin={()=>{}} onNotice={toast}/>}<PostAttachmentsPanel resourceData={{ attachments: composerAttachments }} onNotice={toast}/><div className="composer-preview-topics">{writeTopics.map(topic=><span key={topic}>#{topic}</span>)}</div>{pollQuestion.trim() && writeChannel === "community" && <section className="composer-preview-poll"><strong>{pollQuestion}</strong>{pollOptions.filter(option=>option.trim()).map((option,index)=><p key={index}>{option}</p>)}</section>}<p className="fineprint">创作预览 · 提交后进入人工审核</p></article>}
             </ComposerSheet>}
             {modal === "write" && markdownOptimizeOpen && <ComposerSheet title="Markdown 优化" full onClose={() => { if (!markdownOptimizeBusy) setMarkdownOptimizeOpen(false); }}>
               {markdownOptimizeBusy ? <section className="composer-markdown-state" aria-live="polite"><strong>正在整理 Markdown 结构…</strong><small>保持原意与事实，只调整标题层级、列表、引用和代码块。</small></section> : markdownOptimizeError ? <section className="composer-markdown-state"><p role="alert">{markdownOptimizeError}</p><div className="composer-markdown-actions"><button type="button" className="primary-button" onClick={() => void optimizeMarkdown()}>重试</button><button type="button" className="soft-button" onClick={() => setMarkdownOptimizeOpen(false)}>关闭</button></div></section> : <>
@@ -6821,7 +6732,7 @@ export default function Community({
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && markdownPreviousBody !== null && <div className="composer-markdown-applied" role="status"><span>已应用 Markdown 优化</span><button type="button" onClick={undoMarkdownOptimize}>撤回</button></div>}
-            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftLocalState === "saving" ? "正在保存到本机…" : draftLocalState === "saved" ? "已保存到本机" : draftLocalState === "error" ? "本机保存失败" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading") || composerVideo?.status === "uploading" || composerVideo?.status === "compressing"} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{composerSuggestion?.checking ? "正在检查内容…" : isPublishing ? "正在提交…" : composerVideo?.status === "compressing" ? `优化视频 ${composerVideo.compressionProgress || 0}%` : composerVideo?.status === "uploading" ? `上传视频 ${composerVideo.progress}%` : uploadingImages || composerImages.some((image) => image.status === "uploading") ? "正在上传图片…" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftLocalState === "saving" ? "正在保存到本机…" : draftLocalState === "saved" ? "已保存到本机" : draftLocalState === "error" ? "本机保存失败" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{composerSuggestion?.checking ? "正在检查内容…" : isPublishing ? "正在提交…" : uploadingImages || composerImages.some((image) => image.status === "uploading") ? `上传图片 ${imageUploadProgress?.percent ?? 0}%` : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}

@@ -248,7 +248,7 @@ fun ProfileScreen(
                     )
                 },
                 contentPadding = PaddingValues(start = pageGutter, end = pageGutter, top = 0.dp, bottom = 140.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalItemSpacing = 14.dp,
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalItemSpacing = 12.dp,
             ) {
                 item(span = StaggeredGridItemSpan.FullLine) {
                     Column(Modifier.fillMaxWidth().bleedHorizontal(pageGutter)) {
@@ -434,16 +434,25 @@ fun ProfileScreen(
                         }
                     }
                 }
-                item(span = StaggeredGridItemSpan.FullLine) { ProfileTabBar(selected, compact = true, horizontalInset = 0.dp) {
-                    if (selected != it) {
-                        selected = it
-                        HeikaNoticeBus.showSelection("已切换到${ProfileTabs.firstOrNull { tab -> tab.second == it }?.first ?: "个人内容"}")
-                    }
-                } }
-                if (state.own && selected == "works") item(span = StaggeredGridItemSpan.FullLine) {
-                    Row(Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${state.posts.size} 篇作品", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                        Text("作品管理", Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onManageWorks).padding(horizontal = 10.dp, vertical = 7.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                // 标签栏与「N 篇作品 / 作品管理」合成一个栅格项：
+                // 拆成两项时中间会多出一整个 verticalItemSpacing，标签与作品数看起来被拉开一截。
+                item(span = StaggeredGridItemSpan.FullLine) {
+                    Column(Modifier.fillMaxWidth()) {
+                        ProfileTabBar(selected, compact = true, horizontalInset = 0.dp) {
+                            if (selected != it) {
+                                selected = it
+                                HeikaNoticeBus.showSelection("已切换到${ProfileTabs.firstOrNull { tab -> tab.second == it }?.first ?: "个人内容"}")
+                            }
+                        }
+                        if (state.own && selected == "works") {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("${state.posts.size} 篇作品", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                                Text("作品管理", Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onManageWorks).padding(horizontal = 8.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                            }
+                        }
                     }
                 }
                 if (selected == "collections") item(span = StaggeredGridItemSpan.FullLine) {
@@ -507,14 +516,14 @@ private fun ProfileTabBar(
 ) {
     Row(
         modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-            .padding(start = horizontalInset, end = 18.dp, top = if (compact) 2.dp else 6.dp, bottom = if (compact) 2.dp else 6.dp),
+            .padding(start = horizontalInset, end = 18.dp, top = if (compact) 0.dp else 6.dp, bottom = if (compact) 0.dp else 6.dp),
         horizontalArrangement = Arrangement.spacedBy(22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ProfileTabs.forEach { (title, key) ->
             val active = selected == key
             Column(
-                Modifier.clickable { onSelect(key) }.padding(vertical = 5.dp),
+                Modifier.clickable { onSelect(key) }.padding(vertical = if (compact) 4.dp else 5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
@@ -524,7 +533,7 @@ private fun ProfileTabBar(
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 )
                 Box(
-                    Modifier.padding(top = 6.dp).height(1.5.dp).width(15.dp)
+                    Modifier.padding(top = if (compact) 5.dp else 6.dp).height(1.5.dp).width(15.dp)
                         .clip(RoundedCornerShape(1.dp))
                         .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = .85f) else Color.Transparent),
                 )

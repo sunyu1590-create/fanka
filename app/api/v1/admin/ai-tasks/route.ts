@@ -17,10 +17,14 @@ export async function GET(req: NextRequest) {
     if (batches.error || reviewItems.error || metrics.error) throw new ApiError(503, "AI 任务数据暂不可用，请确认数据库迁移已由部署人员应用");
     const batchIds = (batches.data || []).map((batch) => batch.id);
     const classificationBatchIds = (batches.data || []).filter((batch) => batch.task_type === "classification").map((batch) => batch.id);
-    const [usage, classificationRows] = await Promise.all([
+    const failedBatchIds = (batches.data || []).filter((batch) => Number(batch.failed_count) > 0).map((batch) => batch.id);
+    const [usage, classificationRows, failedItems] = await Promise.all([
       batchIds.length ? admin.rpc("get_ai_task_usage", { p_batch_ids: batchIds }) : Promise.resolve({ data: {}, error: null }),
       classificationBatchIds.length
         ? admin.from("ai_task_items").select("id,batch_id,post_id,status,result,result_history,error_message,updated_at").in("batch_id", classificationBatchIds).order("updated_at", { ascending: false }).limit(100)
+        : Promise.resolve({ data: [], error: null }),
+      failedBatchIds.length
+        ? admin.from("ai_task_items").select("batch_id,error_message,updated_at").in("batch_id", failedBatchIds).eq("status", "failed").order("updated_at", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (usage.error) throw new ApiError(503, "批量任务 Token 用量暂不可读取");
@@ -46,7 +50,11 @@ export async function GET(req: NextRequest) {
     if (classifiedPosts.error) throw new ApiError(503, "自动分类作品信息暂不可读取");
     const classifiedPostById = new Map((classifiedPosts.data || []).map((post) => [post.id, post]));
     const classificationItems = (classificationRows.data || []).map((item) => ({ ...item, post: item.post_id ? classifiedPostById.get(item.post_id) || null : null }));
-    return { batches: (batches.data || []).map((batch) => ({ ...batch, current_post_title: batch.current_post_id ? titleByPostId.get(batch.current_post_id) || null : null, task_usage: usageByBatch[batch.id] || null })), reviewItems: items, classificationItems, metrics: metrics.data || {} };
+    const lastErrorByBatch = new Map<string, string>();
+    for (const item of failedItems.data || []) {
+      if (!lastErrorByBatch.has(item.batch_id) && item.error_message) lastErrorByBatch.set(item.batch_id, item.error_message);
+    }
+    return { batches: (batches.data || []).map((batch) => ({ ...batch, current_post_title: batch.current_post_id ? titleByPostId.get(batch.current_post_id) || null : null, task_usage: usageByBatch[batch.id] || null, last_error: lastErrorByBatch.get(batch.id) || null })), reviewItems: items, classificationItems, metrics: metrics.data || {} };
   });
 }
 
@@ -72,7 +80,9 @@ export async function POST(req: NextRequest) {
     }
     const queued = taskType === "review_pending"
       ? await admin.rpc("enqueue_ai_review_items", { p_batch_id: inserted.data.id })
-      : await admin.rpc("enqueue_ai_summary_items", { p_batch_id: inserted.data.id, p_include_existing: taskType === "summary_all" && body.includeExisting === true });
+      // 全量任务默认重新生成已有摘要；只有管理员显式勾掉“重新生成已有总结”才退化为补缺。
+      // 之前默认 false，全部文章都有摘要时全量任务会 0 条入队，看起来像按钮失效。
+      : await admin.rpc("enqueue_ai_summary_items", { p_batch_id: inserted.data.id, p_include_existing: taskType === "summary_all" && body.includeExisting !== false });
     if (queued.error) {
       await admin.from("ai_task_batches").update({ status: "failed", completed_at: new Date().toISOString() }).eq("id", inserted.data.id);
       throw new ApiError(503, "任务已记录，但无法建立处理队列；请检查数据库迁移");

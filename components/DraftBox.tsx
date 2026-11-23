@@ -124,7 +124,7 @@ export default function DraftBox({
     }
   };
 
-  const totalFiles = useMemo(() => items.reduce((sum, draft) => sum + draft.images.length + (draft.video ? 1 : 0), 0), [items]);
+  const totalFiles = useMemo(() => items.reduce((sum, draft) => sum + draft.images.length, 0), [items]);
 
   if (!open) return null;
 
@@ -172,7 +172,7 @@ export default function DraftBox({
                       <span className="draft-item-meta">
                         <em className={draft.channel === "ai" ? "is-ai" : ""}>{draft.channel === "ai" ? "AI 内容" : "精选内容"}</em>
                         <small>{formatTime(draft.updatedAt)}</small>
-                        {(draft.images.length > 0 || draft.video) && <small><ImageIcon size={11} /> {draft.images.length + (draft.video ? 1 : 0)}</small>}
+                        {draft.images.length > 0 && <small><ImageIcon size={11} /> {draft.images.length}</small>}
                         {draft.attachments.length > 0 && <small>附件 {draft.attachments.length}</small>}
                       </span>
                     </span>

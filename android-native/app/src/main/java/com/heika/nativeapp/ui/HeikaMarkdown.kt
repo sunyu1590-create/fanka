@@ -21,11 +21,15 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -41,6 +45,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import android.webkit.WebView
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
+import com.heika.nativeapp.BuildConfig
 
 /**
  * 轻量 Markdown 渲染器：标题、列表、引用、代码块、分割线，以及行内的
@@ -52,14 +58,15 @@ private sealed interface MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock
     data class Paragraph(val text: String) : MdBlock
     data class Quote(val lines: List<String>) : MdBlock
-    data class Item(val ordered: Boolean, val index: Int, val text: String) : MdBlock
+    data class Item(val ordered: Boolean, val index: Int, val text: String, val depth: Int = 0) : MdBlock
+    data class Image(val alt: String, val url: String) : MdBlock
     data class Code(val language: String, val code: String) : MdBlock
     data class Table(val header: List<String>, val rows: List<List<String>>) : MdBlock
     data class Task(val checked: Boolean, val text: String) : MdBlock
     data object Rule : MdBlock
 }
 
-private val blockStart = Regex("^(#{1,6}\\s|>\\s?|[-*+]\\s|\\d+[.)]\\s|```|\\||---+\\s*$)")
+private val blockStart = Regex("^(#{1,6}\\s|>\\s?|[-*+]\\s|\\d+[.)]\\s|```|\\||!\\[|---+\\s*$)")
 
 private fun parseBlocks(source: String): List<MdBlock> {
     val lines = source.replace("\r\n", "\n").split("\n")
@@ -81,7 +88,21 @@ private fun parseBlocks(source: String): List<MdBlock> {
 
         val heading = Regex("^(#{1,6})\\s+(.+)$").find(line)
         if (heading != null) {
-            blocks.add(MdBlock.Heading(heading.groupValues[1].length, heading.groupValues[2]))
+            blocks.add(MdBlock.Heading(heading.groupValues[1].length, heading.groupValues[2].trimEnd('#')))
+            i++
+            continue
+        }
+        // Setext 标题：下一行是一串 = 或 -，写作工具与 AI 偶尔会用这种写法。
+        if (i + 1 < lines.size && lines[i + 1].isNotBlank() && Regex("^\\s*=+\\s*$").matches(lines[i + 1])) {
+            blocks.add(MdBlock.Heading(1, line.trim()))
+            i += 2
+            continue
+        }
+
+        // 独占一行的图片：Markdown 里最常见的插图方式。
+        val image = Regex("^\\s*!\\[([^\\]]*)]\\(\\s*<?([^)\\s>]+)>?(?:\\s+[\"'][^\"']*[\"'])?\\s*\\)\\s*$").find(line)
+        if (image != null) {
+            blocks.add(MdBlock.Image(image.groupValues[1], image.groupValues[2]))
             i++
             continue
         }
@@ -123,7 +144,8 @@ private fun parseBlocks(source: String): List<MdBlock> {
             while (i < lines.size) {
                 val item = Regex("^\\s*([-*+]|\\d+[.)])\\s+(.+)$").find(lines[i]) ?: break
                 if (item.groupValues[1].first().isDigit() != ordered) break
-                blocks.add(MdBlock.Item(ordered, item.groupValues[1].trimEnd('.', ')').toIntOrNull() ?: 1, item.groupValues[2]))
+                val indent = lines[i].takeWhile { it == ' ' || it == '\t' }.let { prefix -> prefix.count { it == '\t' } * 2 + prefix.count { it == ' ' } }
+                blocks.add(MdBlock.Item(ordered, item.groupValues[1].trimEnd('.', ')').toIntOrNull() ?: 1, item.groupValues[2], (indent / 2).coerceIn(0, 4)))
                 i++
             }
             continue
@@ -196,7 +218,7 @@ private fun AnnotatedString.Builder.appendTopics(text: String, linkColor: Color)
     if (cursor < text.length) append(text.substring(cursor))
 }
 
-private val inlinePattern = Regex("(`[^`]+`|\\*\\*[^*]+\\*\\*|~~[^~]+~~|\\*[^*]+\\*|\\[[^\\]]+\\]\\([^)]+\\))")
+private val inlinePattern = Regex("(`[^`]+`|\\*\\*[^*]+\\*\\*|~~[^~]+~~|!\\[[^\\]]*]\\([^)]+\\)|\\*[^*]+\\*|\\[[^\\]]+\\]\\([^)]+\\)|<https?://[^>\\s]+>)")
 
 private fun buildInline(
     text: String,
@@ -220,6 +242,21 @@ private fun buildInline(
             }
             token.startsWith("*") -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
                 append(token.trim('*'))
+            }
+            token.startsWith("![") -> {
+                // 行内图片没有独立的图片位，退化为替代文字，避免把 ![](...) 原样显示。
+                val alt = token.substringAfter('[').substringBefore(']')
+                if (alt.isNotBlank()) withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(alt) }
+            }
+            token.startsWith("<") -> {
+                val href = token.trim('<', '>')
+                withLink(
+                    LinkAnnotation.Clickable(
+                        tag = href,
+                        styles = TextLinkStyles(style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
+                        linkInteractionListener = { onLinkClick(href) },
+                    ),
+                ) { append(href) }
             }
             else -> {
                 val label = token.substringAfter('[').substringBefore(']')
@@ -257,6 +294,25 @@ fun HeikaMarkdown(
     val codeColor = MaterialTheme.colorScheme.primary
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    var previewImage by remember { mutableStateOf<String?>(null) }
+
+    previewImage?.let { url ->
+        androidx.compose.ui.window.Dialog(onDismissRequest = { previewImage = null }) {
+            Box(
+                Modifier.fillMaxWidth().heightIn(max = 640.dp).clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black).clickable { previewImage = null },
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = "图片预览",
+                    imageLoader = LocalHeikaImageLoader.current,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+    }
 
     Column(modifier = modifier) {
         blocks.forEachIndexed { index, block ->
@@ -296,9 +352,9 @@ fun HeikaMarkdown(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                is MdBlock.Item -> Row(Modifier.fillMaxWidth()) {
+                is MdBlock.Item -> Row(Modifier.fillMaxWidth().padding(start = (block.depth * 14).dp)) {
                     Text(
-                        text = if (block.ordered) "${block.index}." else "·",
+                        text = if (block.ordered) "${block.index}." else if (block.depth == 0) "·" else "◦",
                         color = muted,
                         fontSize = baseSize,
                         modifier = Modifier.width(if (block.ordered) 22.dp else 14.dp),
@@ -316,6 +372,7 @@ fun HeikaMarkdown(
                 } else {
                     MdCodeBlock(block, baseSize, textColor, codeBackground, linkColor)
                 }
+                is MdBlock.Image -> MdImage(block, onClick = { previewImage = it })
                 is MdBlock.Table -> MdTable(block, baseSize, textColor, linkColor, codeColor, onLinkClick)
                 is MdBlock.Task -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Text(
@@ -334,6 +391,33 @@ fun HeikaMarkdown(
                 }
                 MdBlock.Rule -> HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             }
+        }
+    }
+}
+
+/** 正文插图：按宽度铺满、限制最大高度，点击可全屏查看。 */
+@Composable
+private fun MdImage(block: MdBlock.Image, onClick: (String) -> Unit) {
+    val model = if (block.url.startsWith("/")) BuildConfig.API_BASE_URL + block.url else block.url
+    Column(Modifier.fillMaxWidth()) {
+        AsyncImage(
+            model = model,
+            contentDescription = block.alt.ifBlank { "正文图片" },
+            imageLoader = LocalHeikaImageLoader.current,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 460.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f))
+                .clickable { onClick(model) },
+            contentScale = ContentScale.Fit,
+        )
+        if (block.alt.isNotBlank()) {
+            Text(
+                block.alt,
+                Modifier.padding(top = 5.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.5.sp,
+                lineHeight = 15.sp,
+            )
         }
     }
 }

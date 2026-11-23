@@ -34,7 +34,6 @@ import com.heika.nativeapp.ui.GlassNavigationBar
 import com.heika.nativeapp.ui.LocalDecor
 import com.heika.nativeapp.ui.LocalHeikaDark
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
-import dev.chrisbanes.haze.rememberHazeState
 
 /**
  * 底栏实时预览（需求 6.1）：直接复用真实导航栏组件渲染工作区配置，
@@ -42,15 +41,12 @@ import dev.chrisbanes.haze.rememberHazeState
  */
 @Composable
 fun DecorBarPreview(config: DecorConfig, dark: Boolean, modifier: Modifier = Modifier) {
-    val hazeState = rememberHazeState()
     CompositionLocalProvider(LocalDecor provides config, LocalHeikaDark provides dark) {
         Box(modifier.background(Color(0xFF1A1C20))) {
             GlassNavigationBar(
                 selected = "home",
-                hazeState = hazeState,
                 onSelect = {},
                 onPublish = {},
-                blurEnabled = false,
             )
         }
     }

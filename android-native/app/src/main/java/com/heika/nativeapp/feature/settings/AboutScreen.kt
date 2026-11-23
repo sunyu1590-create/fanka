@@ -43,6 +43,14 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(85, "2026.11.24", listOf(
+        "底栏去掉模糊与半透明叠加，删掉视觉上的灰色遮罩，改成实心胶囊。",
+        "「我的作品」上下的留白收紧：标签栏与作品计数合并成一条，栅格间距缩到 12dp。",
+        "Markdown 补齐图片块、Setext 标题与缩进列表，独立成行的图片会真正渲染成图。",
+        "图片上传改为 3 路并发 + 逐字节真实进度，单张卡死、传不上去的问题一并修掉；超时放宽到 60 秒写入。",
+        "全量/增量 AI 总结重新可用：调高推理额度，按文章题材切换总结风格（散文更细腻、科普更严谨）。",
+        "下线视频上传入口。",
+    )),
     NativeRelease(84, "2026.11.23", listOf(
         "封面真正通栏到屏幕两边，头像与简介回到统一的 18dp 边距，修掉右侧缺一条与整体左移。",
         "封面延伸到状态栏后面，顶栏改为浅高斯模糊玻璃条，并用一条极细的分隔线区分层次。",

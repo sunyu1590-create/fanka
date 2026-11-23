@@ -128,3 +128,13 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
 .composer-check-spinner { animation: composer-check-spin 1s linear infinite; color: var(--action); }
 @keyframes composer-check-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .composer-check-spinner { animation: none; } }
+
+/* 图片上传：单入口 + 真实字节进度。进度条数值来自 XHR upload.onprogress，不再用定时器模拟。 */
+.composer-media-picker.is-single .composer-media-choices{grid-template-columns:minmax(0,1fr)}
+.composer-upload-progress{display:grid;gap:7px;margin:0 0 14px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--surface) 86%,transparent)}
+.composer-upload-progress>div{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;color:var(--muted)}
+.composer-upload-progress b{font-variant-numeric:tabular-nums;color:var(--ink);font-size:12px}
+.composer-upload-progress progress{display:block;width:100%;height:4px;border:0;border-radius:999px;overflow:hidden;background:color-mix(in srgb,var(--line) 70%,transparent);appearance:none}
+.composer-upload-progress progress::-webkit-progress-bar{background:color-mix(in srgb,var(--line) 70%,transparent);border-radius:999px}
+.composer-upload-progress progress::-webkit-progress-value{background:var(--action,#2f6f5e);border-radius:999px;transition:width 160ms linear}
+.composer-upload-progress progress::-moz-progress-bar{background:var(--action,#2f6f5e);border-radius:999px}

@@ -1,6 +1,6 @@
 {
   "name": "fanka",
-  "version": "2.60.3",
+  "version": "2.60.4",
   "private": true,
   "scripts": {
     "prebuild": "node scripts/sync-service-worker-version.mjs",
@@ -19,7 +19,6 @@
     "next": "^15.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tus-js-client": "^4.3.1",
     "sharp": "^0.35.5"
   },
   "devDependencies": {

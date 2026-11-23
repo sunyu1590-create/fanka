@@ -13,7 +13,7 @@ while (true) {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: "{}",
-      signal: AbortSignal.timeout(35_000),
+      signal: AbortSignal.timeout(70_000),
       cache: "no-store",
     });
     const result = await response.json().catch(() => null);

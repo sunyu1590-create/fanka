@@ -87,7 +87,7 @@ export async function completeAiChat(input: {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(55_000),
       cache: "no-store",
     });
   } catch (error) {

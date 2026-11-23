@@ -10,8 +10,8 @@ HEIKA 是内容探索社区，网页端与原生 Android App 共用账号和核�
 
 ## 当前版本
 
-- 网页端：`2.51.0`，版本号位于 `package.json`，更新内容位于 `lib/release-notes.ts`。
-- Android 原生端：`2.22.1`（`versionCode` 83），以 `android-native/app/build.gradle.kts` 为准。
+- 网页端：`2.60.4`，版本号位于 `package.json`，更新内容位于 `lib/release-notes.ts`。
+- Android 原生端：`2.23.0`（`versionCode` 85），以 `android-native/app/build.gradle.kts` 为准。
 - 当前网站域名配置：`https://moonclean.shop`。更改生产目标前，先检查 `Caddyfile`、Compose 文件和远程环境，不要从旧文档推断。
 
 ## 工程结构
@@ -58,9 +58,17 @@ cd android-native
 
 - `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`（兼容旧名 `SUPABASE_SECRET_KEY`）
 - `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`NEXT_PUBLIC_AUTH_REDIRECT_URL`、`PUBLIC_BASE_URL`
-- `AI_SETTINGS_ENCRYPTION_KEY`、`AI_TASK_WORKER_TOKEN`、`NEXT_PUBLIC_VIDEO_UPLOAD_BETA`
+- `AI_SETTINGS_ENCRYPTION_KEY`、`AI_TASK_WORKER_TOKEN`
 
 仓库只记录变量名和占位配置，禁止提交任何真实密钥。AI worker 需要与主服务配置相同的 `AI_TASK_WORKER_TOKEN`。
+
+## 媒体与 AI 总结约定
+
+- 图片上传统一走 `lib/media-upload.ts`（网页）与 `HeikaRepository.uploadImage`（APP）：`XMLHttpRequest.upload.onprogress` / OkHttp `ForwardingSink` 逐字节计数，只展示真实百分比；字节发完后进入「服务器处理中」，不提前显示 100%。
+- 并发上限 3。一次选 9 张时同时开 9 条上传会把上行带宽抢空，表现为「卡住不动」，因此两端都限制为 3 路并发并保留可重试的失败态。
+- 视频上传已下线：网页与 APP 均不再提供入口，`/api/v1/media` 与 `library-state` 收到视频类型直接返回 `410`。
+- AI 总结的提示词由 `lib/summary-style.mjs` 按标题与正文判定题材（情感随笔、科普知识、教程实操、评论观点、叙事故事、资讯报道、商业产品、生活记录），再与通用约束组合；新增题材只需要在该文件里加一条规则。
+- 摘要类模型的 `max_tokens` 需要覆盖推理过程，`deepseek-flash` 给到 3000（审核 2000、分类 1600），过低会返回 `empty_output`。
 
 ## 迁移与部署纪律
 

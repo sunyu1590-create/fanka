@@ -11,7 +11,6 @@ const DRAFTS = "drafts";
 const FILES = "files";
 
 export type DraftImage = { id: string; fileId?: string; externalUrl?: string; name?: string; type?: string };
-export type DraftVideo = { id: string; fileId?: string; name?: string; size?: number; type?: string };
 
 export type LocalDraft = {
   id: string;
@@ -28,7 +27,6 @@ export type LocalDraft = {
   attachments: unknown[];
   coverIndex: number;
   images: DraftImage[];
-  video: DraftVideo | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -140,7 +138,6 @@ export function draftHasContent(draft: Partial<LocalDraft>): boolean {
     (draft.title || "").trim() ||
     (draft.body || "").trim() ||
     (draft.images || []).length ||
-    draft.video ||
     (draft.attachments || []).length ||
     (draft.poll?.question || "").trim() ||
     (draft.poll?.options || []).some((option) => (option || "").trim()),
@@ -177,7 +174,6 @@ export async function migrateLegacyDrafts(owner: string): Promise<number> {
         coverIndex: saved.coverIndex || 0,
         // 旧草稿的图片可能已经上传到云端，这里保留外链；本地文件需要用户重新选择。
         images: (saved.images || []).map((image) => ({ id: image.id, externalUrl: image.url, name: image.id })),
-        video: saved.video ? { id: saved.video.id, name: saved.video.name, size: saved.video.size, type: saved.video.type } : null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };

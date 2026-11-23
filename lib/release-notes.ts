@@ -7,6 +7,18 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.60.4",
+    date: "2026.11.24",
+    notes: [
+      { category: "体验优化", text: "图片上传改为 3 张并发：一次选多张会同时开始，不再排队一张一张传；每张图片显示真实的上传百分比与「服务器处理中」阶段。" },
+      { category: "问题修复", text: "单张图片上传偶发卡死的问题修掉：进度改为按实际发送字节计算，附带自动重试与超时保护，失败可在缩略图上直接重试。" },
+      { category: "问题修复", text: "AI 总结的全量更新与增量更新恢复可用：调高推理模型的输出额度，不再出现「AI 暂时没有返回内容」。" },
+      { category: "新功能", text: "AI 总结按文章题材自动切换风格：情感随笔更细腻、科普更严谨、教程更步骤化，另有观点、故事、资讯、产品与生活记录共八类。" },
+      { category: "问题修复", text: "Markdown 优化的结果不再因为结构校验被整条丢弃，无法自动修复时会保留原文并说明原因。" },
+      { category: "问题修复", text: "删除视频上传功能（网页与 APP 同步下线），发布器只保留图片，最多 9 张。" },
+    ],
+  },
+  {
     version: "2.57.0",
     date: "2026.11.21",
     notes: [

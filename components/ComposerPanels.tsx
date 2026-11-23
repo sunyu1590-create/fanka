@@ -154,7 +154,7 @@ export const ComposerTextEditor = memo(function ComposerTextEditor({ title, body
   </section>;
 });
 
-type Media = { id: string; url: string; status: string };
+type Media = { id: string; url: string; status: string; progress?: number; uploadPhase?: "uploading" | "processing" };
 export const ComposerMediaStrip = memo(function ComposerMediaStrip({ images, coverIndex, busy, onSelect, onRetry, onMove, onAdd }: { images: Media[]; coverIndex: number; busy: boolean; onSelect: (id: string) => void; onRetry: (id: string) => void; onMove: (from: number, to: number) => void; onAdd: (files: FileList | null) => void }) {
   const root = useRef<HTMLDivElement>(null), dragId = useRef<string | null>(null), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [active, setActive] = useState<string | null>(null);
@@ -195,7 +195,7 @@ export const ComposerMediaStrip = memo(function ComposerMediaStrip({ images, cov
       onTouchMove={()=>{if(!dragId.current&&timer.current)clearTimeout(timer.current);}}>
       <button type="button" draggable={false} aria-label={`预览第 ${index+1} 张图片`} onClick={()=>{if(Date.now()>suppressClick.current)onSelect(image.id);}}><img src={image.url} alt={`第 ${index+1} 张图片`} draggable={false}/></button>
       {coverIndex===index&&<span className="composer-cover-badge">封面</span>}
-      {image.status==="uploading"&&<span className="composer-image-state">上传中…<progress aria-label={`第 ${index+1} 张图片上传中`}/></span>}
+      {image.status==="uploading"&&<span className="composer-image-state">{image.uploadPhase === "processing" ? "服务器处理中…" : `上传 ${image.progress ?? 0}%`}<progress max={100} value={image.progress ?? 0} aria-label={`第 ${index+1} 张图片上传 ${image.progress ?? 0}%`}/></span>}
       {image.status==="failed"&&<button type="button" className="composer-image-retry" disabled={busy} onClick={()=>onRetry(image.id)}>失败 · 重试</button>}
     </figure>)}
     {images.length<9&&<label className="composer-media-add"><ImagePlus size={23}/><span>添加图片</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={event=>{onAdd(event.target.files);event.currentTarget.value="";}}/></label>}

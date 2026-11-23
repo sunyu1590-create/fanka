@@ -113,7 +113,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
         val backStack by nav.currentBackStackEntryAsState()
         val route = backStack?.destination?.route.orEmpty()
         val sharedPosts = remember { mutableStateMapOf<String, HeikaPost>() }
-        var homePreviewActive by remember { mutableStateOf(false) }
         var chatConversationOpen by remember { mutableStateOf(false) }
         val selected = when (route) {
             "discovery" -> "discovery"
@@ -250,7 +249,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onSearch = { openDestination(HeikaDestination.Search) },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onPost = openPost,
-                        onPreviewActive = { homePreviewActive = it },
+                        onPreviewActive = {},
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
@@ -692,15 +691,12 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
             if (showBottomBar) {
                 GlassNavigationBar(
                     selected = selected,
-                    hazeState = hazeState,
                     onSelect = { target ->
                         mainTabSwitchActive = true
                         navigateTopLevel(nav, target)
                     },
                     onPublish = { openDestination(HeikaDestination.Publish) },
                     modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
-                    blurEnabled = true,
-                    previewBackdropActive = homePreviewActive,
                 )
             }
             ForegroundNoticeHost(

@@ -38,7 +38,8 @@ export async function POST(req: NextRequest) {
     if (!allowed) throw new ApiError(429, "AI 请求太频繁了，请稍后再试；每分钟最多 4 次，每日最多 60 次");
     const result = await completeAiChat({
       purpose: mode === "markdown" ? "markdown" : mode === "title" ? "title" : "polish",
-      maxTokens: mode === "polish" || mode === "markdown" ? 1800 : mode === "continue" ? 1200 : 700,
+      // 推理模型会先消耗一轮推理 token；给足额度，避免正文被截成空字符串。
+      maxTokens: mode === "markdown" ? 4000 : mode === "polish" ? 3000 : mode === "continue" ? 2000 : 1000,
       temperature: 0.7,
       messages: [
         { role: "system", content: `你是黑卡 HEIKA 的中文创作助手。${modes[mode].instruction}不输出英文解释，不要声称内容已发布。` },
@@ -48,10 +49,17 @@ export async function POST(req: NextRequest) {
       ],
     });
     const output = result.output;
-    if (mode === "markdown" && content) {
-      const issues = markdownPreservationIssues(content, output);
-      if (issues.length) throw new ApiError(422, `Markdown 结构校验未通过：${issues.join("、")}。原稿没有更改，请重新生成或手动整理。`);
-    }
-    return { output, mode, requestId: result.requestId, model: result.model, usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens, elapsedMs: result.elapsedMs } };
+    // 结构校验只做提示，不再 422 直接吞掉结果。
+    // 旧逻辑里模型只要把 ```js 写成 ```javascript，整次优化就失败，用户看到的是“没有输出”。
+    const preservationIssues = mode === "markdown" && content ? markdownPreservationIssues(content, output) : [];
+    return {
+      output,
+      mode,
+      warning: preservationIssues.length ? `已生成，但检测到${preservationIssues.join("、")}；替换前请核对代码块、链接与表格。` : undefined,
+      preservationIssues,
+      requestId: result.requestId,
+      model: result.model,
+      usage: { inputTokens: result.inputTokens, outputTokens: result.outputTokens, elapsedMs: result.elapsedMs },
+    };
   });
 }
