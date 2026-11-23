@@ -160,13 +160,23 @@ export async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   const results = new Array<R>(items.length);
   let cursor = 0;
+  // 一旦有任务失败就不再领取新任务，但要等已在途的任务收尾再抛出：
+  // 直接让 Promise.all 抢先 reject 会把其余在途请求变成未处理的 rejection。
+  let failure: unknown = null;
   const runners = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
     while (cursor < items.length) {
+      if (failure) return;
       const index = cursor;
       cursor += 1;
-      results[index] = await worker(items[index], index);
+      try {
+        results[index] = await worker(items[index], index);
+      } catch (error) {
+        failure ??= error;
+        return;
+      }
     }
   });
   await Promise.all(runners);
+  if (failure) throw failure;
   return results;
 }
