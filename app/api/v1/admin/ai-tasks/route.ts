@@ -87,6 +87,14 @@ export async function POST(req: NextRequest) {
       await admin.from("ai_task_batches").update({ status: "failed", completed_at: new Date().toISOString() }).eq("id", inserted.data.id);
       throw new ApiError(503, "任务已记录，但无法建立处理队列；请检查数据库迁移");
     }
-    return { ...inserted.data, totalCount: queued.data || 0 };
+    // 建好队列直接开跑：工作进程只认 running 批次，停在 queued 会像「点了没反应」。
+    const totalCount = Number(queued.data || 0);
+    if (totalCount > 0) {
+      const started = await admin.from("ai_task_batches")
+        .update({ status: "running", started_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", inserted.data.id).eq("status", "queued").select("id,status").maybeSingle();
+      if (started.data) return { ...inserted.data, status: "running", totalCount };
+    }
+    return { ...inserted.data, totalCount };
   });
 }

@@ -6665,7 +6665,7 @@ export default function Community({
                       <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
                     </label>
                   </div>
-                  <p className="composer-media-hint">最多 9 张图片 · 本地自动压缩 · 多张并发上传并显示真实进度</p>
+                  <p className="composer-media-hint">本地自动压缩 · 3 张并发上传 · 每张显示真实进度，失败可单张重试</p>
                 </section>
                 {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
                 {imageUploadProgress && imageUploadProgress.phase !== "done" && <div className="composer-upload-progress" role="status" aria-live="polite">
