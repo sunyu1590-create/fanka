@@ -5568,7 +5568,7 @@ export default function Community({
           )}
           {settingsDetail === "font" && (
             <div className="preference-options" role="radiogroup" aria-label="字体选择">
-              {([['oppo','OPPO Sans 4.0','已随应用提供；字体版权归 OPPO，未选中时使用系统字体'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
+              {([['oppo','OPPO Sans 4.0','使用设备已安装的 OPPO Sans；未安装时自动回退系统字体'],['system','系统字体','跟随设备默认字体']] as const).map(([value,label,description])=><button key={value} role="radio" aria-checked={fontChoice===value} className={`preference-option${fontChoice===value?' selected':''}`} onClick={()=>setFontChoice(value)}>{renderPreferencePreview('font',value)}<span className="preference-option-copy"><strong>{label}</strong><small>{description}</small></span><i className="preference-check">{fontChoice===value?'✓':''}</i></button>)}
             </div>
           )}
           {settingsDetail === "discoverLayout" && (

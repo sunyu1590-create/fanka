@@ -4743,10 +4743,13 @@ img, video, canvas, iframe { max-width:100%; }
   .flip-window-revealed .window-more { transition:none; }
 }
 
-/* Use the unchanged OPPO Sans 4.0 font bundled with HEIKA. */
+/* OPPO Sans 4.0 只取设备本地已安装的版本。
+   随包附带的 ttf 已损坏（浏览器报 invalid sfntVersion），继续声明 url() 只会让
+   每个访客多下载一次 600KB 垃圾数据再回退到系统字体，因此改为纯 local()：
+   装了 OPPO Sans 的设备（含 OPPO 手机）直接命中，没装的按字体栈回退，无额外请求。 */
 @font-face {
   font-family: "OPPO Sans 4.0";
-  src: local("OPPO Sans 4.0"), local("OPPOSans40"), url("/fonts/OPPO-Sans-4.0.ttf") format("truetype");
+  src: local("OPPO Sans 4.0"), local("OPPOSans40"), local("OPPO Sans");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
