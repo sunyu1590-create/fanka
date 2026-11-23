@@ -2,10 +2,16 @@
 
 HEIKA 是内容探索社区，网页端与原生 Android App 共用账号和核心业务 API。当前工作主线是 GitHub `main`；本文件记录该分支的实际工程结构，旧部署说明不再作为构建依据。
 
+> **Supabase 已弃用（2026-11-23）**
+> 本项目不再使用 Supabase：不接入 Supabase 云服务，也不把自建套件作为新增功能的方案。
+> 新增代码不得引入 `@supabase/*`，不得新增 `/auth/v1`、`/rest/v1`、`/storage/v1` 语义的调用；
+> 部署脚本不得再调用 Supabase CLI。现有容器仅作维持性运行，替换方案另行排期。
+> 完整说明见 `docs/supabase-deprecated.md`。
+
 ## 当前版本
 
 - 网页端：`2.51.0`，版本号位于 `package.json`，更新内容位于 `lib/release-notes.ts`。
-- Android 原生端：`2.12.0`（`versionCode` 66），以 `android-native/app/build.gradle.kts` 为准。
+- Android 原生端：`2.22.1`（`versionCode` 83），以 `android-native/app/build.gradle.kts` 为准。
 - 当前网站域名配置：`https://moonclean.shop`。更改生产目标前，先检查 `Caddyfile`、Compose 文件和远程环境，不要从旧文档推断。
 
 ## 工程结构
