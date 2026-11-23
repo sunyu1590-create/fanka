@@ -1018,7 +1018,11 @@
   }
   /* 把页面整体上提一个顶栏的高度，封面正好从屏幕最顶端开始；
      顶栏是 sticky，滚动后仍然盖在封面之上。 */
-  .page.mine-page { margin-top: calc(-1 * var(--topbar-h, 58px)); }
+  .page.mine-page {
+    margin-top: calc(-1 * var(--topbar-h, 58px));
+    /* 顶部内边距归零，封面才是从屏幕第 0 像素开始，而不是先露出一条页面底色 */
+    padding-top: 0;
+  }
   .page.mine-page .profile-hero { margin-top: 0; }
   /* 封面右上角的「更换封面 / 查看原图」随之下移，不与顶栏按钮重叠 */
   .page.mine-page .profile-hero-cover-actions { top: calc(var(--topbar-h, 58px) + 10px); }
