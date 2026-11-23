@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, BadgeCheck, Check, ChevronRight, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Check, ChevronRight, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, Palette, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
@@ -13,6 +13,7 @@ import AdminAppeals from "./AdminAppeals";
 import AdminMembership from "./AdminMembership";
 import AdminCommunityAccess from "./AdminCommunityAccess";
 import AdminAITasks from "./AdminAITasks";
+import AdminDecorReview from "./AdminDecorReview";
 
 type Report = {
   id: string;
@@ -31,7 +32,7 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices";
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
@@ -43,6 +44,7 @@ const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
   { title: "审核与举报", modules: [
     { id: "ai-review", title: "AI 审核中心", description: "AI 初审、人工复审与审核任务历史", icon: ShieldCheck },
     { id: "content", title: "作品审核", description: "新投稿与已发布作品的修改", icon: FileCheck },
+    { id: "decor-review", title: "装扮审核", description: "创意工坊投稿的通过、驳回与下架", icon: Palette },
     { id: "reports", title: "内容举报", description: "查看并处理作品与评论举报", icon: Flag },
     { id: "messages", title: "私信举报", description: "处理用户提交的私信举报", icon: MessageCircle },
     { id: "appeals", title: "申诉处理", description: "复核内容、账号与举报申诉", icon: ShieldAlert },
@@ -74,6 +76,7 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   reports: "内容举报",
   messages: "私信举报",
   content: "作品审核",
+  "decor-review": "装扮审核",
   comments: "评论管理",
   keywords: "关键词规则",
   audit: "操作记录",
@@ -445,7 +448,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "ai-review" ? <AdminAITasks key={`ai-review-${governanceRefreshKey}`} mode="review" /> : section === "ai-usage" ? <AdminAITasks key={`ai-usage-${governanceRefreshKey}`} mode="usage" /> : section === "ai-resource-center" ? <AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
+    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "ai-review" ? <AdminAITasks key={`ai-review-${governanceRefreshKey}`} mode="review" /> : section === "ai-usage" ? <AdminAITasks key={`ai-usage-${governanceRefreshKey}`} mode="usage" /> : section === "ai-resource-center" ? <AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /> : section === "decor-review" ? <AdminDecorReview /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
         <div className="admin-topic-event-form-heading"><div><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}

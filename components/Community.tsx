@@ -536,6 +536,25 @@ export default function Community({
     return () => { alive = false; };
   }, [accountId]);
   const [isStaff, setIsStaff] = useState(false);
+  /** 服务端 24 小时周期的到期时间戳；用于展示剩余时间，额度判定仍以后端为准。 */
+  const [cycleExpiry, setCycleExpiry] = useState<number | null>(null);
+  /** 服务端周期开始时间：卡池按周期分组，跨自然日不会换池。 */
+  const [cycleStart, setCycleStart] = useState<number | null>(null);
+  const [, setCycleTick] = useState(0);
+  useEffect(() => {
+    if (!cycleExpiry) return;
+    const timer = window.setInterval(() => setCycleTick((value) => value + 1), 60_000);
+    return () => window.clearInterval(timer);
+  }, [cycleExpiry]);
+  /** 倒计时文案；到期后后端会在下次请求时开启新周期。 */
+  const cycleLabel = (() => {
+    if (!cycleExpiry) return "";
+    const left = cycleExpiry - Date.now();
+    if (left <= 0) return "新周期即将开始";
+    const hours = Math.floor(left / 3_600_000);
+    const minutes = Math.floor((left % 3_600_000) / 60_000);
+    return hours > 0 ? `${hours} 小时 ${minutes} 分后刷新` : `${minutes} 分钟后刷新`;
+  })();
   const [adminRole, setAdminRole] = useState<"member" | "admin" | "content_manager" | "reviewer">("member");
   const adminEntryPending = useRef(false);
   const [reportPostId, setReportPostId] = useState<string | null>(null);
@@ -1062,6 +1081,7 @@ export default function Community({
   const draftMediaBusy = useRef(new Set<string>());
   const zone = accountTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = dayKey(new Date(), zone);
+  const deckDay = cycleStart ? dayKey(new Date(cycleStart), zone) : today;
   const selectedDay = selectedCalendarDate || today;
   const serverWindow = useMemo(
     () => new Map((explorationServer?.windowDays || []).map((day) => [day.date, day.count] as const)),
@@ -1202,7 +1222,7 @@ export default function Community({
   const candidates = dailyCandidates(
     candidatePosts,
     state.interests,
-    state.deck[today] || [],
+    state.deck[deckDay] || [],
     50,
   );
   const visibleCandidates = candidates;
@@ -1584,14 +1604,14 @@ export default function Community({
     return () => window.clearTimeout(timer);
   }, [dayTick]);
   useEffect(() => {
-    if (!ready || !state.cardIds.length || state.deck[today]?.length) return;
+    if (!ready || !state.cardIds.length || state.deck[deckDay]?.length) return;
     const deck = dailyCandidates(candidatePosts, state.interests, [], 50).map((post) => post.id);
     if (!deck.length) return;
     update((current) => current.deck[today]?.length ? current : {
       ...current,
-      deck: { ...current.deck, [today]: deck },
+      deck: { ...current.deck, [deckDay]: deck },
     });
-  }, [ready, today, state.cardIds, state.deck, state.interests, candidatePosts]);
+  }, [ready, deckDay, state.cardIds, state.deck, state.interests, candidatePosts]);
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("heika-search-recent") || "[]");
@@ -2603,6 +2623,10 @@ export default function Community({
         if (Number.isFinite(serverBonus)) authoritativeBonus = Math.min(10, Math.max(0, serverBonus));
         lucky = confirmed.flipState.idempotent ? 0 : Number(confirmed.flipState.bonusAwarded) || 0;
         setAccountTimezone(typeof confirmed.flipState.timezone === "string" ? confirmed.flipState.timezone : accountTimezone);
+        const confirmedExpiry = Date.parse(String(confirmed.flipState.cycleExpiresAt || ""));
+        if (Number.isFinite(confirmedExpiry)) setCycleExpiry(confirmedExpiry);
+        const confirmedStart = Date.parse(String(confirmed.flipState.cycleStartedAt || ""));
+        if (Number.isFinite(confirmedStart)) setCycleStart(confirmedStart);
         if (["free", "plus", "pro"].includes(confirmed.flipState.membershipTier)) {
           setExperienceSummary((current) => ({ ...current, membershipTier: confirmed.flipState.membershipTier }));
         }
@@ -4631,6 +4655,10 @@ export default function Community({
             const data = await cloudRequest("/api/v1/library-state");
             if (!isCurrent() || !data) return;
             const flipState = data.dailyFlipState;
+            const expiry = Date.parse(String(flipState?.cycleExpiresAt || ""));
+            if (Number.isFinite(expiry)) setCycleExpiry(expiry);
+            const started = Date.parse(String(flipState?.cycleStartedAt || ""));
+            if (Number.isFinite(started)) setCycleStart(started);
             if (typeof flipState?.timezone === "string") setAccountTimezone(flipState.timezone);
             else if (typeof data.profile?.timezone === "string") setAccountTimezone(data.profile.timezone);
             if (["free", "plus", "pro"].includes(data.profile?.membership_tier)) {
@@ -5255,8 +5283,8 @@ export default function Community({
             </div>
           ) : (
             <div className="daily-quota-summary" role="status" aria-live="polite">
-              <strong>今日已翻开 {Math.min(opened.length, dailyAllowance)} / {dailyAllowance} 张</strong>
-              <span>{opened.length >= dailyAllowance ? "今日额度已用完，已解锁卡片仍可查看" : `还可翻开 ${dailyAllowance - opened.length} 张`}</span>
+              <strong>本周期已翻开 {Math.min(opened.length, dailyAllowance)} / {dailyAllowance} 张</strong>
+              <span>{opened.length >= dailyAllowance ? "本周期额度已用完，已解锁卡片仍可查看" : `还可翻开 ${dailyAllowance - opened.length} 张`}{cycleLabel ? ` · ${cycleLabel}` : ""}</span>
             </div>
           )}
           {state.homeMode === "waterfall" ? (
@@ -5264,7 +5292,7 @@ export default function Community({
               <div className="candidate-feed waterfall-card-feed">
                 {visibleCandidates.map((candidate, index) => renderCandidate(candidate, index))}
               </div>
-              <p className="daily-deck-caption">今日卡池 · 50 张 · 翻卡次数将在明日自动重置</p>
+              <p className="daily-deck-caption">本周期卡池 · 50 张 · 翻卡次数每 24 小时自动刷新</p>
             </>
           ) : (
             <>

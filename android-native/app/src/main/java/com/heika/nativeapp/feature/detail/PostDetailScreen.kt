@@ -11,6 +11,7 @@ import com.heika.nativeapp.ui.HeikaNoticeKind
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -321,18 +322,40 @@ fun PostDetailScreen(
                             )
                         }
                         item.aiSummary?.let { summary ->
+                            // 内联摘要：不使用卡片底色或边框，靠金色标识与次级文字融入阅读排版。
+                            var summaryExpanded by remember(summary) { mutableStateOf(false) }
+                            val summaryCollapsible = summary.length > 96
                             Column(
-                                Modifier.fillMaxWidth().detailContentReveal(enabled = true, delayMillis = 75)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f))
-                                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                Modifier.fillMaxWidth().detailContentReveal(enabled = true, delayMillis = 75),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Icon(HeikaIcons.Robot, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
-                                    Text("AI 摘要", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                Row(
+                                    Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable(enabled = summaryCollapsible) { summaryExpanded = !summaryExpanded }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                ) {
+                                    Icon(HeikaIcons.Robot, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                                    Text("AI 摘要", color = MaterialTheme.colorScheme.primary, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                    if (summaryCollapsible) {
+                                        Text(
+                                            if (summaryExpanded) "收起" else "展开",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 10.sp,
+                                        )
+                                    }
                                 }
-                                Text(summary, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    summary,
+                                    Modifier.animateContentSize(),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.5.sp,
+                                    lineHeight = 19.sp,
+                                    maxLines = if (summaryExpanded || !summaryCollapsible) Int.MAX_VALUE else 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                         Column(Modifier.fillMaxWidth().detailContentReveal(sharedElementsEnabled, delayMillis = 170), verticalArrangement = Arrangement.spacedBy(10.dp)) {

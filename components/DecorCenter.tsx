@@ -762,21 +762,6 @@ export default function DecorCenter({
                     <ColorRow label="强调色 · 选中图标"  value={barPalette.activeIcon} onChange={(value) => updateBar({ activeIcon: value })} defaultValue={barDefaults.activeIcon} />
                     <OpacityRow label="背景透明度"  value={barPalette.bgOpacity} onChange={(value) => updateBar({ bgOpacity: value })} defaultValue={barDefaults.bgOpacity} />
                   </section>
-                  <details className="decor-advanced">
-                    <summary>高级自定义</summary>
-                    <section>
-                      <h3>文字与图标</h3>
-                      <ColorRow label="图标"  value={barPalette.icon} onChange={(value) => updateBar({ icon: value })} defaultValue={barDefaults.icon} />
-                      <ColorRow label="文字"  value={barPalette.label} onChange={(value) => updateBar({ label: value })} defaultValue={barDefaults.label} />
-                      <ColorRow label="选中文字"  value={barPalette.activeLabel} onChange={(value) => updateBar({ activeLabel: value })} defaultValue={barDefaults.activeLabel} />
-                    </section>
-                    <section>
-                      <h3>透明度与描边</h3>
-                      <ColorRow label="描边"  value={barPalette.border} onChange={(value) => updateBar({ border: value })} defaultValue={barDefaults.border} />
-                      <OpacityRow label="描边透明度"  value={barPalette.borderOpacity} onChange={(value) => updateBar({ borderOpacity: value })} defaultValue={barDefaults.borderOpacity} />
-                      <ColorRow label="选中底色"  value={barPalette.activePill} onChange={(value) => updateBar({ activePill: value })} defaultValue={barDefaults.activePill} />
-                      <OpacityRow label="选中底色透明度"  value={barPalette.activePillOpacity} onChange={(value) => updateBar({ activePillOpacity: value })} defaultValue={barDefaults.activePillOpacity} />
-                    </section>
                     <section>
                       <h3>底栏图标</h3>
                       <p className="decor-section-hint">每个位置可分别替换普通态与选中态；只上传一张时，选中态用颜色与轻微缩放区分。单色图标可跟随主题色，彩色图标保留原色。</p>
@@ -823,6 +808,21 @@ export default function DecorCenter({
                         );
                       })}
                     </section>
+                  <details className="decor-advanced">
+                    <summary>高级自定义</summary>
+                    <section>
+                      <h3>文字与图标</h3>
+                      <ColorRow label="图标"  value={barPalette.icon} onChange={(value) => updateBar({ icon: value })} defaultValue={barDefaults.icon} />
+                      <ColorRow label="文字"  value={barPalette.label} onChange={(value) => updateBar({ label: value })} defaultValue={barDefaults.label} />
+                      <ColorRow label="选中文字"  value={barPalette.activeLabel} onChange={(value) => updateBar({ activeLabel: value })} defaultValue={barDefaults.activeLabel} />
+                    </section>
+                    <section>
+                      <h3>透明度与描边</h3>
+                      <ColorRow label="描边"  value={barPalette.border} onChange={(value) => updateBar({ border: value })} defaultValue={barDefaults.border} />
+                      <OpacityRow label="描边透明度"  value={barPalette.borderOpacity} onChange={(value) => updateBar({ borderOpacity: value })} defaultValue={barDefaults.borderOpacity} />
+                      <ColorRow label="选中底色"  value={barPalette.activePill} onChange={(value) => updateBar({ activePill: value })} defaultValue={barDefaults.activePill} />
+                      <OpacityRow label="选中底色透明度"  value={barPalette.activePillOpacity} onChange={(value) => updateBar({ activePillOpacity: value })} defaultValue={barDefaults.activePillOpacity} />
+                    </section>
                   </details>
                 </>
               ) : (
@@ -852,10 +852,9 @@ export default function DecorCenter({
                       </select>
                     </label>
                   </section>
-                  <details className="decor-advanced">
-                    <summary>高级自定义</summary>
-                    <section>
-                      <h3>卡背细节</h3>
+                  <section>
+                    <h3>卡面素材</h3>
+                    <p className="decor-section-hint">卡背图与内容区底图随装扮一起保存；竖版图片效果最好，单张不超过 4 MB。</p>
                       <div className="decor-backdrop-row">
                         <span>卡背图片</span>
                         <label className="decor-backdrop-upload">
@@ -864,6 +863,19 @@ export default function DecorCenter({
                         </label>
                         {cardPalette.backImage && <button type="button" onClick={() => updateCard({ backImage: "" })}><X size={13} /> 移除</button>}
                       </div>
+                      <div className="decor-backdrop-row">
+                        <span>内容区底图</span>
+                        <label className="decor-backdrop-upload">
+                          <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void uploadBackdrop(file, "contentImage"); }} />
+                          <ImageIcon size={14} /> 上传
+                        </label>
+                        {cardPalette.contentImage && <button type="button" onClick={() => updateCard({ contentImage: "" })}><X size={13} /> 移除</button>}
+                      </div>
+                  </section>
+                  <details className="decor-advanced">
+                    <summary>高级自定义</summary>
+                    <section>
+                      <h3>卡背细节</h3>
                       <ColorRow label="卡背描边"  value={cardPalette.backBorder} onChange={(value) => updateCard({ backBorder: value })} defaultValue={cardDefaults.backBorder} />
                       <ColorRow label="编号颜色"  value={cardPalette.numberColor} onChange={(value) => updateCard({ numberColor: value })} defaultValue={cardDefaults.numberColor} />
                       <ColorRow label="提示文字"  value={cardPalette.hintColor} onChange={(value) => updateCard({ hintColor: value })} defaultValue={cardDefaults.hintColor} />
@@ -873,14 +885,6 @@ export default function DecorCenter({
                     <section>
                       <h3>翻开后的内容面</h3>
                       <ColorRow label="内容区底色"  value={cardPalette.contentBg} onChange={(value) => updateCard({ contentBg: value })} defaultValue={cardDefaults.contentBg} />
-                      <div className="decor-backdrop-row">
-                        <span>内容区底图</span>
-                        <label className="decor-backdrop-upload">
-                          <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void uploadBackdrop(file, "contentImage"); }} />
-                          <ImageIcon size={14} /> 上传
-                        </label>
-                        {cardPalette.contentImage && <button type="button" onClick={() => updateCard({ contentImage: "" })}><X size={13} /> 移除</button>}
-                      </div>
                       <ColorRow label="内容区描边"  value={cardPalette.contentBorder} onChange={(value) => updateCard({ contentBorder: value })} defaultValue={cardDefaults.contentBorder} />
                       <ColorRow label="标题"  value={cardPalette.titleColor} onChange={(value) => updateCard({ titleColor: value })} defaultValue={cardDefaults.titleColor} />
                       <ColorRow label="正文"  value={cardPalette.bodyColor} onChange={(value) => updateCard({ bodyColor: value })} defaultValue={cardDefaults.bodyColor} />

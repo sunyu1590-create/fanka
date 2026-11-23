@@ -12,6 +12,17 @@
 @media (max-width: 380px) { .page.mine-page .profile-hero { --hero-bleed: 14px; } }
 .public-profile-content .profile-hero { --hero-bleed: 18px; margin-top: -15px; }
 
+/* 桌面宽屏：封面铺满整个可用宽度，资料与作品仍按内容列对齐。
+   用 100vw + 半宽负边距破出居中容器；页面本身已裁掉横向溢出，不会产生滚动条。 */
+@media (min-width: 1000px) {
+  .page.mine-page .profile-hero > .profile-hero-cover {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+  }
+}
+
+
 .profile-hero {
   --profile-avatar-size: 88px;
   --profile-avatar-shift: -26px;
@@ -933,11 +944,16 @@
 }
 .mine-page .mine-tabs.mine-content-tabs,
 .mine-tabs.mine-content-tabs {
-  gap: 20px;
+  /* 四个分类从左侧起排，不再被桌面端的 center 拉到行中间 */
+  justify-content: flex-start;
+  gap: 22px;
   margin: 0 0 12px;
   padding: 0;
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.mine-tabs.mine-content-tabs::-webkit-scrollbar { display: none; }
 .mine-page .mine-tabs.mine-content-tabs button,
 .mine-tabs.mine-content-tabs button {
   position: relative;
@@ -988,16 +1004,46 @@
 .mine-topline .mine-membership-button svg { color: var(--muted); }
 .mine-topline .mine-settings-button { color: var(--ink); }
 
-/* 11) 桌面：封面在内容区内通栏，身份/数据/入口按列对齐 */
+/* 10.5) 移动端：顶栏改为悬浮在封面之上，封面从屏幕顶端开始铺满。
+   只对「我的」页生效；其他页面顶栏保持原样，避免影响信息流与详情的可读性。 */
+@media (max-width: 1023px) {
+  .app .topline.mine-topline {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--bg) 90%, transparent) 0%,
+      color-mix(in srgb, var(--bg) 62%, transparent) 58%,
+      transparent 100%);
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
+    backdrop-filter: blur(10px) saturate(112%);
+    border-bottom-color: transparent;
+  }
+  /* 把页面整体上提一个顶栏的高度，封面正好从屏幕最顶端开始；
+     顶栏是 sticky，滚动后仍然盖在封面之上。 */
+  .page.mine-page { margin-top: calc(-1 * var(--topbar-h, 58px)); }
+  .page.mine-page .profile-hero { margin-top: 0; }
+  /* 封面右上角的「更换封面 / 查看原图」随之下移，不与顶栏按钮重叠 */
+  .page.mine-page .profile-hero-cover-actions { top: calc(var(--topbar-h, 58px) + 10px); }
+}
+
+/* 11) 桌面：封面通栏到整个可用宽度，资料/数据/入口/作品统一收进同一条内容列。
+   此前封面虽然通栏，但统计块被限到 420px、入口与标签被限到 620px、作品区却是 1056px，
+   三条右边线互不重合，整页视觉重心被压到左上。现在统一为一条居中的内容列：
+   封面继续按 100vw 破出到屏幕两侧，内容列只约束文字与卡片，不约束封面。 */
 @media (min-width: 1024px) {
+  .page.mine-page {
+    max-width: 900px;
+    margin-inline: auto;
+  }
   .page.mine-page .profile-hero { --hero-bleed: 32px; margin-bottom: 14px; }
   .profile-hero { --profile-avatar-size: 96px; --profile-avatar-shift: -32px; margin-top: 0; }
-  .profile-hero-body { padding: 0 34px 4px; }
+  .profile-hero-body { padding: 0 32px 4px; }
   .profile-hero-name-row h1 { font-size: 22px; }
-  .profile-hero-stats { max-width: 420px; margin-top: 12px; }
-  .mine-exploration-row { max-width: 620px; }
+  .profile-hero-stats { max-width: none; margin-top: 12px; }
+  /* 旧桌面版把入口容器拆成两列，只放一行三入口时会把整行压成半宽；
+     这里统一成一列，三入口与资料、标签、作品同宽。 */
+  .mine-exploration-hub { grid-template-columns: 1fr; }
+  .mine-exploration-row { max-width: none; }
   .mine-exploration-entry { min-height: 56px; align-items: center; }
   .mine-works-masonry { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important; }
-  .mine-tabs.mine-content-tabs { max-width: 620px; }
+  .mine-tabs.mine-content-tabs { max-width: none; }
   .mine-category-panel { scroll-margin-top: 84px; }
 }

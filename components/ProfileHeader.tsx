@@ -44,7 +44,8 @@ export default function ProfileHeader({
   const [imageFailed, setImageFailed] = useState(false);
   const dragRef = useRef<{ startY: number; startExtra: number; active: boolean; scrollTop: number } | null>(null);
   const coverRef = useRef<HTMLDivElement | null>(null);
-  const baseHeight = Math.min(260, Math.max(120, Number(coverMeta?.collapsedHeight) || 176));
+  // 沉浸式全幅封面：移动端 264 起步，用户自定义的折叠高度仍以 320 为上限。
+  const baseHeight = Math.min(320, Math.max(260, Number(coverMeta?.collapsedHeight) || 284));
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setViewer(false); };
