@@ -21,7 +21,7 @@ export function sanitizePastedText(input: string): string {
     .replace(INVISIBLE, "")
     .replace(/\u00a0/g, " ");
   const lines = normalized.split("\n").map((line) => line.replace(/[ \t]+$/g, ""));
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\s+|\s+$/g, "");
 }
 
 /** 只放行 http/https，其余协议（javascript:、data:、blob:）一律丢弃。 */
@@ -78,8 +78,12 @@ function blockText(node: Node, depth = 0): string {
     const text = inlineText(element).trim();
     return text ? `\n\n${"#".repeat(Number(tag[1]))} ${text}\n\n` : "";
   }
+  // 容器节点必须继续往下走，否则标题、列表、引用会被拍平成一行纯文本。
+  if (tag === "DIV" || tag === "SECTION" || tag === "ARTICLE" || tag === "MAIN" || tag === "HEADER" || tag === "FOOTER" || tag === "BODY") {
+    return children();
+  }
   switch (tag) {
-    case "P": case "DIV": case "SECTION": case "ARTICLE": case "FIGURE": {
+    case "P": case "FIGURE": {
       const text = inlineText(element).trim();
       return text ? `\n\n${text}\n\n` : "";
     }
@@ -95,11 +99,12 @@ function blockText(node: Node, depth = 0): string {
       return `\n\n${lines.join("\n")}\n\n`;
     }
     case "LI": {
+      // 项目符号由列表容器统一加，这里只返回条目正文，避免出现「- - 第一条」。
       const text = inlineText(element).trim();
-      return text ? `- ${text}\n` : "";
+      return text ? `${text}\n` : "";
     }
     case "BLOCKQUOTE": {
-      const text = blockText(element, depth).trim();
+      const text = children().trim();
       if (!text) return "";
       return `\n\n${text.split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
     }
