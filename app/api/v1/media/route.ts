@@ -106,14 +106,14 @@ export async function POST(req: NextRequest) {
 
     const ext = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
     const paths = imagePaths(`${user!.id}/${uploadId}.${ext}`);
-    const { data: linked, error: linkedError } = await db.from("post_media").select("post_id,thumbnail_path,retina_thumbnail_path").eq("storage_path", paths.original).maybeSingle();
+    const { data: linked, error: linkedError } = await db.from("post_media").select("post_id,thumbnail_path,retina_thumbnail_path,width,height").eq("storage_path", paths.original).maybeSingle();
     dbError(linkedError);
     if ((revisionMode || stagingMode) && linked) throw new ApiError(409, "图片已关联其他内容，请重新选择后再上传");
     if (linked?.post_id && linked.post_id !== postId) throw new ApiError(409, "该图片已关联其他内容");
     if (linked?.post_id === postId && linked.thumbnail_path && linked.retina_thumbnail_path) {
       const { error } = await db.from("post_media").update({ sort_order: sortOrder }).eq("post_id", postId).eq("storage_path", paths.original);
       dbError(error);
-      return { path: paths.original, thumbnail_path: linked.thumbnail_path, retina_thumbnail_path: linked.retina_thumbnail_path };
+      return { path: paths.original, thumbnail_path: linked.thumbnail_path, retina_thumbnail_path: linked.retina_thumbnail_path, width: linked.width, height: linked.height };
     }
     if (postId && !revisionMode && !stagingMode && !linked) {
       const { count, error: countError } = await db.from("post_media").select("id", { count: "exact", head: true }).eq("post_id", postId);
@@ -124,11 +124,15 @@ export async function POST(req: NextRequest) {
     const source = Buffer.from(await file.arrayBuffer());
     let thumbnail: Buffer;
     let retina: Buffer;
+    // 尺寸随缩略图一起落库：详情页拿到列表数据就能预留图片高度，不必等图片下载完。
+    let imageWidth: number | null = null;
+    let imageHeight: number | null = null;
     try {
-      ({ thumbnail, retina } = await createMediaThumbnails(source));
+      ({ thumbnail, retina, width: imageWidth, height: imageHeight } = await createMediaThumbnails(source));
     } catch {
       throw new ApiError(400, "图片无法解码，请重新选择 JPG、PNG 或 WebP 图片");
     }
+    const sizeValues = imageWidth && imageHeight ? { width: imageWidth, height: imageHeight } : {};
     const uploads = await Promise.all([
       ...(linked ? [] : [db.storage.from("post-covers").upload(paths.original, source, { contentType: file.type, upsert: true, cacheControl: "31536000" })]),
       db.storage.from("post-covers").upload(paths.thumbnail, thumbnail, { contentType: "image/webp", upsert: true, cacheControl: "31536000" }),
@@ -136,14 +140,14 @@ export async function POST(req: NextRequest) {
     ]);
     const failedUpload = uploads.find((upload) => upload.error);
     if (failedUpload?.error) dbError(failedUpload.error);
-    if (revisionMode) return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina };
+    if (revisionMode) return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, ...sizeValues };
     // Save selected media as an authenticated, unlinked object. The publish API
     // attaches it only when the user submits the content.
-    if (stagingMode) return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, staged: true };
+    if (stagingMode) return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, staged: true, ...sizeValues };
     const linkedPostId = postId;
     if (!linkedPostId) throw new ApiError(400, "内容编号无效");
 
-    const mediaValues = { thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, sort_order: sortOrder };
+    const mediaValues = { thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, sort_order: sortOrder, ...sizeValues };
     if (linked?.post_id === linkedPostId) {
       const { error } = await db.from("post_media").update(mediaValues).eq("post_id", linkedPostId).eq("storage_path", paths.original);
       dbError(error);
@@ -157,7 +161,7 @@ export async function POST(req: NextRequest) {
         } else dbError(linkError);
       }
     }
-    return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina };
+    return { path: paths.original, thumbnail_path: paths.thumbnail, retina_thumbnail_path: paths.retina, ...sizeValues };
   });
 }
 

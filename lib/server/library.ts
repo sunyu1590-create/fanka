@@ -12,6 +12,9 @@ type PostMediaRow = {
   storage_path: string;
   thumbnail_path?: string | null;
   retina_thumbnail_path?: string | null;
+  /** 原图像素尺寸：详情页据此预留占位高度，图片到达前后不产生布局位移。 */
+  width?: number | null;
+  height?: number | null;
   sort_order: number;
 };
 
@@ -43,9 +46,9 @@ export type LibraryRow = {
 };
 
 export const libraryFields =
-  "id,client_id,title,body,channel,content_type,resource_data,usage_scenarios,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url,bio),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
+  "id,client_id,title,body,channel,content_type,resource_data,usage_scenarios,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url,bio),post_media(storage_path,thumbnail_path,retina_thumbnail_path,width,height,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
 export const libraryFeedFields =
-  "id,client_id,title,body_excerpt,channel,content_type,resource_data,usage_scenarios,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url,bio),post_media(storage_path,thumbnail_path,retina_thumbnail_path,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
+  "id,client_id,title,body_excerpt,channel,content_type,resource_data,usage_scenarios,featured_at,view_count,cover_text,image_url,author_id,series_id,post_series(title),created_at,is_demo,status,interest_tags!posts_tag_id_fkey(name),profiles!posts_author_id_fkey(nickname,avatar_url,bio),post_media(storage_path,thumbnail_path,retina_thumbnail_path,width,height,sort_order),post_topics(interest_tags!post_topics_topic_id_fkey(name)),post_like_stats(like_count)";
 
 export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partial = false) {
   const media = (row.post_media || []).slice().sort((a, b) => a.sort_order - b.sort_order);
@@ -79,6 +82,12 @@ export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partia
     ...imagesOnly.map(retinaUrl),
   ];
   const videos = videosOnly.map((item) => mediaUrls?.get(item.storage_path) || mediaRoute(item.storage_path));
+  // 与 images 一一对应的像素尺寸。老数据（直接存绝对地址的 image_url）没有尺寸，
+  // 用 null 占位，前端据此退回统一比例而不是猜一个错误的宽高比。
+  const imageSizes = [
+    ...(row.image_url ? [null] : []),
+    ...imagesOnly.map((item) => item.width && item.height ? { width: Number(item.width), height: Number(item.height) } : null),
+  ];
   const firstImage = imagesOnly[0];
   const image = row.image_url || (firstImage ? imageUrl(firstImage) : undefined);
   const imageRetina = !row.image_url && firstImage ? retinaUrl(firstImage) : undefined;
@@ -102,6 +111,7 @@ export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partia
     images: images.length ? images : undefined,
     thumbnailImages: thumbnailImages.length ? thumbnailImages : undefined,
     retinaImages: retinaImages.length ? retinaImages : undefined,
+    imageSizes: imageSizes.some(Boolean) ? imageSizes : undefined,
     isPartial: partial,
     mediaResolved: !partial,
     video: videos[0],

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft, Check, Compass, Download, Eye, Heart, Home, Image as ImageIcon, Layers,
+  ArrowLeft, Check, ChevronRight, Compass, Download, Eye, Heart, Home, Image as ImageIcon, Layers,
   MessageSquare, Palette, RotateCcw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload, UserRound, X,
 } from "lucide-react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
@@ -15,15 +15,34 @@ import {
   paletteFor, safeColor, withAlpha, type BottomBarConfig, type CardConfig, type DecorConfig, type DecorIconSlot, type DecorTheme,
 } from "@/lib/decor/types";
 
-type Tab = "official" | "community" | "mine" | "submissions" | "studio";
+/**
+ * 三个主入口：发现装扮 / 我的装扮 / 创作工坊。
+ *
+ * 原来的官方精选、玩家工坊、我的装扮、我的投稿、工作室是五个平级 Tab，
+ * 手机上要横向滚动才能看全，且「收藏」和「投稿」被拆到不同地方。
+ * 现在二级内容用分段控件承载，功能一个不少，层级从三层压到两层。
+ */
+type Tab = "discover" | "mine" | "studio";
+type DiscoverSection = "official" | "community";
+type MineSection = "active" | "favorite" | "submissions";
+type LegacyTab = "official" | "community" | "submissions";
 type KindFilter = "all" | "bottom" | "card";
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: "discover", label: "发现装扮" },
+  { id: "mine", label: "我的装扮" },
+  { id: "studio", label: "创作工坊" },
+];
+
+const DISCOVER_SECTIONS: { id: DiscoverSection; label: string }[] = [
   { id: "official", label: "官方精选" },
   { id: "community", label: "玩家工坊" },
-  { id: "mine", label: "我的装扮" },
+];
+
+const MINE_SECTIONS: { id: MineSection; label: string }[] = [
+  { id: "active", label: "正在使用" },
+  { id: "favorite", label: "我的收藏" },
   { id: "submissions", label: "我的投稿" },
-  { id: "studio", label: "工作室" },
 ];
 
 const STATUS_LABEL: Record<string, string> = { pending: "审核中", approved: "已上架", rejected: "需修改", delisted: "已下架" };
@@ -62,8 +81,8 @@ function BarPreview({ config, mode, active = "home", compact = false, onActiveCh
       {DECOR_ICON_SLOTS.map((slot) => {
         const icon = config.icons[slot];
         const src = slot === active ? icon?.active || icon?.normal : icon?.normal;
-        return (
-          <button type="button" key={slot} className={slot === active ? "active" : ""} tabIndex={onActiveChange ? 0 : -1} onClick={() => onActiveChange?.(slot)} aria-pressed={slot === active}>
+        const content = (
+          <>
             {src ? (
               icon?.tint ? (
                 <span
@@ -84,7 +103,14 @@ function BarPreview({ config, mode, active = "home", compact = false, onActiveCh
               })()
             )}
             {config.showLabel !== false && <span className="bottom-nav-label">{SLOT_LABELS[slot]}</span>}
-          </button>
+          </>
+        );
+        // 只有真正可点时才用 button：卡片缩略图外层已经是 button，
+        // 里面再嵌 button 会触发水合错误，也会让读屏把装饰当成两个控件。
+        return onActiveChange ? (
+          <button type="button" key={slot} className={slot === active ? "active" : ""} onClick={() => onActiveChange(slot)} aria-pressed={slot === active}>{content}</button>
+        ) : (
+          <span key={slot} className={slot === active ? "active" : ""} aria-hidden="true">{content}</span>
         );
       })}
     </div>
@@ -140,31 +166,101 @@ function CardPreview({ config, mode, state = "back" }: { config: CardConfig; mod
   );
 }
 
-function ColorRow({ label, value, onChange, defaultValue }: { label: string; value: string; onChange: (value: string) => void; defaultValue?: string }) {
+/** 常用色板：中性灰阶 + 品牌金 + 少量自然/冷色，覆盖现有官方预设的取色范围。 */
+const COLOR_SWATCHES = [
+  "#171A1E", "#1C2227", "#242830", "#2C3238", "#3A4148", "#4B535B",
+  "#5A6068", "#6E767E", "#8A8F95", "#A7ADB4", "#C4CBD1", "#E3E6E8",
+  "#EDEBE4", "#F4F4F1", "#FBFAF7", "#FFFFFF",
+  "#D8C28D", "#C9A961", "#B8954A", "#8A6E28", "#6B5416", "#3B2F14",
+  "#7C8F79", "#4F6B57", "#2F4638", "#7A8CA8", "#3F5566", "#243240",
+  "#B7654F", "#8C4A3C", "#5A2E26",
+  "#0B0D0F", "#12151A", "#1F242B", "#333A42", "#6B7480", "#D9D4C7",
+];
+
+function sameColor(a: string, b: string) {
+  return a.replace("#", "").toLowerCase() === b.replace("#", "").toLowerCase();
+}
+
+/**
+ * 统一颜色选择器：点开再选，不再让每一项都常驻十几个色点 + HEX 输入框。
+ * 改动即时反映到右侧实时预览（走 onChange），但只有点「应用装扮」才写服务器。
+ */
+function ColorPickerSheet({ label, value, defaultValue, onChange, onClose }: {
+  label: string;
+  value: string;
+  defaultValue?: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+}) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   return (
-    <label className="decor-color-row">
-      <span>{label}</span>
-      <span className="decor-color-input">
-        <input type="color" value={safeColor(value, "#000000")} onChange={(event) => onChange(event.target.value)} aria-label={`${label}颜色`} />
-        <input
-          type="text"
-          value={text}
-          inputMode="text"
-          spellCheck={false}
-          onChange={(event) => {
-            const next = event.target.value;
-            setText(next);
-            if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(next)) onChange(next);
-          }}
-          onBlur={() => setText(value)}
-        />
-        {defaultValue !== undefined && defaultValue.toLowerCase() !== value.toLowerCase() && (
-          <button type="button" className="decor-row-reset" aria-label={`恢复${label}默认值`} onClick={() => onChange(defaultValue)}>↺</button>
-        )}
-      </span>
-    </label>
+    <div className="decor-color-pop" role="dialog" aria-modal="true" aria-label={`${label}颜色`}>
+      <div className="decor-color-pop-inner">
+        <header>
+          <strong>{label}</strong>
+          <button type="button" onClick={onClose} aria-label="关闭"><X size={17} /></button>
+        </header>
+        <div className="decor-color-now">
+          <span className="decor-color-now-chip" style={{ background: safeColor(value, "#000000") }} aria-hidden="true" />
+          <span>{value.toUpperCase()}</span>
+        </div>
+        <div className="decor-color-grid" role="group" aria-label={`${label}常用颜色`}>
+          {COLOR_SWATCHES.map((color) => (
+            <button
+              key={color}
+              type="button"
+              className={sameColor(color, value) ? "active" : ""}
+              style={{ background: color }}
+              aria-label={color}
+              aria-pressed={sameColor(color, value)}
+              onClick={() => onChange(color)}
+            />
+          ))}
+        </div>
+        <div className="decor-color-custom">
+          <label className="decor-color-pick">
+            <input type="color" value={safeColor(value, "#000000")} onChange={(event) => onChange(event.target.value)} aria-label={`${label}自定义颜色`} />
+            <span>取色器</span>
+          </label>
+          <input
+            type="text"
+            value={text}
+            inputMode="text"
+            spellCheck={false}
+            aria-label={`${label}色值`}
+            onChange={(event) => {
+              const next = event.target.value;
+              setText(next);
+              if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(next)) onChange(next);
+            }}
+            onBlur={() => setText(value)}
+          />
+        </div>
+        <div className="decor-color-pop-actions">
+          {defaultValue !== undefined && !sameColor(defaultValue, value) && (
+            <button type="button" onClick={() => onChange(defaultValue)}>恢复默认</button>
+          )}
+          <button type="button" className="is-primary" onClick={onClose}>完成</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ColorRow({ label, value, onChange, defaultValue }: { label: string; value: string; onChange: (value: string) => void; defaultValue?: string }) {
+  const [open, setOpen] = useState(false);
+  const dirty = defaultValue !== undefined && !sameColor(defaultValue, value);
+  return (
+    <>
+      <button type="button" className="decor-color-field" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+        <span className="decor-color-chip" style={{ background: safeColor(value, "#000000") }} aria-hidden="true" />
+        <span className="decor-color-name">{label}</span>
+        <span className="decor-color-code">{value.toUpperCase()}{dirty ? " · 已修改" : ""}</span>
+        <ChevronRight size={14} />
+      </button>
+      {open && <ColorPickerSheet label={label} value={value} defaultValue={defaultValue} onChange={onChange} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
@@ -204,11 +300,44 @@ function announceSaved(onNotice: (message: string) => void) {
   window.addEventListener("heika-decor-applied", onApplied, { once: true });
 }
 
+/** 旧调用方仍会传 official / community / submissions，这里统一收口。 */
+const resolveTab = (value: Tab | LegacyTab): Tab =>
+  value === "studio" ? "studio" : value === "mine" || value === "submissions" ? "mine" : "discover";
+const resolveDiscover = (value: Tab | LegacyTab): DiscoverSection =>
+  value === "community" ? "community" : "official";
+const resolveMine = (value: Tab | LegacyTab): MineSection =>
+  value === "submissions" ? "submissions" : "active";
+
+/** 「正在使用」：只读呈现账号当前生效的装扮，改动一律从创作工坊发起。 */
+function ActiveDecorPanel({ decor, mode, accountId, onEdit, onDiscover, onLogin }: {
+  decor: { bottomBar: BottomBarConfig; card: CardConfig };
+  mode: "dark" | "light";
+  accountId: string | null;
+  onEdit: () => void;
+  onDiscover: () => void;
+  onLogin: () => void;
+}) {
+  const [slot, setSlot] = useState<DecorIconSlot>("home");
+  return (
+    <div className="decor-active">
+      <div className="decor-active-stage">
+        <CardPreview config={decor.card} mode={mode} />
+        <BarPreview config={decor.bottomBar} mode={mode} active={slot} onActiveChange={setSlot} />
+      </div>
+      <p className="decor-active-hint">这是账号当前生效的装扮，其他登录设备读到的也是它。调整会先进草稿，确认后才同步。</p>
+      <div className="decor-active-actions">
+        <button type="button" className="is-primary" onClick={() => accountId ? onEdit() : onLogin()}><Palette size={15} /> 继续调整</button>
+        <button type="button" onClick={() => (accountId ? onDiscover() : onLogin())}><Sparkles size={15} /> 换个主题</button>
+      </div>
+    </div>
+  );
+}
+
 export default function DecorCenter({
-  open, initialTab = "official", initialKind = "all", accountId, onClose, onNotice, onLogin,
+  open, initialTab = "discover", initialKind = "all", accountId, onClose, onNotice, onLogin,
 }: {
   open: boolean;
-  initialTab?: Tab;
+  initialTab?: Tab | LegacyTab;
   initialKind?: KindFilter;
   accountId: string | null;
   onClose: () => void;
@@ -217,7 +346,9 @@ export default function DecorCenter({
 }) {
   const decor = useDecor();
   const mode = useMode();
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(resolveTab(initialTab));
+  const [discoverSection, setDiscoverSection] = useState<DiscoverSection>(resolveDiscover(initialTab));
+  const [mineSection, setMineSection] = useState<MineSection>(resolveMine(initialTab));
   const [kind, setKind] = useState<KindFilter>(initialKind);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<DecorTheme[]>([]);
@@ -237,6 +368,8 @@ export default function DecorCenter({
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
+  // 草稿未应用就关窗，给一次明确选择，避免辛苦调好的配色被静默丢掉。
+  const [closeConfirm, setCloseConfirm] = useState(false);
   const [submitForm, setSubmitForm] = useState({ title: "", description: "", tags: "" });
   const [iconEditing, setIconEditing] = useState<{ slot: DecorIconSlot; state: "normal" | "active"; file: File; url: string } | null>(null);
   const [iconScale, setIconScale] = useState(1);
@@ -247,7 +380,9 @@ export default function DecorCenter({
 
   useEffect(() => {
     if (!open) return;
-    setTab(initialTab);
+    setTab(resolveTab(initialTab));
+    setDiscoverSection(resolveDiscover(initialTab));
+    setMineSection(resolveMine(initialTab));
     setKind(initialKind);
     // 从「卡片装扮」进来的直接落在卡片工作区，不用再手动切一次。
     if (initialKind === "card" || initialKind === "bottom") setStudioKind(initialKind);
@@ -260,19 +395,18 @@ export default function DecorCenter({
   // APP 渲染完成后回执「APP 已应用」（4.3），钩子只在装扮中心生命周期内有效。
   useEffect(() => installDecorAppliedHook(), []);
 
-  const loadList = useCallback(async (scope: Tab) => {
-    if (scope === "studio") return;
+  const loadList = useCallback(async (scope: "official" | "community" | "favorites" | "mine") => {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ scope: scope === "submissions" ? "mine" : scope });
+      const params = new URLSearchParams({ scope });
       if (kind !== "all") params.set("kind", kind);
       if (query.trim()) params.set("q", query.trim());
       const response = await cloudFetch(`/api/v1/decor/themes?${params.toString()}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "主题列表加载失败");
       const list = (payload.data?.items || []) as DecorTheme[];
-      if (scope === "submissions") setMine(list);
+      if (scope === "favorites" || scope === "mine") setMine(list);
       else setItems(list);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "主题列表加载失败");
@@ -281,11 +415,16 @@ export default function DecorCenter({
     }
   }, [kind, query]);
 
+  // 「正在使用」直接读本地配置，不需要请求列表。
+  const listScope = tab === "discover"
+    ? discoverSection
+    : mineSection === "favorite" ? "favorites" : mineSection === "submissions" ? "mine" : null;
+
   useEffect(() => {
-    if (!open || tab === "studio") return;
-    const timer = window.setTimeout(() => { void loadList(tab); }, query ? 260 : 0);
+    if (!open || !listScope) return;
+    const timer = window.setTimeout(() => { void loadList(listScope); }, query ? 260 : 0);
     return () => window.clearTimeout(timer);
-  }, [open, tab, loadList, query]);
+  }, [open, listScope, loadList, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -296,11 +435,17 @@ export default function DecorCenter({
       if (demo) { setDemo(null); return; }
       if (detail) { setDetail(null); return; }
       if (submitOpen) { setSubmitOpen(false); return; }
+      if (dirty) { setCloseConfirm(true); return; }
       onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", onKey); };
   }, [open, detail, demo, submitOpen, onClose]);
+
+  const requestClose = () => {
+    if (dirty) { setCloseConfirm(true); return; }
+    onClose();
+  };
 
   const applyTheme = async (theme: DecorTheme, part: "all" | "palette" | "icons" = "all") => {
     if (!accountId) { onLogin(); return; }
@@ -317,6 +462,24 @@ export default function DecorCenter({
         patch.cardThemeId = theme.id;
       }
       await saveDecor(patch);
+      announceSaved(onNotice);
+      setDetail(null);
+    } catch (cause) {
+      onNotice(cause instanceof Error ? cause.message : "应用失败，请重试");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 官方预设在本地就有完整配置：即使列表接口慢或离线，发现页也不会是一片空白。
+  // 这类主题没有数据库 UUID，用一个前缀 id 区分，收藏等写操作只对真实记录开放。
+  const applyPreset = async (theme: DecorTheme) => {
+    if (!accountId) { onLogin(); return; }
+    setBusy(true);
+    try {
+      await saveDecor({ bottomBar: theme.config.bottomBar, card: theme.config.card, bottomBarThemeId: null, cardThemeId: null });
+      setWorking({ bottomBar: theme.config.bottomBar, card: theme.config.card });
+      setDirty(false);
       announceSaved(onNotice);
       setDetail(null);
     } catch (cause) {
@@ -425,7 +588,8 @@ export default function DecorCenter({
       if (!created) throw new Error("投稿失败，请重试");
       setSubmitOpen(false);
       setSubmitForm({ title: "", description: "", tags: "" });
-      setTab("submissions");
+      setTab("mine");
+      setMineSection("submissions");
       onNotice("已提交审核，通过后其他用户就能使用");
     } catch (cause) {
       onNotice(cause instanceof Error ? cause.message : "投稿失败，请重试");
@@ -448,14 +612,49 @@ export default function DecorCenter({
     setDirty(true);
   };
 
-  const list = tab === "submissions" ? mine : items;
+  const list = tab === "discover" ? items : mine;
+  // 官方精选始终包含本地预设：数据库里缺某套主题时仍能看到真实效果，
+  // 同 slug 时以数据库记录为准（有真实收藏与使用人数）。
+  const galleryItems = (() => {
+    if (tab !== "discover" || discoverSection !== "official") return list;
+    const bySlug = new Map(list.filter((theme) => theme.slug).map((theme) => [theme.slug as string, theme]));
+    const merged: DecorTheme[] = OFFICIAL_PRESETS.map((preset) => {
+      const record = bySlug.get(preset.slug);
+      if (record) { bySlug.delete(preset.slug); return record; }
+      return {
+        id: `preset:${preset.slug}`,
+        slug: preset.slug,
+        title: preset.title,
+        description: preset.description,
+        origin: "official" as const,
+        kind: preset.kind,
+        authorId: null,
+        authorName: null,
+        status: "approved" as const,
+        version: 1,
+        tags: preset.tags,
+        config: preset.config,
+        liveConfig: preset.config,
+        reviewNote: null,
+        publishedAt: null,
+        createdAt: "",
+        updatedAt: "",
+        favorite: false,
+        favoriteCount: 0,
+        installCount: 0,
+        mine: false,
+        hasLiveVersion: true,
+      };
+    });
+    return [...merged, ...bySlug.values()];
+  })();
 
   if (!open) return null;
 
   return (
     <div className="decor-center" role="dialog" aria-modal="true" aria-label="装扮中心">
       <header className="decor-center-head">
-        <button type="button" onClick={onClose} aria-label="关闭"><ArrowLeft size={20} /></button>
+        <button type="button" onClick={requestClose} aria-label="关闭"><ArrowLeft size={20} /></button>
         <strong>装扮中心</strong>
         <button type="button" className="decor-center-studio" onClick={() => setTab("studio")} aria-label="打开装扮工作室"><Palette size={18} /></button>
       </header>
@@ -505,13 +704,35 @@ export default function DecorCenter({
               <section>
                 <h3>官方预设</h3>
                 <p className="decor-section-hint">点选即套用到预览，确认后点击下方「应用装扮」保存并同步。</p>
-                <div className="decor-preset-row">
-                  {OFFICIAL_PRESETS.map((preset) => (
-                    <button key={preset.slug} type="button" onClick={() => {
-                      setWorking({ bottomBar: preset.config.bottomBar, card: preset.config.card });
-                      setDirty(true);
-                    }}>{preset.title}</button>
-                  ))}
+                <div className="decor-preset-strip">
+                  {OFFICIAL_PRESETS.map((preset) => {
+                    // 缩略图直接用这套主题的卡背色与底栏色画，不另做宣传图。
+                    const barPalette = paletteFor(preset.config.bottomBar, studioMode);
+                    const cardPalette = paletteFor(preset.config.card, studioMode);
+                    return (
+                      <button key={preset.slug} type="button" className="decor-preset-tile" onClick={() => {
+                        setWorking({ bottomBar: preset.config.bottomBar, card: preset.config.card });
+                        setDirty(true);
+                      }}>
+                        <span className="decor-preset-thumb" style={{ background: cardPalette.backBg, borderColor: cardPalette.backBorder }}>
+                          <span className="decor-preset-sheet" style={{ background: cardPalette.contentBg, borderColor: cardPalette.contentBorder }} />
+                          <span
+                            className="decor-preset-bar"
+                            style={{
+                              background: withAlpha(barPalette.bg, Math.max(0.34, barPalette.bgOpacity)),
+                              borderColor: withAlpha(barPalette.border, barPalette.borderOpacity),
+                            }}
+                          >
+                            <i style={{ background: barPalette.icon }} />
+                            <i style={{ background: barPalette.activeIcon }} />
+                            <i style={{ background: barPalette.icon }} />
+                            <i style={{ background: barPalette.icon }} />
+                          </span>
+                        </span>
+                        <span className="decor-preset-name">{preset.title}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
               {studioKind === "bottom" ? (
@@ -536,18 +757,22 @@ export default function DecorCenter({
                   </section>
                   <section>
                     <h3>基础配色</h3>
-                    <ColorRow label="背景"  value={barPalette.bg} onChange={(value) => updateBar({ bg: value })} defaultValue={barDefaults.bg} />
-                    <ColorRow label="图标"  value={barPalette.icon} onChange={(value) => updateBar({ icon: value })} defaultValue={barDefaults.icon} />
-                    <ColorRow label="选中图标"  value={barPalette.activeIcon} onChange={(value) => updateBar({ activeIcon: value })} defaultValue={barDefaults.activeIcon} />
-                    <ColorRow label="文字"  value={barPalette.label} onChange={(value) => updateBar({ label: value })} defaultValue={barDefaults.label} />
-                    <ColorRow label="选中文字"  value={barPalette.activeLabel} onChange={(value) => updateBar({ activeLabel: value })} defaultValue={barDefaults.activeLabel} />
+                    <p className="decor-section-hint">先定背景与强调色就能看出气质，其余细节收在「高级自定义」。</p>
+                    <ColorRow label="底栏背景"  value={barPalette.bg} onChange={(value) => updateBar({ bg: value })} defaultValue={barDefaults.bg} />
+                    <ColorRow label="强调色 · 选中图标"  value={barPalette.activeIcon} onChange={(value) => updateBar({ activeIcon: value })} defaultValue={barDefaults.activeIcon} />
+                    <OpacityRow label="背景透明度"  value={barPalette.bgOpacity} onChange={(value) => updateBar({ bgOpacity: value })} defaultValue={barDefaults.bgOpacity} />
                   </section>
                   <details className="decor-advanced">
                     <summary>高级自定义</summary>
                     <section>
+                      <h3>文字与图标</h3>
+                      <ColorRow label="图标"  value={barPalette.icon} onChange={(value) => updateBar({ icon: value })} defaultValue={barDefaults.icon} />
+                      <ColorRow label="文字"  value={barPalette.label} onChange={(value) => updateBar({ label: value })} defaultValue={barDefaults.label} />
+                      <ColorRow label="选中文字"  value={barPalette.activeLabel} onChange={(value) => updateBar({ activeLabel: value })} defaultValue={barDefaults.activeLabel} />
+                    </section>
+                    <section>
                       <h3>透明度与描边</h3>
                       <ColorRow label="描边"  value={barPalette.border} onChange={(value) => updateBar({ border: value })} defaultValue={barDefaults.border} />
-                      <OpacityRow label="背景透明度"  value={barPalette.bgOpacity} onChange={(value) => updateBar({ bgOpacity: value })} defaultValue={barDefaults.bgOpacity} />
                       <OpacityRow label="描边透明度"  value={barPalette.borderOpacity} onChange={(value) => updateBar({ borderOpacity: value })} defaultValue={barDefaults.borderOpacity} />
                       <ColorRow label="选中底色"  value={barPalette.activePill} onChange={(value) => updateBar({ activePill: value })} defaultValue={barDefaults.activePill} />
                       <OpacityRow label="选中底色透明度"  value={barPalette.activePillOpacity} onChange={(value) => updateBar({ activePillOpacity: value })} defaultValue={barDefaults.activePillOpacity} />
@@ -605,6 +830,7 @@ export default function DecorCenter({
                   <section>
                     <h3>基础设置</h3>
                     <ColorRow label="卡背底色"  value={cardPalette.backBg} onChange={(value) => updateCard({ backBg: value })} defaultValue={cardDefaults.backBg} />
+                    <ColorRow label="强调色"  value={cardPalette.accent} onChange={(value) => updateCard({ accent: value })} defaultValue={cardDefaults.accent} />
                     <label className="decor-select-row"><span>纹理</span>
                       <select value={cardPalette.texture} onChange={(event) => updateCard({ texture: event.target.value as typeof cardPalette.texture })}>
                         <option value="none">无纹理</option>
@@ -660,7 +886,6 @@ export default function DecorCenter({
                       <ColorRow label="正文"  value={cardPalette.bodyColor} onChange={(value) => updateCard({ bodyColor: value })} defaultValue={cardDefaults.bodyColor} />
                       <ColorRow label="分类底色"  value={cardPalette.chipBg} onChange={(value) => updateCard({ chipBg: value })} defaultValue={cardDefaults.chipBg} />
                       <ColorRow label="分类描边"  value={cardPalette.chipBorder} onChange={(value) => updateCard({ chipBorder: value })} defaultValue={cardDefaults.chipBorder} />
-                      <ColorRow label="强调色"  value={cardPalette.accent} onChange={(value) => updateCard({ accent: value })} defaultValue={cardDefaults.accent} />
                     </section>
                   </details>
                 </>
@@ -694,6 +919,35 @@ export default function DecorCenter({
           </div>
         ) : (
           <>
+            <div className="decor-segments" role="tablist" aria-label={tab === "discover" ? "装扮来源" : "我的装扮分类"}>
+              {(tab === "discover" ? DISCOVER_SECTIONS : MINE_SECTIONS).map((item) => {
+                const active = tab === "discover" ? discoverSection === item.id : mineSection === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={active ? "active" : ""}
+                    onClick={() => {
+                      setDetail(null);
+                      if (tab === "discover") setDiscoverSection(item.id as DiscoverSection);
+                      else setMineSection(item.id as MineSection);
+                    }}
+                  >{item.label}</button>
+                );
+              })}
+            </div>
+            {tab === "mine" && mineSection === "active" ? (
+              <ActiveDecorPanel
+                decor={{ bottomBar: decor.decor.bottomBar, card: decor.decor.card }}
+                mode={mode}
+                accountId={accountId}
+                onEdit={() => setTab("studio")}
+                onDiscover={() => { setTab("discover"); setDiscoverSection("official"); }}
+                onLogin={onLogin}
+              />
+            ) : (<>
             <div className="decor-filters">
               <label className="decor-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索主题" /></label>
               <div className="decor-kind-chips">
@@ -703,7 +957,7 @@ export default function DecorCenter({
               </div>
             </div>
 
-            {tab === "submissions" ? (
+            {tab === "mine" && mineSection === "submissions" ? (
               <div className="decor-submissions">
                 {loading ? <div className="decor-empty">正在加载投稿…</div> : mine.length ? mine.map((theme) => (
                   <article key={theme.id} className="decor-submission">
@@ -720,26 +974,32 @@ export default function DecorCenter({
                       {theme.status === "approved" && <small>已上架 · 更新需要重新审核</small>}
                     </div>
                   </article>
-                )) : <div className="decor-empty"><ShieldCheck size={22} /><strong>还没有投稿</strong><span>在工作室里调好一套装扮，就可以投稿给其他探索者。</span><button type="button" onClick={() => setTab("studio")}>去工作室</button></div>}
+                )) : <div className="decor-empty"><ShieldCheck size={22} /><strong>还没有投稿</strong><span>在创作工坊里调好一套装扮，就可以投稿给其他探索者。</span><button type="button" onClick={() => setTab("studio")}>去创作工坊</button></div>}
               </div>
             ) : (
               <div className="decor-grid">
-                {loading && !list.length ? <div className="decor-empty">正在加载主题…</div> : error ? <div className="decor-empty"><strong>加载失败</strong><span>{error}</span><button type="button" onClick={() => void loadList(tab)}>重试</button></div> : list.length ? list.map((theme) => (
-                  <button key={theme.id} type="button" className="decor-theme-card" onClick={() => { setDetail(theme); setDetailSlot("home"); }}>
-                    <div className="decor-theme-preview">
-                      {theme.kind === "card"
-                        ? <CardPreview config={theme.config.card} mode={mode} />
-                        : <BarPreview config={theme.config.bottomBar} mode={mode} />}
+                {loading && !galleryItems.length ? <div className="decor-empty">正在加载主题…</div> : error && !galleryItems.length ? <div className="decor-empty"><strong>加载失败</strong><span>{error}</span><button type="button" onClick={() => { if (listScope) void loadList(listScope); }}>重试</button></div> : galleryItems.length ? galleryItems.map((theme) => (
+                  <button key={theme.id} type="button" className={`decor-theme-card${theme.id.startsWith("preset:") ? " is-preset" : ""}`} onClick={() => { setDetail(theme); setDetailSlot("home"); }}>
+                    <div className={`decor-theme-preview is-${theme.kind}`}>
+                      {theme.kind !== "bottom" && <CardPreview config={theme.config.card} mode={mode} />}
+                      {theme.kind !== "card" && <BarPreview config={theme.config.bottomBar} mode={mode} />}
                       {theme.kind === "bundle" && <span className="decor-theme-badge"><Layers size={11} /> 整套</span>}
+                      {theme.favorite && <span className="decor-theme-fav" aria-label="已收藏"><Heart size={12} fill="currentColor" /></span>}
                     </div>
                     <div className="decor-theme-meta">
                       <strong>{theme.title}</strong>
-                      <small>{theme.origin === "official" ? "官方" : theme.authorName || "玩家"} · {theme.installCount} 人在用</small>
+                      {theme.tags.length > 0 && <div className="decor-theme-tags">{theme.tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
+                      <small className="decor-theme-source">
+                        {theme.origin === "official" && <ShieldCheck size={11} aria-label="官方主题" />}
+                        {theme.origin === "official" ? "官方" : theme.authorName || "玩家"}
+                        {theme.installCount > 0 ? ` · ${theme.installCount} 人在用` : ""}
+                      </small>
                     </div>
                   </button>
-                )) : <div className="decor-empty"><Sparkles size={22} /><strong>暂时没有匹配的主题</strong><span>换个关键词，或者去工作室自己做一套。</span></div>}
+                )) : <div className="decor-empty"><Sparkles size={22} /><strong>暂时没有匹配的主题</strong><span>换个关键词，或者去创作工坊自己做一套。</span></div>}
               </div>
             )}
+            </>)}
           </>
         )}
       </div>
@@ -749,7 +1009,9 @@ export default function DecorCenter({
           <header>
             <button type="button" onClick={() => setDetail(null)} aria-label="返回"><ArrowLeft size={19} /></button>
             <strong>{detail.title}</strong>
-            <button type="button" aria-label="收藏" className={detail.favorite ? "is-favorite" : ""} onClick={() => void favorite(detail)}><Heart size={18} /></button>
+            {detail.id.startsWith("preset:")
+              ? <span className="decor-detail-official" aria-label="官方主题"><ShieldCheck size={17} /></span>
+              : <button type="button" aria-label="收藏" className={detail.favorite ? "is-favorite" : ""} onClick={() => void favorite(detail)}><Heart size={18} /></button>}
           </header>
           <div className="decor-detail-body">
             <div className="decor-detail-stage">
@@ -783,10 +1045,10 @@ export default function DecorCenter({
               {detail.hasLiveVersion && detail.status === "pending" && <blockquote>新版本审核中，当前线上版本仍可继续使用。</blockquote>}
               {detail.reviewNote && <blockquote>审核意见：{detail.reviewNote}</blockquote>}
               <div className="decor-detail-actions">
-                <button type="button" className="is-primary" disabled={busy || (detail.status !== "approved" && !detail.mine)} onClick={() => void applyTheme(detail)}>
+                <button type="button" className="is-primary" disabled={busy || (detail.status !== "approved" && !detail.mine)} onClick={() => void (detail.id.startsWith("preset:") ? applyPreset(detail) : applyTheme(detail))}>
                   <Check size={15} /> {detail.status === "approved" ? "应用这套装扮" : "仅自己可用"}
                 </button>
-                {detail.kind === "bundle" && (
+                {detail.kind === "bundle" && !detail.id.startsWith("preset:") && (
                   <>
                     <button type="button" onClick={() => void applyTheme(detail, "palette")}>仅用配色</button>
                     <button type="button" onClick={() => void applyTheme(detail, "icons")}>仅用图标</button>
@@ -822,6 +1084,19 @@ export default function DecorCenter({
             <div className="decor-demo-actions">
               <button type="button" onClick={() => setDemo({ ...demo, state: "back" })}>重新演示</button>
               <button type="button" className="is-primary" onClick={() => setDemo(null)}>完成</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {closeConfirm && (
+        <div className="decor-confirm" role="dialog" aria-modal="true" aria-label="有未应用的修改">
+          <div className="decor-confirm-inner">
+            <strong>还有未应用的修改</strong>
+            <p>当前配色只存在于草稿里，关闭后不会写入账号。</p>
+            <div>
+              <button type="button" onClick={() => setCloseConfirm(false)}>继续编辑</button>
+              <button type="button" className="is-primary" onClick={() => { setCloseConfirm(false); onClose(); }}>放弃修改</button>
             </div>
           </div>
         </div>

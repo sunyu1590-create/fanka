@@ -48,6 +48,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.selectable
@@ -308,14 +309,17 @@ fun PostDetailScreen(
                         }
                         // 标题不再做跨页共享：15sp 卡面标题与 22sp 详情标题字号差距太大，
                         // 共享过程里字号会出现跳变，不如让它随正文一起淡入。
-                        Text(
-                            item.title,
-                            Modifier.detailContentReveal(enabled = true, delayMillis = 45),
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontSize = 22.sp * titleTextScale,
-                            lineHeight = 31.sp * titleTextScale,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        // 只读正文与标题允许选择复制；不做成输入框，避免误改。
+                        SelectionContainer {
+                            Text(
+                                item.title,
+                                Modifier.detailContentReveal(enabled = true, delayMillis = 45),
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontSize = 22.sp * titleTextScale,
+                                lineHeight = 31.sp * titleTextScale,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                         item.aiSummary?.let { summary ->
                             Column(
                                 Modifier.fillMaxWidth().detailContentReveal(enabled = true, delayMillis = 75)
@@ -362,12 +366,14 @@ fun PostDetailScreen(
                         val modeScale = when (readingMode) { "focus" -> 1.14f; "night" -> 1.07f; else -> 1f }
                         val bodyFont = 14.sp * bodyTextScale * modeScale
                         val bodyLine = bodyFont * when (readingMode) { "focus" -> 1.75f; "night" -> 1.8f; else -> 1.72f }
-                        HeikaMarkdown(
-                            source = item.body,
-                            baseSize = bodyFont,
-                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            onLinkClick = { linkWarning = it },
-                        )
+                        SelectionContainer {
+                            HeikaMarkdown(
+                                source = item.body,
+                                baseSize = bodyFont,
+                                textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                onLinkClick = { linkWarning = it },
+                            )
+                        }
                         if (item.channel == "ai") {
                             AiResourceDetails(
                                 contentType = item.contentType,

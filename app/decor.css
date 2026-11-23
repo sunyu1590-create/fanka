@@ -395,7 +395,8 @@
   backdrop-filter: blur(18px);
 }
 
-.decor-preview-bar button {
+.decor-preview-bar > button,
+.decor-preview-bar > span {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -410,16 +411,19 @@
   position: relative;
 }
 
-.decor-preview-bar button.active {
+.decor-preview-bar > button.active,
+.decor-preview-bar > span.active {
   color: var(--decor-bar-active-label);
   background: var(--decor-bar-pill);
 }
 
-.decor-preview-bar button svg {
+.decor-preview-bar > button svg,
+.decor-preview-bar > span svg {
   stroke: var(--decor-bar-icon);
 }
 
-.decor-preview-bar button.active svg {
+.decor-preview-bar > button.active svg,
+.decor-preview-bar > span.active svg {
   stroke: var(--decor-bar-active-icon);
 }
 

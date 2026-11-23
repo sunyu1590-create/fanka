@@ -430,17 +430,30 @@ html,body,.app,.topline,.bottom-nav,.bottom-nav button,.overlay,.modal,.detail,.
 .detail-gallery .detail-image-button{width:100%;margin:0;touch-action:pan-y pinch-zoom}
 .detail-gallery-controls{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:7px;padding:3px 5px;border-radius:18px;background:#111a;color:white;font-size:10px;line-height:1}
 .detail-gallery-controls button{width:26px;height:26px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:white}
-.detail-image-button img{display:block;width:100%;height:auto;max-height:68dvh;object-fit:contain;background:var(--surface);animation:image-reveal .3s ease both}
+.detail-image-button>img{display:block;width:100%;height:auto;max-height:68dvh;object-fit:contain;background:var(--surface);animation:image-reveal .3s ease both}
 .detail-image-frame{isolation:isolate}
 .detail-image-frame img{will-change:opacity,transform,filter;animation:detail-image-enter-next 270ms var(--ease) both}
+.detail-image-frame .progressive-image-low{animation:none}
 .detail-image-frame.is-previous img{animation-name:detail-image-enter-previous}
 @keyframes detail-image-enter-next{from{opacity:.62;filter:blur(6px);transform:translate3d(15px,0,0) scale(1.016)}to{opacity:1;filter:blur(0);transform:translate3d(0,0,0) scale(1)}}
 @keyframes detail-image-enter-previous{from{opacity:.62;filter:blur(6px);transform:translate3d(-15px,0,0) scale(1.016)}to{opacity:1;filter:blur(0);transform:translate3d(0,0,0) scale(1)}}
-.detail-image-loading{position:absolute;inset:0;display:none;place-items:center;pointer-events:none;color:white;font-size:11px;text-shadow:0 1px 6px #000a}.detail-image-loading.is-visible{display:grid}.detail-image-loading::before{content:"";position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-22px 0 0 -11px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:detail-image-spin .7s linear infinite}@keyframes detail-image-spin{to{transform:rotate(360deg)}}
-.detail-image-button .progressive-image-stack{position:relative;display:block;width:100%;overflow:hidden;background:var(--surface);line-height:0}
-.detail-image-button .progressive-image-low{position:relative;z-index:0}
-.detail-image-button .progressive-image-high{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .28s ease;animation:none}
-.detail-image-button .progressive-image-high.is-ready{opacity:1}
+.detail-image-loading{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:none;padding:6px 11px;border-radius:20px;background:#111c;color:#fff;font-size:10px;letter-spacing:.06em;pointer-events:none;backdrop-filter:blur(6px)}.detail-image-loading.is-visible{display:block}
+/* 占位高度只由 aspect-ratio 决定：图片来与不来，正文位置都不变。 */
+.progressive-image-stack{position:relative;display:block;width:100%;aspect-ratio:var(--progressive-ratio,.8);overflow:hidden;background:var(--surface);line-height:0}
+.progressive-image-placeholder{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;background:var(--surface);color:var(--muted)}
+.progressive-image-glyph{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:color-mix(in srgb,var(--ink) 7%,transparent);animation:placeholder-breathe 2s ease-in-out infinite}
+.progressive-image-hint{font-size:11px;letter-spacing:.02em;opacity:.8}
+@keyframes placeholder-breathe{0%,100%{opacity:.5;transform:scale(.985)}50%{opacity:.92;transform:scale(1)}}
+.progressive-image-low{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:contain;opacity:0;filter:blur(8px);transform:scale(1.012);transition:opacity .22s ease,filter .3s ease,transform .3s ease;animation:none}
+.progressive-image-low.is-ready{opacity:1}
+.progressive-image-high{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .3s ease;animation:none}
+.progressive-image-high.is-ready{opacity:1}
+.progressive-image-stack[data-phase="high"] .progressive-image-low{opacity:0;filter:none;transform:none}
+.progressive-image-stack[data-phase="failed"] .progressive-image-high{opacity:0;visibility:hidden}
+.progressive-image-failed{position:absolute;z-index:3;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;gap:10px;max-width:calc(100% - 32px);padding:9px 12px;border-radius:10px;background:#111c;color:#fff;font-size:11px;line-height:1.4;white-space:nowrap;backdrop-filter:blur(8px)}
+.progressive-image-failed button{display:inline-flex;align-items:center;gap:5px;border:1px solid #ffffff33;background:#ffffff14;color:#fff;border-radius:8px;padding:5px 9px;font-size:11px;line-height:1}
+.progressive-image-note{position:absolute;z-index:3;left:12px;bottom:12px;padding:5px 9px;border-radius:8px;background:#111a;color:#fff;font-size:10px}
+.detail-image-button .progressive-image-stack{max-height:68dvh}
 .detail-image-button>span{position:absolute;right:12px;bottom:12px;padding:6px 9px;background:#1119;color:white;font-size:10px;line-height:1.2;opacity:0;transition:opacity .18s ease}
 .detail-image-button:focus-visible>span,.detail-image-button:hover>span{opacity:1}
 .detail-category{display:block;margin:0 0 9px;color:var(--muted)!important;font-size:11px;letter-spacing:.08em}
@@ -8468,4 +8481,27 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
 @media (prefers-reduced-motion: reduce) {
   .explore-heat-day, .explore-discovery, .explore-pair button, .explore-history-toggle > span svg { transition: none; }
   .explore-metrics-skeleton i, .explore-metrics-skeleton b { animation: none; }
+}
+
+/* ---------- 只读正文的文字选择 ----------
+   Android WebView 与部分移动浏览器默认允许选择，但容器上任何一处
+   user-select:none 都会让长按菜单失效。这里对阅读区域显式声明允许，
+   并给选中态一个与品牌一致的低饱和高亮。 */
+.detail-body h1,
+.detail-body .byline,
+.detail-body .detail-text-cover h1,
+.detail-body .markdown-content,
+.detail-body .markdown-content p,
+.detail-body .markdown-content li,
+.detail-body .markdown-content blockquote,
+.detail-body .markdown-content td,
+.detail-body .markdown-content th {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.detail-body .markdown-content ::selection,
+.detail-body h1::selection,
+.detail-body .markdown-content::selection {
+  background: color-mix(in srgb, var(--action, #c9a961) 32%, transparent);
 }

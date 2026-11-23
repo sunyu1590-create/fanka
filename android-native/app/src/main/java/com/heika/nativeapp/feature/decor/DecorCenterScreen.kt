@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,13 +44,25 @@ import com.heika.nativeapp.data.DecorThemeItem
 import com.heika.nativeapp.ui.BackHeader
 import com.heika.nativeapp.ui.HeikaNoticeBus
 
+/** 三个主入口：发现装扮 / 我的装扮 / 创作工坊，二级内容用分段控件承载。 */
 private val TABS = listOf(
-    "official" to "官方精选",
-    "community" to "玩家工坊",
+    "discover" to "发现装扮",
     "mine" to "我的装扮",
-    "submissions" to "我的投稿",
-    "studio" to "工作室",
+    "studio" to "创作工坊",
 )
+
+private val DISCOVER_SECTIONS = listOf("official" to "官方精选", "community" to "玩家工坊")
+private val MINE_SECTIONS = listOf("active" to "正在使用", "favorite" to "我的收藏", "submissions" to "我的投稿")
+
+private fun resolveTab(initial: String) = when (initial) {
+    "studio", "bottom", "card" -> "studio"
+    "mine", "submissions" -> "mine"
+    else -> "discover"
+}
+
+private fun resolveDiscover(initial: String) = if (initial == "community") "community" else "official"
+
+private fun resolveMine(initial: String) = if (initial == "submissions") "submissions" else "active"
 
 private val STATUS_LABEL = mapOf(
     "pending" to "审核中",
@@ -72,14 +85,24 @@ fun DecorCenterScreen(
     val official by viewModel.official.collectAsState()
     val community by viewModel.community.collectAsState()
     val mine by viewModel.mine.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
+    val applied by viewModel.applied.collectAsState()
     val busy by viewModel.busy.collectAsState()
-    var tab by remember { mutableStateOf(initialTab) }
+    var tab by remember { mutableStateOf(resolveTab(initialTab)) }
+    var discoverSection by remember { mutableStateOf(resolveDiscover(initialTab)) }
+    var mineSection by remember { mutableStateOf(resolveMine(initialTab)) }
     var detail by remember { mutableStateOf<DecorThemeItem?>(null) }
     var submitOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.load("official")
+        viewModel.load("mine")
         viewModel.notice.collect { HeikaNoticeBus.showSelection(it) }
+    }
+    LaunchedEffect(discoverSection) { viewModel.load(discoverSection) }
+    LaunchedEffect(mineSection) {
+        if (mineSection == "favorite") viewModel.load("favorites")
+        if (mineSection == "submissions") viewModel.load("mine")
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF0B0D0F))) {
@@ -102,8 +125,6 @@ fun DecorCenterScreen(
                         .clickable {
                             tab = id
                             detail = null
-                            if (id == "community") viewModel.load("community")
-                            if (id == "mine" || id == "submissions") viewModel.load("mine")
                         }
                         .padding(horizontal = 13.dp, vertical = 7.dp),
                 ) {
@@ -114,29 +135,41 @@ fun DecorCenterScreen(
 
         Box(Modifier.weight(1f)) {
             when (tab) {
-                "official" -> ThemeList(official, emptyMessage = "暂无官方预设", onOpen = { detail = it }, onFavorite = { viewModel.toggleFavorite(it) })
-                "community" -> ThemeList(community, emptyMessage = "玩家工坊暂时空空的，投稿你的第一套装扮吧", onOpen = { detail = it }, onFavorite = { viewModel.toggleFavorite(it) })
-                "mine" -> ThemeList(
-                    mine,
-                    emptyMessage = "还没有保存的装扮方案",
-                    onOpen = { detail = it },
-                    onFavorite = { viewModel.toggleFavorite(it) },
-                    onWithdraw = { viewModel.withdraw(it) },
-                )
-                "submissions" -> ThemeList(
-                    mine,
-                    emptyMessage = "还没有投稿。到工作室调好装扮后投稿，通过审核就能上架",
-                    onOpen = { detail = it },
-                    onFavorite = { viewModel.toggleFavorite(it) },
-                    onWithdraw = { viewModel.withdraw(it) },
-                    showStatus = true,
-                )
+                "discover" -> Column(Modifier.fillMaxSize()) {
+                    SegmentedRow(DISCOVER_SECTIONS, discoverSection) { discoverSection = it; detail = null }
+                    if (discoverSection == "official") {
+                        ThemeList(official, emptyMessage = "暂无官方预设", onOpen = { detail = it }, onFavorite = { viewModel.toggleFavorite(it) }, modifier = Modifier.weight(1f))
+                    } else {
+                        ThemeList(community, emptyMessage = "玩家工坊暂时空空的，投稿你的第一套装扮吧", onOpen = { detail = it }, onFavorite = { viewModel.toggleFavorite(it) }, modifier = Modifier.weight(1f))
+                    }
+                }
+                "mine" -> Column(Modifier.fillMaxSize()) {
+                    SegmentedRow(MINE_SECTIONS, mineSection) { mineSection = it; detail = null }
+                    when (mineSection) {
+                        "active" -> ActiveDecorPanel(
+                            config = applied,
+                            onEdit = { tab = "studio" },
+                            onDiscover = { tab = "discover"; discoverSection = "official" },
+                            modifier = Modifier.weight(1f),
+                        )
+                        "favorite" -> ThemeList(favorites, emptyMessage = "还没有收藏主题。在发现装扮里点收藏，就会出现在这里", onOpen = { detail = it }, onFavorite = { viewModel.toggleFavorite(it) }, modifier = Modifier.weight(1f))
+                        else -> ThemeList(
+                            mine,
+                            emptyMessage = "还没有投稿。到创作工坊调好装扮后投稿，通过审核就能上架",
+                            onOpen = { detail = it },
+                            onFavorite = { viewModel.toggleFavorite(it) },
+                            onWithdraw = { viewModel.withdraw(it) },
+                            showStatus = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
                 else -> Column(Modifier.fillMaxSize()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("工作室", color = Color(0xFFF2E7C8), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text("创作工坊", color = Color(0xFFF2E7C8), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         TextButton(onClick = { submitOpen = true }) { Text("投稿当前方案", color = Color(0xFFC9A961), fontSize = 11.5.sp) }
                     }
                     DecorStudioContent(viewModel, initialKind = studioKind)
@@ -171,10 +204,106 @@ fun DecorCenterScreen(
                 viewModel.submit(title, description, tags, kind) { ok ->
                     if (ok) {
                         submitOpen = false
-                        tab = "submissions"
+                        tab = "mine"
+                        mineSection = "submissions"
                     }
                 }
             },
+        )
+    }
+}
+
+/** 二级分段控件：官方精选 / 玩家工坊，正在使用 / 收藏 / 投稿。 */
+@Composable
+private fun SegmentedRow(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x0FFFFFFF))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        options.forEach { (id, label) ->
+            val active = selected == id
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (active) Color(0xFF20242A) else Color.Transparent)
+                    .clickable { onSelect(id) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    color = if (active) Color(0xFFF2F0EA) else Color(0xFF8E9099),
+                    fontSize = 11.5.sp,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** 「正在使用」：只读展示账号当前生效的装扮，改动从创作工坊发起。 */
+@Composable
+private fun ActiveDecorPanel(
+    config: com.heika.nativeapp.data.DecorConfig,
+    onEdit: () -> Unit,
+    onDiscover: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF14161A))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(16.dp))
+                .padding(14.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DecorCardBackPreview(config, dark = true, modifier = Modifier.fillMaxWidth())
+                DecorBarPreview(config, dark = true, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        Text(
+            "这是账号当前生效的装扮，其他登录设备读到的也是它。调整会先进草稿，确认后才同步。",
+            color = Color(0xFF8E9099),
+            fontSize = 11.5.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(top = 12.dp, bottom = 14.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionPill("继续调整", primary = true, modifier = Modifier.weight(1f), onClick = onEdit)
+            ActionPill("换个主题", primary = false, modifier = Modifier.weight(1f), onClick = onDiscover)
+        }
+    }
+}
+
+@Composable
+private fun ActionPill(label: String, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .height(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (primary) Color(0xFFC9A961) else Color(0x14FFFFFF))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (primary) Color(0xFF17130A) else Color(0xFFF2F0EA),
+            fontSize = 12.5.sp,
+            fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
 }
@@ -187,9 +316,10 @@ private fun ThemeList(
     onFavorite: (DecorThemeItem) -> Unit,
     onWithdraw: ((DecorThemeItem) -> Unit)? = null,
     showStatus: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     if (state.loading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Color(0xFFC9A961))
         }
         return
@@ -207,7 +337,7 @@ private fun ThemeList(
         return
     }
     LazyColumn(
-        Modifier.fillMaxSize(),
+        modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -225,6 +355,18 @@ private fun ThemeCard(
     onFavorite: (DecorThemeItem) -> Unit,
     onWithdraw: ((DecorThemeItem) -> Unit)?,
 ) {
+    // 缩略图直接用这套主题的配置渲染，和实际应用后的底栏/卡背一致。
+    val previewConfig = remember(item.id, item.config.toString()) {
+        runCatching {
+            val cfg = item.config
+            val resolved = when {
+                cfg.optJSONObject("bottomBar") != null || cfg.optJSONObject("card") != null -> cfg
+                cfg.has("preset") -> com.heika.nativeapp.data.OfficialDecorPresets.resolveToJson(cfg.optString("preset")) ?: cfg
+                else -> cfg
+            }
+            com.heika.nativeapp.data.DecorConfig.fromSettings(resolved)
+        }.getOrDefault(com.heika.nativeapp.data.DecorConfig.DEFAULT)
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -234,7 +376,21 @@ private fun ThemeCard(
             .clickable { onOpen(item) }
             .padding(13.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(92.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF0B0D0F)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (item.kind == "card") {
+                DecorCardBackPreview(previewConfig, dark = true, modifier = Modifier.fillMaxHeight().padding(vertical = 6.dp))
+            } else {
+                DecorBarPreview(previewConfig, dark = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp))
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 9.dp)) {
             Text(item.title, color = Color(0xFFF2F0EA), fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (item.origin == "official") {
                 Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0x1FC9A961)).padding(horizontal = 8.dp, vertical = 3.dp)) {

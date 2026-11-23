@@ -2391,6 +2391,9 @@ export default function Community({
       return;
     }
     const duration = usesImageZoom ? (opening ? 320 : 240) : (opening ? 220 : 180);
+    // 动画结束依赖 Web Animations 的 onfinish；图片解码慢、元素被替换、
+    // 或浏览器丢帧都可能让它不触发。到点强制收尾，保证内容和滚动一定可用。
+    const watchdog = window.setTimeout(finish, duration + 360);
     const animation = detailNode.animate(
       usesImageZoom
         ? opening
@@ -2490,6 +2493,7 @@ export default function Community({
     }
     return () => {
       cancelled = true;
+      window.clearTimeout(watchdog);
       animation?.cancel();
       imageAnimation?.cancel();
       imageTarget?.style.removeProperty("visibility");
@@ -2708,6 +2712,16 @@ export default function Community({
     setViewerRevealPhase(null);
     setViewerPhase("closing");
   };
+  // 过渡兜底：145/365ms 两个定时器一旦被打断（快速切帖、切标签），
+  // reading-out 会把正文留在 opacity .18，看起来就是「文字消失了」。
+  // 这里独立于用户操作监控状态，超时即归位。
+  useEffect(() => {
+    if (!readingTransition) return;
+    const timer = window.setTimeout(() => {
+      setReadingTransition((current) => current === "out" ? "in" : null);
+    }, readingTransition === "out" ? 260 : 240);
+    return () => window.clearTimeout(timer);
+  }, [readingTransition]);
   const chooseReadingMode = (mode: "standard" | "focus" | "night") => {
     if (mode === state.readingMode) {
       setModal(null);
@@ -6207,11 +6221,15 @@ export default function Community({
                           const index = displayedImageIndex;
                           const lowSrc = detailThumbnails[index] || detailImages[index];
                           const highSrc = post.isPartial ? detailRetinaImages[index] || lowSrc : detailImages[index];
+                          // 有尺寸就按真实比例预留，没有就退回统一 4:5；两种都不依赖图片是否到达。
+                          const size = post.imageSizes?.[index] || null;
                           return <ProgressiveImage
                             key={`${lowSrc}:${highSrc}`}
                             lowSrc={lowSrc}
                             src={highSrc}
                             alt={`${post.title}，第 ${index + 1} 张`}
+                            width={size?.width}
+                            height={size?.height}
                             onHighReady={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
                             onHighError={() => { if (activeImageIndex === displayedImageIndex) setImageLoading(false); }}
                           />;

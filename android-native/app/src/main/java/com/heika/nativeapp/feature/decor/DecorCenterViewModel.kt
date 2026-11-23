@@ -53,6 +53,9 @@ class DecorCenterViewModel @Inject constructor(
     val community: StateFlow<DecorThemeListState> = _community.asStateFlow()
     private val _mine = MutableStateFlow(DecorThemeListState())
     val mine: StateFlow<DecorThemeListState> = _mine.asStateFlow()
+    /** 「我的收藏」单独一条流：scope=mine 返回的是自己投稿/保存的主题，不含收藏。 */
+    private val _favorites = MutableStateFlow(DecorThemeListState())
+    val favorites: StateFlow<DecorThemeListState> = _favorites.asStateFlow()
 
     /** 工作室编辑中的配置（预览中）。 */
     private val _working = MutableStateFlow(DecorConfig.DEFAULT)
@@ -101,6 +104,7 @@ class DecorCenterViewModel @Inject constructor(
         val state = when (scope) {
             "community" -> _community
             "mine" -> _mine
+            "favorites" -> _favorites
             else -> _official
         }
         viewModelScope.launch {

@@ -4,6 +4,7 @@ import { memo, useEffect, useLayoutEffect, useId, useRef, useState, type ReactNo
 import { createPortal } from "react-dom";
 import { ArrowLeft, Bold, Code, Heading2, ImagePlus, Link2, List, ListOrdered, Minus, Paperclip, Quote, X } from "lucide-react";
 import { ATTACHMENT_ACCEPT, MAX_ATTACHMENT_FILES, formatAttachmentSize, type PostAttachment } from "@/lib/attachments";
+import { resolvePastedText } from "@/lib/clipboard";
 import { MarkdownContent } from "./MarkdownContent";
 
 /** Shared sheet keeps the editor mounted, restores focus and traps keyboard navigation. */
@@ -76,21 +77,41 @@ export const ComposerTextEditor = memo(function ComposerTextEditor({ title, body
     requestAnimationFrame(() => { input.focus(); input.setSelectionRange(start + before.length, start + before.length + selected.length); });
   };
 
-  /** 粘贴一个纯链接时自动变成 Markdown 链接，省得手动补括号。 */
-  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const text = event.clipboardData.getData("text/plain").trim();
-    if (!/^https?:\/\/[^\s]+$/i.test(text)) return;
+  /** 把文本插到光标处，超长则截断而不是整段丢弃。 */
+  const insertTextAtCaret = (raw: string) => {
     const input = bodyRef.current;
     if (!input) return;
-    event.preventDefault();
-    let label = text;
-    try { label = new URL(text).hostname.replace(/^www\./, ""); } catch { /* 保持原始地址 */ }
     const start = input.selectionStart, end = input.selectionEnd;
-    const token = `[${label}](${text})`;
-    const next = `${body.slice(0, start)}${token}${body.slice(end)}`;
-    if (next.length > 5000) return;
+    const room = 5000 - (body.length - (end - start));
+    if (room <= 0) return;
+    const text = raw.length > room ? raw.slice(0, room) : raw;
+    const next = `${body.slice(0, start)}${text}${body.slice(end)}`;
     onBody(next);
-    requestAnimationFrame(() => { input.focus(); const caret = start + token.length; input.setSelectionRange(caret, caret); });
+    requestAnimationFrame(() => { input.focus(); const caret = start + text.length; input.setSelectionRange(caret, caret); });
+  };
+
+  /**
+   * 粘贴：单个纯链接自动变 Markdown 链接；带格式的内容（网页 / 文档 / Notion）
+   * 先把 HTML 转成等价 Markdown 再插入，其余按纯文本清洗后插入。
+   * 统一走这里，保证网页端与 APP 端粘出来的正文结构一致。
+   */
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const plain = event.clipboardData.getData("text/plain");
+    const html = event.clipboardData.getData("text/html");
+    const trimmed = plain.trim();
+    if (!html && /^https?:\/\/[^\s]+$/i.test(trimmed)) {
+      event.preventDefault();
+      let label = trimmed;
+      try { label = new URL(trimmed).hostname.replace(/^www\./, ""); } catch { /* 保持原始地址 */ }
+      insertTextAtCaret(`[${label}](${trimmed})`);
+      return;
+    }
+    const resolved = resolvePastedText(plain, html);
+    if (!resolved) return;
+    // 内容没被改写（纯文本、无不可见字符）时交给浏览器默认行为，保留原生撤销栈。
+    if (!html && resolved === plain) return;
+    event.preventDefault();
+    insertTextAtCaret(resolved);
   };
 
   const bodyWords = body.trim().replace(/\s+/g, "").length;

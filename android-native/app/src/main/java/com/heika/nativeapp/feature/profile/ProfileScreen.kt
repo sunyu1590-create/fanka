@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
@@ -59,6 +61,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.snapshotFlow
@@ -169,7 +172,12 @@ fun ProfileScreen(
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
-        Box(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // 封面要横向铺满视口，而网格的 contentPadding 会把每一项都往里收。
+            // 拿到真实宽度后用 requiredWidth 顶出去，再用 offset 抵掉左内边距；
+            // 比给封面加负 margin 更可控，也不影响其余卡片的栅格。
+            val viewportWidth = maxWidth
+            val pageGutter = 18.dp
             val swipeThreshold = with(LocalDensity.current) { 54.dp.toPx() }
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2), state = gridState,
@@ -187,11 +195,11 @@ fun ProfileScreen(
                         onDragCancel = { dragDistance = 0f },
                     )
                 },
-                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 128.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalItemSpacing = 12.dp,
+                contentPadding = PaddingValues(start = pageGutter, end = pageGutter, top = 0.dp, bottom = 128.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalItemSpacing = 14.dp,
             ) {
                 item(span = StaggeredGridItemSpan.FullLine) {
-                    Column(Modifier.fillMaxWidth()) {
+                    Column(Modifier.requiredWidth(viewportWidth).offset(x = -pageGutter)) {
                         Box(Modifier.fillMaxWidth()) {
                             // 通栏封面 220dp（对齐网页端比例）：底部渐变到页面背景，
                             // 头像跨在封面下缘，昵称与认证落在纯色信息区而不是压在图片上。
@@ -362,14 +370,14 @@ fun ProfileScreen(
                         }
                     }
                 }
-                item(span = StaggeredGridItemSpan.FullLine) { ProfileTabBar(selected, compact = true) {
+                item(span = StaggeredGridItemSpan.FullLine) { ProfileTabBar(selected, compact = true, horizontalInset = 0.dp) {
                     if (selected != it) {
                         selected = it
                         HeikaNoticeBus.showSelection("已切换到${ProfileTabs.firstOrNull { tab -> tab.second == it }?.first ?: "个人内容"}")
                     }
                 } }
                 if (state.own && selected == "works") item(span = StaggeredGridItemSpan.FullLine) {
-                    Row(Modifier.fillMaxWidth().padding(top = 1.dp, bottom = 1.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${state.posts.size} 篇作品", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                         Text("作品管理", Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onManageWorks).padding(horizontal = 10.dp, vertical = 7.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
                     }
@@ -426,10 +434,16 @@ fun ProfileScreen(
  * 与网页端一致，用底部细线表示选中，不再使用大面积胶囊选中背景。
  */
 @Composable
-private fun ProfileTabBar(selected: String, modifier: Modifier = Modifier, compact: Boolean = false, onSelect: (String) -> Unit) {
+private fun ProfileTabBar(
+    selected: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    horizontalInset: Dp = 18.dp,
+    onSelect: (String) -> Unit,
+) {
     Row(
         modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = if (compact) 4.dp else 6.dp),
+            .padding(start = horizontalInset, end = 18.dp, top = if (compact) 2.dp else 6.dp, bottom = if (compact) 2.dp else 6.dp),
         horizontalArrangement = Arrangement.spacedBy(22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -446,9 +460,9 @@ private fun ProfileTabBar(selected: String, modifier: Modifier = Modifier, compa
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                 )
                 Box(
-                    Modifier.padding(top = 7.dp).height(2.dp).width(18.dp)
+                    Modifier.padding(top = 6.dp).height(1.5.dp).width(15.dp)
                         .clip(RoundedCornerShape(1.dp))
-                        .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent),
+                        .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = .85f) else Color.Transparent),
                 )
             }
         }
