@@ -117,7 +117,15 @@ test("发布分类只在提交时触发，服务端用 routeConfirmed 去重", a
 
 test("APP 个人中心按网页版式：通栏封面、跨封面头像与下划线标签", async () => {
   const profile = await read(`${native}/feature/profile/ProfileScreen.kt`);
-  assert.match(profile, /height\(220\.dp\)/);
+  // 方案 A：封面 260–320dp 区间（网页端移动视口同区间），零圆角、横向铺满。
+  const cover = profile.match(/height\((\d+)\.dp\)\.background\(MaterialTheme\.colorScheme\.surfaceVariant\)/);
+  assert.ok(cover, "封面高度需直接写在通栏 Box 上");
+  const coverHeight = Number(cover[1]);
+  assert.ok(coverHeight >= 260 && coverHeight <= 320, `封面高度 ${coverHeight}dp 超出 260–320dp 区间`);
+  assert.doesNotMatch(profile, /RoundedCornerShape[^\n]*cover/i, "封面不允许圆角");
+  // 顶栏透明悬浮：品牌栏抬高层级、内容整体上提一个顶栏高度
+  assert.match(profile, /zIndex\(2f\)\) \{ ProfileBrandHeader/);
+  assert.match(profile, /offset\(y = if \(userId == null\) -HeikaSpacing\.headerHeight else 0\.dp\)/);
   assert.match(profile, /Brush\.verticalGradient/);
   assert.match(profile, /fun ProfileStat/);
   assert.match(profile, /fun ProfileTabBar/);
