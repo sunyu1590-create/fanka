@@ -43,6 +43,12 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(84, "2026.11.23", listOf(
+        "封面真正通栏到屏幕两边，头像与简介回到统一的 18dp 边距，修掉右侧缺一条与整体左移。",
+        "封面延伸到状态栏后面，顶栏改为浅高斯模糊玻璃条，并用一条极细的分隔线区分层次。",
+        "APP 内网页改为网页内单独登录：不再与 APP 共用会话令牌（两边会互相踢下线），未登录直接显示登录页，登录后继续原来的编辑。",
+        "上传封面先压缩再传，不再卡在 99%；服务端处理阶段显示「服务器处理中」，并支持超时提示。",
+    )),
     NativeRelease(83, "2026.11.23", listOf(
         "修复个人中心封面右侧缺一条、资料区整体左移的问题：封面真正通栏到屏幕两边，头像与简介回到统一的 18dp 边距。",
         "封面延伸到状态栏后面，顶栏改为浅高斯模糊玻璃条并加一条极细的分隔线，状态栏图标不再压在亮图上。",

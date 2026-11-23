@@ -222,7 +222,8 @@ fun ProfileScreen(
         } else {
             BackHeader("用户主页", onBack)
         }
-        BoxWithConstraints(
+        // 这里不再需要 maxWidth，用普通 Box 即可；BoxWithConstraints 会多一层 subcomposition。
+        Box(
             Modifier.fillMaxSize().offset(y = -stickyTop).hazeSource(headerHaze),
         ) {
             // 栅格的 contentPadding 会把每一项往里收 18dp。封面要通栏，
