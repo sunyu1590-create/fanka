@@ -43,6 +43,12 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(81, "2026.11.23", listOf(
+        "装扮中心整合为「发现装扮 / 我的装扮 / 创作工坊」三个入口，原有五类页面全部保留；官方主题改为真实配色渲染的缩略图，选之前就能看清底栏与卡背效果。",
+        "装扮编辑的配色改为色板与取色器，可一键恢复默认；有未保存修改时直接退出会先确认，不再误丢调整。",
+        "作品详情页的标题与正文支持长按选择、复制。",
+        "个人页封面横向铺满，作品区与标签间距收敛，标签下划线改为细线。",
+    )),
     NativeRelease(80, "2026.11.22", listOf(
         "个人中心按网页版式重做：封面通栏渐隐、头像跨封面下缘、昵称与认证同行、三列统计与轻量图标入口，标签改为下划线样式，作品区双列瀑布流。",
         "探索中心重构为探索档案：累计翻卡、连续探索、最近发现三项真实指标，28 天热力图可点选查看当日记录，最近发现改为编辑式卡片，新增探索月报与按日期分组的历史。",
