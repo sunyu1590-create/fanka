@@ -7,6 +7,17 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.60.5",
+    date: "2026.11.24",
+    notes: [
+      { category: "问题修复", text: "「跟随系统」的深浅色在首次打开时会先渲染成深色再跳浅色：现在在页面绘制前就解析成实际明暗，浅色设备不再闪黑。" },
+      { category: "体验优化", text: "切换深浅色时整页颜色改为 260ms 连续过渡，不再是硬切；只过渡背景、文字、描边、阴影等颜色属性，不影响正在播放的转场。" },
+      { category: "体验优化", text: "建立统一的动效令牌：补齐点击、图标、标签、弹层、共享元素等时长与开启/关闭/展开三组非线性曲线，供后续组件直接复用。" },
+      { category: "体验优化", text: "系统开启「减少动态效果」时，未被单独适配的动画与过渡会统一降级，不再出现大幅位移与持续循环动画。" },
+      { category: "问题修复", text: "清理残留的 transition: all，避免主题与交互动画互相抢占属性。" },
+    ],
+  },
+  {
     version: "2.60.4",
     date: "2026.11.24",
     notes: [

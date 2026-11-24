@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import android.webkit.WebView
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.heika.nativeapp.BuildConfig
 
 /**
@@ -398,16 +400,22 @@ fun HeikaMarkdown(
 /** 正文插图：按宽度铺满、限制最大高度，点击可全屏查看。 */
 @Composable
 private fun MdImage(block: MdBlock.Image, onClick: (String) -> Unit) {
-    val model = if (block.url.startsWith("/")) BuildConfig.API_BASE_URL + block.url else block.url
+    val url = if (block.url.startsWith("/")) BuildConfig.API_BASE_URL + block.url else block.url
+    // 正文图片过去是解码完直接"啪"地出现；这里统一 180ms 叠化，
+    // 内存命中时 coil 不会重复播，只在首次落位时淡入一次。
+    val request = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+        .data(url)
+        .crossfade(180)
+        .build()
     Column(Modifier.fillMaxWidth()) {
         AsyncImage(
-            model = model,
+            model = request,
             contentDescription = block.alt.ifBlank { "正文图片" },
             imageLoader = LocalHeikaImageLoader.current,
             modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 460.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f))
-                .clickable { onClick(model) },
+                .clickable { onClick(url) },
             contentScale = ContentScale.Fit,
         )
         if (block.alt.isNotBlank()) {

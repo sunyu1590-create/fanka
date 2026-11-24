@@ -43,6 +43,11 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(87, "2026.11.24", listOf(
+        "新增开启 / 关闭 / 展开三组非线性曲线，与网页端使用同一组参数，后续组件动效直接复用。",
+        "正文 Markdown 图片加载改为 180ms 叠化，不再解码完突然出现。",
+        "卡片连续开关、共享元素与页面转场的原有实现保持不变。",
+    )),
     NativeRelease(86, "2026.11.24", listOf(
         "底栏恢复真正的背景模糊（24dp 高斯），并把底色从 99% 不透明压到 75% 左右，玻璃重新能透出背后的颜色。",
         "修掉底栏「遮罩感」的根因：之前 haze 底色与 background 叠了两层，遮罩就是这么来的。",

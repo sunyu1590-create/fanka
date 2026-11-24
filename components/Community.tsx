@@ -84,6 +84,7 @@ import { browserDb, browserDbConfig } from "@/lib/browser-db";
 import { ComposerSheet, ComposerTextEditor, ComposerMediaStrip, ComposerAttachments } from "./ComposerPanels";
 import { MAX_ATTACHMENT_FILES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TOTAL_BYTES, readAttachments, type PostAttachment } from "@/lib/attachments";
 import { clearDraftFiles, loadDraftFiles, saveDraftFiles } from "@/lib/draft-files";
+import { applyThemeMode } from "@/lib/theme";
 import { validateComposerFiles } from "@/lib/composer-validation";
 import { AI_CONTENT_TYPE_LABELS, describeRoute, routeByRules, type ComposerRoute } from "@/lib/composer-routing";
 import { compressUploadImage } from "@/lib/image-compression";
@@ -487,12 +488,11 @@ export default function Community({
   }, []);
   useEffect(() => {
     if (!themeReady) return;
-    const root = document.documentElement;
+    // 统一入口：解析 system、写 data-theme / theme-color、开 260ms 颜色过渡窗口。
+    applyThemeMode(theme);
     const media = window.matchMedia("(prefers-color-scheme: light)");
-    const apply = () => { root.dataset.theme = theme === "system" ? (media.matches ? "light" : "dark") : theme; };
-    apply();
+    const apply = () => applyThemeMode(theme);
     media.addEventListener("change", apply);
-    localStorage.setItem("heika-theme", theme);
     return () => media.removeEventListener("change", apply);
   }, [theme, themeReady]);
   useEffect(() => {

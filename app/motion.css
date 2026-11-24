@@ -1,0 +1,56 @@
+/* HEIKA Motion System
+   ------------------------------------------------------------------
+   这一层只做三件事，不重写任何已确认的视觉：
+   1. 补齐 design-system.css 里缺少的时长 / 曲线档位，供新组件直接引用；
+   2. 主题切换的颜色过渡（只在切换瞬间生效，320ms 后自动移除）；
+   3. prefers-reduced-motion 的全局兜底（已有单独规则的组件仍然优先）。
+   禁止在这里引入 transform / opacity 的全局过渡，那会接管共享元素和页面转场。 */
+
+:root {
+  /* 时长：与 design-system.css 的 --motion-* 同一套语义，只补缺口。 */
+  --motion-tap: 120ms;
+  --motion-icon: 160ms;
+  --motion-tag: 180ms;
+  --motion-expand-sm: 210ms;
+  --motion-image: 210ms;
+  --motion-modal: 260ms;
+  --motion-shared-in: 360ms;
+  --motion-shared-out: 320ms;
+  --motion-theme: 260ms;
+
+  /* 曲线：开启略快出、关闭略快进，展开中段最舒展。
+     数值来自实机观感调校，不是机械套用规范。 */
+  --ease-open: cubic-bezier(.20, .75, .25, 1);
+  --ease-close: cubic-bezier(.32, .72, .20, 1);
+  --ease-expand: cubic-bezier(.25, .80, .25, 1);
+}
+
+/* 主题切换：applyThemeMode() 在切换前挂上 .theme-switching，
+   320ms 后移除。只过渡颜色类属性，不碰 transform / opacity / filter，
+   避免把正在播放的共享元素或页面转场一起接管。
+   排除 img / video / canvas：图片内容不做颜色插值，否则会闪。 */
+html.theme-switching,
+html.theme-switching body,
+html.theme-switching body *:not(img):not(video):not(canvas):not(svg *) {
+  transition-property: background-color, color, border-color, fill, stroke, box-shadow;
+  transition-duration: var(--motion-theme);
+  transition-timing-function: var(--ease);
+  transition-delay: 0ms;
+}
+
+/* 减少动态效果：兜底关闭尚未单独适配的动画，保留最终状态。
+   已有 `animation: none !important` 的组件规则优先级更高，不会被覆盖。 */
+@media (prefers-reduced-motion: reduce) {
+  html,
+  html body,
+  html body *,
+  html body *::before,
+  html body *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -115,6 +115,19 @@ object HeikaMotion {
     const val rating = 320
     val standard = FastOutSlowInEasing
     val spatialEasing = CubicBezierEasing(0.22f, 0.78f, 0.18f, 1f)
+
+    /**
+     * 非线性曲线：与网页端 --ease-open / --ease-close / --ease-expand 取同一组参数，
+     * 让两端的手感一致。只用于新增动效与非共享元素的组件过渡；
+     * 卡片连续开关的 morph 仍走原有 spatialEasing，不在这里改。
+     *
+     * 开启：起步跟手，尾段减速落位；
+     * 关闭：立即响应，回收时略微加速，末尾不拖泥带水；
+     * 展开：中段最舒展，适合高度/透明度协同的折叠组件。
+     */
+    val openEasing = CubicBezierEasing(0.20f, 0.75f, 0.25f, 1f)
+    val closeEasing = CubicBezierEasing(0.32f, 0.72f, 0.20f, 1f)
+    val expandEasing = CubicBezierEasing(0.25f, 0.80f, 0.25f, 1f)
 }
 
 val LocalHeikaDark = staticCompositionLocalOf { true }
