@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
   const checks: Record<string, { ok: boolean; detail?: string; latency_ms?: number }> = {};
   let healthy = true;
   try {
-    const { db } = await context(req, false);
+    // 探活请求带的是内部 worker 令牌，不是 Supabase 会话；
+    // 剥掉 Authorization 再建 context，避免被当成过期登录态拒绝。
+    const anonymous = new NextRequest(req.url, { headers: new Headers() });
+    const { db } = await context(anonymous, false);
     const started = Date.now();
     const { error } = await db.from("posts").select("id", { count: "exact", head: true }).limit(1);
     checks.database = error ? { ok: false, detail: error.message } : { ok: true, latency_ms: Date.now() - started };
