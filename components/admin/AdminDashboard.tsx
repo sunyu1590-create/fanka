@@ -149,14 +149,15 @@ export default function AdminDashboard({
             <span className="ab-card__title">AI 人工复审</span>
             <ChevronRight size={15} style={{ color: "var(--ab-ink-3)" }} aria-hidden="true" />
           </div>
-          <div className="ab-kpi ab-kpi--lg" style={{ color: "var(--ab-violet)" }}>{fmtNum(reviewItems.length)}<small>项</small></div>
-          <div className="ab-label">等待人工判断</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-            <span className="ab-chip violet">异常 {anomalies}</span>
-            <span className="ab-chip info">运行中 {runningBatches}</span>
+          {/* 卡片与系统健康同处一行会被拉伸；内容整体垂直居中，避免出现大片空洞。 */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4, minHeight: 0 }}>
+            <div className="ab-kpi ab-kpi--lg" style={{ color: "var(--ab-violet)" }}>{fmtNum(reviewItems.length)}<small>项</small></div>
+            <div className="ab-label">等待人工判断</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+              <span className="ab-chip violet">异常 {anomalies}</span>
+              <span className="ab-chip info">运行中 {runningBatches}</span>
+            </div>
           </div>
-          {/* 卡片与系统健康同处一行会被拉伸；用弹性空白把内容撑开，避免出现大片空洞。 */}
-          <div style={{ flex: 1, minHeight: 6 }} />
           <div className="ab-card__foot">
             <span>{reviewItems.length ? "按风险从高到低排列" : "队列为空"}</span>
             <span style={{ color: "var(--ab-violet)", fontWeight: 600 }}>去处理 ›</span>
