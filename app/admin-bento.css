@@ -30,7 +30,9 @@
 
   position: relative;
   min-height: 100vh;
-  margin: -30px -22px 0;
+  /* 负边距是为了抵掉外层页面的内边距；移动端外层没有内边距，
+     继续外扩会把内容推出视口左侧并被 overflow 裁掉首字，所以只在桌面生效。 */
+  margin: 0;
   padding: 0 0 calc(92px + env(safe-area-inset-bottom));
   background: var(--ab-bg);
   color: var(--ab-ink);
