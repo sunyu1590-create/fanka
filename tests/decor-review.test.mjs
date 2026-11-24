@@ -9,7 +9,7 @@ const decorCenter = await readFile(new URL("../components/DecorCenter.tsx", impo
 
 test("装扮审核作为独立模块挂在现有管理后台内，而不是新建重复后台", () => {
   assert.match(moderation, /"decor-review"/);
-  assert.match(moderation, /id: "decor-review", title: "装扮审核"/);
+  assert.match(moderation, /id: "decor-review", title: "人工复审 · 装扮"/);
   assert.match(moderation, /"decor-review": "装扮审核"/);
   assert.match(moderation, /section === "decor-review" \? <AdminDecorReview \/>/);
 });

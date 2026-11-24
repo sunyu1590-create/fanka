@@ -43,6 +43,12 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(89, "2026.11.24", listOf(
+        "上传任务移到应用级队列：退出发布页、切换页面都不再中断图片传输，网络抖动自动退避重试（1/3/8 秒）。",
+        "新增发布任务悬浮条：点发布后离开编辑器也能看到真实阶段（上传/校验/提交/审核），收起浮窗不取消任务。",
+        "修复已发布作品图片部分失效的问题：发布入库不再丢失缩略图与尺寸，缩略图路由不再 404。",
+        "上传后服务端逐一核验对象真实落盘才算成功；支持 GIF 动图上传（保留动画）。",
+    )),
     NativeRelease(88, "2026.11.24", listOf(
         "修掉底栏后面那块「板」：列表底部原本比屏幕少了一整个顶栏高度，底栏那一段永远没有内容经过，玻璃背后空无一物，看上去就是垫了一层遮罩。",
         "个人页顶栏恢复实心条，不再做毛玻璃、也不再压到封面上；底栏玻璃只保留一层底色，不再叠成 99% 不透明。",

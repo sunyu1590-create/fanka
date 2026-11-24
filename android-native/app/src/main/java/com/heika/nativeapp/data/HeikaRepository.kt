@@ -1234,6 +1234,9 @@ class HeikaRepository @Inject constructor(
             .addFormDataPart("file", fileName, bytes.toRequestBody(mimeType.toMediaType()))
             .addFormDataPart("upload_id", uploadId)
             .addFormDataPart("sort_order", sortOrder.toString())
+            .addFormDataPart("task_key", "android:${uploadId}")
+            .addFormDataPart("client_type", "android")
+            .addFormDataPart("client_version", BuildConfig.VERSION_NAME)
         if (revisionMode) {
             builder.addFormDataPart("revision_post_id", postId?.takeIf(String::isNotBlank) ?: throw IOException("内容编号无效"))
         } else if (postId.isNullOrBlank()) {

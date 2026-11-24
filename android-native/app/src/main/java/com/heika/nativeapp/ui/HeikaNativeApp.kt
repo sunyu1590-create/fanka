@@ -706,6 +706,13 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     modifier = Modifier.navigationBarsPadding().padding(bottom = 8.dp),
                 )
             }
+            // 全局发布任务悬浮条：不属于发布页，页面切换期间保持可见；点击收起不取消任务。
+            PublishTaskFloatingBanner(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = if (showBottomBar) 84.dp else 16.dp),
+            )
             ForegroundNoticeHost(
                 // 根容器在「我的」页不再扣状态栏，通知条自己补，避免盖住时间与电池。
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),

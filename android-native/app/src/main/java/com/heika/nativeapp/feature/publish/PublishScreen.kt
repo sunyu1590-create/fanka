@@ -641,7 +641,7 @@ fun PublishScreen(
 private suspend fun prepareImage(context: Context, uri: Uri): Triple<String, String, ByteArray> = withContext(Dispatchers.IO) {
     val resolver = context.contentResolver
     val mime = resolver.getType(uri) ?: "image/jpeg"
-    require(mime in setOf("image/jpeg", "image/png", "image/webp")) { "仅支持 JPG、PNG、WebP 图片" }
+    require(mime in setOf("image/jpeg", "image/png", "image/webp", "image/gif")) { "仅支持 JPG、PNG、WebP、GIF 图片" }
     val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0) else null
     } ?: "heika-image.jpg"
@@ -655,6 +655,11 @@ private suspend fun prepareImage(context: Context, uri: Uri): Triple<String, Str
             output.write(buffer, 0, read)
         }
         output.toByteArray()
+    }
+    // GIF 动图整文件透传：Bitmap 重编码只保留首帧，动画是内容本体不能丢。
+    if (mime == "image/gif") {
+        require(source.size <= 4 * 1024 * 1024) { "GIF 超过 4 MB，请压缩后再上传" }
+        return@withContext Triple(name, "image/gif", source)
     }
     if (source.size <= 4 * 1024 * 1024) return@withContext Triple(name, mime, source)
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

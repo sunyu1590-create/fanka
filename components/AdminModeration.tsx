@@ -14,6 +14,8 @@ import AdminMembership from "./AdminMembership";
 import AdminCommunityAccess from "./AdminCommunityAccess";
 import AdminAITasks from "./AdminAITasks";
 import AdminDecorReview from "./AdminDecorReview";
+import AdminSystemMonitor from "./AdminSystemMonitor";
+import AdminMediaService from "./AdminMediaService";
 
 type Report = {
   id: string;
@@ -32,7 +34,7 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review";
+type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "monitor" | "media-service";
 type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
@@ -41,35 +43,37 @@ type AppDownloadSettings = { enabled: boolean; download_url: string | null; upda
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
 const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
-  { title: "审核与举报", modules: [
-    { id: "ai-review", title: "AI 审核中心", description: "AI 初审、人工复审与审核任务历史", icon: ShieldCheck },
-    { id: "content", title: "作品审核", description: "新投稿与已发布作品的修改", icon: FileCheck },
-    { id: "decor-review", title: "装扮审核", description: "创意工坊投稿的通过、驳回与下架", icon: Palette },
+  { title: "AI 审核中心", modules: [
+    { id: "ai-review", title: "AI 审核中心", description: "AI 初审、人工复审、审核异常与审核历史", icon: ShieldCheck },
+    { id: "content", title: "人工复审 · 作品", description: "社区作品待审与已发布内容修改复审", icon: FileCheck },
+    { id: "decor-review", title: "人工复审 · 装扮", description: "创意工坊投稿的通过、驳回与下架", icon: Palette },
+  ] },
+  { title: "系统监控中心", modules: [
+    { id: "monitor", title: "服务器与告警", description: "CPU、内存、磁盘、API 指标与系统告警", icon: ScrollText },
+    { id: "media-service", title: "媒体服务中心", description: "上传任务追踪、成功率口径与存储资源", icon: Download },
+  ] },
+  { title: "社区治理中心", modules: [
     { id: "reports", title: "内容举报", description: "查看并处理作品与评论举报", icon: Flag },
     { id: "messages", title: "私信举报", description: "处理用户提交的私信举报", icon: MessageCircle },
     { id: "appeals", title: "申诉处理", description: "复核内容、账号与举报申诉", icon: ShieldAlert },
-  ] },
-  { title: "社区治理", modules: [
     { id: "comments", title: "评论管理", description: "搜索、隐藏或恢复评论", icon: MessageSquare },
-    { id: "keywords", title: "关键词规则", description: "管理发布与互动拦截规则", icon: Tags },
-    { id: "topic-events", title: "话题共创", description: "创建和管理社区共创活动", icon: Sparkles },
-    { id: "audit", title: "操作记录", description: "查看管理员处理历史", icon: ScrollText },
+    { id: "keywords", title: "风控关键词规则", description: "管理发布与互动拦截规则", icon: Tags },
   ] },
-  { title: "账号与工具", modules: [
+  { title: "用户与内容运营", modules: [
     { id: "users", title: "账号管理", description: "角色、会员与社区发言限制", icon: Users },
-    { id: "membership", title: "会员与赞助", description: "卡密、权益期限与爱发电人工核验", icon: CreditCard },
+    { id: "membership", title: "会员与激励", description: "卡密、权益期限与爱发电人工核验", icon: CreditCard },
     { id: "community-access", title: "认证与入驻邀请", description: "认证标识、手动认证与邀请码批次", icon: BadgeCheck },
+    { id: "topic-events", title: "话题共创", description: "创建和管理社区共创活动", icon: Sparkles },
     { id: "official-notices", title: "系统通知管理", description: "编辑并发布公告，由用户在通知中心查看", icon: Megaphone },
-    { id: "ai-settings", title: "AI 工作台", description: "配置创作工作台服务密钥", icon: ShieldCheck },
-  ] },
-  { title: "AI 内容运营", modules: [
     { id: "ai-space", title: "AI 专区管理", description: "审核资源、管理精选与分类标签", icon: Sparkles },
-    { id: "ai-resource-center", title: "AI 资源中心", description: "批量审核、作品摘要与模型配置", icon: ShieldCheck },
-    { id: "ai-usage", title: "模型用量中心", description: "调用次数、Token、费用与响应时间", icon: ScrollText },
+    { id: "ai-resource-center", title: "AI 资源与任务", description: "批量审核、作品摘要与任务队列", icon: ShieldCheck },
+    { id: "exploration-ad", title: "运营配置 · 广告位", description: "设置探索页顶部广告及目标作品", icon: Megaphone },
   ] },
-  { title: "运营配置", modules: [
-    { id: "exploration-ad", title: "探索中心广告位", description: "设置探索页顶部广告及目标作品", icon: Megaphone },
-    { id: "app-download", title: "App 下载入口", description: "设置网页端下载按钮的跳转地址", icon: Download },
+  { title: "系统管理", modules: [
+    { id: "ai-usage", title: "模型用量中心", description: "调用次数、Token、费用与响应时间", icon: ScrollText },
+    { id: "ai-settings", title: "AI 服务管理", description: "配置创作工作台服务密钥", icon: ShieldCheck },
+    { id: "audit", title: "系统审计 · 操作记录", description: "查看管理员处理历史", icon: ScrollText },
+    { id: "app-download", title: "版本与发布管理", description: "App 下载入口与版本信息", icon: Download },
   ] },
 ];
 const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
@@ -93,6 +97,8 @@ const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
   "official-notices": "系统通知管理",
   "exploration-ad": "探索中心广告位",
   "app-download": "App 下载入口",
+  monitor: "系统监控中心",
+  "media-service": "媒体服务中心",
 };
 
 function CollapsibleMarkdown({ source, label }: { source: string; label: string }) {
@@ -400,8 +406,8 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
 
   return <section className="page moderation-page">
     <button className="back settings-back" onClick={onBack}><ArrowLeft size={18} /> 设置</button>
-    <h1>{section === "overview" ? "管理后台" : adminSectionTitles[section]}<span className="red-dot">.</span></h1>
-    <p className="lead">{section === "overview" ? "按工作模块进入审核与管理，待处理事项优先显示。" : `管理后台 / ${adminSectionTitles[section]}`}</p>
+    <h1>{section === "overview" ? "HEIKA Control Center" : adminSectionTitles[section]}<span className="red-dot">.</span></h1>
+    <p className="lead">{section === "overview" ? "黑卡运营与服务控制中心：运营总览、AI 审核、系统监控、媒体服务、社区治理、用户运营与系统管理。" : `Control Center / ${adminSectionTitles[section]}`}</p>
     {section === "overview" ? <>
       <div className="admin-overview admin-overview-expanded" aria-label="后台概览">
         <div><strong>{overview?.usersToday ?? "—"}</strong><span>今日新增用户</span></div>
@@ -420,7 +426,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
         {adminModuleGroups.map((group) => {
           const modules = group.modules.filter((module) => {
             if (role === "admin") return true;
-            if (["users", "membership", "community-access", "official-notices", "ai-settings", "ai-resource-center", "topic-events", "exploration-ad", "app-download"].includes(module.id)) return false;
+            if (["users", "membership", "community-access", "official-notices", "ai-settings", "ai-resource-center", "topic-events", "exploration-ad", "app-download", "monitor", "media-service"].includes(module.id)) return false;
             if (module.id === "keywords" && role !== "content_manager") return false;
             return true;
           });
@@ -448,7 +454,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     </div>}
     {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
     {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "overview" ? null : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "ai-review" ? <AdminAITasks key={`ai-review-${governanceRefreshKey}`} mode="review" /> : section === "ai-usage" ? <AdminAITasks key={`ai-usage-${governanceRefreshKey}`} mode="usage" /> : section === "ai-resource-center" ? <AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /> : section === "decor-review" ? <AdminDecorReview /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
+    {section === "overview" ? null : section === "monitor" ? <AdminSystemMonitor key={`monitor-${governanceRefreshKey}`} /> : section === "media-service" ? <AdminMediaService key={`media-service-${governanceRefreshKey}`} /> : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "ai-review" ? <AdminAITasks key={`ai-review-${governanceRefreshKey}`} mode="review" /> : section === "ai-usage" ? <AdminAITasks key={`ai-usage-${governanceRefreshKey}`} mode="usage" /> : section === "ai-resource-center" ? <AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /> : section === "decor-review" ? <AdminDecorReview /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
       <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
         <div className="admin-topic-event-form-heading"><div><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
         {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}

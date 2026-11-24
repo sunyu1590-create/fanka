@@ -25,6 +25,19 @@ services:
     networks:
       - web
 
+  metrics-agent:
+    image: fanka:latest
+    container_name: fanka-metrics
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      METRICS_APP_URL: http://app:3000
+    command: ["node", "scripts/metrics-agent.mjs"]
+    depends_on:
+      - app
+    networks:
+      - web
+
   caddy:
     image: caddy:2-alpine
     container_name: caddy

@@ -9,6 +9,7 @@ import com.heika.nativeapp.auth.AuthRepository
 import com.heika.nativeapp.data.HeikaCategory
 import com.heika.nativeapp.data.AiResourceType
 import com.heika.nativeapp.data.HeikaRepository
+import com.heika.nativeapp.data.MediaUploadManager
 import com.heika.nativeapp.data.jsonObjects
 import com.heika.nativeapp.data.stringList
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -104,6 +105,7 @@ private fun stringFields(json: JSONObject): Map<String, String> = buildMap {
 @HiltViewModel
 class PublishViewModel @Inject constructor(
     private val repository: HeikaRepository,
+    private val uploads: MediaUploadManager,
     private val auth: AuthRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -126,7 +128,7 @@ class PublishViewModel @Inject constructor(
             auth.session.collect { session ->
                 val owner = mutableState.value.accountId
                 if (owner != null && owner != session?.userId) {
-                    uploadJobs.values.forEach { it.cancel() }
+                    uploads.cancelAll()
                     uploadJobs.clear()
                     mutableState.value = PublishState(
                         accountId = session?.userId,
@@ -472,8 +474,8 @@ class PublishViewModel @Inject constructor(
             mutableState.update { it.copy(error = "一篇内容最多添加 9 张图片") }
             return
         }
-        if (bytes.size !in 1..(4 * 1024 * 1024) || mime !in setOf("image/jpeg", "image/png", "image/webp")) {
-            mutableState.update { it.copy(error = "图片须为 4 MB 以内的 JPG、PNG 或 WebP") }
+        if (bytes.size !in 1..(4 * 1024 * 1024) || mime !in setOf("image/jpeg", "image/png", "image/webp", "image/gif")) {
+            mutableState.update { it.copy(error = "图片须为 4 MB 以内的 JPG、PNG、WebP 或 GIF") }
             return
         }
         val accountId = mutableState.value.accountId ?: runCatching { auth.current()?.userId }.getOrNull()
@@ -483,7 +485,7 @@ class PublishViewModel @Inject constructor(
         }
         val key = UUID.randomUUID().toString()
         val uploadId = UUID.randomUUID().toString()
-        val extension = when (mime) { "image/jpeg" -> "jpg"; "image/png" -> "png"; else -> "webp" }
+        val extension = when (mime) { "image/jpeg" -> "jpg"; "image/png" -> "png"; "image/gif" -> "gif"; else -> "webp" }
         val localFile = withContext(Dispatchers.IO) { File(accountDraftDirectory(accountId), "$uploadId.$extension") }
         val temporaryFile = File(localFile.parentFile, "$uploadId.part")
         try {
@@ -511,14 +513,18 @@ class PublishViewModel @Inject constructor(
         // Upload the selected image immediately as an unlinked staging object.
         // This surfaces API/storage failures in the editor instead of waiting
         // until the user presses Publish, while the local draft remains intact.
-        uploadJobs[key] = viewModelScope.launch(HeikaCoroutineGuard) { uploadPendingImage(key) }
+        // 应用级上传队列：退出发布页 / Activity 重建都不再中断这张图的传输。
+        uploads.enqueue(key, onFinalFailure = { error ->
+            mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false, error = error.message ?: "图片上传失败，请重试") else it }) }
+        }) { uploadPendingImage(key) }
     }
 
     fun retryUpload(key: String) {
         val image = mutableState.value.images.firstOrNull { it.key == key } ?: return
         if (image.progress || image.path != null || image.localFilePath == null || image.uploadId == null || image.mime == null) return
-        uploadJobs[key]?.cancel()
-        uploadJobs[key] = viewModelScope.launch(HeikaCoroutineGuard) { uploadPendingImage(key) }
+        uploads.enqueue(key, onFinalFailure = { error ->
+            mutableState.update { state -> state.copy(images = state.images.map { if (it.key == key) it.copy(progress = false, error = error.message ?: "图片上传失败，请重试") else it }) }
+        }) { uploadPendingImage(key) }
     }
 
     private suspend fun uploadPendingImage(key: String) {
@@ -845,26 +851,33 @@ class PublishViewModel @Inject constructor(
                 return@launch
             }
             mutableState.update { it.copy(publishing = true, error = null, notice = null) }
+            PublishTaskCoordinator.start(current.title.ifBlank { "未命名作品" })
             // 基础校验全部通过后，才做这一次正式分类；内容没变就复用上次结果。
             if (!current.revisionMode) resolveRoute(mutableState.value)
             runCatching {
                 ensureSameAccount(current.accountId)
+                PublishTaskCoordinator.stage("正在上传图片", totalImages = current.images.size, readyImages = current.images.count { it.path != null })
                 current.images.filter { it.path == null }.forEach { image ->
-                    val activeUpload = uploadJobs[image.key]
+                    val activeUpload = uploads.active(image.key)
                     if (activeUpload?.isActive == true) activeUpload.join()
                     if (mutableState.value.images.firstOrNull { it.key == image.key }?.path == null) uploadPendingImage(image.key)
                 }
+                PublishTaskCoordinator.stage("正在校验媒体", readyImages = mutableState.value.images.count { it.path != null })
                 val latest = mutableState.value
                 if (latest.images.any { it.path == null }) throw IOException("图片上传未完成，请检查网络后重试")
+                PublishTaskCoordinator.stage("正在提交内容")
                 submitContent(latest)
             }
                 .onSuccess { result ->
                     clearLocalFiles(mutableState.value.images)
                     current.accountId?.let { repository.clearLocalPublishSnapshot(it, current.channel) }
                     needsServerSync = false
-                    mutableState.update { it.copy(publishing = false, serverStatus = result.optString("status").ifBlank { if (current.revisionMode) "published" else "pending_review" }, notice = if (current.revisionMode) "修改已提交审核，原作品保持发布" else "内容已提交审核", publishedPost = result) }
+                    val serverStatus = result.optString("status").ifBlank { if (current.revisionMode) "published" else "pending_review" }
+                    PublishTaskCoordinator.succeed(underReview = serverStatus == "pending_review")
+                    mutableState.update { it.copy(publishing = false, serverStatus = serverStatus, notice = if (current.revisionMode) "修改已提交审核，原作品保持发布" else "内容已提交审核", publishedPost = result) }
                 }
                 .onFailure { error ->
+                    PublishTaskCoordinator.fail(error.message ?: "提交失败，请重试")
                     mutableState.update { it.copy(publishing = false, error = error.message ?: "提交失败，请重试") }
                     persistLocalSnapshot()
                 }

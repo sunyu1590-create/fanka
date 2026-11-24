@@ -16,9 +16,10 @@ import { cardRarityTier } from "@/lib/progression";
 import { splitPostMediaPaths } from "@/lib/media-path";
 import { signPostMedia } from "@/lib/server/media";
 import { postAttachments, withPostAttachments } from "@/lib/server/post-attachments";
+import { rebuildPostMedia } from "@/lib/server/media-assets";
 import { enqueuePostClassification, enqueuePostReview } from "@/lib/server/ai-classification-queue";
 const mediaVariants = (path: string) => {
-  const match = path.match(/^(.*\/)([^/]+)\.(?:jpg|png|webp)$/i);
+  const match = path.match(/^(.*\/)([^/]+)\.(?:jpg|png|webp|gif)$/i);
   return match ? [`${match[1]}${match[2]}-480.webp`, `${match[1]}${match[2]}-960.webp`] : [];
 };
 async function replacePoll(db: SupabaseClient, postId: string, value: unknown) {
@@ -345,18 +346,9 @@ export async function POST(req: NextRequest) {
           dbError(storedMedia.error);
           if ((storedMedia.data || []).length !== mediaPaths.length || storedMedia.data?.some((item) => !item.signedUrl)) throw new ApiError(400, "有图片尚未同步完成，请重新上传后再保存");
         }
-        const previousMedia = await db.from("post_media").select("storage_path,thumbnail_path,retina_thumbnail_path").eq("post_id", postId);
-        dbError(previousMedia.error);
-        const previousByPath = new Map((previousMedia.data || []).map((item) => [item.storage_path, item]));
-        const { error: clearMedia } = await db.from("post_media").delete().eq("post_id", postId);
-        dbError(clearMedia);
-        if (mediaPaths.length) {
-          const { error: insertMedia } = await db.from("post_media").insert(mediaPaths.map((storage_path, sort_order) => {
-            const previous = previousByPath.get(storage_path);
-            return { post_id: postId, storage_path, sort_order, thumbnail_path: previous?.thumbnail_path || null, retina_thumbnail_path: previous?.retina_thumbnail_path || null };
-          }));
-          dbError(insertMedia);
-        }
+        const rebuilt = await rebuildPostMedia(db, user!.id, postId, mediaPaths);
+        if (rebuilt.error) dbError(rebuilt.error);
+        if (!rebuilt.verified) throw new ApiError(409, `有图片尚未同步完成，请重新上传后再保存（缺失 ${rebuilt.missing.length} 项）`);
       }
       const refreshed = await db.from("posts").select(libraryFields).eq("id", postId).single();
       dbError(refreshed.error);
@@ -472,26 +464,9 @@ export async function POST(req: NextRequest) {
         if (splitMedia.videos.length) throw new ApiError(410, "视频上传功能已下线，请发布图文内容");
         if (splitMedia.images.length > 9 || mediaPaths.some((path) => !path.startsWith(`${user!.id}/`) || path.length > 300 || path.includes("..")))
           throw new ApiError(400, "投稿媒体无效；一篇内容最多 9 张图片");
-        const previousMedia = await db.from("post_media").select("storage_path,thumbnail_path,retina_thumbnail_path").eq("post_id", postId);
-        dbError(previousMedia.error);
-        const previousByPath = new Map((previousMedia.data || []).map((item) => [item.storage_path, item]));
-        const { error: clearMedia } = await db.from("post_media").delete().eq("post_id", postId);
-        dbError(clearMedia);
-        if (mediaPaths.length) {
-          const { error: insertMedia } = await db.from("post_media").insert(mediaPaths.map((storage_path, sort_order) => {
-            const previous = previousByPath.get(storage_path);
-            return {
-              post_id: postId,
-              storage_path,
-              sort_order,
-              ...(!/\.(?:mp4|webm)$/i.test(storage_path) ? {
-                thumbnail_path: previous?.thumbnail_path || null,
-                retina_thumbnail_path: previous?.retina_thumbnail_path || null,
-              } : {}),
-            };
-          }));
-          dbError(insertMedia);
-        }
+        const rebuilt = await rebuildPostMedia(db, user!.id, postId, mediaPaths);
+        if (rebuilt.error) dbError(rebuilt.error);
+        if (!rebuilt.verified) throw new ApiError(409, `图片尚未上传完成或已失效，请重新上传后再发布（缺失 ${rebuilt.missing.length} 项）`);
       }
       const { error: publishError } = await db.from("posts").update({ status: "pending_review", updated_at: new Date().toISOString() }).eq("id", postId).eq("author_id", user!.id);
       dbError(publishError);

@@ -87,8 +87,9 @@ test("安卓 AI 入口随内容滚动，详情页顶栏纯黑且无图不占位"
   // 顶部紧凑双行：分类行 + 固定搜索/筛选按钮
   assert.match(discovery, /contentDescription = "搜索"/);
   assert.match(discovery, /HeikaIcons\.Sparkles/);
-  // 详情顶栏纯黑
-  assert.match(detail, /Color\(0xFF0B0B0D\)/);
+  // 详情顶栏主题自适应：渐变随深浅色走，浅色模式不再是纯黑条
+  assert.match(detail, /Brush\.verticalGradient/);
+  assert.match(detail, /headerFade/);
   assert.doesNotMatch(detail, /HeikaGlassTopBar/);
   // 无图不生成虚假封面
   assert.doesNotMatch(detail, /暂无图片/);

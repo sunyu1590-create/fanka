@@ -97,7 +97,10 @@ import { REPORT_REASONS } from "@/lib/report-validation";
 import { feedImageSource } from "@/lib/feed-images";
 import { userMessage } from "@/lib/user-message";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
-import { mapWithConcurrency, uploadMediaWithRetry } from "@/lib/media-upload";
+import { mapWithConcurrency } from "@/lib/media-upload";
+import { uploadManager } from "@/lib/upload-manager";
+import { publishTaskManager, type PublishTask } from "@/lib/publish-task-manager";
+import { PublishFloatingWindow } from "./PublishFloatingWindow";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 import DecorCenter from "./DecorCenter";
@@ -802,6 +805,7 @@ export default function Community({
     [topicChoices, setTopicChoices] = useState<TopicSummary[]>([]),
     [creatingTopic, setCreatingTopic] = useState(false),
     [composerImages, setComposerImages] = useState<ComposerImage[]>([]),
+    [taskCenterOpen, setTaskCenterOpen] = useState(false),
     [imageUploadProgress, setImageUploadProgress] = useState<{ percent: number; done: number; total: number; phase: "uploading" | "processing" | "done" } | null>(null),
     [composerAttachments, setComposerAttachments] = useState<PostAttachment[]>([]),
     [attachmentQuota, setAttachmentQuota] = useState<{ used: number; limit: number; remaining: number } | null>(null),
@@ -2919,14 +2923,14 @@ export default function Community({
     if (!image.file || !accountId) throw new Error("登录后可同步草稿图片");
     const db = await browserDb(); const { data: session } = await db.auth.getSession();
     if (!session.session) throw new Error("登录状态已失效，请重新登录");
-    const result = await uploadMediaWithRetry({
+    const result = await uploadManager.enqueue({
       file: image.file,
       token: session.session.access_token,
       uploadId: image.id,
       sortOrder,
       target: composerRevisionMode ? { kind: "revision", postId } : { kind: "post", postId },
       onProgress,
-    }, 2);
+    });
     return { ...image, path: result.path, status: "ready", sortOrder, progress: 100, uploadPhase: undefined };
   };
   /**
@@ -3021,15 +3025,26 @@ export default function Community({
     if (draftSaving) return toast("草稿正在同步，请稍后发布");
     publishInFlight.current = true;
     setIsPublishing(true);
+    let publishTaskKey: string | null = null;
     try {
       const old = state.own.find((p) => p.id === editing);
+      // 点击发布即创建全局发布任务（内容快照），离开页面任务继续，浮窗实时可见。
+      const snapshotTask = await publishTaskManager.create({
+        title: title.trim(),
+        coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null,
+        snapshot: { title: title.trim(), body, tag, topics, mediaPaths: [], coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null, seriesId: writeSeriesId || null },
+      });
+      publishTaskKey = snapshotTask.taskKey;
+      publishTaskManager.update(publishTaskKey, { status: "task_created", step: "发布任务已创建" });
       const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
       let attachmentPayload = composerAttachments;
       if (composerAttachments.some((item) => item.path.startsWith("local:"))) {
         try { attachmentPayload = await flushPendingAttachments(); }
         catch (error) {
-          setAttachmentError(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
-          toast(error instanceof Error ? error.message : "附件上传失败，请稍后重试");
+          const message = error instanceof Error ? error.message : "附件上传失败，请稍后重试";
+          setAttachmentError(message);
+          toast(message);
+          if (publishTaskKey) publishTaskManager.update(publishTaskKey, { status: "failed", error: message, step: "附件上传失败" });
           return;
         }
       }
@@ -3040,12 +3055,36 @@ export default function Community({
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
       const orderedImages = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
+      if (publishTaskKey) publishTaskManager.update(publishTaskKey, {
+        status: orderedImages.length ? "uploading_media" : "verifying_media",
+        step: orderedImages.length ? `开始上传 ${orderedImages.length} 张图片` : "无需上传图片",
+        media: { total: orderedImages.length, ready: 0, uploading: orderedImages.length, failed: 0, sentBytes: 0, totalBytes: orderedImages.reduce((sum, image) => sum + (image.file?.size || 0), 0) },
+      });
       const uploaded = await uploadComposerImages(orderedImages, draft.cloudId);
       const mediaPaths = uploaded.map((image) => image.path!);
+      if (publishTaskKey) publishTaskManager.update(publishTaskKey, {
+        status: "verifying_media",
+        step: "图片就绪，开始校验媒体",
+        media: { total: uploaded.length, ready: uploaded.length, uploading: 0, failed: 0, sentBytes: uploaded.reduce((sum, image) => sum + (image.file?.size || 0), 0), totalBytes: uploaded.reduce((sum, image) => sum + (image.file?.size || 0), 0) },
+      });
+      if (publishTaskKey) publishTaskManager.update(publishTaskKey, { status: "submitting_content", step: "正在提交内容" });
       const item = channel === "ai"
         ? await cloudRequest("/api/v1/ai-space", { action: "submit", id: draft.cloudId, title, body, category: tag, topics: topics, contentType: contentType, resourceData, attachments: attachmentPayload, seriesId: writeSeriesId || null, mediaPaths, coverUrl: cover?.external ? cover.url : null, routeConfirmed: routeClassifiedByAi })
         : await cloudRequest("/api/v1/library-state", { action: "publish", id: draft.id, title, body, tag: tag, topics: topics, attachments: attachmentPayload, seriesId: writeSeriesId || null, poll: pollDraft.question ? pollDraft : null, mediaPaths, coverUrl: cover?.external ? cover.url : null, routeConfirmed: routeClassifiedByAi });
-      if (!item) return;
+      if (!item) {
+        if (publishTaskKey) publishTaskManager.update(publishTaskKey, { status: "failed", error: "发布未获得服务端确认，请重试", step: "提交失败" });
+        return;
+      }
+      if (publishTaskKey) {
+        const submittedForReview = item.status === "pending_review";
+        publishTaskManager.update(publishTaskKey, {
+          status: submittedForReview ? "waiting_for_human_review" : item.status === "published" ? "published" : "ai_reviewing",
+          step: submittedForReview ? "已提交人工审核" : item.status === "published" ? "发布成功" : "进入审核流程",
+          postId: item.cloudId ?? null,
+          clientId: item.id ?? null,
+          snapshot: { title: title.trim(), body, tag, topics, mediaPaths, coverUrl: cover?.external ? cover.url : null, seriesId: writeSeriesId || null },
+        });
+      }
       update((s) => ({
         ...s,
         own: [
@@ -3101,7 +3140,9 @@ export default function Community({
     } catch (e) {
       setUploadingImages(false);
       setComposerCheckPhase("failed");
-      toast(e instanceof Error ? e.message : "发布失败，请重试");
+      const message = e instanceof Error ? e.message : "发布失败，请重试";
+      if (publishTaskKey) publishTaskManager.update(publishTaskKey, { status: "failed", error: message, step: "发布失败" });
+      toast(message);
     } finally {
       publishInFlight.current = false;
       setIsPublishing(false);
@@ -5676,7 +5717,7 @@ export default function Community({
           <div id="mine-category-panel" className="mine-category-panel" role="tabpanel" aria-labelledby={`mine-tab-${mineSection}`} key={mineSection}>
             {mineSection === "works" && (
               <div className="mine-tab-content">
-                <div className="mine-works-heading"><div><span>共 {visibleOwnWorks.length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
+                <div className="mine-works-heading"><div><span>共 {visibleOwnWorks.length} 篇作品</span></div><button type="button" className="mine-works-manage-button" onClick={() => setTaskCenterOpen(true)}>发布任务 <ChevronRight size={15}/></button><button type="button" className="mine-works-manage-button" onClick={() => openMyContent("mine")}>作品管理 <ChevronRight size={15}/></button></div>
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
                 {visibleOwnWorks.length ? <div className="masonry mine-works-masonry">{visibleOwnWorks.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
@@ -6659,7 +6700,7 @@ export default function Community({
                 <section className="composer-media-picker is-single" aria-label="选择图片">
                   <div className="composer-media-choices" role="group" aria-label="媒体类型">
                     <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerImages.length >= 9 ? " disabled" : ""}`}>
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploadingImages || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={uploadingImages || composerImages.length >= 9} onChange={(event) => { void chooseComposerImages(event.target.files); event.currentTarget.value = ""; }} />
                       <span className="composer-media-choice-icon"><ImagePlus size={20}/></span>
                       <span className="composer-media-choice-copy"><strong>图片</strong><small>{composerImages.length >= 9 ? "已达最多 9 张" : composerImages.length ? `已选 ${composerImages.length}/9` : "JPG / PNG / WebP · 最多 9 张"}</small></span>
                       <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
@@ -6730,7 +6771,7 @@ export default function Community({
                 <div className="composer-markdown-actions"><button type="button" className="primary-button" onClick={applyMarkdownOptimize}>使用此版本</button><button type="button" className="soft-button" onClick={() => void copyMarkdownOptimize()}>复制</button><button type="button" className="soft-button" onClick={() => setMarkdownOptimizeOpen(false)}>取消</button></div>
               </>}
             </ComposerSheet>}
-            {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
+            {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && markdownPreviousBody !== null && <div className="composer-markdown-applied" role="status"><span>已应用 Markdown 优化</span><button type="button" onClick={undoMarkdownOptimize}>撤回</button></div>}
             {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftLocalState === "saving" ? "正在保存到本机…" : draftLocalState === "saved" ? "已保存到本机" : draftLocalState === "error" ? "本机保存失败" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{composerSuggestion?.checking ? "正在检查内容…" : isPublishing ? "正在提交…" : uploadingImages || composerImages.some((image) => image.status === "uploading") ? `上传图片 ${imageUploadProgress?.percent ?? 0}%` : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
@@ -6754,6 +6795,16 @@ export default function Community({
         onNotice={toast}
       />
       {notice && <NoticeBanner key={notice.id} notice={notice} leaving={noticeLeaving} expanded={noticeExpanded} onExpand={expandNotice} onDismiss={dismissNotice} />}
+      <PublishFloatingWindow
+        taskCenterOpen={taskCenterOpen}
+        onOpenTaskCenter={() => setTaskCenterOpen(true)}
+        onCloseTaskCenter={() => setTaskCenterOpen(false)}
+        onOpenPost={(task: PublishTask) => {
+          if (task.clientId) openPost(task.clientId, "discover");
+          else toast("作品已发布，可在「我的作品」中查看");
+        }}
+        onRetryPublish={() => { setTaskCenterOpen(false); void openComposer(); }}
+      />
       {announcement && <div className="announcement-backdrop" role="dialog" aria-modal="true" aria-labelledby="announcement-title" onClick={dismissAnnouncement}>
         <div className="announcement-card" onClick={(event) => event.stopPropagation()}>
           <span className="announcement-kicker"><Megaphone size={14}/> 公告</span>

@@ -63,7 +63,9 @@ export function present(row: LibraryRow, mediaUrls?: Map<string, string>, partia
   };
   const retinaUrl = (item: PostMediaRow) => {
     const path = retinaPath(item);
-    return path ? mediaUrls?.get(path) : undefined;
+    // retina 兜底链：960 变体 → 480 变体 → 原图。签名缺失时不留 undefined 空洞，
+    // 否则客户端把空洞当地址渲染成坏图。
+    return (path ? mediaUrls?.get(path) : undefined) || thumbnailUrl(item) || mediaUrls?.get(item.storage_path);
   };
   const imageUrl = (item: PostMediaRow) => {
     if (partial) return thumbnailUrl(item) || mediaRoute(item.storage_path);
