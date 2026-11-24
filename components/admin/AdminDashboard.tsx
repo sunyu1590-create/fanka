@@ -116,15 +116,15 @@ export default function AdminDashboard({
             <div className="ab-skel" style={{ height: 180 }} />
           ) : current ? (
             <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 10 }}>
                   <Ring value={current.cpu_percent ?? null} label="CPU" size={78} stroke={7} />
                   <Ring value={current.mem_percent ?? null} label="内存" size={78} stroke={7} />
                   <Ring value={current.disk_percent ?? null} label="磁盘" size={78} stroke={7} />
                 </div>
-                <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 3, minWidth: 92 }}>
                   <span className="ab-label">API 延迟</span>
-                  <b style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{live?.avg_ms != null ? `${Math.round(live.avg_ms)} ms` : "—"}</b>
+                  <b style={{ fontSize: live?.avg_ms != null ? 22 : 15, fontWeight: live?.avg_ms != null ? 700 : 550, color: live?.avg_ms != null ? undefined : "var(--ab-ink-3)", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{live?.avg_ms != null ? `${Math.round(live.avg_ms)} ms` : "暂无采样"}</b>
                   <span className="ab-label">P95 {live?.p95_ms != null ? `${Math.round(live.p95_ms)} ms` : "—"}</span>
                 </div>
               </div>
@@ -154,6 +154,12 @@ export default function AdminDashboard({
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
             <span className="ab-chip violet">异常 {anomalies}</span>
             <span className="ab-chip info">运行中 {runningBatches}</span>
+          </div>
+          {/* 卡片与系统健康同处一行会被拉伸；用弹性空白把内容撑开，避免出现大片空洞。 */}
+          <div style={{ flex: 1, minHeight: 6 }} />
+          <div className="ab-card__foot">
+            <span>{reviewItems.length ? "按风险从高到低排列" : "队列为空"}</span>
+            <span style={{ color: "var(--ab-violet)", fontWeight: 600 }}>去处理 ›</span>
           </div>
         </div>
 
