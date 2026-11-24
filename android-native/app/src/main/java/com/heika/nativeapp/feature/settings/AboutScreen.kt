@@ -43,6 +43,11 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(86, "2026.11.24", listOf(
+        "底栏恢复真正的背景模糊（24dp 高斯），并把底色从 99% 不透明压到 75% 左右，玻璃重新能透出背后的颜色。",
+        "修掉底栏「遮罩感」的根因：之前 haze 底色与 background 叠了两层，遮罩就是这么来的。",
+        "底栏胶囊外不再绘制任何东西，阴影与描边都收进胶囊内部。",
+    )),
     NativeRelease(85, "2026.11.24", listOf(
         "底栏去掉模糊与半透明叠加，删掉视觉上的灰色遮罩，改成实心胶囊。",
         "「我的作品」上下的留白收紧：标签栏与作品计数合并成一条，栅格间距缩到 12dp。",

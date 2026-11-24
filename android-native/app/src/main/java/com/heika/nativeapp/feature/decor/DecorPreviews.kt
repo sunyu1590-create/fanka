@@ -34,6 +34,8 @@ import com.heika.nativeapp.ui.GlassNavigationBar
 import com.heika.nativeapp.ui.LocalDecor
 import com.heika.nativeapp.ui.LocalHeikaDark
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 
 /**
  * 底栏实时预览（需求 6.1）：直接复用真实导航栏组件渲染工作区配置，
@@ -42,9 +44,14 @@ import com.heika.nativeapp.ui.LocalHeikaImageLoader
 @Composable
 fun DecorBarPreview(config: DecorConfig, dark: Boolean, modifier: Modifier = Modifier) {
     CompositionLocalProvider(LocalDecor provides config, LocalHeikaDark provides dark) {
+        // 预览同样走真模糊：底栏是玻璃，就必须有「背后内容」可折射。
+        // source 与 effect 必须是兄弟节点，不能互为父子，否则 haze 会判定为循环而失效。
+        val hazeState = rememberHazeState()
         Box(modifier.background(Color(0xFF1A1C20))) {
+            Box(Modifier.matchParentSize().hazeSource(hazeState))
             GlassNavigationBar(
                 selected = "home",
+                hazeState = hazeState,
                 onSelect = {},
                 onPublish = {},
             )

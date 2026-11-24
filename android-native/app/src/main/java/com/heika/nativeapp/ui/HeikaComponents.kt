@@ -50,6 +50,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 
 @Composable
 fun BrandHeader(
@@ -177,6 +181,7 @@ fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: 
 @Composable
 fun GlassNavigationBar(
     selected: String,
+    hazeState: HazeState,
     onSelect: (String) -> Unit,
     onPublish: () -> Unit,
     modifier: Modifier = Modifier,
@@ -186,9 +191,13 @@ fun GlassNavigationBar(
     val decor = LocalDecor.current
     val palette = decor.bar.palette(dark)
     val surface = palette.bg
-    // 底栏改为实心胶囊：之前叠了 haze 模糊 + 半透明底色，深色内容滚到下面时
-    // 整条底栏会变成一块灰蒙蒙的遮罩。这里不再做任何模糊与透明混合。
-    val containerAlpha = 1f
+    // 这一条是「悬浮玻璃」，不是「底板」。此前两个错叠在一起：
+    //   ① hazeEffect(backgroundColor 0.92) 之外又叠了一层 .background(0.92)，
+    //      合成后不透明度 99.4%，模糊等于没开，只剩一块实心板；
+    //   ② 装饰皮肤默认 bgOpacity 就是 0.90–0.97，直接当 alpha 用，同样把玻璃压成板。
+    // 现在只保留 haze 一层底色，并把 bgOpacity 按比例压到 .34–.86：
+    // 背后文字被真模糊后只剩色晕，读不出内容，胶囊外也不画任何东西。
+    val containerAlpha = (palette.bgOpacity * .82f).coerceIn(.34f, .86f)
     Row(
         modifier = modifier.fillMaxWidth()
             .padding(horizontal = 14.dp)
@@ -201,8 +210,16 @@ fun GlassNavigationBar(
                 .weight(1f)
                 .height(66.dp)
                 .clip(tabShape)
-                .background(surface.copy(alpha = containerAlpha), tabShape)
-                .border(1.dp, palette.border.copy(alpha = palette.borderOpacity.coerceAtLeast(if (dark) .06f else .05f)), tabShape)
+                .hazeEffect(
+                    state = hazeState,
+                    style = HazeStyle(
+                        backgroundColor = surface.copy(alpha = containerAlpha),
+                        tint = HazeTint(surface.copy(alpha = if (dark) .10f else .05f)),
+                        blurRadius = 24.dp,
+                        fallbackTint = HazeTint(surface.copy(alpha = .94f)),
+                    ),
+                )
+                .border(1.dp, palette.border.copy(alpha = palette.borderOpacity.coerceIn(if (dark) .12f else .08f, .45f)), tabShape)
                 .padding(horizontal = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -691,6 +691,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
             if (showBottomBar) {
                 GlassNavigationBar(
                     selected = selected,
+                    hazeState = hazeState,
                     onSelect = { target ->
                         mainTabSwitchActive = true
                         navigateTopLevel(nav, target)
