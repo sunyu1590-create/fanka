@@ -172,7 +172,7 @@ async function probeApp(path, token) {
 
 async function collectApiMetrics() {
   const probe = await probeApp("/api/v1/internal/metrics", WORKER_TOKEN);
-  if (!probe.ok) return { api_requests: null, api_errors: null, api_avg_ms: probe.latency_ms, api_p95_ms: null, probe };
+  if (!probe.ok) return { api_requests: null, api_errors: null, api_avg_ms: probe.latency_ms, api_p95_ms: null };
   try {
     const response = await fetch(`${APP_BASE}/api/v1/internal/metrics`, { headers: { Authorization: `Bearer ${WORKER_TOKEN}` }, signal: AbortSignal.timeout(8000) });
     const payload = await response.json();
