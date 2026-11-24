@@ -11,6 +11,8 @@
  * 所有数据均为真实采集，不生成任何模拟值；采集失败时对应字段留空。
  */
 
+import fs from "node:fs";
+
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const WORKER_TOKEN = process.env.AI_TASK_WORKER_TOKEN || "";
@@ -48,7 +50,6 @@ let prevNetAt = 0;
 
 function readProcStat() {
   try {
-    const fs = require("node:fs");
     const line = fs.readFileSync("/proc/stat", "utf8").split("\n")[0];
     const parts = line.trim().split(/\s+/).slice(1).map(Number);
     const idle = parts[3] + (parts[4] || 0);
@@ -75,7 +76,6 @@ function cpuPercent() {
 
 function readMemInfo() {
   try {
-    const fs = require("node:fs");
     const info = {};
     for (const line of fs.readFileSync("/proc/meminfo", "utf8").split("\n")) {
       const match = line.match(/^(\w+):\s+(\d+)/);
@@ -99,7 +99,6 @@ function readMemInfo() {
 
 function readLoad() {
   try {
-    const fs = require("node:fs");
     const [load1, load5, load15] = fs.readFileSync("/proc/loadavg", "utf8").trim().split(/\s+/).map(Number);
     return { load1, load5, load15 };
   } catch {
@@ -109,7 +108,6 @@ function readLoad() {
 
 function readDisk() {
   try {
-    const fs = require("node:fs");
     const stat = fs.statfsSync("/");
     const total = stat.blocks * stat.bsize;
     const free = stat.bavail * stat.bsize;
@@ -130,7 +128,6 @@ function readDisk() {
 
 function readNetRates() {
   try {
-    const fs = require("node:fs");
     const lines = fs.readFileSync("/proc/net/dev", "utf8").split("\n").slice(2);
     let rx = 0;
     let tx = 0;
@@ -185,7 +182,6 @@ async function collectApiMetrics() {
       api_errors: (m5?.errors4xx ?? 0) + (m5?.errors5xx ?? 0),
       api_avg_ms: m5?.avg_ms ?? null,
       api_p95_ms: m5?.p95_ms ?? null,
-      api_error_rate: m5?.error_rate ?? null,
     };
   } catch {
     return { api_requests: null, api_errors: null, api_avg_ms: null, api_p95_ms: null };
@@ -215,7 +211,7 @@ const ALERT_RULES = [
   { type: "cpu_high", level: "warning", title: "CPU 持续偏高", test: (m) => m.cpu_percent != null && m.cpu_percent > 80, detail: (m) => `CPU ${m.cpu_percent}%` },
   { type: "mem_low", level: "critical", title: "可用内存不足", test: (m) => m.mem_percent != null && m.mem_percent > 85, detail: (m) => `内存使用 ${m.mem_percent}%` },
   { type: "disk_high", level: "critical", title: "磁盘使用率过高", test: (m) => m.disk_percent != null && m.disk_percent > 85, detail: (m) => `磁盘 ${m.disk_percent}%` },
-  { type: "api_errors", level: "warning", title: "API 错误率偏高", test: (m) => m.api_error_rate != null && m.api_error_rate > 5, detail: (m) => `错误率 ${m.api_error_rate}%` },
+  { type: "api_errors", level: "warning", title: "API 错误率偏高", test: (m) => m.api_requests > 20 && m.api_errors != null && (m.api_errors / m.api_requests) * 100 > 5, detail: (m) => `错误率 ${((m.api_errors / Math.max(1, m.api_requests)) * 100).toFixed(1)}%（${m.api_errors}/${m.api_requests}）` },
   { type: "upload_first_fail", level: "warning", title: "上传成功率偏低", test: (m) => m.upload_success_rate != null && m.upload_tasks >= 10 && m.upload_success_rate < 90, detail: (m) => `24h 成功率 ${m.upload_success_rate}%（样本 ${m.upload_tasks}）` },
   { type: "service_down", level: "critical", title: "服务健康检查失败", test: (_m, services) => services && Object.values(services).some((item) => item && item.ok === false), detail: (_m, services) => Object.entries(services || {}).filter(([, item]) => item?.ok === false).map(([name, item]) => `${name}: ${item.detail || "不可用"}`).join("; ") },
 ];
