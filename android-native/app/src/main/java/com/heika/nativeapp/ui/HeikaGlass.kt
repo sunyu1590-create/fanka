@@ -41,6 +41,10 @@ fun HeikaGlassSurface(
     emphasis: Float = 1f,
     glassColor: Color? = null,
     drawTopHighlight: Boolean = true,
+    /** 覆盖底色不透明度。详情页底部操作栏要和主底栏一致时传 .74f。 */
+    tintAlpha: Float? = null,
+    /** 覆盖模糊半径。默认菜单档 22dp，底部操作栏用 24dp 对齐主底栏。 */
+    blurRadius: androidx.compose.ui.unit.Dp? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val dark = LocalHeikaDark.current
@@ -48,7 +52,7 @@ fun HeikaGlassSurface(
     // 材质底色向中性灰偏一点，避免直接取 #1C1D21 造成「深灰实心卡片」。
     val glassBase = if (dark) lerp(Color(0xFF2B2D35), surface, .18f) else lerp(Color(0xFFFFFEFA), surface, .22f)
     val luminous = lerp(glassBase, Color.White, if (dark) .05f else .02f)
-    val alpha = ((if (hazeState != null) { if (dark) HeikaGlassTokens.darkDialogTintAlpha else HeikaGlassTokens.lightDialogTintAlpha } else { if (dark) .93f else .94f }) * emphasis)
+    val alpha = (tintAlpha ?: ((if (hazeState != null) { if (dark) HeikaGlassTokens.darkDialogTintAlpha else HeikaGlassTokens.lightDialogTintAlpha } else { if (dark) .93f else .94f }) * emphasis))
         .coerceIn(if (hazeState != null) .50f else .88f, .98f)
     val clipped = modifier.clip(shape)
     Box(
@@ -60,13 +64,16 @@ fun HeikaGlassSurface(
                         backgroundColor = luminous.copy(alpha = alpha),
                         // 深色模式用极淡的白 tint 提亮透出的背景，而不是压黑。
                         tint = HazeTint(if (dark) Color.White.copy(alpha = .10f) else Color.White.copy(alpha = .28f)),
-                        blurRadius = HeikaGlassTokens.menuBlurRadius,
+                        blurRadius = blurRadius ?: HeikaGlassTokens.menuBlurRadius,
                         fallbackTint = HazeTint(luminous.copy(alpha = if (dark) .94f else .96f)),
                     ),
                 ) else Modifier,
             )
             .shadow(6.dp, shape)
-            .background(luminous.copy(alpha = alpha), shape)
+            // hazeEffect 自己就会铺一层底色。这里再叠 .background 会让两层
+            // 半透明相乘（.62 → .86），模糊被压到几乎看不见，看起来就是一块实心板。
+            // 只有拿不到 HazeState 的降级路径才需要这层实体底色。
+            .then(if (hazeState == null) Modifier.background(luminous.copy(alpha = alpha), shape) else Modifier)
             .border(
                 HeikaGlassTokens.borderWidth,
                 if (dark) Color.White.copy(alpha = HeikaGlassTokens.glassBorderAlphaDark)

@@ -2,6 +2,7 @@ package com.heika.nativeapp.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -688,7 +689,16 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                 }
                 }
             }
-            if (showBottomBar) {
+            // 底栏进出用淡入淡出 + 轻微下滑，而不是直接 if 掉：
+            // 进详情时瞬间抽走会让人以为底栏被「抽」了一下，个人页尤其明显。
+            AnimatedVisibility(
+                visible = showBottomBar,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn(tween(180, easing = HeikaMotion.standard)) +
+                    slideInVertically(tween(200, easing = HeikaMotion.standard)) { it / 4 },
+                exit = fadeOut(tween(140, easing = HeikaMotion.standard)) +
+                    slideOutVertically(tween(160, easing = HeikaMotion.standard)) { it / 4 },
+            ) {
                 GlassNavigationBar(
                     selected = selected,
                     hazeState = hazeState,
@@ -697,7 +707,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         navigateTopLevel(nav, target)
                     },
                     onPublish = { openDestination(HeikaDestination.Publish) },
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
+                    modifier = Modifier.navigationBarsPadding().padding(bottom = 8.dp),
                 )
             }
             ForegroundNoticeHost(

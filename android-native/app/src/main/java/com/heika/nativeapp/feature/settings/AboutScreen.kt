@@ -43,6 +43,13 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(88, "2026.11.24", listOf(
+        "修掉底栏后面那块「板」：个人页原先把顶栏塞进 Column 当占位，列表高度少了一整个顶栏，底栏那一段永远没有内容经过，玻璃背后空无一物，看上去就是一层遮罩。",
+        "顶栏不再做毛玻璃，改回纯色渐变；底栏玻璃只保留一层底色，不再叠成 99% 不透明。",
+        "个人主页封面支持下拉放大，松手回弹。",
+        "详情页顶栏跟随深浅色，不再固定纯黑；底部评论与点赞栏改成和主页底栏同一档模糊。",
+        "进详情页时底栏淡出收起，不再瞬间抽走。",
+    )),
     NativeRelease(87, "2026.11.24", listOf(
         "新增开启 / 关闭 / 展开三组非线性曲线，与网页端使用同一组参数，后续组件动效直接复用。",
         "正文 Markdown 图片加载改为 180ms 叠化，不再解码完突然出现。",

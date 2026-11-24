@@ -77,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.layout.ContentScale
@@ -579,6 +580,8 @@ fun PostDetailScreen(
                     shape = RoundedCornerShape(27.dp),
                     contentPadding = PaddingValues(4.dp),
                     drawTopHighlight = false,
+                    tintAlpha = .74f,
+                    blurRadius = 24.dp,
                 ) {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         if (replyTo != null) Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -617,6 +620,8 @@ fun PostDetailScreen(
                     shape = RoundedCornerShape(27.dp),
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
                     drawTopHighlight = false,
+                    tintAlpha = .74f,
+                    blurRadius = 24.dp,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         InteractionIconButton(selected = state.liked, sending = state.likeSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
@@ -631,12 +636,21 @@ fun PostDetailScreen(
             }
         }
     }
-    // 详情页顶栏：玻璃模糊渲染不稳定，改为纯黑实色（#0B0B0D），不做任何取样与半透明。
+    // 详情页顶栏不再写死纯黑：浅色主题下那块黑条会把浅色页面劈成两半。
+    // 改成跟随主题的背景色渐变，顶部实、下沿淡出，既压得住封面亮部，
+    // 也不会在浅色模式下突然出现一条黑边。
+    val headerFade = MaterialTheme.colorScheme.background
     Box(
         Modifier
             .align(Alignment.TopCenter)
             .fillMaxWidth()
-            .background(Color(0xFF0B0B0D)),
+            .background(
+                Brush.verticalGradient(
+                    0f to headerFade.copy(alpha = .96f),
+                    .62f to headerFade.copy(alpha = .88f),
+                    1f to headerFade.copy(alpha = 0f),
+                ),
+            ),
     ) {
         BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, modifier = Modifier.zIndex(1f), trailing = {
             Box {

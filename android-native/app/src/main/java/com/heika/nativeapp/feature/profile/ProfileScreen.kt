@@ -48,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -75,11 +76,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.feature.discovery.FeedCard
 import com.heika.nativeapp.ui.BackHeader
@@ -109,6 +113,22 @@ private fun Modifier.bleedHorizontal(gutter: Dp) = layout { measurable, constrai
     val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
     layout(constraints.maxWidth, placeable.height) {
         placeable.placeRelative(-extra, 0)
+    }
+}
+
+/**
+ * 把绘制区域向上多要 [extra] 的高度并整体上移，但上报给父级的高度不变。
+ *
+ * 个人页封面要顶到状态栏后面，列表就必须整体上移一个顶栏高度；
+ * 如果用 offset 直接平移，列表底部会跟着少掉同样的高度，底栏那一段
+ * 就永远没有内容经过，玻璃背后空无一物，看起来就是一块实心遮罩。
+ */
+private fun Modifier.stretchVertically(extra: Dp) = layout { measurable, constraints ->
+    val px = extra.roundToPx()
+    val height = constraints.maxHeight + px
+    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+    layout(constraints.maxWidth, constraints.maxHeight) {
+        placeable.place(0, -px)
     }
 }
 
@@ -197,35 +217,46 @@ fun ProfileScreen(
 
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
-    // 自己主页：封面要压到状态栏后面，顶栏做成毛玻璃悬浮条。
-    // 状态栏高度从系统读取，不写死 24dp，刘海/挖孔机型才不会错位。
-    val headerHaze = rememberHazeState()
-    val stickyTop = if (userId == null) HeikaSpacing.headerHeight + statusBarTop else 0.dp
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (userId == null) {
-            Box(Modifier.zIndex(2f)) {
-                ProfileBrandHeader(
-                    onSettings = onSettings,
-                    onMembership = onMembership,
-                    topInset = statusBarTop,
-                    modifier = Modifier.hazeEffect(
-                        state = headerHaze,
-                        style = HazeStyle(
-                            backgroundColor = MaterialTheme.colorScheme.background.copy(alpha = .56f),
-                            tint = HazeTint(MaterialTheme.colorScheme.background.copy(alpha = .06f)),
-                            // 比底部导航（18dp）更浅一档，顶栏只是"分隔层"，不该抢内容。
-                            blurRadius = 12.dp,
-                        ),
-                    ),
-                )
+    // 顶栏不再做毛玻璃：上一版把顶栏 haze 叠在封面上，滚到底时那层取样矩形会
+    // 顺着列表一起下滑，看起来就像底栏后面垫了一块板。改为纯色渐变压暗，
+    // 既能盖住封面亮部保住文字，也不再有任何取样区域。
+    val density = LocalDensity.current
+    // 他人主页没有通栏封面，顶栏需要一个实心占位高度；自己主页才让封面顶到状态栏。
+    val stickyTop = if (userId == null) HeikaSpacing.headerHeight + statusBarTop else HeikaSpacing.headerHeight
+    // 下拉放大的位移量（像素）。列表已经在顶部时，向下的手势全部转成封面拉伸，
+    // 不再交给 LazyGrid 做 overscroll，松手后由 spring 收回去。
+    var coverPull by remember { mutableFloatStateOf(0f) }
+    val maxCoverPull = with(density) { 220.dp.toPx() }
+    val pullConnection = remember(gridState) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val atTop = gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+                if (available.y > 0f && atTop) {
+                    coverPull = (coverPull + available.y * .55f).coerceAtMost(maxCoverPull)
+                    return Offset(0f, available.y)
+                }
+                if (available.y < 0f && coverPull > 0f) {
+                    val used = (-available.y).coerceAtMost(coverPull)
+                    coverPull -= used
+                    return Offset(0f, -used)
+                }
+                return Offset.Zero
             }
-        } else {
-            BackHeader("用户主页", onBack)
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (coverPull > 0f) {
+                    animate(coverPull, 0f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { value, _ -> coverPull = value }
+                    return available
+                }
+                return Velocity.Zero
+            }
         }
-        // 这里不再需要 maxWidth，用普通 Box 即可；BoxWithConstraints 会多一层 subcomposition。
-        Box(
-            Modifier.fillMaxSize().offset(y = -stickyTop).hazeSource(headerHaze),
-        ) {
+    }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        // 内容层要比屏幕再高一个 stickyTop：封面从状态栏后开始，而列表底部
+        // 必须仍然落在屏幕底边，否则底栏那 88dp 里没有任何内容可透，
+        // 玻璃看上去就是一块实心板——这才是「底部遮罩」的真正来源。
+        Box(Modifier.fillMaxSize().stretchVertically(stickyTop)) {
             // 栅格的 contentPadding 会把每一项往里收 18dp。封面要通栏，
             // 但不能像旧版那样 requiredWidth + offset：那会把整个 item 左移 18dp，
             // 右边缘反而少一条。改成"按槽位宽度排版、绘制时左右各外扩 18dp"。
@@ -233,7 +264,10 @@ fun ProfileScreen(
             val swipeThreshold = with(LocalDensity.current) { 54.dp.toPx() }
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2), state = gridState,
-                modifier = Modifier.fillMaxSize().pointerInput(selected) {
+                modifier = Modifier.fillMaxSize()
+                    .graphicsLayer { translationY = coverPull }
+                    .nestedScroll(pullConnection)
+                    .pointerInput(selected) {
                     var dragDistance = 0f
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, amount -> change.consume(); dragDistance += amount },
@@ -266,9 +300,14 @@ fun ProfileScreen(
                                         contentDescription = "${profile.nickname}的封面",
                                         imageLoader = LocalHeikaImageLoader.current,
                                         modifier = Modifier.fillMaxSize().graphicsLayer {
-                                            scaleX = coverZoom
-                                            scaleY = coverZoom
-                                            transformOrigin = TransformOrigin(focusX, focusY)
+                                            // 下拉放大：列表整体下移了 coverPull，图片先用 -coverPull 抵消，
+                                            // 再按 (高度 + 位移)/高度 纵向放大，顶边定在原地、底边向下延伸，
+                                            // 于是拉出来的那段始终被图片填满，不会露出页面底色。
+                                            val stretch = 1f + coverPull / size.height.coerceAtLeast(1f)
+                                            scaleX = coverZoom * stretch
+                                            scaleY = coverZoom * stretch
+                                            translationY = -coverPull
+                                            transformOrigin = TransformOrigin(focusX, 0f)
                                         },
                                         contentScale = ContentScale.Crop,
                                         alignment = androidx.compose.ui.BiasAlignment(focusX * 2f - 1f, focusY * 2f - 1f),
@@ -481,14 +520,44 @@ fun ProfileScreen(
                     HeikaPulseRow(Modifier.padding(vertical = 8.dp), height = 56.dp)
                 }
             }
-            if (gridState.firstVisibleItemIndex >= 2) {
-                ProfileTabBar(selected, modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().background(MaterialTheme.colorScheme.background), compact = true) {
+        }
+        // 吸顶标签栏挂在内容层之外：内容层整体上移了一个顶栏高度，
+        // 放在里面会跟着一起被推到屏幕外。滚动过两行后它接管顶栏，
+        // 此时品牌栏收起，两者不会叠在一起。
+        val stuckTabs = gridState.firstVisibleItemIndex >= 2
+        if (stuckTabs) {
+            Box(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(top = statusBarTop)
+                    .zIndex(3f),
+            ) {
+                ProfileTabBar(selected, modifier = Modifier.fillMaxWidth(), compact = true) {
                     if (selected != it) {
                         selected = it
                         HeikaNoticeBus.showSelection("已切换到${ProfileTabs.firstOrNull { tab -> tab.second == it }?.first ?: "个人内容"}")
                     }
                 }
             }
+        }
+        // 顶栏放在内容层之上、且在根 Box 里只出现一次：
+        // 旧实现把它塞进 Column 当占位项，导致列表高度少了一个顶栏，
+        // 底栏那一段永远没有内容经过，玻璃自然看起来像一块实心板。
+        if (userId == null && !stuckTabs) {
+            ProfileBrandHeader(
+                onSettings = onSettings,
+                onMembership = onMembership,
+                topInset = statusBarTop,
+                modifier = Modifier.zIndex(2f).background(
+                    Brush.verticalGradient(
+                        0f to MaterialTheme.colorScheme.background.copy(alpha = .92f),
+                        .55f to MaterialTheme.colorScheme.background.copy(alpha = .72f),
+                        1f to Color.Transparent,
+                    ),
+                ),
+            )
+        } else if (userId != null) {
+            BackHeader("用户主页", onBack, modifier = Modifier.zIndex(2f))
         }
     }
     LaunchedEffect(selected, gridState, state.own, state.hasMoreWorks, state.hasMoreBookmarks, state.hasMoreLiked, state.loadingMore) {
