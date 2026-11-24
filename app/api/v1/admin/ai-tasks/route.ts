@@ -35,7 +35,14 @@ export async function GET(req: NextRequest) {
       : { data: [], error: null };
     if (posts.error) throw new ApiError(503, "人工复审作品暂不可读取");
     const postById = new Map((posts.data || []).map((post) => [post.id, post]));
-    const items = (reviewItems.data || []).map((item) => ({ ...item, post: item.post_id ? postById.get(item.post_id) || null : null }));
+    // 「作品不可用」必须给出可核对的原因：作品被删除（post_id 已被外键置空）与
+    // 作品记录存在但读取不到（数据异常）是两件事，前者只能关闭审核项，后者可重新分析。
+    const postNotice = (postId: string | null, post: unknown) =>
+      post ? null : postId ? "post_unreadable" : "post_deleted";
+    const items = (reviewItems.data || []).map((item) => {
+      const post = item.post_id ? postById.get(item.post_id) || null : null;
+      return { ...item, post, postNotice: postNotice(item.post_id, post) };
+    });
     const currentPostIds = [...new Set((batches.data || []).map((batch) => batch.current_post_id).filter((id): id is string => Boolean(id)))];
     const currentPosts = currentPostIds.length
       ? await admin.from("posts").select("id,title").in("id", currentPostIds)
@@ -49,7 +56,10 @@ export async function GET(req: NextRequest) {
       : { data: [], error: null };
     if (classifiedPosts.error) throw new ApiError(503, "自动分类作品信息暂不可读取");
     const classifiedPostById = new Map((classifiedPosts.data || []).map((post) => [post.id, post]));
-    const classificationItems = (classificationRows.data || []).map((item) => ({ ...item, post: item.post_id ? classifiedPostById.get(item.post_id) || null : null }));
+    const classificationItems = (classificationRows.data || []).map((item) => {
+      const post = item.post_id ? classifiedPostById.get(item.post_id) || null : null;
+      return { ...item, post, postNotice: postNotice(item.post_id, post) };
+    });
     const lastErrorByBatch = new Map<string, string>();
     for (const item of failedItems.data || []) {
       if (!lastErrorByBatch.has(item.batch_id) && item.error_message) lastErrorByBatch.set(item.batch_id, item.error_message);

@@ -715,12 +715,18 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/alerts", method = "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    /** 人工复审：通过 / 驳回 / 退回修改 / 重新分析。 */
+    /** 人工复审：通过 / 驳回 / 退回修改 / 重新分析 / 关闭已无关联作品的审核项。 */
     suspend fun adminAiTaskReview(batchId: String, itemId: String, decision: String, reason: String? = null): JSONObject = withContext(Dispatchers.IO) {
         require(isUuid(batchId)) { "审核批次编号无效" }
-        require(decision in setOf("published", "hidden", "revision", "reanalyze")) { "审核结论无效" }
-        val payload = JSONObject().put("action", if (decision == "reanalyze") "reanalyze" else "review").put("itemId", itemId)
-        if (decision != "reanalyze") payload.put("decision", decision).put("reason", reason.orEmpty().trim())
+        require(decision in setOf("published", "hidden", "revision", "reanalyze", "close")) { "审核结论无效" }
+        val action = when (decision) {
+            "reanalyze" -> "reanalyze"
+            "close" -> "close"
+            else -> "review"
+        }
+        val payload = JSONObject().put("action", action).put("itemId", itemId)
+        if (action == "review") payload.put("decision", decision).put("reason", reason.orEmpty().trim())
+        if (action == "close") payload.put("reason", reason?.trim().orEmpty())
         request("/api/v1/admin/ai-tasks/${encode(batchId)}", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
     }
 

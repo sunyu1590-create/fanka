@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, ChevronRight, FileWarning, PenLine, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
+import { confirmInApp } from "@/lib/in-app-dialog";
 import { Empty, fmtNum, fmtTime, Group, Ring, Segmented } from "./AdminUIKit";
 
 type ReviewResult = { decision?: string; riskLevel?: string; riskTypes?: string[]; reason?: string; evidence?: string[]; evidenceValidated?: boolean; manualDecision?: string; manualReason?: string };
@@ -10,6 +11,7 @@ type ReviewItem = {
   id: string; batch_id: string; post_id: string | null; status: string; result: ReviewResult | null;
   result_history: Array<{ result: ReviewResult; model: string | null; recorded_at: string; status: string }>;
   error_message: string | null; created_at: string; updated_at: string;
+  postNotice?: "post_deleted" | "post_unreadable" | null;
   post: { id: string; title: string; body: string; channel: string; status: string; author_id: string | null; profiles: { nickname: string } | { nickname: string }[] | null } | null;
 };
 type Batch = { id: string; task_type: string; status: string; config_snapshot: { model?: string }; total_count: number; completed_count: number; review_count: number; failed_count: number; current_post_title: string | null; created_at: string };
@@ -74,12 +76,21 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
   const classificationErrors = useMemo(() => classification.filter((item) => Boolean(item.error_message)), [classification]);
   const latestBatches = useMemo(() => batches.slice(0, 4), [batches]);
 
-  const act = async (item: ReviewItem, action: "published" | "hidden" | "revision" | "reanalyze") => {
+  const act = async (item: ReviewItem, action: "published" | "hidden" | "revision" | "reanalyze" | "close") => {
     setBusy(true); setError(""); setNotice("");
     try {
       if (action === "reanalyze") {
+        if (!item.post) throw new Error("关联作品已不存在，无法重新分析；请关闭该审核项");
         await cloudRequest(`/api/v1/admin/ai-tasks/${item.batch_id}`, { action: "reanalyze", itemId: item.id }, "POST");
         setNotice("已重新加入 AI 分析队列。");
+      } else if (action === "close") {
+        if (reason.trim().length < 3) throw new Error("请填写至少 3 个字的关闭原因");
+        const ok = await confirmInApp(`将关闭「${item.post?.title || "这条无关联作品的审核项"}」，关闭后不再出现在待复审队列。`, { title: "关闭审核项", confirmLabel: "确认关闭", danger: true });
+        if (!ok) { setBusy(false); return; }
+        await cloudRequest(`/api/v1/admin/ai-tasks/${item.batch_id}`, { action: "close", itemId: item.id, reason: reason.trim() }, "POST");
+        setNotice("审核项已关闭。");
+        setSelected(null); setReason("");
+        await load();
       } else {
         if (reason.trim().length < 3) throw new Error("请填写至少 3 个字的审核依据");
         await cloudRequest(`/api/v1/admin/ai-tasks/${item.batch_id}`, { action: "review", itemId: item.id, decision: action, reason: reason.trim() }, "POST");
@@ -273,16 +284,30 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
       {tab === "anomaly" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Group>
-            {anomalies.length ? anomalies.map((item) => (
-              <div key={item.id} className="ab-row" style={{ alignItems: "flex-start" }}>
-                <span className="ab-row__icon tone-coral"><FileWarning size={15} /></span>
-                <span className="ab-row__body">
-                  <span className="ab-row__title">{item.post?.title || "作品不可用"}</span>
-                  <span className="ab-row__meta">{item.error_message || "关联作品或作者资料缺失，无法执行普通复审"} · {fmtTime(item.updated_at)}</span>
-                </span>
-                <button type="button" className="ab-chip info" style={{ border: 0 }} disabled={busy} onClick={() => void act(item, "reanalyze")}><RotateCcw size={12} />重新分析</button>
-              </div>
-            )) : <Empty title="没有审核异常" hint="关联完整、原文可读的审核任务不会出现在这里。" />}
+            {anomalies.length ? anomalies.map((item) => {
+              const deleted = item.postNotice === "post_deleted";
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="ab-row"
+                  style={{ alignItems: "flex-start", border: 0, background: "transparent", textAlign: "left", width: "100%" }}
+                  onClick={() => { setSelected(item); setReason(""); }}
+                >
+                  <span className="ab-row__icon tone-coral"><FileWarning size={15} /></span>
+                  <span className="ab-row__body">
+                    <span className="ab-row__title">{item.post?.title || (deleted ? "关联作品已删除" : "作品不可用")}</span>
+                    <span className="ab-row__meta">
+                      {item.error_message || (deleted ? "作品记录已不存在（审核项的作品关联已被数据库置空），无法通过或驳回" : "作品记录存在但读取不到，可尝试重新分析")} · {fmtTime(item.updated_at)}
+                    </span>
+                  </span>
+                  <span className="ab-item__right">
+                    {deleted ? <span className="ab-chip warn">待关闭</span> : <span className="ab-chip info">可重新分析</span>}
+                    <ChevronRight size={16} style={{ color: "var(--ab-ink-3)" }} />
+                  </span>
+                </button>
+              );
+            }) : <Empty title="没有审核异常" hint="关联完整、原文可读的审核任务不会出现在这里。" />}
           </Group>
           {classificationErrors.length ? (
             <div>
@@ -314,11 +339,12 @@ function ReviewDetail({
   setReason: (value: string) => void;
   busy: boolean;
   onBack: () => void;
-  onAct: (item: ReviewItem, action: "published" | "hidden" | "revision" | "reanalyze") => Promise<void>;
+  onAct: (item: ReviewItem, action: "published" | "hidden" | "revision" | "reanalyze" | "close") => Promise<void>;
 }) {
   const result = item.result || {};
   const author = Array.isArray(item.post?.profiles) ? item.post?.profiles[0]?.nickname : item.post?.profiles?.nickname;
   const blocked = !item.post;
+  const deleted = item.postNotice === "post_deleted";
   return (
     <div className="ab-detail">
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -347,7 +373,11 @@ function ReviewDetail({
       <div className="ab-panel">
         <h3 className="ab-panel__title">原文内容</h3>
         {blocked ? (
-          <div className="ab-empty" style={{ padding: "16px 6px" }}>原文不可用，无法进行复核。</div>
+          <div className="ab-empty" style={{ padding: "16px 6px", lineHeight: 1.7 }}>
+            {deleted
+              ? "该审核项关联的作品记录已不存在（作者删帖或管理员删除后，作品关联被数据库置空）。没有原文就无法复审，只能关闭这条审核项。"
+              : "作品记录仍在，但当前读取不到正文（数据异常或权限校验失败）。可先重新分析；若持续失败请联系技术排查。"}
+          </div>
         ) : (
           <div style={{ maxHeight: 320, overflow: "auto", fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", color: "var(--ab-ink-2)" }}>
             {result.evidence?.length ? highlight(item.post!.body, result.evidence) : item.post!.body}
@@ -387,9 +417,13 @@ function ReviewDetail({
           <button type="button" className="ab-chip ok" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "published")}><Check size={13} />通过</button>
           <button type="button" className="ab-chip bad" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "hidden")}><X size={13} />驳回</button>
           <button type="button" className="ab-chip warn" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "revision")}><PenLine size={13} />退回修改</button>
-          <button type="button" className="ab-chip info" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy} onClick={() => void onAct(item, "reanalyze")}><RotateCcw size={13} />重新分析</button>
+          {deleted ? (
+            <button type="button" className="ab-chip bad" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || reason.trim().length < 3} onClick={() => void onAct(item, "close")}><X size={13} />关闭审核项</button>
+          ) : (
+            <button type="button" className="ab-chip info" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy} onClick={() => void onAct(item, "reanalyze")}><RotateCcw size={13} />重新分析</button>
+          )}
         </div>
-        {blocked ? <p className="ab-label" style={{ marginTop: 8, color: "var(--ab-coral)" }}>原文不可用时不允许执行通过、驳回或退回操作。</p> : null}
+        {blocked ? <p className="ab-label" style={{ marginTop: 8, color: "var(--ab-coral)" }}>{deleted ? "作品已删除：不允许通过、驳回或退回，只能填写原因后关闭该审核项。" : "原文不可用：不允许执行通过、驳回或退回操作。"}</p> : null}
       </div>
     </div>
   );

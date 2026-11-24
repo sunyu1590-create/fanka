@@ -37,6 +37,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return { id: itemId, status: "pending" };
     }
 
+    if (body.action === "close") {
+      // 作品被删除后 ai_task_items.post_id 由外键置空，这类记录无法通过/驳回，只能关闭。
+      // 关闭前必须确认它确实已无关联作品，避免把可复审的内容误关。
+      const itemId = uuid(body.itemId, "复审记录 ID");
+      const reason = textField(body.reason, "关闭原因", 3, 500);
+      const row = await admin.from("ai_task_items").select("id,post_id,status").eq("id", itemId).eq("batch_id", id).maybeSingle();
+      if (row.error) throw new ApiError(503, "复审记录暂不可读取");
+      if (!row.data) throw new ApiError(404, "复审记录不存在或不属于该任务");
+      if (row.data.post_id) throw new ApiError(409, "该记录仍有关联作品，请使用通过、驳回或退回修改");
+      if (!["review", "pending", "failed"].includes(String(row.data.status))) throw new ApiError(409, "该记录已处理，无需再次关闭");
+      const closed = await admin.from("ai_task_items")
+        .update({ status: "skipped", error_message: `关联作品已删除，审核项由管理员关闭：${reason}`, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", itemId).eq("batch_id", id).is("post_id", null).select("id").maybeSingle();
+      if (closed.error || !closed.data) throw new ApiError(409, "该记录状态已变化，请刷新后重试");
+      // 批次计数同步，否则「待复审」数字会长期虚高。
+      const remaining = await admin.from("ai_task_items").select("id", { count: "exact", head: true }).eq("batch_id", id).eq("status", "review");
+      if (!remaining.error) {
+        await admin.from("ai_task_batches").update({ review_count: remaining.count || 0, updated_at: new Date().toISOString() }).eq("id", id);
+      }
+      return { id: itemId, status: "skipped" };
+    }
+
     const actions = {
       start: { from: ["queued"], to: "running" },
       resume: { from: ["paused"], to: "running" },

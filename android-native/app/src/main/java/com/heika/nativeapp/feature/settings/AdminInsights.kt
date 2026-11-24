@@ -344,18 +344,27 @@ fun AdminReviewPanel(state: AdminCenterState, viewModel: AdminCenterViewModel) {
             AdminCard("审核概况") {
                 AdminKV("待人工复审", reviewItems.length().toString(), if (reviewItems.length() > 0) 1 else 0)
                 AdminKV("分析批次", batches.length().toString())
-                Text("AI 只做初审与风险标注，最终是否公开由管理员决定；出现「作品不可用」时表示内容记录缺失，只能重新分析。", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("AI 只做初审与风险标注，最终是否公开由管理员决定。「关联作品已删除」表示作品记录已不存在，只能关闭该审核项；「作品读取失败」可重新分析。", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         items((0 until reviewItems.length()).mapNotNull { reviewItems.optJSONObject(it) }, key = { it.optString("id") }) { item ->
             val unavailable = item.optJSONObject("post") == null || item.optBoolean("blocked")
+            val deleted = item.textOf("postNotice") == "post_deleted"
             AdminCard {
                 Text(item.textOf("title") ?: "未命名作品", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text("${item.textOf("author") ?: "作者未知"} · ${item.textOf("category") ?: "未分类"}", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 item.textOf("ai_reason")?.let { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
                 if (unavailable) {
-                    Text("作品不可用：内容记录缺失或已删除，无法直接通过", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.error)
-                    OutlinedButton(onClick = { viewModel.reviewDecision(item.optString("batch_id"), item.optString("id"), "reanalyze") }, enabled = state.saving == null) { Text("重新分析", fontSize = 11.sp) }
+                    Text(
+                        if (deleted) "关联作品已删除：作品记录已不存在，无法通过或驳回，只能关闭审核项" else "作品读取失败：记录存在但正文读取不到，可重新分析",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    if (deleted) {
+                        OutlinedButton(onClick = { viewModel.reviewDecision(item.optString("batch_id"), item.optString("id"), "close") }, enabled = state.saving == null) { Text("关闭审核项", fontSize = 11.sp) }
+                    } else {
+                        OutlinedButton(onClick = { viewModel.reviewDecision(item.optString("batch_id"), item.optString("id"), "reanalyze") }, enabled = state.saving == null) { Text("重新分析", fontSize = 11.sp) }
+                    }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                         Button(onClick = { viewModel.reviewDecision(item.optString("batch_id"), item.optString("id"), "published") }, enabled = state.saving == null, modifier = Modifier.weight(1f)) { Text("通过", fontSize = 11.sp) }

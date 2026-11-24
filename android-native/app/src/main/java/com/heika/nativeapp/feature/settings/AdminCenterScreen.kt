@@ -1333,11 +1333,17 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
         if (mutableState.value.saving != null) return@launch
         mutableState.value = mutableState.value.copy(saving = "review-$itemId", error = null, notice = null)
         try {
-            repository.adminAiTaskReview(batchId, itemId, decision, if (decision == "hidden") "人工复审：不符合发布规范" else null)
+            val reason = when (decision) {
+                "hidden" -> "人工复审：不符合发布规范"
+                "close" -> "关联作品已删除，审核项关闭"
+                else -> null
+            }
+            repository.adminAiTaskReview(batchId, itemId, decision, reason)
             mutableState.value = mutableState.value.copy(saving = null, notice = when (decision) {
                 "published" -> "已通过，内容将公开展示"
                 "hidden" -> "已驳回，内容不会公开"
                 "revision" -> "已退回，作者可修改后重新提交"
+                "close" -> "审核项已关闭"
                 else -> "已重新提交分析"
             })
             refresh()
