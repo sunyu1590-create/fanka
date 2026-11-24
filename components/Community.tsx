@@ -5147,7 +5147,11 @@ export default function Community({
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("requireAuth") === "1"
   ) {
-    return <AppLoginGate />;
+    const wantsAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
+    return <AppLoginGate
+      title={wantsAdmin ? "管理员登录" : "登录后继续"}
+      hint={wantsAdmin ? "管理后台只对管理员开放。请在这里用管理员账号登录一次，登录状态会保留在这台设备上，之后直接进入后台。" : undefined}
+    />;
   }
   if (pendingRecoveryCodes.length)
     return <RecoveryCodesPage

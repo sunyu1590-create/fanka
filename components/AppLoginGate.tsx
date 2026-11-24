@@ -14,7 +14,7 @@ import { browserDb } from "@/lib/browser-db";
  * 登录成功后原地 reload：URL 上的 mine=/decor= 等参数不变，
  * 页面会按正常已登录流程直接进入用户刚才要用的功能。
  */
-export default function AppLoginGate({ title = "登录后继续" }: { title?: string }) {
+export default function AppLoginGate({ title = "登录后继续", hint }: { title?: string; hint?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -68,7 +68,7 @@ export default function AppLoginGate({ title = "登录后继续" }: { title?: st
           <span style={{ fontSize: 11, letterSpacing: ".14em", color: "var(--primary)" }}>HEIKA</span>
           <h1 style={{ margin: 0, fontSize: 21, fontWeight: 600, letterSpacing: ".01em" }}>{title}</h1>
           <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.7, color: "var(--muted)" }}>
-            这个功能在网页里运行，需要单独登录一次。登录状态会保留在这台设备上，之后直接进入。
+            {hint || "这个功能在网页里运行，需要单独登录一次。登录状态会保留在这台设备上，之后直接进入。"}
           </p>
         </div>
         <input
@@ -102,7 +102,9 @@ export default function AppLoginGate({ title = "登录后继续" }: { title?: st
             marginTop: 2,
             borderRadius: 12,
             border: "1px solid transparent",
-            background: "var(--primary)",
+            // 这个页面在应用内独立渲染，取不到应用级令牌时会退化成深色底 + 深色字，
+            // 按钮几乎看不见；这里直接写死金底深字，保证任何主题下都清晰可读。
+            background: "#e6c473",
             color: "#1a1408",
             fontSize: 14.5,
             fontWeight: 600,
