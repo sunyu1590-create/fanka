@@ -85,7 +85,7 @@ import com.heika.nativeapp.ui.HeikaPulseRow
 import com.heika.nativeapp.ui.HeikaPulseLines
 
 @Composable
-fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hiltViewModel()) {
+fun AdminCenterScreen(onBack: () -> Unit, onOpenWebAdmin: () -> Unit = {}, viewModel: AdminCenterViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var keywordDraft by remember { mutableStateOf("") }
     var pendingKeywordDelete by remember { mutableStateOf<JSONObject?>(null) }
@@ -94,7 +94,7 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(if (state.section == "overview") "管理员中心" else adminSectionTitle(state.section), { if (state.section == "overview") onBack() else viewModel.select("overview") }, trailing = { IconButton(onClick = viewModel::refresh) { Icon(HeikaIcons.Retry, "刷新") } })
         if (state.section == "overview") {
-            AdminOverview(state = state, onSelect = viewModel::select, onRefresh = viewModel::refresh)
+            AdminOverview(state = state, onSelect = viewModel::select, onRefresh = viewModel::refresh, onOpenWebAdmin = onOpenWebAdmin)
         } else {
             Row(Modifier.fillMaxWidth().clickable { viewModel.select("overview") }.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(HeikaIcons.Back, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
@@ -443,7 +443,7 @@ private fun AdminBadgeEditorRow(badge: JSONObject, saving: Boolean, onSave: (Str
 private fun noticeAudienceLabel(value: String) = when (value) { "free" -> "Free 用户"; "plus" -> "Plus 会员"; "pro" -> "Pro 会员"; else -> "所有用户" }
 
 @Composable
-private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, onRefresh: () -> Unit) {
+private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, onRefresh: () -> Unit, onOpenWebAdmin: () -> Unit) {
     val overview = state.overview
     var tab by remember { mutableStateOf("overview") }
     LazyColumn(
@@ -549,6 +549,34 @@ private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, o
                     AdminModuleRow(module, overview, onClick = { onSelect(module.key) })
                 }
             }
+        }
+        // 网页版管理后台：原生管理台不再跟随网页端迭代，功能差异统一在应用内网页里补齐。
+        item {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .32f), RoundedCornerShape(16.dp))
+                    .clickable { onOpenWebAdmin() }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("网页版管理后台", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("在应用内打开，功能与电脑端一致", Modifier.padding(top = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
+                Icon(HeikaIcons.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            }
+        }
+        item {
+            Text(
+                "原生管理台保留为快速入口；后续新增的管理功能只在网页版更新。",
+                Modifier.padding(horizontal = 2.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.5.sp,
+            )
         }
         item { Spacer(Modifier.height(18.dp)) }
     }

@@ -555,7 +555,26 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     )
                 }
                 composable("admin") {
-                    AdminCenterScreen(onBack = { nav.popBackStack() })
+                    AdminCenterScreen(
+                        onBack = { nav.popBackStack() },
+                        onOpenWebAdmin = { nav.navigate("admin/web") },
+                    )
+                }
+                composable("admin/web") {
+                    // 网页版管理后台：与「编辑个人资料」同一套应用内网页容器，
+                    // 会话通过桥接带入；若当前账号没有管理员权限，页面内会显示登录引导，
+                    // 允许在网页里手动用管理员账号授权后继续，不需要退出重进 APP。
+                    val webViewModel: WebContainerViewModel = hiltViewModel()
+                    val webSession by webViewModel.session.collectAsState()
+                    NativeWebScreen(
+                        title = "管理后台",
+                        path = "/?app=1&admin=1&requireAuth=1",
+                        sessionJson = webSession,
+                        onBack = { nav.popBackStack() },
+                        onEvent = { type, _ ->
+                            if (type == "close") nav.popBackStack()
+                        },
+                    )
                 }
                 composable("exploration") {
                     val openRecord: (com.heika.nativeapp.feature.exploration.CalendarRecord) -> Unit = { record ->

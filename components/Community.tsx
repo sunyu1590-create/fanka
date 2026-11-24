@@ -947,6 +947,9 @@ export default function Community({
     else if (params.get("collection")) { setSharedCollectionCode(params.get("collection") || ""); setSecondaryReturnTab("discover"); setTabState("shared-collection"); }
     else if (params.get("series")) { setCollectionReturnTab("discover"); setCollectionId(params.get("series")); setTabState("collection"); }
     else if (params.get("chain")) { setSecondaryReturnTab("mine"); setTabState("card-chain"); }
+    // APP 的「管理后台」入口用这个深链直接在应用内网页打开管理界面；
+    // 未登录或无管理员权限时由管理页自身的登录引导完成手动授权。
+    else if (params.get("admin")) { setTabState("moderation"); }
   }, []);
   const startPageTransition = (updatePage: () => void) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -5821,6 +5824,16 @@ export default function Community({
         onChanged={() => { void cloudRequest("/api/v1/series").then((data) => { const items = (data as { items?: PostSeries[] })?.items; if (Array.isArray(items)) setCreatorSeries(items); }).catch(() => {}); }}
       />}
       {tab === "moderation" && isStaff && <AdminModeration role={adminRole as "admin" | "content_manager" | "reviewer"} onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
+      {tab === "moderation" && !isStaff && (
+        <section className="page admin-gate-page">
+          <h1>管理后台<span className="red-dot">.</span></h1>
+          <p className="lead">{accountId ? "当前账号没有管理员权限，请使用管理员账号登录后进入后台。" : "管理后台只对管理员开放，请先使用管理员账号登录。"}</p>
+          <button type="button" className="primary-button full" onClick={() => { adminEntryPending.current = true; setTab("messages"); }}>
+            <ShieldCheck size={17} /> 使用管理员账号登录
+          </button>
+          <p className="lead" style={{ marginTop: 12 }}>登录成功后会自动回到这里；普通账号无法查看任何后台数据。</p>
+        </section>
+      )}
       {tab === "about" && <AboutHeika onBack={closeAboutPage} onFeedback={openFeedbackFromAbout} />}
       {tab === "debug" && (
         <section className="page debug-page">
