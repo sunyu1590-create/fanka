@@ -125,6 +125,16 @@ async function loadHistory(): Promise<UploadTaskItem[]> {
   });
 }
 
+type EnqueueInput = {
+  file: File;
+  token: string;
+  uploadId: string;
+  sortOrder: number;
+  target: MediaUploadTarget;
+  onProgress?: (progress: MediaUploadProgress) => void;
+  timeoutMs?: number;
+};
+
 class UploadManager {
   private items = new Map<string, UploadTaskItem>();
   private listeners = new Set<Listener>();
@@ -134,6 +144,12 @@ class UploadManager {
   private speedWindow: { at: number; bytes: number }[] = [];
   private cumulativeSent = 0;
   private loaded = false;
+  /** uploadId → 正在执行的 Promise。同一个文件并发入队时复用同一个请求，避免重复上传。 */
+  private inflight = new Map<string, Promise<MediaUploadResult>>();
+  /** taskId → 入参。重试时不再要求调用方重新构造文件对象。 */
+  private inputs = new Map<string, EnqueueInput>();
+  /** taskId → 额外的进度订阅者（并发入队时后加入的调用方）。 */
+  private progressListeners = new Map<string, Set<(progress: MediaUploadProgress) => void>>();
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -182,24 +198,30 @@ class UploadManager {
 
   /**
    * 入队一个上传任务。返回与 uploadMediaFile 一致的结果。
-   * 同一 uploadId 重复入队时，若已有成功结果直接复用（禁止重复上传已成功文件）。
+   * 同一 uploadId 重复入队时：
+   * - 已有成功结果 → 直接复用（禁止重复上传已成功文件）；
+   * - 正在上传 → 复用同一个请求（只加一个进度订阅），不会并发写同一路径。
    */
-  enqueue(input: {
-    file: File;
-    token: string;
-    uploadId: string;
-    sortOrder: number;
-    target: MediaUploadTarget;
-    onProgress?: (progress: MediaUploadProgress) => void;
-    timeoutMs?: number;
-  }): Promise<MediaUploadResult> {
+  enqueue(input: EnqueueInput): Promise<MediaUploadResult> {
+    const existingReady = [...this.items.values()].find((item) => item.uploadId === input.uploadId && item.status === "ready" && item.result);
+    if (existingReady?.result) {
+      input.onProgress?.({ percent: 100, phase: "done" });
+      return Promise.resolve(existingReady.result);
+    }
+    const running = this.inflight.get(input.uploadId);
+    if (running) {
+      const taskId = [...this.items.values()].find((item) => item.uploadId === input.uploadId && item.status !== "failed")?.taskId;
+      if (taskId && input.onProgress) {
+        const set = this.progressListeners.get(taskId) || new Set();
+        set.add(input.onProgress);
+        this.progressListeners.set(taskId, set);
+        const current = this.items.get(taskId);
+        if (current) input.onProgress({ percent: current.progress, phase: current.status === "verifying" ? "processing" : "uploading" });
+      }
+      return running;
+    }
     const mediaId = crypto.randomUUID();
     const taskId = crypto.randomUUID();
-    const existing = [...this.items.values()].find((item) => item.uploadId === input.uploadId && item.status === "ready" && item.result);
-    if (existing?.result) {
-      input.onProgress?.({ percent: 100, phase: "done" });
-      return Promise.resolve(existing.result);
-    }
     const item: UploadTaskItem = {
       mediaId,
       taskId,
@@ -214,13 +236,24 @@ class UploadManager {
       updatedAt: Date.now(),
     };
     this.items.set(taskId, item);
+    this.inputs.set(taskId, input);
     void this.ensureLoaded().then(() => persistItems([item]));
     this.emit();
-    return new Promise<MediaUploadResult>((resolve, reject) => {
+    const promise = new Promise<MediaUploadResult>((resolve, reject) => {
       this.queue.push(taskId);
       this.pending.set(taskId, { input, resolve, reject });
       this.pump();
     });
+    this.inflight.set(input.uploadId, promise);
+    void promise.catch(() => {}).finally(() => {
+      if (this.inflight.get(input.uploadId) === promise) this.inflight.delete(input.uploadId);
+    });
+    return promise;
+  }
+
+  /** 按 uploadId 查当前任务（用于发布页判断预上传结果）。 */
+  findByUploadId(uploadId: string) {
+    return [...this.items.values()].find((item) => item.uploadId === uploadId) || null;
   }
 
   cancel(taskId: string) {
@@ -228,6 +261,7 @@ class UploadManager {
     if (!item || item.status === "ready") return;
     this.abortControllers.get(taskId)?.abort();
     this.update(taskId, { status: "cancelled", error: "已取消" });
+    this.inflight.delete(item.uploadId);
     const pending = this.pending.get(taskId);
     if (pending) {
       this.pending.delete(taskId);
@@ -238,13 +272,26 @@ class UploadManager {
   retry(taskId: string) {
     const item = this.items.get(taskId);
     if (!item || item.status === "ready") return;
+    const input = this.inputs.get(taskId);
+    if (!input) {
+      // 刷新前遗留的任务没有文件对象，无法续传，只能提示重新选择。
+      this.update(taskId, { status: "failed", error: "文件已不在本机，请重新选择该图片" });
+      return;
+    }
     this.update(taskId, { status: "queued", error: undefined, progress: 0, bytesSent: 0 });
     this.queue.push(taskId);
+    const promise = new Promise<MediaUploadResult>((resolve, reject) => {
+      this.pending.set(taskId, { input, resolve, reject });
+    });
+    this.inflight.set(item.uploadId, promise);
+    void promise.catch(() => {}).finally(() => {
+      if (this.inflight.get(item.uploadId) === promise) this.inflight.delete(item.uploadId);
+    });
     this.pump();
   }
 
   private pending = new Map<string, {
-    input: { file: File; token: string; uploadId: string; sortOrder: number; target: MediaUploadTarget; onProgress?: (progress: MediaUploadProgress) => void; timeoutMs?: number };
+    input: EnqueueInput;
     resolve: (result: MediaUploadResult) => void;
     reject: (error: unknown) => void;
   }>();
@@ -310,16 +357,17 @@ class UploadManager {
     }
   }
 
-  private async run(taskId: string, entry: { input: Parameters<typeof uploadMediaFile>[0]; resolve: (r: MediaUploadResult) => void; reject: (e: unknown) => void }) {
+  private async run(taskId: string, entry: { input: EnqueueInput; resolve: (r: MediaUploadResult) => void; reject: (e: unknown) => void }) {
     const controller = new AbortController();
     this.abortControllers.set(taskId, controller);
     let attempt = 0;
     let lastError: unknown;
+    const listeners = this.progressListeners.get(taskId);
     try {
       while (attempt < 3) {
         const item = this.items.get(taskId);
         if (!item || item.status === "cancelled") throw new MediaUploadError("上传已取消", 0, false);
-        this.update(taskId, { status: attempt === 0 ? "uploading" : "uploading", attempts: attempt + 1, error: undefined });
+        this.update(taskId, { status: "uploading", attempts: attempt + 1, error: undefined });
         try {
           const result = await uploadMediaFile({
             ...entry.input,
@@ -340,11 +388,13 @@ class UploadManager {
                 });
               }
               entry.input.onProgress?.(progress);
+              listeners?.forEach((listener) => listener(progress));
             },
           });
           this.update(taskId, { status: "ready", progress: 100, bytesSent: this.items.get(taskId)?.size ?? 0, result });
           this.pending.delete(taskId);
           this.abortControllers.delete(taskId);
+          listeners?.forEach((listener) => listener({ percent: 100, phase: "done" }));
           entry.resolve(result);
           return;
         } catch (error) {
@@ -368,6 +418,8 @@ class UploadManager {
       this.pending.delete(taskId);
       this.abortControllers.delete(taskId);
       entry.reject(error);
+    } finally {
+      this.progressListeners.delete(taskId);
     }
   }
 

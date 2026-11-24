@@ -104,7 +104,12 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
             }
             state.error?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
             state.notice?.let { Text(it, Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
-            if (state.section == "membership-support") AdminMembershipPanel(state, viewModel, onDisableCode = { pendingCodeDisable = it })
+            if (state.section == "monitor") AdminMonitorPanel(state, viewModel)
+            else if (state.section == "media-service") AdminMediaPanel(state, viewModel)
+            else if (state.section == "storage") AdminStoragePanel(state, viewModel)
+            else if (state.section == "alerts") AdminAlertsPanel(state, viewModel)
+            else if (state.section == "ai-review") AdminReviewPanel(state, viewModel)
+            else if (state.section == "membership-support") AdminMembershipPanel(state, viewModel, onDisableCode = { pendingCodeDisable = it })
             else if (state.section == "community-access" || state.section == "official-notices") AdminCommunityAccessPanel(state, viewModel)
             else if (state.loading && state.items.isEmpty() && state.section !in adminConfigSections) HeikaPulsePage(cards = 4, cardHeight = 84.dp)
             else if (state.items.isEmpty() && state.section !in adminConfigSections) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -183,14 +188,21 @@ fun AdminCenterScreen(onBack: () -> Unit, viewModel: AdminCenterViewModel = hilt
 }
 
 private data class AdminModuleSpec(val key: String, val title: String, val detail: String, val iconRes: Int, val countKey: String? = null)
-private data class AdminModuleGroup(val title: String, val modules: List<AdminModuleSpec>)
+private data class AdminModuleGroup(val title: String, val modules: List<AdminModuleSpec>, val key: String = "manage")
 
 private val adminModuleGroups = listOf(
-    AdminModuleGroup("审核与举报", listOf(
+    AdminModuleGroup("审核与举报", key = "review", modules = listOf(
+        AdminModuleSpec("ai-review", "AI 人工复审", "AI 初审后的待复审队列与异常项", com.heika.nativeapp.ui.HeikaIconRes.Robot),
         AdminModuleSpec("posts", "作品审核", "新投稿与已发布作品的修改", com.heika.nativeapp.ui.HeikaIconRes.Content, "pending"),
         AdminModuleSpec("reports", "内容举报", "查看并处理作品与评论举报", com.heika.nativeapp.ui.HeikaIconRes.Report),
         AdminModuleSpec("dm-reports", "私信举报", "处理用户提交的私信举报", com.heika.nativeapp.ui.HeikaIconRes.Comment),
         AdminModuleSpec("appeals", "申诉处理", "复核内容、账号与举报申诉", com.heika.nativeapp.ui.HeikaIconRes.Shield),
+    )),
+    AdminModuleGroup("运行与监控", key = "monitor", modules = listOf(
+        AdminModuleSpec("monitor", "系统监控", "CPU、内存、磁盘与接口延迟的真实采集", com.heika.nativeapp.ui.HeikaIconRes.Settings),
+        AdminModuleSpec("media-service", "媒体服务", "上传成功率、耗时与单任务链路", com.heika.nativeapp.ui.HeikaIconRes.Image),
+        AdminModuleSpec("storage", "存储占用", "对象存储用量与孤立资源扫描", com.heika.nativeapp.ui.HeikaIconRes.Download),
+        AdminModuleSpec("alerts", "系统告警", "确认与恢复服务器告警", com.heika.nativeapp.ui.HeikaIconRes.Warning),
     )),
     AdminModuleGroup("社区治理", listOf(
         AdminModuleSpec("comments", "评论管理", "搜索、隐藏或恢复评论", com.heika.nativeapp.ui.HeikaIconRes.Comment),
@@ -221,7 +233,16 @@ private val adminModuleGroups = listOf(
     )),
 )
 
+private val adminSections = setOf(
+    "overview", "ai-review", "posts", "ai", "reports", "dm-reports", "appeals", "comments", "keywords", "topic-events", "audit",
+    "monitor", "media-service", "storage", "alerts",
+    "users", "membership-support", "community-access", "official-notices", "user-feedback", "categories",
+    "recommendation-settings", "ai-settings", "ai-resource-types", "ai-resource-center", "ai-feedback",
+    "exploration-ad", "announcement", "app-download",
+)
+
 private val adminSectionNames = mapOf(
+    "ai-review" to "AI 人工复审", "monitor" to "系统监控", "media-service" to "媒体服务", "storage" to "存储占用", "alerts" to "系统告警",
     "reports" to "内容举报", "dm-reports" to "私信举报", "posts" to "作品审核", "ai" to "AI 资源审核",
     "ai-feedback" to "AI 资源反馈", "comments" to "评论管理", "appeals" to "申诉处理", "users" to "账号管理",
     "user-feedback" to "用户反馈", "keywords" to "关键词规则", "audit" to "操作记录", "categories" to "分类管理",
@@ -424,73 +445,134 @@ private fun noticeAudienceLabel(value: String) = when (value) { "free" -> "Free 
 @Composable
 private fun AdminOverview(state: AdminCenterState, onSelect: (String) -> Unit, onRefresh: () -> Unit) {
     val overview = state.overview
+    var tab by remember { mutableStateOf("overview") }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 14.dp),
     ) {
         item {
-            Text("管理后台", color = MaterialTheme.colorScheme.onBackground, fontSize = 25.sp, fontWeight = FontWeight.SemiBold)
-            Text("按工作模块进入审核与管理，待处理事项优先显示。", Modifier.padding(top = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text("运营总览", color = MaterialTheme.colorScheme.onBackground, fontSize = 25.sp, fontWeight = FontWeight.SemiBold)
+            Text("审核、监控与管理三大入口，数据来自服务端真实接口。", Modifier.padding(top = 5.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
-        if (state.loading && overview == null) item {
-            HeikaPulseLines(Modifier.fillMaxWidth().padding(vertical = 6.dp), lines = 3, lineHeight = 12.dp)
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("overview" to "总览", "review" to "审核", "monitor" to "监控", "manage" to "管理").forEach { (key, label) ->
+                    val selected = tab == key
+                    Text(
+                        text = label,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
+                            .clickable { tab = key }
+                            .padding(vertical = 9.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
+            }
         }
         if (state.error != null) item {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
                 Text("概览加载失败", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-                Text("请检查管理员权限或网络连接。", Modifier.padding(top = 3.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                Text("请检查管理员权限或网络连接，稍后重试。", Modifier.padding(top = 3.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                 TextButton(onClick = onRefresh) { Text("重试") }
             }
         }
-        if (overview != null) {
-            val metrics = listOf(
-                "usersToday" to "今日新增用户", "postsToday" to "今日发布作品", "pending" to "待审核内容",
-                "pendingReports" to "待处理举报", "aiResources" to "已发布 AI 资源", "views" to "累计阅读量", "likes" to "累计点赞",
-                "saves" to "累计收藏", "comments" to "可见评论",
-            )
-            items(metrics.chunked(2)) { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { (key, label) ->
-                        val value = overview.opt(key)
-                        AdminMetric(label, if (value == null || value == JSONObject.NULL) "—" else value.toString(), Modifier.weight(1f))
+        if (overview == null && state.loading) item {
+            HeikaPulseLines(Modifier.fillMaxWidth().padding(vertical = 6.dp), lines = 4, lineHeight = 12.dp)
+        }
+        if (tab == "overview") {
+            if (overview != null) {
+                val tiles = listOf(
+                    Triple("pending", "待审核内容", "审核队列"), Triple("pendingReports", "待处理举报", "举报"),
+                    Triple("usersToday", "今日新增用户", null), Triple("postsToday", "今日发布作品", null),
+                    Triple("aiResources", "AI 资源", null), Triple("comments", "可见评论", null),
+                    Triple("views", "累计阅读", null), Triple("saves", "累计收藏", null),
+                )
+                items(tiles.chunked(2)) { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { (key, label, target) ->
+                            AdminMetric(
+                                label = label,
+                                value = readCount(overview, key),
+                                modifier = Modifier.weight(1f).then(if (target != null) Modifier.clickable { onSelect(target) } else Modifier),
+                                highlight = target != null,
+                            )
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("常用工具", color = MaterialTheme.colorScheme.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text("按职责进入具体页面", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = onRefresh) { Icon(HeikaIcons.Retry, null, modifier = Modifier.size(15.dp)); Text("刷新", Modifier.padding(start = 4.dp), fontSize = 11.sp) }
+                }
+            }
+            item {
+                val tools = listOf("ai-review" to "人工复审", "posts" to "作品审核", "reports" to "内容举报", "monitor" to "系统监控", "media-service" to "媒体服务", "alerts" to "系统告警", "users" to "账号管理", "ai-resource-center" to "AI 资源中心")
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    tools.chunked(2).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { (key, label) ->
+                                Text(
+                                    text = label,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(13.dp))
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .32f), RoundedCornerShape(13.dp))
+                                        .clickable { onSelect(key) }
+                                        .padding(horizontal = 12.dp, vertical = 14.dp),
+                                )
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        } else {
+            adminModuleGroups.filter { it.key == tab }.forEach { group ->
+                item(key = "group-${group.title}") {
+                    Text(group.title, Modifier.padding(top = 4.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+                items(group.modules, key = { "module-${it.key}" }) { module ->
+                    AdminModuleRow(module, overview, onClick = { onSelect(module.key) })
                 }
             }
         }
-        item {
-            Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("管理模块", color = MaterialTheme.colorScheme.onBackground, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-                    Text("按职责分组", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                }
-                TextButton(onClick = onRefresh) { Icon(HeikaIcons.Retry, null, modifier = Modifier.size(16.dp)); Text("刷新", Modifier.padding(start = 5.dp)) }
-            }
-        }
-        adminModuleGroups.forEach { group ->
-            item(key = "group-${group.title}") {
-                Text(group.title, Modifier.padding(top = 4.dp, bottom = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            }
-            items(group.modules, key = { "module-${it.key}" }) { module ->
-                AdminModuleRow(module, overview, onClick = { onSelect(module.key) })
-            }
-        }
+        item { Spacer(Modifier.height(18.dp)) }
     }
 }
 
+private fun readCount(overview: JSONObject, key: String): String {
+    if (!overview.has(key)) return "—"
+    val value = overview.opt(key)
+    if (value == null || value == JSONObject.NULL) return "—"
+    return if (value is Number) java.text.NumberFormat.getIntegerInstance().format(value.toLong()) else value.toString()
+}
+
 @Composable
-private fun AdminMetric(label: String, value: String, modifier: Modifier = Modifier) {
+private fun AdminMetric(label: String, value: String, modifier: Modifier = Modifier, highlight: Boolean = false) {
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surface)
+            .background(if (highlight) MaterialTheme.colorScheme.primary.copy(alpha = .10f) else MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .38f), RoundedCornerShape(16.dp))
             .padding(horizontal = 14.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(value, color = MaterialTheme.colorScheme.onSurface, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
+        Text(value, color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
         Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, maxLines = 1)
     }
 }
@@ -1188,6 +1270,15 @@ data class AdminCenterState(
     val communitySelectedUser: JSONObject? = null,
     val communityAwards: List<JSONObject> = emptyList(),
     val communityGeneratedCodes: String? = null,
+    // ---- 监控 / 媒体 / 存储 / 告警 / 人工复审（与网页端一一对应）----
+    val monitorRange: String = "1h",
+    val metrics: JSONObject? = null,
+    val mediaOverview: JSONObject? = null,
+    val mediaTasks: List<JSONObject> = emptyList(),
+    val storage: JSONObject? = null,
+    val alerts: List<JSONObject> = emptyList(),
+    val alertScope: String = "open",
+    val aiTasks: JSONObject? = null,
 )
 
 @dagger.hilt.android.lifecycle.HiltViewModel
@@ -1198,7 +1289,62 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
     private var adPostsGeneration = 0
 
     init { refresh() }
-    fun select(section: String) { if (section in setOf("overview", "reports", "dm-reports", "posts", "ai", "ai-feedback", "comments", "appeals", "users", "user-feedback", "keywords", "audit", "categories", "topic-events", "recommendation-settings", "ai-settings", "ai-resource-types", "ai-resource-center", "exploration-ad", "app-download", "announcement", "membership-support", "community-access", "official-notices") && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+    fun select(section: String) { if (section in adminSections && section != mutableState.value.section) { mutableState.value = mutableState.value.copy(section = section, items = emptyList(), metadata = null); refresh() } }
+
+    fun setMonitorRange(range: String) {
+        if (range !in setOf("1h", "24h", "7d") || range == mutableState.value.monitorRange) return
+        mutableState.value = mutableState.value.copy(monitorRange = range)
+        refresh()
+    }
+
+    fun setAlertScope(scope: String) {
+        if (scope !in setOf("open", "all") || scope == mutableState.value.alertScope) return
+        mutableState.value = mutableState.value.copy(alertScope = scope)
+        refresh()
+    }
+
+    fun verifyMedia(storagePath: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "media-verify", error = null, notice = null)
+        try {
+            val result = repository.verifyAdminMedia(storagePath)
+            mutableState.value = mutableState.value.copy(
+                saving = null,
+                notice = if (result.optBoolean("exists")) "存储核验通过：对象真实存在" else "存储核验未通过：${result.optString("note").ifBlank { "对象缺失" }}",
+            )
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "存储核验失败，请重试")
+        }
+    }
+
+    fun alertAction(id: String, action: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "alert-$id", error = null, notice = null)
+        try {
+            repository.adminAlertAction(id, action, if (action == "resolve") "管理员确认恢复" else null)
+            mutableState.value = mutableState.value.copy(saving = null, notice = if (action == "resolve") "告警已标记恢复" else "告警已确认")
+            refresh()
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "告警操作失败，请重试")
+        }
+    }
+
+    fun reviewDecision(batchId: String, itemId: String, decision: String) = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableState.value.saving != null) return@launch
+        mutableState.value = mutableState.value.copy(saving = "review-$itemId", error = null, notice = null)
+        try {
+            repository.adminAiTaskReview(batchId, itemId, decision, if (decision == "hidden") "人工复审：不符合发布规范" else null)
+            mutableState.value = mutableState.value.copy(saving = null, notice = when (decision) {
+                "published" -> "已通过，内容将公开展示"
+                "hidden" -> "已驳回，内容不会公开"
+                "revision" -> "已退回，作者可修改后重新提交"
+                else -> "已重新提交分析"
+            })
+            refresh()
+        } catch (error: Exception) {
+            mutableState.value = mutableState.value.copy(saving = null, error = error.message ?: "审核操作失败，请重试")
+        }
+    }
     fun refresh() = viewModelScope.launch(HeikaCoroutineGuard) {
         val requestId = ++generation
         mutableState.value = mutableState.value.copy(loading = true, membershipLoading = mutableState.value.section == "membership-support", error = null, notice = null, membershipError = if (mutableState.value.section == "membership-support") null else mutableState.value.membershipError)
@@ -1239,6 +1385,41 @@ class AdminCenterViewModel @javax.inject.Inject constructor(private val reposito
                     communityNotices = (data.optJSONArray("items") ?: JSONArray()).toJSONObjectList(),
                     loading = false,
                 )
+                return@launch
+            }
+            if (mutableState.value.section == "monitor") {
+                val data = repository.adminMetrics(mutableState.value.monitorRange)
+                if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, metrics = data, loading = false)
+                return@launch
+            }
+            if (mutableState.value.section == "media-service") {
+                val summary = repository.adminMediaService("overview")
+                val tasks = repository.adminMediaService("tasks")
+                if (requestId == generation) mutableState.value = mutableState.value.copy(
+                    overview = overview,
+                    mediaOverview = summary,
+                    mediaTasks = (tasks.optJSONArray("items") ?: JSONArray()).toJSONObjectList(),
+                    loading = false,
+                )
+                return@launch
+            }
+            if (mutableState.value.section == "storage") {
+                val data = repository.adminStorage()
+                if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, storage = data, loading = false)
+                return@launch
+            }
+            if (mutableState.value.section == "alerts") {
+                val data = repository.adminAlerts(mutableState.value.alertScope)
+                if (requestId == generation) mutableState.value = mutableState.value.copy(
+                    overview = overview,
+                    alerts = (data.optJSONArray("alerts") ?: data.optJSONArray("items") ?: JSONArray()).toJSONObjectList(),
+                    loading = false,
+                )
+                return@launch
+            }
+            if (mutableState.value.section == "ai-review") {
+                val data = repository.adminAiTasks()
+                if (requestId == generation) mutableState.value = mutableState.value.copy(overview = overview, aiTasks = data, loading = false)
                 return@launch
             }
             val result = when (mutableState.value.section) {

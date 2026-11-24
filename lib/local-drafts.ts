@@ -10,7 +10,15 @@ const DB_VERSION = 1;
 const DRAFTS = "drafts";
 const FILES = "files";
 
-export type DraftImage = { id: string; fileId?: string; externalUrl?: string; name?: string; type?: string };
+export type DraftImage = {
+  id: string;
+  fileId?: string;
+  externalUrl?: string;
+  name?: string;
+  type?: string;
+  /** 已预上传到对象存储的路径：恢复草稿后发布可直接挂接，不必重传文件。 */
+  storagePath?: string;
+};
 
 export type LocalDraft = {
   id: string;

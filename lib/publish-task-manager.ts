@@ -31,6 +31,16 @@ export type PublishTaskMedia = {
   totalBytes: number;
 };
 
+export type PublishTaskSnapshotMedia = {
+  id: string;
+  /** 已上传对象路径（staging 或已挂接），为空表示还在本机。 */
+  path?: string | null;
+  name?: string | null;
+  size?: number | null;
+  external?: boolean;
+  url?: string | null;
+};
+
 export type PublishTask = {
   taskKey: string;
   title: string;
@@ -55,6 +65,17 @@ export type PublishTask = {
     mediaPaths: string[];
     coverUrl?: string | null;
     seriesId?: string | null;
+    channel?: "community" | "ai";
+    contentType?: string | null;
+    /** 本机草稿 ID/归属：失败或中断后「返回创作」用它恢复完整现场。 */
+    localDraftId?: string | null;
+    draftOwner?: string | null;
+    /** 图片清单（顺序即发布顺序），用于恢复排序与封面。 */
+    media?: PublishTaskSnapshotMedia[];
+    coverIndex?: number;
+    /** 附件清单（path 为 local: 表示尚未上传）。 */
+    attachments?: { path: string; name: string; size: number; mime: string }[];
+    poll?: { question: string; options: string[] } | null;
   };
 };
 
@@ -64,6 +85,9 @@ const DB_NAME = "heika-publish-tasks";
 const DB_VERSION = 1;
 const STORE = "tasks";
 const HISTORY_LIMIT = 100;
+
+/** 任务已结束或已交给审核：不再占用浮窗的「进行中」位置。 */
+export const PUBLISH_SETTLED: PublishTaskStatus[] = ["published", "waiting_for_human_review", "failed", "rejected", "cancelled"];
 
 export const PUBLISH_STATUS_LABEL: Record<PublishTaskStatus, string> = {
   draft_snapshot_saved: "已保存内容快照",
@@ -108,6 +132,8 @@ class PublishTaskManager {
   private loaded = false;
   /** 最小化浮窗是否隐藏（隐藏≠取消任务）。 */
   hidden = false;
+  /** 用户手动选中的任务（多个任务并行时切换查看），结束后自动回落到最新。 */
+  private pinnedKey: string | null = null;
 
   constructor() {
     void this.ensureLoaded();
@@ -123,9 +149,23 @@ class PublishTaskManager {
     return [...this.tasks.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
+  running(): PublishTask[] {
+    return this.list().filter((task) => !PUBLISH_SETTLED.includes(task.status));
+  }
+
   active(): PublishTask | null {
-    const running = this.list().find((task) => !["published", "failed", "rejected", "cancelled"].includes(task.status));
-    return running || null;
+    if (this.pinnedKey) {
+      const pinned = this.tasks.get(this.pinnedKey);
+      if (pinned && !PUBLISH_SETTLED.includes(pinned.status)) return pinned;
+      this.pinnedKey = null;
+    }
+    return this.running()[0] || null;
+  }
+
+  /** 切换浮窗展示的任务（不改变任务本身的状态）。 */
+  focus(taskKey: string) {
+    this.pinnedKey = taskKey;
+    this.emit();
   }
 
   get(taskKey: string) {
@@ -150,6 +190,7 @@ class PublishTaskManager {
     };
     this.tasks.set(task.taskKey, task);
     this.hidden = false;
+    this.pinnedKey = task.taskKey;
     this.persist(task);
     this.emit();
     void this.syncServer(task, "create");
@@ -162,11 +203,24 @@ class PublishTaskManager {
     const { step, ...rest } = patch;
     Object.assign(task, rest, { updatedAt: Date.now() });
     if (step) task.steps = [...task.steps.slice(-19), { label: step, at: Date.now() }];
-    if (["published", "failed", "rejected", "cancelled"].includes(task.status)) task.finishedAt = Date.now();
+    if (PUBLISH_SETTLED.includes(task.status)) task.finishedAt = Date.now();
     this.tasks.set(taskKey, task);
     this.persist(task);
     this.emit();
     void this.syncServer(task, "update");
+  }
+
+  /**
+   * 高频进度刷新：只更新内存并通知订阅者。
+   * 不写 IndexedDB、不请求服务端——上传进度每秒变化多次，落库会拖慢主线程。
+   */
+  progress(taskKey: string, media: PublishTaskMedia, speedBps: number) {
+    const task = this.tasks.get(taskKey);
+    if (!task) return;
+    task.media = media;
+    task.speedBps = speedBps;
+    task.updatedAt = Date.now();
+    this.emit();
   }
 
   cancel(taskKey: string) {
@@ -194,7 +248,7 @@ class PublishTaskManager {
           items.sort((a, b) => b.updatedAt - a.updatedAt);
           for (const item of items.slice(0, HISTORY_LIMIT)) {
             // 刷新后不再有文件对象；进行中任务标记失败并提示恢复方式。
-            if (!["published", "failed", "rejected", "cancelled"].includes(item.status)) {
+            if (!PUBLISH_SETTLED.includes(item.status)) {
               item.status = "failed";
               item.error = "页面已刷新，发布任务中断；重新进入创作页发布即可继续（同名图片会复用已上传结果）";
               item.updatedAt = Date.now();

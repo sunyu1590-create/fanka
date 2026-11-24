@@ -99,7 +99,7 @@ import { userMessage } from "@/lib/user-message";
 import { mediaBucketForPath, isVideoMediaPath } from "@/lib/media-path";
 import { mapWithConcurrency } from "@/lib/media-upload";
 import { uploadManager } from "@/lib/upload-manager";
-import { publishTaskManager, type PublishTask } from "@/lib/publish-task-manager";
+import { publishTaskManager, PUBLISH_SETTLED, type PublishTask } from "@/lib/publish-task-manager";
 import { PublishFloatingWindow } from "./PublishFloatingWindow";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
@@ -109,7 +109,7 @@ import ProfileHeader from "./ProfileHeader";
 import type { CoverMeta } from "./CoverEditor";
 import { applyDecorToDocument, installDecorThemeSync, loadDecor, resetDecor, useDecor } from "@/lib/decor/store";
 import type { DecorIcon } from "@/lib/decor/types";
-import { countDrafts, getDraftFile, migrateLegacyDrafts, saveDraft, deleteDraft, type LocalDraft } from "@/lib/local-drafts";
+import { countDrafts, getDraft, getDraftFile, migrateLegacyDrafts, saveDraft, deleteDraft, type LocalDraft } from "@/lib/local-drafts";
 import AccountSwitcher from "./AccountSwitcher";
 import ProfileBadgeList, { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
 import CardBackFace, { type CardContentState } from "./CardFace";
@@ -830,6 +830,11 @@ export default function Community({
     [decorTab, setDecorTab] = useState<"official" | "community" | "mine" | "submissions" | "studio">("official"),
     [decorKind, setDecorKind] = useState<"all" | "bottom" | "card">("all"),
     [isPublishing, setIsPublishing] = useState(false),
+    /** 发布结果：留在创作页展示，不再强制跳走。 */
+    [composerOutcome, setComposerOutcome] = useState<{ kind: "published" | "pending_review"; title: string; cover: string | null; imageCount: number; clientId: number | null; cloudId: string | null; at: number } | null>(null),
+    /** 从浮窗/任务中心返回创作时绑定的任务，用于避免重复提交。 */
+    [resumeTaskKey, setResumeTaskKey] = useState<string | null>(null),
+    [composerError, setComposerError] = useState(""),
     [topicSummary, setTopicSummary] = useState<TopicSummary | null>(null),
     [topicPosts, setTopicPosts] = useState<Post[]>([]),
     [topicPage, setTopicPage] = useState(1),
@@ -842,6 +847,14 @@ export default function Community({
     [noticeLeaving, setNoticeLeaving] = useState(false),
     [noticeExpanded, setNoticeExpanded] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
+  /** 仍在进行中的发布任务（用于「返回创作」后锁定重复提交）。 */
+  const [runningTaskKeys, setRunningTaskKeys] = useState<string[]>([]);
+  useEffect(() => {
+    const off = publishTaskManager.subscribe((list) => {
+      setRunningTaskKeys(list.filter((task) => !PUBLISH_SETTLED.includes(task.status)).map((task) => task.taskKey));
+    });
+    return () => { off(); };
+  }, []);
   const modalCloseTimer = useRef<number | null>(null);
   const presentNotice = useCallback((item: NoticeBannerItem) => {
     noticeRef.current = item;
@@ -1087,6 +1100,8 @@ export default function Community({
   const flushComposerDraft = useRef<() => Promise<void>>(async () => {});
   useEffect(() => { composerSession.current += 1; composerDraftRef.current = null; composerCloudDrafts.current.clear(); }, [accountId]);
   const publishInFlight = useRef(false);
+  /** 图片 id → 预上传 Promise（staging，先落对象存储，发布时只做挂接）。 */
+  const preuploadRef = useRef(new Map<string, Promise<string | null>>());
   const attachmentUploadIds = useRef(new WeakMap<File, string>());
   const draftMediaBusy = useRef(new Set<string>());
   const zone = accountTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -2907,6 +2922,47 @@ export default function Community({
       toast("点赞未保存，请重试");
     } finally { commentLikeBusy.current.delete(comment.id); }
   };
+  /**
+   * 选图后立刻预上传到对象存储（staging）：
+   * - 只是把文件放进用户自己的未挂接资产里，不创建作品、不进审核；
+   * - 用户在发布页继续编辑/调序/换封面都不受影响，离开页面也不会中断；
+   * - 点发布时只做「挂接到草稿 → 提交」，不再等整轮上传。
+   */
+  const preuploadComposerImage = (image: ComposerImage): Promise<string | null> => {
+    if (image.external || !image.file || !accountId) return Promise.resolve(null);
+    const existing = preuploadRef.current.get(image.id);
+    if (existing) return existing;
+    const promise = (async () => {
+      try {
+        const db = await browserDb(); const { data: session } = await db.auth.getSession();
+        if (!session.session) throw new Error("登录状态已失效，请重新登录");
+        setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading", progress: 0, uploadPhase: "uploading" } : item));
+        const result = await uploadManager.enqueue({
+          file: image.file!,
+          token: session.session.access_token,
+          uploadId: image.id,
+          sortOrder: 0,
+          target: { kind: "staging" },
+          onProgress: (progress) => {
+            setComposerImages((items) => items.map((item) => item.id === image.id
+              ? { ...item, progress: progress.percent, uploadPhase: progress.phase === "processing" ? "processing" : "uploading" }
+              : item));
+          },
+        });
+        setComposerImages((items) => items.map((item) => item.id === image.id
+          ? { ...item, path: result.path, status: "ready", progress: 100, uploadPhase: undefined }
+          : item));
+        return result.path;
+      } catch (error) {
+        setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed", uploadPhase: undefined } : item));
+        preuploadRef.current.delete(image.id);
+        if (error instanceof Error && error.message) setComposerError(`有图片上传失败：${error.message}，可在图片上单张重试`);
+        return null;
+      }
+    })();
+    preuploadRef.current.set(image.id, promise);
+    return promise;
+  };
   const uploadImageToPost = async (
     image: ComposerImage,
     postId: string,
@@ -2914,6 +2970,18 @@ export default function Community({
     onProgress?: (progress: { percent: number; phase: "uploading" | "processing" | "done" }) => void,
   ): Promise<ComposerImage> => {
     if (image.external) return image;
+    // 预上传中的图片先等它就绪再挂接，避免同一张图被传两次。
+    const pending = preuploadRef.current.get(image.id);
+    if (pending && !image.path) {
+      onProgress?.({ percent: 0, phase: "uploading" });
+      const path = await pending;
+      if (path) {
+        if (!composerRevisionMode) await cloudRequest(`/api/v1/posts/${postId}/media`, { path, sort_order: sortOrder });
+        onProgress?.({ percent: 100, phase: "done" });
+        return { ...image, path, status: "ready", sortOrder, progress: 100, uploadPhase: undefined };
+      }
+      // 预上传失败则继续走下面的直传兜底。
+    }
     if (image.path) {
       // 已上传过的图片只需按新顺序挂到当前草稿，不再重传文件。
       if (!composerRevisionMode) await cloudRequest(`/api/v1/posts/${postId}/media`, { path: image.path, sort_order: sortOrder });
@@ -2935,38 +3003,45 @@ export default function Community({
   };
   /**
    * 多张图片并发上传（最多 3 张同时在途），并按真实字节汇总总进度。
-   * 之前是 for-await 一张一张传，9 张图要排 9 次队，弱网下第一张卡住后面全等着。
+   * 现在图片在选图时已预上传，这里主要是「等待未完成的预上传 + 挂接到草稿」，
+   * 进度来自 uploadManager 的真实字节数（含预上传阶段），不再用估算值。
    */
-  const uploadComposerImages = async (images: ComposerImage[], postId: string): Promise<ComposerImage[]> => {
+  const uploadComposerImages = async (
+    images: ComposerImage[],
+    postId: string,
+    onMediaProgress?: (state: { sentBytes: number; totalBytes: number; ready: number; uploading: number; failed: number }) => void,
+  ): Promise<ComposerImage[]> => {
     if (!images.length) return [];
     const totalBytes = images.reduce((sum, image) => sum + (image.file?.size || 0), 0);
-    const sentBytes = new Map<string, number>();
-    let completed = 0;
-    setUploadingImages(true);
-    setImageUploadProgress({ percent: 0, done: 0, total: images.length, phase: "uploading" });
-    const report = (imageId: string, progress: { percent: number; phase: "uploading" | "processing" | "done" }) => {
-      sentBytes.set(imageId, Math.round((images.find((item) => item.id === imageId)?.file?.size || 1) * progress.percent / 100));
-      const sent = [...sentBytes.values()].reduce((sum, value) => sum + value, 0);
-      const percent = totalBytes > 0
-        ? Math.min(99, Math.round(sent / totalBytes * 100))
-        : Math.min(99, Math.round(completed / images.length * 100));
-      setImageUploadProgress({ percent, done: completed, total: images.length, phase: progress.phase === "processing" ? "processing" : "uploading" });
+    const stats = () => {
+      let sent = 0, ready = 0, uploading = 0, failed = 0;
+      for (const image of images) {
+        if (image.external) { ready += 1; continue; }
+        const item = uploadManager.findByUploadId(image.id);
+        if (image.path || item?.status === "ready") { ready += 1; sent += image.file?.size || item?.size || 0; }
+        else if (item?.status === "failed") { failed += 1; sent += item.bytesSent || 0; }
+        else { uploading += 1; sent += item?.bytesSent || 0; }
+      }
+      return { sentBytes: Math.min(sent, totalBytes), totalBytes, ready, uploading, failed };
     };
+    const emit = (phase: "uploading" | "processing" | "done") => {
+      const current = stats();
+      const percent = current.totalBytes > 0
+        ? Math.min(99, Math.round((current.sentBytes / current.totalBytes) * 100))
+        : Math.min(99, Math.round((current.ready / Math.max(1, images.length)) * 100));
+      setImageUploadProgress({ percent, done: current.ready, total: images.length, phase });
+      onMediaProgress?.(current);
+    };
+    setUploadingImages(true);
+    emit("uploading");
+    const off = uploadManager.subscribe(() => emit("uploading"));
     try {
       const uploaded = await mapWithConcurrency(images, 3, async (image, index) => {
         draftMediaBusy.current.add(image.id);
-        setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading", progress: 0, uploadPhase: "uploading" } : item));
+        setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "uploading", progress: item.progress ?? 0, uploadPhase: "uploading" } : item));
         try {
-          const current = await uploadImageToPost(image, postId, index, (progress) => {
-            setComposerImages((items) => items.map((item) => item.id === image.id
-              ? { ...item, progress: progress.percent, uploadPhase: progress.phase === "processing" ? "processing" : "uploading" }
-              : item));
-            report(image.id, progress);
-          });
-          completed += 1;
-          sentBytes.set(image.id, image.file?.size || 1);
+          const current = await uploadImageToPost(image, postId, index, () => emit("uploading"));
           setComposerImages((items) => items.map((item) => item.id === image.id ? current : item));
-          report(image.id, { percent: 100, phase: "done" });
           return current;
         } catch (error) {
           setComposerImages((items) => items.map((item) => item.id === image.id ? { ...item, status: "failed", progress: undefined, uploadPhase: undefined } : item));
@@ -2978,8 +3053,93 @@ export default function Community({
       setImageUploadProgress({ percent: 100, done: images.length, total: images.length, phase: "done" });
       return uploaded;
     } finally {
+      off();
       setUploadingImages(false);
     }
+  };
+  /** 发布成功后只清「草稿存档」，不动编辑区内容——结果页还要用标题与封面。 */
+  const clearComposerDraftStorage = async (channel: "community" | "ai", owner: string) => {
+    if (channel === "community") localStorage.removeItem(`heika-compose-${owner}`);
+    localStorage.removeItem(`heika-compose-${channel}-${owner}`);
+    await clearDraftFiles(`${owner}:${channel}`).catch(() => {});
+    if (owner !== "guest") {
+      if (channel === "community") localStorage.removeItem("heika-compose-guest");
+      localStorage.removeItem(`heika-compose-${channel}-guest`);
+      await clearDraftFiles(`guest:${channel}`).catch(() => {});
+    }
+    composerCloudDrafts.current.delete(`${owner}:${channel}`);
+    composerDraftRef.current = null;
+    lastDraftPayload.current = "";
+    if (localDraftIdRef.current) {
+      const removing = localDraftIdRef.current;
+      localDraftIdRef.current = null;
+      await deleteDraft(removing).catch(() => {});
+      setLocalDraftId(null);
+      setDraftLocalState("idle");
+      void refreshLocalDraftCount();
+    }
+    pendingAttachmentFiles.current.clear();
+    setComposerCheckPhase("idle");
+  };
+  /** 清空编辑区（结果页「再写一篇 / 完成」时调用），图片 objectURL 在此时才释放。 */
+  const resetComposer = () => {
+    composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
+    preuploadRef.current.clear();
+    setComposerImages([]);
+    setTitle("");
+    setBody("");
+    setPollQuestion("");
+    setPollOptions(["", ""]);
+    setImageUploadProgress(null);
+    setCoverIndex(0);
+    setEditing(null);
+    setComposerEditingPublished(false);
+    setComposerRevisionMode(false);
+    setWriteChannel("community");
+    setWriteContentType("knowledge_article");
+    setAiResourceFields({});
+    setComposerAttachments([]);
+    setAttachmentError("");
+    setComposerValidation("");
+    setComposerError("");
+    setComposerOutcome(null);
+    setResumeTaskKey(null);
+    setComposerCheckPhase("idle");
+    composerSuggestionRef.current = null;
+    setComposerSuggestion(null);
+    setComposerTagTouchedState(false);
+    composerTagTouchedRef.current = false;
+  };
+  const finishComposerOutcome = () => { resetComposer(); setModal(null); };
+  const startAnotherPost = () => { resetComposer(); void openComposer(); };
+  /**
+   * 从浮窗/任务中心回到创作页：优先用任务快照里的本机草稿恢复完整现场，
+   * 草稿缺失时退回快照文字，图片需要重新选择（不会伪造已上传结果）。
+   */
+  const resumeComposeFromTask = async (task: PublishTask) => {
+    const snapshot = task.snapshot;
+    const owner = snapshot?.draftOwner || accountId || "guest";
+    let draft: LocalDraft | null = null;
+    let draftMissing = false;
+    if (snapshot?.localDraftId) {
+      draft = await getDraft(owner, snapshot.localDraftId).catch(() => null);
+      draftMissing = !draft;
+    } else {
+      draftMissing = true;
+    }
+    await openComposer(undefined, snapshot?.channel || "community", draft || undefined);
+    if (!draft && snapshot) {
+      // 没有本机草稿记录时，至少把文字与分类恢复出来，图片留待重新选择。
+      setTitle(snapshot.title || "");
+      setBody(snapshot.body || "");
+      if (snapshot.tag) setWriteTag(snapshot.tag);
+      if (snapshot.topics?.length) setWriteTopics(snapshot.topics);
+      setWriteSeriesId(snapshot.seriesId || "");
+      if (snapshot.poll?.question) { setPollQuestion(snapshot.poll.question); setPollOptions([...(snapshot.poll.options || []), "", ""].slice(0, 4)); }
+    }
+    setResumeTaskKey(task.taskKey);
+    setComposerError(task.error || "");
+    if (draftMissing) toast("已恢复文字内容；图片需要重新选择后再提交");
   };
   const publish = async () => {
     if (publishInFlight.current) return;
@@ -3017,25 +3177,59 @@ export default function Community({
     if (!tag.trim()) return toast("请选择内容分类");
     if (!accountId) { await flushComposerDraft.current().catch(()=>{}); return toast("请先在消息页面登录，当前输入会保留"); }
     if (composerImages.some(image=>!image.external&&!image.path&&!image.file)) return toast("有图片文件未恢复，请替换后再提交");
-    if (composerImages.some((image) => image.status === "uploading" || draftMediaBusy.current.has(image.id))) return toast("图片正在同步，请稍后发布");
     if (draftSaveTimer.current !== null) {
       window.clearTimeout(draftSaveTimer.current);
       draftSaveTimer.current = null;
     }
     if (draftSaving) return toast("草稿正在同步，请稍后发布");
+    setComposerError("");
+    // 先把本机草稿最新状态落盘：任务失败或页面中断后，返回创作可完整恢复现场。
+    if (publishInFlight.current) return;
+    await flushComposerDraft.current().catch(() => {});
     publishInFlight.current = true;
     setIsPublishing(true);
+    const ownerForDraft = accountId || "guest";
+    const localDraftForTask = localDraftIdRef.current;
     let publishTaskKey: string | null = null;
     try {
       const old = state.own.find((p) => p.id === editing);
-      // 点击发布即创建全局发布任务（内容快照），离开页面任务继续，浮窗实时可见。
-      const snapshotTask = await publishTaskManager.create({
+      const coverImagePreview = composerImages[coverIndex];
+      const snapshotMedia = composerImages.map((image) => ({
+        id: image.id,
+        path: image.path || null,
+        name: image.file?.name || null,
+        size: image.file?.size ?? null,
+        external: Boolean(image.external),
+        url: image.external ? image.url : null,
+      }));
+      const snapshotBase = {
         title: title.trim(),
-        coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null,
-        snapshot: { title: title.trim(), body, tag, topics, mediaPaths: [], coverUrl: composerImages[coverIndex]?.external ? composerImages[coverIndex].url : null, seriesId: writeSeriesId || null },
-      });
-      publishTaskKey = snapshotTask.taskKey;
-      publishTaskManager.update(publishTaskKey, { status: "task_created", step: "发布任务已创建" });
+        body,
+        tag,
+        topics,
+        mediaPaths: [] as string[],
+        coverUrl: coverImagePreview?.external ? coverImagePreview.url : null,
+        seriesId: writeSeriesId || null,
+        channel,
+        contentType,
+        localDraftId: localDraftForTask,
+        draftOwner: ownerForDraft,
+        media: snapshotMedia,
+        coverIndex,
+        attachments: composerAttachments,
+        poll: pollDraft.question ? pollDraft : null,
+      };
+      const resumeTask = resumeTaskKey ? publishTaskManager.get(resumeTaskKey) : null;
+      if (resumeTask && !["published", "cancelled"].includes(resumeTask.status)) {
+        // 同一个任务的重新提交：不新建任务、不新建草稿，避免出现重复条目。
+        publishTaskKey = resumeTask.taskKey;
+        publishTaskManager.update(publishTaskKey, { status: "task_created", error: null, title: snapshotBase.title, snapshot: snapshotBase, step: "重新提交发布任务" });
+      } else {
+        // 点击发布即创建全局发布任务（含内容快照），离开页面任务继续，浮窗实时可见。
+        const snapshotTask = await publishTaskManager.create({ title: snapshotBase.title, coverUrl: snapshotBase.coverUrl, snapshot: snapshotBase });
+        publishTaskKey = snapshotTask.taskKey;
+        publishTaskManager.update(publishTaskKey, { status: "task_created", step: "发布任务已创建" });
+      }
       const resourceData = Object.fromEntries(Object.entries(aiResourceFields).map(([key, value]) => [key, value.trim()]).filter(([, value]) => Boolean(value)));
       let attachmentPayload = composerAttachments;
       if (composerAttachments.some((item) => item.path.startsWith("local:"))) {
@@ -3055,12 +3249,23 @@ export default function Community({
       const cover = composerImages[coverIndex];
       const storageImages = composerImages.filter((image) => !image.external);
       const orderedImages = cover?.external ? storageImages : storageImages.length ? [storageImages.find((image) => image.id === cover?.id), ...storageImages.filter((image) => image.id !== cover?.id)].filter((image): image is ComposerImage => Boolean(image)) : [];
+      const readyAtStart = orderedImages.filter((image) => Boolean(image.path)).length;
       if (publishTaskKey) publishTaskManager.update(publishTaskKey, {
-        status: orderedImages.length ? "uploading_media" : "verifying_media",
-        step: orderedImages.length ? `开始上传 ${orderedImages.length} 张图片` : "无需上传图片",
-        media: { total: orderedImages.length, ready: 0, uploading: orderedImages.length, failed: 0, sentBytes: 0, totalBytes: orderedImages.reduce((sum, image) => sum + (image.file?.size || 0), 0) },
+        status: readyAtStart === orderedImages.length ? "verifying_media" : readyAtStart > 0 ? "uploading_media" : "waiting_for_media",
+        step: orderedImages.length ? (readyAtStart === orderedImages.length ? "图片已就绪，准备提交" : `等待剩余 ${orderedImages.length - readyAtStart} 张图片上传`) : "无需上传图片",
+        media: { total: orderedImages.length, ready: readyAtStart, uploading: orderedImages.length - readyAtStart, failed: 0, sentBytes: orderedImages.filter((image) => image.path).reduce((sum, image) => sum + (image.file?.size || 0), 0), totalBytes: orderedImages.reduce((sum, image) => sum + (image.file?.size || 0), 0) },
       });
-      const uploaded = await uploadComposerImages(orderedImages, draft.cloudId);
+      const uploaded = await uploadComposerImages(orderedImages, draft.cloudId, (state) => {
+        if (!publishTaskKey) return;
+        publishTaskManager.progress(publishTaskKey, {
+          total: orderedImages.length,
+          ready: state.ready,
+          uploading: state.uploading,
+          failed: state.failed,
+          sentBytes: state.sentBytes,
+          totalBytes: state.totalBytes,
+        }, uploadManager.snapshot().speedBps);
+      });
       const mediaPaths = uploaded.map((image) => image.path!);
       if (publishTaskKey) publishTaskManager.update(publishTaskKey, {
         status: "verifying_media",
@@ -3093,54 +3298,27 @@ export default function Community({
         ],
         cardIds: item.status === "published" ? [...new Set([...s.cardIds, item.id])] : s.cardIds,
       }));
-      setModal(null);
-      setTitle("");
-      setBody("");
-      setPollQuestion("");
-      setPollOptions(["", ""]);
-      composerImages.forEach((image) => { if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url); });
-      setComposerImages([]);
-      setImageUploadProgress(null);
-      setCoverIndex(0);
-      setEditing(null);
-      setComposerEditingPublished(false);
-      setComposerRevisionMode(false);
-      setWriteChannel("community");
-      setWriteContentType("knowledge_article");
-      setAiResourceFields({});
-      setComposerAttachments([]);
-      setAttachmentError("");
-      setComposerValidation("");
-      composerSuggestionRef.current = null;
-      setComposerSuggestion(null);
-      setComposerTagTouchedState(false);
-      composerTagTouchedRef.current = false;
-      const owner = accountId || "guest";
-      if (channel === "community") localStorage.removeItem(`heika-compose-${owner}`);
-      localStorage.removeItem(`heika-compose-${channel}-${owner}`);
-      await clearDraftFiles(`${owner}:${channel}`).catch(() => {});
-      if (accountId) {
-        if (channel === "community") localStorage.removeItem("heika-compose-guest");
-        localStorage.removeItem(`heika-compose-${channel}-guest`);
-        await clearDraftFiles(`guest:${channel}`).catch(() => {});
-      }
-      composerCloudDrafts.current.delete(`${owner}:${channel}`); composerDraftRef.current = null;
-      lastDraftPayload.current = "";
-      // 服务端确认发布成功后才删除本地草稿；失败时草稿继续保留。
-      if (localDraftIdRef.current) {
-        await deleteDraft(localDraftIdRef.current).catch(() => {});
-        localDraftIdRef.current = null;
-        setLocalDraftId(null);
-        setDraftLocalState("idle");
-        void refreshLocalDraftCount();
-      }
-      pendingAttachmentFiles.current.clear();
-      setComposerCheckPhase("idle");
-      toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : "内容已提交人工审核，通过后将公开展示");
+      // 发布成功后不再强制跳回首页：留在创作页展示结果，用户自己决定继续写还是离开。
+      const submittedForReview = item.status === "pending_review";
+      setComposerOutcome({
+        kind: submittedForReview ? "pending_review" : "published",
+        title: title.trim(),
+        cover: composerImages[coverIndex]?.url || null,
+        imageCount: mediaPaths.length,
+        clientId: item.id ?? null,
+        cloudId: item.cloudId ?? null,
+        at: Date.now(),
+      });
+      setResumeTaskKey(null);
+      setComposerError("");
+      // 内容已提交：清掉本机草稿与本地缓存，避免下次进入又带出同一篇。
+      await clearComposerDraftStorage(channel, ownerForDraft);
+      toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : submittedForReview ? "已提交审核，可以留在这里或直接离开" : "发布成功");
     } catch (e) {
       setUploadingImages(false);
       setComposerCheckPhase("failed");
       const message = e instanceof Error ? e.message : "发布失败，请重试";
+      setComposerError(message);
       if (publishTaskKey) publishTaskManager.update(publishTaskKey, { status: "failed", error: message, step: "发布失败" });
       toast(message);
     } finally {
@@ -3289,6 +3467,7 @@ export default function Community({
   const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community", localDraft?: LocalDraft) => {
     composerImages.forEach(image=>{if(image.url.startsWith("blob:"))URL.revokeObjectURL(image.url);});
     composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false); setImageUploadProgress(null);
+    setComposerOutcome(null); setResumeTaskKey(null); setComposerError("");
     // 正常入口一律从空白开始；只有主动从草稿箱选择才会恢复内容。
     const initialPost = post;
     composerDraftRef.current = initialPost || null;
@@ -3377,8 +3556,8 @@ export default function Community({
       for (const image of localDraft.images) {
         if (image.fileId) {
           const blob = await getDraftFile(localDraft.id, image.fileId).catch(() => null);
-          if (blob) restoredImages.push({ id: image.id, file: new File([blob], image.name || `image-${image.id}`, { type: image.type || blob.type || "image/jpeg" }), url: URL.createObjectURL(blob), status: "ready" });
-          else restoredImages.push({ id: image.id, url: "/image-not-loaded.svg", status: "failed" });
+          if (blob) restoredImages.push({ id: image.id, file: new File([blob], image.name || `image-${image.id}`, { type: image.type || blob.type || "image/jpeg" }), url: URL.createObjectURL(blob), status: "ready", path: image.storagePath });
+          else restoredImages.push({ id: image.id, url: "/image-not-loaded.svg", status: "failed", path: image.storagePath });
         } else if (image.externalUrl) {
           restoredImages.push({ id: image.id, url: image.externalUrl, status: "ready", external: true });
         }
@@ -3423,6 +3602,7 @@ export default function Community({
           id: image.id,
           fileId: image.file ? image.id : undefined,
           externalUrl: image.external ? image.url : undefined,
+          storagePath: image.path,
           name: image.file?.name,
           type: image.file?.type,
         })),
@@ -3477,7 +3657,13 @@ export default function Community({
   const changeComposerTitle = useCallback((value: string) => { setTitle(value); setDraftSaved(false); setDraftCloudSynced(false); if(value.trim()) setComposerValidation(""); }, []);
   const changeComposerBody = useCallback((value: string) => { setBody(value); setDraftSaved(false); setDraftCloudSynced(false); if(value.trim()) setComposerValidation(""); }, []);
   const closeComposer = async () => {
-    if (isPublishing) return toast("内容正在提交，请稍候");
+    // 发布进行中允许离开：任务在后台继续，浮窗与任务中心仍可查看进度。
+    if (isPublishing) {
+      const leave = await confirmInApp("发布任务会在后台继续，离开后可在悬浮窗查看进度。要现在离开吗？", { title: "发布进行中", confirmLabel: "离开" });
+      if (!leave) return;
+      setComposerPanel(null); setComposerMediaId(null); setModal(null);
+      return;
+    }
     try { await flushComposerDraft.current(); }
     catch { if (!await confirmInApp("本机草稿保存失败，仍要退出吗？", { title:"草稿尚未保存", confirmLabel:"退出编辑" })) return; }
     setComposerPanel(null); setComposerMediaId(null); setModal(null);
@@ -3580,9 +3766,13 @@ export default function Community({
       const image=composerImages.find(item=>item.id===id); if(!image) return;
       const old=state.own.find(item=>item.id===editing);
       if(image.path && old?.cloudId && !composerRevisionMode) await cloudRequest(`/api/v1/posts/${old.cloudId}/media`,{path:image.path},"DELETE");
-      const replacement: ComposerImage={id:crypto.randomUUID(),file:compressed,url:URL.createObjectURL(compressed),status:"ready"};
+      const oldRunning = uploadManager.findByUploadId(image.id);
+      if (oldRunning && oldRunning.status !== "ready") uploadManager.cancel(oldRunning.taskId);
+      preuploadRef.current.delete(image.id);
+      const replacement: ComposerImage={id:crypto.randomUUID(),file:compressed,url:URL.createObjectURL(compressed),status:"uploading",progress:0,uploadPhase:"uploading"};
       setComposerImages(items=>items.map(item=>item.id===id?replacement:item)); setComposerMediaId(replacement.id);
       if(image.url.startsWith("blob:")) URL.revokeObjectURL(image.url);
+      void preuploadComposerImage(replacement);
     } catch(error) { toast(error instanceof Error?error.message:"图片替换失败，请重试"); } finally { setUploadingImages(false); }
   };
 
@@ -3608,6 +3798,11 @@ export default function Community({
       if (failureMessage) toast(failureMessage);
       setComposerImages((current) => [...current, ...next]);
       if (!composerImages.length && next.length) setCoverIndex(0);
+      if (next.length) {
+        setComposerError("");
+        // 选完即预上传（staging）：用户继续编辑/调序/换封面都不受影响，也不会生成作品或进入审核。
+        for (const image of next) void preuploadComposerImage(image);
+      }
     } finally { setUploadingImages(false); }
   };
   const moveComposerImage = (index: number, delta: -1 | 1) => {
@@ -3619,12 +3814,16 @@ export default function Community({
   const removeComposerImage = async (index: number) => {
     const image = composerImages[index];
     const old = state.own.find((item) => item.id === editing);
+    // 上传中的图片先取消，避免删掉之后后台还在写。
+    const running = uploadManager.findByUploadId(image.id);
+    if (running && running.status !== "ready") uploadManager.cancel(running.taskId);
+    preuploadRef.current.delete(image.id);
     if (image.path && old?.cloudId && !composerRevisionMode) {
       try { await cloudRequest(`/api/v1/posts/${old.cloudId}/media`, { path: image.path }, "DELETE"); }
       catch (error) { toast(error instanceof Error ? error.message : "图片移除失败"); return; }
-    } else if (image.file && accountId && old?.cloudId) {
-      try { await cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: old.cloudId }, "DELETE"); }
-      catch (error) { toast(error instanceof Error ? error.message : "图片移除失败"); return; }
+    } else if (image.file && accountId) {
+      // 未挂接的预上传对象也一并清理；清理失败不阻塞用户移除图片。
+      void cloudRequest("/api/v1/media", { upload_id: image.id, file_type: image.file.type, post_id: old?.cloudId ?? undefined }, "DELETE").catch(() => {});
     }
     if (image.url.startsWith("blob:")) URL.revokeObjectURL(image.url);
     setComposerImages((items) => items.filter((_, i) => i !== index));
@@ -3636,23 +3835,14 @@ export default function Community({
     if (!image?.file) return toast("本机图片文件未恢复，请点击图片重新替换");
     if (draftMediaBusy.current.has(imageId)) return;
     draftMediaBusy.current.add(imageId);
-    setUploadingImages(true);
-    setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "uploading", progress: 0, uploadPhase: "uploading" } : item));
-    setImageUploadProgress({ percent: 0, done: 0, total: 1, phase: "uploading" });
+    setComposerError("");
+    // 预上传失败只需重传这一张，不需要先建云端草稿。
+    preuploadRef.current.delete(imageId);
     try {
-      const old = state.own.find((item) => item.id === editing);
-      const draft = composerEditingPublished && old?.cloudId ? old : writeChannel === "ai" ? await cloudRequest("/api/v1/ai-space", { action: "draft", id: old?.cloudId, title, body, category: writeTag, topics: writeTopics, contentType: writeContentType, resourceData: aiResourceFields }) as Post | null : await cloudRequest("/api/v1/library-state", { action: "draft", id: old?.cloudId ? old.id : undefined, title, body, tag: writeTag }) as Post | null;
-      if (!draft?.cloudId) throw new Error("草稿保存失败");
-      const synced = await uploadImageToPost(image, draft.cloudId, composerImages.indexOf(image), (progress) => {
-        setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, progress: progress.percent, uploadPhase: progress.phase === "processing" ? "processing" : "uploading" } : item));
-        setImageUploadProgress({ percent: progress.percent, done: 0, total: 1, phase: progress.phase });
-      });
-      setEditing(draft.id); update((current) => ({ ...current, own: [draft, ...current.own.filter((item) => item.id !== draft.id)] }));
-      setComposerImages((items) => items.map((item) => item.id === imageId ? synced : item));
-      setImageUploadProgress({ percent: 100, done: 1, total: 1, phase: "done" });
-      toast("图片已上传");
-    } catch (error) { setComposerImages((items) => items.map((item) => item.id === imageId ? { ...item, status: "failed", progress: undefined, uploadPhase: undefined } : item)); setImageUploadProgress(null); toast(error instanceof Error ? error.message : "图片上传失败"); }
-    finally { draftMediaBusy.current.delete(imageId); setUploadingImages(false); }
+      const path = await preuploadComposerImage(image);
+      if (path) toast("图片已就绪，点发布即可提交");
+      else toast("图片上传仍未成功，请检查网络后重试");
+    } finally { draftMediaBusy.current.delete(imageId); }
   };
   const discardComposerDraft = async () => {
     if (draftSaving || composerImages.some((image) => draftMediaBusy.current.has(image.id))) return toast("图片正在处理，请稍后再删除");
@@ -6669,6 +6859,13 @@ export default function Community({
             ) : (
               <div className="composer-workspace">
               <div className="composer-scroll">
+                {(resumeTaskKey || composerError) && <section className={`composer-status-banner${composerError ? " is-error" : ""}`} role="status" aria-live="polite">
+                  <span className="composer-status-icon" aria-hidden="true">{composerError ? "!" : <RefreshCw size={14} className="composer-check-spinner"/>}</span>
+                  <div>
+                    <strong>{composerError ? "上次发布没有完成" : "这份内容正在发布中"}</strong>
+                    <small>{composerError ? `${composerError}。标题、正文和图片都还在，可以直接重新发布。` : "任务在后台继续，可在悬浮窗查看进度；完成前不会重复提交。"}</small>
+                  </div>
+                </section>}
                 {!composerEditingPublished && <section className="composer-route" aria-label="发布状态">
                   <div className="composer-route-head">
                     <span>发布状态</span>
@@ -6706,7 +6903,7 @@ export default function Community({
                       <span className="composer-media-choice-mark">{composerImages.length ? `${composerImages.length}/9` : "选择"}</span>
                     </label>
                   </div>
-                  <p className="composer-media-hint">本地自动压缩 · 3 张并发上传 · 每张显示真实进度，失败可单张重试</p>
+                  <p className="composer-media-hint">选图后立即在后台上传（尚未发布）· 3 张并发 · 每张显示真实进度，失败可单张重试</p>
                 </section>
                 {composerImages.length > 0 && <><ComposerMediaStrip images={composerImages} coverIndex={coverIndex} busy={isPublishing} onSelect={setComposerMediaId} onRetry={(id) => void retryComposerImage(id)} onMove={reorderComposerImages} onAdd={(files) => void chooseComposerImages(files)}/><p className="composer-media-tip">长按或拖动排序 · 点击图片管理封面</p></>}
                 {imageUploadProgress && imageUploadProgress.phase !== "done" && <div className="composer-upload-progress" role="status" aria-live="polite">
@@ -6773,7 +6970,27 @@ export default function Community({
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && markdownPreviousBody !== null && <div className="composer-markdown-applied" role="status"><span>已应用 Markdown 优化</span><button type="button" onClick={undoMarkdownOptimize}>撤回</button></div>}
-            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftLocalState === "saving" ? "正在保存到本机…" : draftLocalState === "saved" ? "已保存到本机" : draftLocalState === "error" ? "本机保存失败" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || uploadingImages || draftSaving || composerImages.some((image) => image.status === "uploading")} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{composerSuggestion?.checking ? "正在检查内容…" : isPublishing ? "正在提交…" : uploadingImages || composerImages.some((image) => image.status === "uploading") ? `上传图片 ${imageUploadProgress?.percent ?? 0}%` : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
+            {modal === "write" && composerOutcome && <div className="composer-outcome" role="dialog" aria-modal="true" aria-label="发布结果">
+              <div className="composer-outcome-card">
+                <span className={`composer-outcome-icon is-${composerOutcome.kind}`} aria-hidden="true">{composerOutcome.kind === "published" ? "✓" : "⌛"}</span>
+                <h2>{composerOutcome.kind === "published" ? "发布成功" : "已提交审核"}</h2>
+                <p>{composerOutcome.kind === "published" ? "作品已公开展示，可在「我的作品」里继续编辑。" : "内容已进入审核流程，通过后自动公开展示；这段时间可以直接离开。"}</p>
+                <div className="composer-outcome-summary">
+                  {composerOutcome.cover ? <img src={composerOutcome.cover} alt="" /> : <span className="composer-outcome-cover-fallback" aria-hidden="true"><ImagePlus size={18}/></span>}
+                  <div>
+                    <strong>{composerOutcome.title || "未命名作品"}</strong>
+                    <small>{composerOutcome.imageCount ? `${composerOutcome.imageCount} 张图片 · ` : ""}{new Date(composerOutcome.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 提交</small>
+                  </div>
+                </div>
+                <div className="composer-outcome-actions">
+                  {composerOutcome.clientId ? <button type="button" className="primary-button" onClick={() => { const id = composerOutcome.clientId; finishComposerOutcome(); if (id) openPost(id, "discover"); }}>查看作品</button> : null}
+                  <button type="button" className={composerOutcome.clientId ? "soft-button" : "primary-button"} onClick={startAnotherPost}>再写一篇</button>
+                  <button type="button" className="soft-button" onClick={finishComposerOutcome}>完成</button>
+                </div>
+                <p className="composer-outcome-hint">发布任务可在悬浮窗与「发布任务」里查看，离开本页不会中断。</p>
+              </div>
+            </div>}
+            {modal === "write" && <footer className="composer-footer"><span><strong role="status">{composerMediaLoadFailed ? "附件列表读取失败" : draftSyncError || (draftLocalState === "saving" ? "正在保存到本机…" : draftLocalState === "saved" ? "已保存到本机" : draftLocalState === "error" ? "本机保存失败" : "自动保存草稿")}</strong>{composerMediaLoadFailed && <button type="button" className="composer-save-retry" disabled={uploadingImages} onClick={()=>void reloadComposerMedia()}>重试读取附件</button>}{draftSyncError && <button type="button" className="composer-save-retry" onClick={()=>setDraftRetry(value=>value+1)}>重试保存</button>}<small>提交后进入人工审核</small></span><button type="button" className="composer-markdown-optimize" onClick={() => void optimizeMarkdown()} disabled={markdownOptimizeBusy || isPublishing || !body.trim()}><Wand2 size={15} aria-hidden="true"/>{markdownOptimizeBusy ? "优化中…" : "Markdown 优化"}</button><button className="primary-button composer-publish-button" disabled={isPublishing || draftSaving || (!!resumeTaskKey && runningTaskKeys.includes(resumeTaskKey))} onClick={handlePublishClick}><ArrowUpRight size={15} aria-hidden="true"/>{composerSuggestion?.checking ? "正在检查内容…" : isPublishing ? "正在提交…" : resumeTaskKey && runningTaskKeys.includes(resumeTaskKey) ? "正在发布…" : resumeTaskKey ? "重新发布" : composerEditingPublished ? "保存修改" : "发布内容"}</button></footer>}
           </div>
         </div>
       )}
@@ -6803,7 +7020,8 @@ export default function Community({
           if (task.clientId) openPost(task.clientId, "discover");
           else toast("作品已发布，可在「我的作品」中查看");
         }}
-        onRetryPublish={() => { setTaskCenterOpen(false); void openComposer(); }}
+        onRetryPublish={(task: PublishTask) => { setTaskCenterOpen(false); void resumeComposeFromTask(task); }}
+        onResumeCompose={(task: PublishTask) => { setTaskCenterOpen(false); void resumeComposeFromTask(task); }}
       />
       {announcement && <div className="announcement-backdrop" role="dialog" aria-modal="true" aria-labelledby="announcement-title" onClick={dismissAnnouncement}>
         <div className="announcement-card" onClick={(event) => event.stopPropagation()}>

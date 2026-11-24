@@ -198,7 +198,7 @@ export const ComposerMediaStrip = memo(function ComposerMediaStrip({ images, cov
       {image.status==="uploading"&&<span className="composer-image-state">{image.uploadPhase === "processing" ? "服务器处理中…" : `上传 ${image.progress ?? 0}%`}<progress max={100} value={image.progress ?? 0} aria-label={`第 ${index+1} 张图片上传 ${image.progress ?? 0}%`}/></span>}
       {image.status==="failed"&&<button type="button" className="composer-image-retry" disabled={busy} onClick={()=>onRetry(image.id)}>失败 · 重试</button>}
     </figure>)}
-    {images.length<9&&<label className="composer-media-add"><ImagePlus size={23}/><span>添加图片</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={event=>{onAdd(event.target.files);event.currentTarget.value="";}}/></label>}
+    {images.length<9&&<label className="composer-media-add"><ImagePlus size={23}/><span>添加图片</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={busy} onChange={event=>{onAdd(event.target.files);event.currentTarget.value="";}}/></label>}
   </div>;
 });
 

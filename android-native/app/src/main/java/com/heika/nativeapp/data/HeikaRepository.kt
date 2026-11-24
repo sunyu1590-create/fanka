@@ -675,6 +675,55 @@ class HeikaRepository @Inject constructor(
         request("/api/v1/admin/ai-tasks", authenticated = true) as? JSONObject ?: JSONObject()
     }
 
+    /** 系统监控：真实采集行 + 当前请求量 + 未恢复告警。 */
+    suspend fun adminMetrics(range: String = "1h"): JSONObject = withContext(Dispatchers.IO) {
+        require(range in setOf("1h", "24h", "7d")) { "监控范围无效" }
+        request("/api/v1/admin/metrics?range=$range", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** 媒体服务：概览 / 任务列表 / 单任务链路。 */
+    suspend fun adminMediaService(view: String, taskKey: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        require(view in setOf("overview", "tasks", "trace")) { "媒体视图无效" }
+        val suffix = if (view == "trace" && !taskKey.isNullOrBlank()) "&task_key=${encode(taskKey)}" else ""
+        request("/api/v1/admin/media-service?view=$view$suffix", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun verifyAdminMedia(storagePath: String): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("action", "verify").put("storage_path", storagePath)
+        request("/api/v1/admin/media-service", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** 存储占用与孤立资源扫描（只读）。 */
+    suspend fun adminStorage(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/storage?view=overview", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun scanAdminStorage(): JSONObject = withContext(Dispatchers.IO) {
+        request("/api/v1/admin/storage", method = "POST", body = JSONObject().put("action", "scan").toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** 系统告警：当前未恢复 / 全部历史。 */
+    suspend fun adminAlerts(status: String = "open"): JSONObject = withContext(Dispatchers.IO) {
+        require(status in setOf("open", "all")) { "告警范围无效" }
+        request("/api/v1/admin/alerts?status=$status", authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun adminAlertAction(id: String, action: String, note: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        require(action in setOf("acknowledge", "resolve")) { "告警操作无效" }
+        val payload = JSONObject().put("id", id).put("action", action)
+        if (!note.isNullOrBlank()) payload.put("note", note)
+        request("/api/v1/admin/alerts", method = "PATCH", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** 人工复审：通过 / 驳回 / 退回修改 / 重新分析。 */
+    suspend fun adminAiTaskReview(batchId: String, itemId: String, decision: String, reason: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(batchId)) { "审核批次编号无效" }
+        require(decision in setOf("published", "hidden", "revision", "reanalyze")) { "审核结论无效" }
+        val payload = JSONObject().put("action", if (decision == "reanalyze") "reanalyze" else "review").put("itemId", itemId)
+        if (decision != "reanalyze") payload.put("decision", decision).put("reason", reason.orEmpty().trim())
+        request("/api/v1/admin/ai-tasks/${encode(batchId)}", method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
     suspend fun createAdminAiTask(taskType: String, includeExisting: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
         require(taskType in setOf("summary_all", "summary_incremental", "review_pending")) { "AI 任务类型无效" }
         val payload = JSONObject().put("taskType", taskType).put("includeExisting", includeExisting)

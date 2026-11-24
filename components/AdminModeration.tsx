@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ArrowLeft, BadgeCheck, Check, ChevronRight, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, Palette, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X, type LucideIcon } from "lucide-react";
+import { BadgeCheck, Check, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, Palette, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
@@ -16,6 +16,13 @@ import AdminAITasks from "./AdminAITasks";
 import AdminDecorReview from "./AdminDecorReview";
 import AdminSystemMonitor from "./AdminSystemMonitor";
 import AdminMediaService from "./AdminMediaService";
+import AdminStorage from "./AdminStorage";
+import AdminAlerts from "./AdminAlerts";
+import AdminDashboard from "./admin/AdminDashboard";
+import AdminReviewCenter from "./admin/AdminReviewCenter";
+import AdminHub from "./admin/AdminHub";
+import { AdminBatchTasks, AdminClassifyRecords } from "./admin/AdminBatchPages";
+import { AdminShell } from "./admin/AdminUIKit";
 
 type Report = {
   id: string;
@@ -34,72 +41,13 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "monitor" | "media-service";
-type AdminModule = { id: Exclude<AdminSection, "overview">; title: string; description: string; icon: LucideIcon };
+type AdminSection = "overview" | "review" | "monitor" | "manage" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-batch" | "ai-classify" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "media-service" | "storage" | "alerts" | "system-monitor";
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
 type AppDownloadSettings = { enabled: boolean; download_url: string | null; updated_at?: string };
 
 const filters = [["open", "待处理"], ["resolved", "已处理"], ["dismissed", "已驳回"], ["all", "全部"]] as const;
 const localDateTime = (value: Date) => { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); };
-const adminModuleGroups: { title: string; modules: AdminModule[] }[] = [
-  { title: "AI 审核中心", modules: [
-    { id: "ai-review", title: "AI 审核中心", description: "AI 初审、人工复审、审核异常与审核历史", icon: ShieldCheck },
-    { id: "content", title: "人工复审 · 作品", description: "社区作品待审与已发布内容修改复审", icon: FileCheck },
-    { id: "decor-review", title: "人工复审 · 装扮", description: "创意工坊投稿的通过、驳回与下架", icon: Palette },
-  ] },
-  { title: "系统监控中心", modules: [
-    { id: "monitor", title: "服务器与告警", description: "CPU、内存、磁盘、API 指标与系统告警", icon: ScrollText },
-    { id: "media-service", title: "媒体服务中心", description: "上传任务追踪、成功率口径与存储资源", icon: Download },
-  ] },
-  { title: "社区治理中心", modules: [
-    { id: "reports", title: "内容举报", description: "查看并处理作品与评论举报", icon: Flag },
-    { id: "messages", title: "私信举报", description: "处理用户提交的私信举报", icon: MessageCircle },
-    { id: "appeals", title: "申诉处理", description: "复核内容、账号与举报申诉", icon: ShieldAlert },
-    { id: "comments", title: "评论管理", description: "搜索、隐藏或恢复评论", icon: MessageSquare },
-    { id: "keywords", title: "风控关键词规则", description: "管理发布与互动拦截规则", icon: Tags },
-  ] },
-  { title: "用户与内容运营", modules: [
-    { id: "users", title: "账号管理", description: "角色、会员与社区发言限制", icon: Users },
-    { id: "membership", title: "会员与激励", description: "卡密、权益期限与爱发电人工核验", icon: CreditCard },
-    { id: "community-access", title: "认证与入驻邀请", description: "认证标识、手动认证与邀请码批次", icon: BadgeCheck },
-    { id: "topic-events", title: "话题共创", description: "创建和管理社区共创活动", icon: Sparkles },
-    { id: "official-notices", title: "系统通知管理", description: "编辑并发布公告，由用户在通知中心查看", icon: Megaphone },
-    { id: "ai-space", title: "AI 专区管理", description: "审核资源、管理精选与分类标签", icon: Sparkles },
-    { id: "ai-resource-center", title: "AI 资源与任务", description: "批量审核、作品摘要与任务队列", icon: ShieldCheck },
-    { id: "exploration-ad", title: "运营配置 · 广告位", description: "设置探索页顶部广告及目标作品", icon: Megaphone },
-  ] },
-  { title: "系统管理", modules: [
-    { id: "ai-usage", title: "模型用量中心", description: "调用次数、Token、费用与响应时间", icon: ScrollText },
-    { id: "ai-settings", title: "AI 服务管理", description: "配置创作工作台服务密钥", icon: ShieldCheck },
-    { id: "audit", title: "系统审计 · 操作记录", description: "查看管理员处理历史", icon: ScrollText },
-    { id: "app-download", title: "版本与发布管理", description: "App 下载入口与版本信息", icon: Download },
-  ] },
-];
-const adminSectionTitles: Record<Exclude<AdminSection, "overview">, string> = {
-  reports: "内容举报",
-  messages: "私信举报",
-  content: "作品审核",
-  "decor-review": "装扮审核",
-  comments: "评论管理",
-  keywords: "关键词规则",
-  audit: "操作记录",
-  users: "账号管理",
-  "topic-events": "话题共创",
-  "ai-settings": "AI 工作台",
-  "ai-space": "AI 专区管理",
-  "ai-resource-center": "AI 资源中心",
-  "ai-review": "AI 审核中心",
-  "ai-usage": "模型用量中心",
-  appeals: "申诉处理",
-  membership: "会员与赞助",
-  "community-access": "认证与入驻邀请",
-  "official-notices": "系统通知管理",
-  "exploration-ad": "探索中心广告位",
-  "app-download": "App 下载入口",
-  monitor: "系统监控中心",
-  "media-service": "媒体服务中心",
-};
 
 function CollapsibleMarkdown({ source, label }: { source: string; label: string }) {
   const [open, setOpen] = useState(false);
@@ -124,7 +72,6 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const [pendingReportTotal, setPendingReportTotal] = useState(0);
   const [submissionTotal, setSubmissionTotal] = useState(0);
   const [userTotal, setUserTotal] = useState(0);
-  const [overview, setOverview] = useState<{ usersToday: number; postsToday: number; pending: number; pendingReports: number; aiResources: number; views: number; likes: number; saves: number; comments: number } | null>(null);
   const [messageReports, setMessageReports] = useState<DmReport[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [userQuery, setUserQuery] = useState("");
@@ -160,6 +107,9 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const [explorationAdSearchBusy, setExplorationAdSearchBusy] = useState(false);
   const [appDownload, setAppDownload] = useState<AppDownloadSettings | null>(null);
   const [appDownloadBusy, setAppDownloadBusy] = useState(false);
+  const [versionInfo, setVersionInfo] = useState<{ version: string; code: number; size: number; updated: string; notes: string[] } | null>(null);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [sectionKey, setSectionKey] = useState(0);
 
   const loadTopicEvents = useCallback(async () => {
     setTopicEventBusy(true); setError("");
@@ -172,6 +122,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   }, [eventTopic]);
 
   useEffect(() => { if (section === "topic-events") void loadTopicEvents(); }, [section, loadTopicEvents]);
+
   const loadAiSettings = useCallback(async () => {
     setAiSettingsBusy(true); setError("");
     try { const result = await cloudRequest("/api/v1/admin/ai-settings") as { configured: boolean; masked: string }; setAiConfigured(result.configured); setAiMasked(result.masked); }
@@ -179,6 +130,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setAiSettingsBusy(false); }
   }, []);
   useEffect(() => { if (section === "ai-settings") void loadAiSettings(); }, [section, loadAiSettings]);
+
   const loadExplorationAd = useCallback(async () => {
     setExplorationAdBusy(true); setError("");
     try {
@@ -189,6 +141,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setExplorationAdBusy(false); }
   }, []);
   useEffect(() => { if (section === "exploration-ad") void loadExplorationAd(); }, [section, loadExplorationAd]);
+
   const loadAppDownload = useCallback(async () => {
     setAppDownloadBusy(true); setError("");
     try {
@@ -197,7 +150,8 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     } catch (e) { setError(e instanceof Error ? e.message : "App 下载配置读取失败"); }
     finally { setAppDownloadBusy(false); }
   }, []);
-  useEffect(() => { if (section === "app-download") void loadAppDownload(); }, [section, loadAppDownload]);
+  useEffect(() => { if (section === "app-download") { void loadAppDownload(); void cloudRequest("/api/v1/app-version").then((result) => setVersionInfo((result as { data?: typeof versionInfo }).data || null)).catch(() => {}); } }, [section, loadAppDownload]);
+
   const searchExplorationAdPosts = async () => {
     if (explorationAdQuery.trim().length < 2) { setError("请输入至少 2 个字搜索作品"); return; }
     setExplorationAdSearchBusy(true); setError("");
@@ -207,6 +161,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     } catch (e) { setError(userMessage(e, "作品搜索失败，请重试")); }
     finally { setExplorationAdSearchBusy(false); }
   };
+
   const saveAiSettings = async (event: FormEvent) => {
     event.preventDefault();
     if (!aiKey.trim()) { setError("请输入 DeepSeek API 密钥"); return; }
@@ -216,7 +171,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     finally { setAiSettingsBusy(false); }
   };
   const removeAiSettings = async () => {
-    if (!await confirmInApp("确定删除云端 DeepSeek 密钥吗？删除后 AI 工作台将暂停服务。", {title:"删除 AI 密钥",confirmLabel:"删除密钥",danger:true})) return;
+    if (!await confirmInApp("确定删除云端 DeepSeek 密钥吗？删除后 AI 工作台将暂停服务。", { title: "删除 AI 密钥", confirmLabel: "删除密钥", danger: true })) return;
     setAiSettingsBusy(true); setError(""); setNotice("");
     try { await cloudRequest("/api/v1/admin/ai-settings", { action: "delete" }); setAiConfigured(false); setAiMasked(""); setNotice("云端 AI 密钥已删除。"); }
     catch (e) { setError(e instanceof Error ? e.message : "AI 密钥删除失败"); }
@@ -257,15 +212,13 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   };
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
-      const [reportData, contentData, accountSummary, dmReportData, overviewData] = await Promise.all([
+      const [reportData, contentData, accountSummary, dmReportData] = await Promise.all([
         cloudRequest(`/api/v1/admin/reports?status=${status}&limit=20`) as Promise<Queue>,
         cloudRequest("/api/v1/admin/posts?limit=20") as Promise<Submissions>,
         role === "admin" ? cloudRequest("/api/v1/admin/users?limit=1") as Promise<{ total: number }> : Promise.resolve({ total: 0 }),
         cloudRequest("/api/v1/admin/message-reports") as Promise<DmReport[]>,
-        cloudRequest("/api/v1/admin/overview") as Promise<NonNullable<typeof overview>>,
       ]);
       setReports(reportData.items || []);
       if (status === "open") setPendingReportTotal(reportData.total || 0);
@@ -273,7 +226,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       setSubmissionTotal(contentData.total || 0);
       setUserTotal(accountSummary.total || 0);
       setMessageReports(dmReportData || []);
-      setOverview(overviewData || null);
+      cloudRequest("/api/v1/admin/ai-tasks").then((result) => setReviewCount(((result as { reviewItems?: unknown[] }).reviewItems || []).length)).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "审核队列加载失败");
     } finally {
@@ -295,7 +248,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   const changeUserRole = async (account: AdminUser, role: AdminUser["role"]) => {
     const roleLabels: Record<AdminUser["role"], string> = { member: "普通用户", admin: "超级管理员", content_manager: "内容管理员", reviewer: "审核员" };
     if (role === account.role) return;
-    if (!await confirmInApp(`确定将「${account.nickname || "探索者"}」设置为${roleLabels[role]}吗？`, {title:"变更账号权限",confirmLabel:"确认变更"})) return;
+    if (!await confirmInApp(`确定将「${account.nickname || "探索者"}」设置为${roleLabels[role]}吗？`, { title: "变更账号权限", confirmLabel: "确认变更" })) return;
     setSaving(account.id); setError(""); setNotice("");
     try {
       await cloudRequest(`/api/v1/admin/users/${account.id}`, { role }, "PATCH");
@@ -372,7 +325,6 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   };
 
   const processSubmission = async (post: Submission, next: "published" | "hidden", preset?: string) => {
-    // 预设理由让审核可以一键完成：常见情形不必每次手打说明。
     const note = (preset ?? notes[post.id] ?? "").trim();
     if (note.length < 3) { setError("请填写至少 3 个字的审核说明，或选择一个常用理由"); return; }
     setSaving(post.id); setError("");
@@ -386,204 +338,203 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
   };
 
   const pendingMessageReports = messageReports.filter((item) => item.status === "open").length;
-  const navigateAdminSection = (next: AdminSection) => {
-    setSection(next);
+  const navigateAdminSection = (next: string) => {
+    setSection(next as AdminSection);
     setError("");
     setNotice("");
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   const refreshCurrent = () => {
+    setSectionKey((value) => value + 1);
+    setGovernanceRefreshKey((value) => value + 1);
     if (section === "users") void loadUsers();
     else if (section === "topic-events") void loadTopicEvents();
     else if (section === "ai-settings") void loadAiSettings();
     else if (section === "exploration-ad") void loadExplorationAd();
-    else if (section === "app-download") void loadAppDownload();
-    else if (section === "appeals") setGovernanceRefreshKey((value) => value + 1);
-    else if (section === "ai-space") setGovernanceRefreshKey((value) => value + 1);
-    else if (section === "comments" || section === "keywords" || section === "audit") setGovernanceRefreshKey((value) => value + 1);
+    else if (section === "app-download") { void loadAppDownload(); void cloudRequest("/api/v1/app-version").then((result) => setVersionInfo((result as { data?: typeof versionInfo }).data || null)).catch(() => {}); }
     else void load();
   };
 
-  return <section className="page moderation-page">
-    <button className="back settings-back" onClick={onBack}><ArrowLeft size={18} /> 设置</button>
-    <h1>{section === "overview" ? "HEIKA Control Center" : adminSectionTitles[section]}<span className="red-dot">.</span></h1>
-    <p className="lead">{section === "overview" ? "黑卡运营与服务控制中心：运营总览、AI 审核、系统监控、媒体服务、社区治理、用户运营与系统管理。" : `Control Center / ${adminSectionTitles[section]}`}</p>
-    {section === "overview" ? <>
-      <div className="admin-overview admin-overview-expanded" aria-label="后台概览">
-        <div><strong>{overview?.usersToday ?? "—"}</strong><span>今日新增用户</span></div>
-        <div><strong>{role === "admin" ? userTotal : "—"}</strong><span>账号总数</span></div>
-        <div><strong>{overview?.postsToday ?? "—"}</strong><span>今日发布作品</span></div>
-        <div><strong>{overview?.pending ?? submissionTotal}</strong><span>待审核内容</span></div>
-        <div><strong>{overview?.pendingReports ?? pendingReportTotal + pendingMessageReports}</strong><span>待处理举报</span></div>
-        <div><strong>{overview?.aiResources ?? "—"}</strong><span>已发布 AI 资源</span></div>
-        <div><strong>{overview?.views?.toLocaleString("zh-CN") ?? "—"}</strong><span>累计阅读量</span></div>
-        <div><strong>{overview?.likes?.toLocaleString("zh-CN") ?? "—"}</strong><span>累计点赞</span></div>
-        <div><strong>{overview?.saves?.toLocaleString("zh-CN") ?? "—"}</strong><span>累计收藏</span></div>
-        <div><strong>{overview?.comments?.toLocaleString("zh-CN") ?? "—"}</strong><span>可见评论</span></div>
-      </div>
-      <div className="admin-module-groups">
-        <div className="admin-module-heading"><div><strong>管理模块</strong></div><button type="button" className="soft-button" onClick={refreshCurrent} disabled={loading}><RefreshCw size={14}/>刷新</button></div>
-        {adminModuleGroups.map((group) => {
-          const modules = group.modules.filter((module) => {
-            if (role === "admin") return true;
-            if (["users", "membership", "community-access", "official-notices", "ai-settings", "ai-resource-center", "topic-events", "exploration-ad", "app-download", "monitor", "media-service"].includes(module.id)) return false;
-            if (module.id === "keywords" && role !== "content_manager") return false;
-            return true;
-          });
-          if (!modules.length) return null;
-          return <section className="admin-module-group" key={group.title} aria-label={group.title}>
-          <h2>{group.title}</h2>
-          <div className="admin-module-grid">{modules.map((module) => {
-            const Icon = module.icon;
-            const count = module.id === "content" ? submissionTotal : module.id === "reports" ? pendingReportTotal : module.id === "messages" ? pendingMessageReports : null;
-            return <button type="button" className="admin-module-card" key={module.id} onClick={() => navigateAdminSection(module.id)}>
-              <span className="admin-module-icon"><Icon size={19}/></span>
-              <span className="admin-module-copy"><strong>{module.title}</strong><small>{module.description}</small>{count !== null && <em>{count ? `${count} 项待处理` : "暂无待处理"}</em>}</span>
-              <ChevronRight size={17}/>
-            </button>;
-          })}</div>
-        </section>; })}
-      </div>
-    </> : <div className="admin-workspace-nav">
-      <button type="button" onClick={() => navigateAdminSection("overview")}><ArrowLeft size={16}/> 管理台</button>
-      <span>{adminSectionTitles[section]}</span>
-      <button type="button" className="admin-workspace-refresh" aria-label={`刷新${adminSectionTitles[section]}`} onClick={refreshCurrent} disabled={loading || usersLoading || topicEventBusy || aiSettingsBusy || explorationAdBusy || explorationAdSearchBusy || appDownloadBusy}><RefreshCw size={15}/> 刷新</button>
-    </div>}
-    {section === "reports" && <div className="moderation-filters" role="group" aria-label="举报状态">
-      {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
-    </div>}
-    {error && <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p>}
-    {notice && <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p>}
-    {section === "overview" ? null : section === "monitor" ? <AdminSystemMonitor key={`monitor-${governanceRefreshKey}`} /> : section === "media-service" ? <AdminMediaService key={`media-service-${governanceRefreshKey}`} /> : section === "membership" ? <AdminMembership /> : section === "community-access" ? <AdminCommunityAccess mode="certification" /> : section === "official-notices" ? <AdminCommunityAccess mode="notices" /> : section === "ai-space" ? <AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /> : section === "ai-review" ? <AdminAITasks key={`ai-review-${governanceRefreshKey}`} mode="review" /> : section === "ai-usage" ? <AdminAITasks key={`ai-usage-${governanceRefreshKey}`} mode="usage" /> : section === "ai-resource-center" ? <AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /> : section === "decor-review" ? <AdminDecorReview /> : section === "appeals" ? <AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /> : section === "keywords" ? <AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /> : section === "comments" ? <AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /> : section === "audit" ? <AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /> : section === "ai-settings" ? <>
-      <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
-        <div className="admin-topic-event-form-heading"><div><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
-        {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}
-        <p>密钥使用 AES-256-GCM 加密后保存在 Vercel 私有云存储。只有服务端可读取明文，页面不会回显密钥。</p>
-        <label>API 密钥<input type="password" autoComplete="new-password" value={aiKey} onChange={(event) => setAiKey(event.target.value)} placeholder={aiConfigured ? "已配置，输入新密钥可替换" : "粘贴 DeepSeek API 密钥"} /></label>
-        <button className="primary-button full" disabled={aiSettingsBusy || !aiKey.trim()}>{aiSettingsBusy ? "正在加密保存…" : aiConfigured ? "更换并保存密钥" : "加密保存密钥"}</button>
-        {aiConfigured && <button type="button" className="soft-button" disabled={aiSettingsBusy} onClick={() => void removeAiSettings()}>删除云端密钥</button>}
-        <small>推荐仅在可信设备上操作。更换后所有用户的 AI 创作工作台会立即使用新密钥。</small>
-      </form>
-    </> : section === "exploration-ad" ? <form className="admin-topic-event-form admin-ai-settings" onSubmit={async (event) => {
-      event.preventDefault();
-      if (!explorationAd) return;
-      if (explorationAd.enabled && (!explorationAd.title.trim() || !explorationAdPostRef.trim() || (explorationAd.kind === "image" && !explorationAd.image_url?.startsWith("https://")))) {
-        setError("启用广告位需要标题、有效作品编号；图片形式还需要 HTTPS 图片地址。"); return;
-      }
-      setExplorationAdBusy(true); setError(""); setNotice("");
-      try {
-        const saved = await cloudRequest("/api/v1/admin/exploration-ad", {
-          enabled: explorationAd.enabled, kind: explorationAd.kind, title: explorationAd.title.trim(), body: explorationAd.body.trim(),
-          image_url: explorationAd.kind === "image" ? explorationAd.image_url?.trim() || null : null, post_ref: explorationAdPostRef.trim(),
-        }, "PATCH") as ExplorationAdSettings;
-        setExplorationAd(saved); setExplorationAdPostRef(saved.post_client_id ? String(saved.post_client_id) : saved.post_id || "");
-        setNotice(saved.enabled ? "探索中心广告位已保存并启用。" : "探索中心广告位已保存并关闭。");
-      } catch (e) { setError(userMessage(e, "广告位保存失败，请检查目标作品编号与管理员权限。")); }
-      finally { setExplorationAdBusy(false); }
-    }}>
-      <div className="admin-topic-event-form-heading"><div><h2>探索中心广告位</h2></div><span className={`admin-ai-status${explorationAd?.enabled ? " configured" : ""}`}>{explorationAdBusy ? "同步中" : explorationAd?.enabled ? "展示中" : "已关闭"}</span></div>
-      {!explorationAd && explorationAdBusy ? <p>正在读取服务端配置…</p> : explorationAd ? <>
-        <p>广告显示在网页端探索页顶部，可展示文字或图片，并跳转至一篇已发布作品。关闭后用户端不显示。</p>
-        <label className="admin-exploration-ad-switch"><input type="checkbox" checked={explorationAd.enabled} onChange={(event) => setExplorationAd({ ...explorationAd, enabled: event.target.checked })}/>启用广告位</label>
-        <label>展示形式<ChoiceSelect label="广告展示形式" value={explorationAd.kind} onChange={(value) => setExplorationAd({ ...explorationAd, kind: value as "text" | "image" })} options={[{ value: "text", label: "文字" }, { value: "image", label: "图片 + 文字" }]}/></label>
-        <label>标题<input maxLength={80} value={explorationAd.title} onChange={(event) => setExplorationAd({ ...explorationAd, title: event.target.value })} /></label>
-        <label>说明<textarea maxLength={300} value={explorationAd.body} onChange={(event) => setExplorationAd({ ...explorationAd, body: event.target.value })} /></label>
-        {explorationAd.kind === "image" && <label>图片 HTTPS 地址<input type="url" maxLength={2048} value={explorationAd.image_url || ""} onChange={(event) => setExplorationAd({ ...explorationAd, image_url: event.target.value })} placeholder="https://…" /></label>}
-        <label>目标作品 client_id 或 UUID<input maxLength={80} value={explorationAdPostRef} onChange={(event) => setExplorationAdPostRef(event.target.value)} placeholder="可以手动填写编号" /></label>
-        <div className="admin-user-search"><input aria-label="按标题搜索公开作品" maxLength={60} value={explorationAdQuery} onChange={(event) => setExplorationAdQuery(event.target.value)} placeholder="按作品标题查找公开作品"/><button type="button" className="soft-button" disabled={explorationAdSearchBusy || explorationAdQuery.trim().length < 2} onClick={() => void searchExplorationAdPosts()}>{explorationAdSearchBusy ? "搜索中…" : "搜索作品"}</button></div>
-        {explorationAdCandidates.length > 0 && <div className="admin-user-list">{explorationAdCandidates.map((post) => <button type="button" className="admin-user-row" key={post.id} onClick={() => setExplorationAdPostRef(String(post.client_id))}><span className="admin-user-copy"><strong>{post.title}</strong><small>{post.author} · client_id {post.client_id}</small></span><span className="admin-ai-status">选择</span></button>)}</div>}
-        <small>服务端会校验管理员权限及目标作品公开状态，不会生成假统计或本地跳转。</small>
-        <button className="primary-button full" disabled={explorationAdBusy || !explorationAd || (explorationAd.enabled && (!explorationAd.title.trim() || !explorationAdPostRef.trim() || (explorationAd.kind === "image" && !explorationAd.image_url?.startsWith("https://"))))}>{explorationAdBusy ? "正在保存…" : "保存配置"}</button>
-      </> : <p>无法读取广告位配置，请刷新重试。</p>}
-    </form> : section === "app-download" ? <form className="admin-topic-event-form admin-ai-settings" onSubmit={async (event) => {
-      event.preventDefault();
-      if (!appDownload) return;
-      const downloadUrl = appDownload.download_url?.trim() || "";
-      if (appDownload.enabled && !/^https:\/\//i.test(downloadUrl)) { setError("启用下载入口需要填写 HTTPS 下载地址。"); return; }
-      setAppDownloadBusy(true); setError(""); setNotice("");
-      try {
-        const saved = await cloudRequest("/api/v1/admin/app-download", { enabled: appDownload.enabled, download_url: downloadUrl || null }, "PATCH") as AppDownloadSettings;
-        setAppDownload(saved);
-        setNotice(saved.enabled ? "App 下载入口已保存并启用。" : "App 下载入口已保存并关闭。");
-      } catch (e) { setError(userMessage(e, "App 下载入口保存失败，请检查链接和管理员权限。")); }
-      finally { setAppDownloadBusy(false); }
-    }}>
-      <div className="admin-topic-event-form-heading"><div><h2>网页端 App 下载入口</h2></div><span className={`admin-ai-status${appDownload?.enabled ? " configured" : ""}`}>{appDownloadBusy ? "同步中" : appDownload?.enabled ? "展示中" : "已关闭"}</span></div>
-      {!appDownload && appDownloadBusy ? <p>正在读取服务端配置…</p> : appDownload ? <>
-        <p>启用后，网页首页、探索页及个人页顶栏会显示“下载 App”。Android 原生应用内会自动隐藏此入口。</p>
-        <label className="admin-exploration-ad-switch"><input type="checkbox" checked={appDownload.enabled} onChange={(event) => setAppDownload({ ...appDownload, enabled: event.target.checked })}/>启用网页端下载入口</label>
-        <label>App 下载链接（HTTPS）<input type="url" inputMode="url" autoComplete="url" maxLength={2048} value={appDownload.download_url || ""} onChange={(event) => setAppDownload({ ...appDownload, download_url: event.target.value })} placeholder="https://…" /></label>
-        <small>支持官网、应用商店或 APK 托管地址。只有管理员可以修改；未启用或未配置时，网页端不显示入口。</small>
-        <button className="primary-button full" disabled={appDownloadBusy || !appDownload || (appDownload.enabled && !/^https:\/\//i.test(appDownload.download_url?.trim() || ""))}>{appDownloadBusy ? "正在保存…" : "保存下载设置"}</button>
-      </> : <p>无法读取 App 下载配置，请刷新重试。</p>}
-    </form> : section === "topic-events" ? <>
-      <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
-        <div className="admin-topic-event-form-heading"><div><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
-        <label>关联话题<ChoiceSelect label="关联话题" value={eventTopic} onChange={setEventTopic} placeholder="选择一个话题" options={[{value:"",label:"选择一个话题"},...topicTags.map((topic) => ({value:String(topic.id),label:`#${topic.name}`}))]}/></label>
-        <label>活动标题<input required minLength={4} maxLength={80} value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="例如：本月共创 · 给生活留一点空白" /></label>
-        <label>活动说明<textarea required minLength={8} maxLength={500} value={eventDescription} onChange={(event) => setEventDescription(event.target.value)} placeholder="说明创作方向与参与方式" /></label>
-        <div className="admin-topic-event-dates"><label>开始时间<input required type="datetime-local" value={eventStarts} onChange={(event) => setEventStarts(event.target.value)} /></label><label>结束时间<input required type="datetime-local" value={eventEnds} onChange={(event) => setEventEnds(event.target.value)} /></label></div>
-        <button className="primary-button full" disabled={topicEventBusy}>{topicEventBusy ? "正在保存…" : editingEvent ? "保存活动" : "创建活动"}</button>
-      </form>
-      <div className="admin-topic-event-list"><div className="creator-subheading"><h2>活动管理</h2><span>{topicEvents.length} 项</span></div>
-        {topicEventBusy && !topicEvents.length ? <p className="moderation-empty">正在加载共创活动…</p> : topicEvents.length ? topicEvents.map((event) => { const topic = Array.isArray(event.interest_tags) ? event.interest_tags[0]?.name : event.interest_tags?.name || topicTags.find((item) => item.id === event.topic_id)?.name; return <article className="admin-topic-event-row" key={event.id}>
-          <div><span>#{topic || "话题"} · {event.is_active ? "已上线" : "已下线"}</span><strong>{event.title}</strong><p>{event.description}</p><small>{new Date(event.starts_at).toLocaleString("zh-CN")} — {new Date(event.ends_at).toLocaleString("zh-CN")}</small></div>
-          <div className="admin-topic-event-actions"><button type="button" className="soft-button" onClick={() => editTopicEvent(event)}>编辑</button><button type="button" className="soft-button" disabled={saving === event.id} onClick={() => void toggleTopicEvent(event)}>{saving === event.id ? "保存中" : event.is_active ? "下线" : "上线"}</button></div>
-        </article>; }) : <p className="moderation-empty">还没有共创活动，填写上方表单来创建。</p>}
-      </div>
-    </> : section === "users" ? <>
-      <form className="admin-user-search" onSubmit={(event) => { event.preventDefault(); setAppliedUserQuery(userQuery.trim()); }}>
-        <input aria-label="搜索账号昵称" placeholder="按昵称搜索账号" value={userQuery} onChange={(event) => setUserQuery(event.target.value)} />
-        <button className="soft-button" type="submit">搜索</button>
-      </form>
-      {usersLoading ? <p className="moderation-empty">正在加载账号…</p> : users.length ? <div className="admin-user-list">{users.map((account) => {
-        const restriction = account.community_restriction;
-        const restrictionActive = Boolean(restriction?.active && (!restriction.restricted_until || Date.parse(restriction.restricted_until) > Date.now()));
-        return <article className="admin-user-row" key={account.id}>
-          <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
-          <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{(["admin", "content_manager", "reviewer"].includes(account.role) && <span className="admin-role-badge">{account.role === "admin" ? "超级管理员" : account.role === "content_manager" ? "内容管理员" : "审核员"}</span>)}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><small className="admin-user-email">{account.email || "未取得邮箱"}</small><time>{new Date(account.created_at).toLocaleDateString("zh-CN")} 加入{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
-          <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{value:"free",label:"普通"},{value:"plus",label:"Plus"},{value:"pro",label:"Pro"}]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])}/></div>
-          <div className="admin-user-role-select"><span>权限角色</span><ChoiceSelect label={`${account.nickname || "探索者"}的管理角色`} value={account.role} disabled={saving === account.id} options={[{value:"member",label:"普通用户"},{value:"reviewer",label:"审核员"},{value:"content_manager",label:"内容管理员"},{value:"admin",label:"超级管理员"}]} onChange={(role) => void changeUserRole(account, role as AdminUser["role"])}/></div>
-          <div className="admin-user-actions">
-            {!(["admin", "content_manager", "reviewer"].includes(account.role)) && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
-            {account.role !== "admin" && <button className="admin-user-delete" disabled={saving === account.id} onClick={() => void deleteAccount(account)} aria-label={`删除${account.nickname || "该"}账号`}>删除</button>}
-          </div>
-          {restrictionTarget === account.id && !(["admin", "content_manager", "reviewer"].includes(account.role)) && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<ChoiceSelect label="限制时长" value={restrictionDuration} onChange={(value) => setRestrictionDuration(value as typeof restrictionDuration)} options={[{value:"1h",label:"1 小时"},{value:"24h",label:"24 小时"},{value:"7d",label:"7 天"},{value:"30d",label:"30 天"},{value:"permanent",label:"永久"}]}/></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
-        </article>;
-      })}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}
-      {userTotal > users.length && !appliedUserQuery && <p className="admin-user-limit">当前显示最近 {users.length} 个账号，共 {userTotal} 个。</p>}
-    </> : loading ? <p className="moderation-empty">正在加载管理数据…</p> : section === "messages" ? (
-      messageReports.length ? <div className="moderation-list">{messageReports.map((report) => <article className="moderation-item" key={report.id}>
-        <div className="moderation-item-heading"><strong>私信举报 · {report.status === "open" ? "待处理" : report.status === "resolved" ? "已处理" : "已驳回"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
-        <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
-        <p className="moderation-author">被举报账号：{report.user_id ? report.user_id.slice(0, 8) : "未指定"} · 举报账号：{report.reporter_id.slice(0, 8)}</p>
-        {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
-        {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录核查结论，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
-      </article>)}</div> : <p className="moderation-empty">当前没有私信举报。</p>
-    ) : section === "reports" ? (
-      reports.length ? <div className="moderation-list">{reports.map((report) => <article className="moderation-item" key={report.id}>
-        <div className="moderation-item-heading"><strong>{report.target.type === "post" ? "内容举报" : "评论举报"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
-        <div className="moderation-target"><b>{report.target.title}</b><CollapsibleMarkdown source={report.target.body} label="展开查看正文"/><CollapsibleImages images={report.target.images} label="查看图片"/><CollapsibleVideos videos={report.target.videos || []} label="查看视频"/></div>
-        <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
-        {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
-        {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录处理依据，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
-      </article>)}</div> : <p className="moderation-empty">当前没有符合条件的举报。</p>
-    ) : submissions.length ? <div className="moderation-list">{submissions.map((post) => <article className="moderation-item" key={post.id}>
-      <div className="moderation-item-heading"><strong><ShieldCheck size={16} /> 待人工审核</strong><time>{new Date(post.created_at).toLocaleString("zh-CN")}</time></div>
-      <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文"/>{post.kind === "revision" && post.originalBody != null && <details className="moderation-diff"><summary>对比新旧正文（线上版本 vs 待审版本）</summary><div className="moderation-diff-grid"><div><strong>线上版本</strong><pre>{post.originalBody || "（空）"}</pre></div><div><strong>待审版本</strong><pre>{post.body || "（空）"}</pre></div></div></details>}
-      <CollapsibleImages images={post.images} label="查看图片"/><CollapsibleVideos videos={post.videos || []} label="查看视频"/>
-      <div className="moderation-presets" aria-label="快捷审核">
-        <div className="moderation-preset-row">
-          <span>一键通过</span>
-          {["内容合规，可公开展示", "质量合格，符合收录标准", "优质内容，予以推荐"].map((reason) => <button type="button" key={reason} disabled={saving === post.id} onClick={() => void processSubmission(post, "published", reason)}>{reason.split("，")[0]}</button>)}
+  const counts = {
+    review: reviewCount + submissionTotal,
+    content: submissionTotal,
+    reports: pendingReportTotal + pendingMessageReports,
+    alerts: 0,
+  };
+
+  return (
+    <AdminShell
+      section={section}
+      role={role}
+      counts={counts}
+      onNavigate={navigateAdminSection}
+      onBack={onBack}
+      onRefresh={refreshCurrent}
+      refreshing={loading || usersLoading || topicEventBusy || aiSettingsBusy || explorationAdBusy || appDownloadBusy}
+    >
+      {section === "overview" ? <AdminDashboard role={role} onNavigate={navigateAdminSection} refreshKey={sectionKey} /> : null}
+      {section === "review" || section === "monitor" || section === "manage" ? <AdminHub tab={section} counts={counts} onNavigate={navigateAdminSection} /> : null}
+      {section === "ai-review" ? <AdminReviewCenter refreshKey={sectionKey} onNavigate={navigateAdminSection} /> : null}
+      {section === "ai-batch" ? <AdminBatchTasks refreshKey={sectionKey} /> : null}
+      {section === "ai-classify" ? <AdminClassifyRecords refreshKey={sectionKey} /> : null}
+      {section === "system-monitor" ? <AdminSystemMonitor onNavigate={navigateAdminSection} /> : null}
+      {section === "media-service" ? <AdminMediaService refreshKey={sectionKey} /> : null}
+      {section === "storage" ? <AdminStorage /> : null}
+      {section === "alerts" ? <AdminAlerts refreshKey={sectionKey} /> : null}
+
+      {["reports", "messages", "content", "users", "topic-events", "ai-settings", "exploration-ad", "app-download"].includes(section) ? (
+        <div className="ab-legacy" style={{ marginTop: 16 }}>
+          {error ? <p className="moderation-feedback error animated-notice" role="alert">{userMessage(error, "管理操作失败，请稍后重试")}</p> : null}
+          {notice ? <p className="moderation-feedback animated-notice" role="status">{userMessage(notice)}</p> : null}
+          {section === "reports" ? <>
+            <div className="moderation-filters" role="group" aria-label="举报状态">
+              {filters.map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}
+            </div>
+            {reports.length ? <div className="moderation-list">{reports.map((report) => <article className="moderation-item" key={report.id}>
+              <div className="moderation-item-heading"><strong>{report.target.type === "post" ? "内容举报" : "评论举报"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
+              <div className="moderation-target"><b>{report.target.title}</b><CollapsibleMarkdown source={report.target.body} label="展开查看正文" /><CollapsibleImages images={report.target.images} label="查看图片" /><CollapsibleVideos videos={report.target.videos || []} label="查看视频" /></div>
+              <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
+              {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
+              {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录处理依据，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
+            </article>)}</div> : <p className="moderation-empty">当前没有符合条件的举报。</p>}
+          </> : null}
+          {section === "messages" ? (messageReports.length ? <div className="moderation-list">{messageReports.map((report) => <article className="moderation-item" key={report.id}>
+            <div className="moderation-item-heading"><strong>私信举报 · {report.status === "open" ? "待处理" : report.status === "resolved" ? "已处理" : "已驳回"}</strong><time>{new Date(report.created_at).toLocaleString("zh-CN")}</time></div>
+            <p className="moderation-reason"><strong>举报原因</strong> {report.reason}</p>
+            <p className="moderation-author">被举报账号：{report.user_id ? report.user_id.slice(0, 8) : "未指定"} · 举报账号：{report.reporter_id.slice(0, 8)}</p>
+            {report.review_note && <p className="moderation-history"><strong>处理记录</strong> {report.review_note}{report.reviewed_at ? ` · ${new Date(report.reviewed_at).toLocaleString("zh-CN")}` : ""}</p>}
+            {report.status === "open" && <><label className="moderation-note">处理说明<textarea value={notes[report.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} placeholder="记录核查结论，至少 3 个字" /></label><div className="moderation-actions"><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "resolved")}><Check size={15} /> 标记已处理</button><button disabled={saving === report.id} onClick={() => void processMessageReport(report, "dismissed")}><X size={15} /> 驳回举报</button></div></>}
+          </article>)}</div> : <p className="moderation-empty">当前没有私信举报。</p>) : null}
+          {section === "content" ? (submissions.length ? <div className="moderation-list">{submissions.map((post) => <article className="moderation-item" key={post.id}>
+            <div className="moderation-item-heading"><strong><ShieldCheck size={16} /> 待人工审核</strong><time>{new Date(post.created_at).toLocaleString("zh-CN")}</time></div>
+            <h2>{post.kind === "revision" ? "作品修改待审核" : "新内容待审核"}</h2><p className="moderation-author">作者：{post.author}{post.originalTitle ? ` · 当前公开标题：${post.originalTitle}` : ""}</p><strong className="moderation-submission-title">{post.title}</strong><CollapsibleMarkdown source={post.body} label="展开查看 Markdown 正文" />{post.kind === "revision" && post.originalBody != null && <details className="moderation-diff"><summary>对比新旧正文（线上版本 vs 待审版本）</summary><div className="moderation-diff-grid"><div><strong>线上版本</strong><pre>{post.originalBody || "（空）"}</pre></div><div><strong>待审版本</strong><pre>{post.body || "（空）"}</pre></div></div></details>}
+            <CollapsibleImages images={post.images} label="查看图片" /><CollapsibleVideos videos={post.videos || []} label="查看视频" />
+            <div className="moderation-presets" aria-label="快捷审核">
+              <div className="moderation-preset-row"><span>一键通过</span>{["内容合规，可公开展示", "质量合格，符合收录标准", "优质内容，予以推荐"].map((reason) => <button type="button" key={reason} disabled={saving === post.id} onClick={() => void processSubmission(post, "published", reason)}>{reason.split("，")[0]}</button>)}</div>
+              <div className="moderation-preset-row is-reject"><span>一键驳回</span>{["不符合社区规范", "内容不完整，需要补充", "重复投稿，已有同类内容", "与所选分类不符"].map((reason) => <button type="button" key={reason} disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden", reason)}>{reason.split("，")[0]}</button>)}</div>
+            </div>
+            <label className="moderation-note">审核说明<textarea value={notes[post.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [post.id]: event.target.value }))} placeholder="也可以自己写审核依据，至少 3 个字" /></label>
+            <div className="moderation-actions"><button disabled={saving === post.id} onClick={() => void processSubmission(post, "published")}><Check size={15} /> {post.kind === "revision" ? "通过并替换公开版" : "审核通过并公开"}</button><button disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden")}><X size={15} /> {post.kind === "revision" ? "驳回修改，保留原版" : "驳回并保持隐藏"}</button></div>
+          </article>)}</div> : <p className="moderation-empty">目前没有待审核的新内容。</p>) : null}
+          {section === "users" ? <>
+            <form className="admin-user-search" onSubmit={(event) => { event.preventDefault(); setAppliedUserQuery(userQuery.trim()); }}>
+              <input aria-label="搜索账号昵称" placeholder="按昵称搜索账号" value={userQuery} onChange={(event) => setUserQuery(event.target.value)} />
+              <button className="soft-button" type="submit">搜索</button>
+            </form>
+            {usersLoading ? <p className="moderation-empty">正在加载账号…</p> : users.length ? <div className="admin-user-list">{users.map((account) => {
+              const restriction = account.community_restriction;
+              const restrictionActive = Boolean(restriction?.active && (!restriction.restricted_until || Date.parse(restriction.restricted_until) > Date.now()));
+              return <article className="admin-user-row" key={account.id}>
+                <div className="admin-user-avatar" aria-hidden="true">{(account.nickname || "探").slice(0, 1)}</div>
+                <div className="admin-user-copy"><strong>{account.nickname || "探索者"}{(["admin", "content_manager", "reviewer"].includes(account.role) && <span className="admin-role-badge">{account.role === "admin" ? "超级管理员" : account.role === "content_manager" ? "内容管理员" : "审核员"}</span>)}{restriction && <span className={`admin-restriction-badge${restrictionActive ? " active" : ""}`}>{restrictionActive ? "发言受限" : "曾受限"}</span>}</strong><small className="admin-user-email">{account.email || "未取得邮箱"}</small><time>{new Date(account.created_at).toLocaleDateString("zh-CN")} 加入{restrictionActive && ` · ${restriction?.restricted_until ? `限至 ${new Date(restriction.restricted_until).toLocaleDateString("zh-CN")}` : "永久限制"}`}</time></div>
+                <div className="admin-user-membership"><span>会员</span><ChoiceSelect label={`${account.nickname || "探索者"}的会员等级`} value={account.membership_tier || "free"} disabled={saving === account.id} options={[{ value: "free", label: "普通" }, { value: "plus", label: "Plus" }, { value: "pro", label: "Pro" }]} onChange={(tier) => void changeMembershipTier(account, tier as AdminUser["membership_tier"])} /></div>
+                <div className="admin-user-role-select"><span>权限角色</span><ChoiceSelect label={`${account.nickname || "探索者"}的管理角色`} value={account.role} disabled={saving === account.id} options={[{ value: "member", label: "普通用户" }, { value: "reviewer", label: "审核员" }, { value: "content_manager", label: "内容管理员" }, { value: "admin", label: "超级管理员" }]} onChange={(role) => void changeUserRole(account, role as AdminUser["role"])} /></div>
+                <div className="admin-user-actions">
+                  {!(["admin", "content_manager", "reviewer"].includes(account.role)) && <button className={`admin-role-action${restrictionActive ? " is-restricted" : ""}`} disabled={saving === account.id} onClick={() => { setRestrictionTarget(restrictionTarget === account.id ? null : account.id); setRestrictionReason(restriction?.reason || ""); setRestrictionDuration("24h"); }}>{restrictionActive ? "管理限制" : "限制发言"}</button>}
+                  {account.role !== "admin" && <button className="admin-user-delete" disabled={saving === account.id} onClick={() => void deleteAccount(account)} aria-label={`删除${account.nickname || "该"}账号`}>删除</button>}
+                </div>
+                {restrictionTarget === account.id && !(["admin", "content_manager", "reviewer"].includes(account.role)) && <div className="admin-restriction-form"><strong>{account.nickname || "探索者"} · 发布与互动限制</strong><label>限制原因<input maxLength={500} value={restrictionReason} onChange={(event) => setRestrictionReason(event.target.value)} placeholder="说明限制原因，至少 3 个字" /></label><label>限制时长<ChoiceSelect label="限制时长" value={restrictionDuration} onChange={(value) => setRestrictionDuration(value as typeof restrictionDuration)} options={[{ value: "1h", label: "1 小时" }, { value: "24h", label: "24 小时" }, { value: "7d", label: "7 天" }, { value: "30d", label: "30 天" }, { value: "permanent", label: "永久" }]} /></label><div><button className="primary-button" disabled={saving === account.id || restrictionReason.trim().length < 3} onClick={() => void changeCommunityRestriction(account, true)}>{saving === account.id ? "保存中…" : "保存限制"}</button>{restriction && <button className="soft-button" disabled={saving === account.id} onClick={() => void changeCommunityRestriction(account, false)}>解除限制</button>}</div></div>}
+              </article>;
+            })}</div> : <p className="moderation-empty">没有找到匹配的账号。</p>}
+            {userTotal > users.length && !appliedUserQuery && <p className="admin-user-limit">当前显示最近 {users.length} 个账号，共 {userTotal} 个。</p>}
+          </> : null}
+          {section === "topic-events" ? <>
+            <form className="admin-topic-event-form" onSubmit={(event) => void saveTopicEvent(event)}>
+              <div className="admin-topic-event-form-heading"><div><h2>{editingEvent ? "编辑共创活动" : "新增共创活动"}</h2></div>{editingEvent && <button type="button" className="soft-button" onClick={resetTopicEventForm}>取消编辑</button>}</div>
+              <label>关联话题<ChoiceSelect label="关联话题" value={eventTopic} onChange={setEventTopic} placeholder="选择一个话题" options={[{ value: "", label: "选择一个话题" }, ...topicTags.map((topic) => ({ value: String(topic.id), label: `#${topic.name}` }))]} /></label>
+              <label>活动标题<input required minLength={4} maxLength={80} value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="例如：本月共创 · 给生活留一点空白" /></label>
+              <label>活动说明<textarea required minLength={8} maxLength={500} value={eventDescription} onChange={(event) => setEventDescription(event.target.value)} placeholder="说明创作方向与参与方式" /></label>
+              <div className="admin-topic-event-dates"><label>开始时间<input required type="datetime-local" value={eventStarts} onChange={(event) => setEventStarts(event.target.value)} /></label><label>结束时间<input required type="datetime-local" value={eventEnds} onChange={(event) => setEventEnds(event.target.value)} /></label></div>
+              <button className="primary-button full" disabled={topicEventBusy}>{topicEventBusy ? "正在保存…" : editingEvent ? "保存活动" : "创建活动"}</button>
+            </form>
+            <div className="admin-topic-event-list"><div className="creator-subheading"><h2>活动管理</h2><span>{topicEvents.length} 项</span></div>
+              {topicEventBusy && !topicEvents.length ? <p className="moderation-empty">正在加载共创活动…</p> : topicEvents.length ? topicEvents.map((event) => { const topic = Array.isArray(event.interest_tags) ? event.interest_tags[0]?.name : event.interest_tags?.name || topicTags.find((item) => item.id === event.topic_id)?.name; return <article className="admin-topic-event-row" key={event.id}>
+                <div><span>#{topic || "话题"} · {event.is_active ? "已上线" : "已下线"}</span><strong>{event.title}</strong><p>{event.description}</p><small>{new Date(event.starts_at).toLocaleString("zh-CN")} — {new Date(event.ends_at).toLocaleString("zh-CN")}</small></div>
+                <div className="admin-topic-event-actions"><button type="button" className="soft-button" onClick={() => editTopicEvent(event)}>编辑</button><button type="button" className="soft-button" disabled={saving === event.id} onClick={() => void toggleTopicEvent(event)}>{saving === event.id ? "保存中" : event.is_active ? "下线" : "上线"}</button></div>
+              </article>; }) : <p className="moderation-empty">还没有共创活动，填写上方表单来创建。</p>}
+            </div>
+          </> : null}
+          {section === "ai-settings" ? <form className="admin-topic-event-form admin-ai-settings" onSubmit={(event) => void saveAiSettings(event)}>
+            <div className="admin-topic-event-form-heading"><div><h2>DeepSeek 密钥</h2></div><span className={`admin-ai-status${aiConfigured ? " configured" : ""}`}>{aiSettingsBusy ? "读取中" : aiConfigured ? "已配置" : "未配置"}</span></div>
+            {aiConfigured && <p className="admin-ai-masked">当前密钥：{aiMasked}</p>}
+            <p>密钥使用 AES-256-GCM 加密后保存，仅服务端可读取明文，页面不会回显密钥。</p>
+            <label>API 密钥<input type="password" autoComplete="new-password" value={aiKey} onChange={(event) => setAiKey(event.target.value)} placeholder={aiConfigured ? "已配置，输入新密钥可替换" : "粘贴 DeepSeek API 密钥"} /></label>
+            <button className="primary-button full" disabled={aiSettingsBusy || !aiKey.trim()}>{aiSettingsBusy ? "正在加密保存…" : aiConfigured ? "更换并保存密钥" : "加密保存密钥"}</button>
+            {aiConfigured && <button type="button" className="soft-button" disabled={aiSettingsBusy} onClick={() => void removeAiSettings()}>删除云端密钥</button>}
+          </form> : null}
+          {section === "exploration-ad" ? <form className="admin-topic-event-form admin-ai-settings" onSubmit={async (event) => {
+            event.preventDefault();
+            if (!explorationAd) return;
+            if (explorationAd.enabled && (!explorationAd.title.trim() || !explorationAdPostRef.trim() || (explorationAd.kind === "image" && !explorationAd.image_url?.startsWith("https://")))) {
+              setError("启用广告位需要标题、有效作品编号；图片形式还需要 HTTPS 图片地址。"); return;
+            }
+            setExplorationAdBusy(true); setError(""); setNotice("");
+            try {
+              const saved = await cloudRequest("/api/v1/admin/exploration-ad", {
+                enabled: explorationAd.enabled, kind: explorationAd.kind, title: explorationAd.title.trim(), body: explorationAd.body.trim(),
+                image_url: explorationAd.kind === "image" ? explorationAd.image_url?.trim() || null : null, post_ref: explorationAdPostRef.trim(),
+              }, "PATCH") as ExplorationAdSettings;
+              setExplorationAd(saved); setExplorationAdPostRef(saved.post_client_id ? String(saved.post_client_id) : saved.post_id || "");
+              setNotice(saved.enabled ? "探索中心广告位已保存并启用。" : "探索中心广告位已保存并关闭。");
+            } catch (e) { setError(userMessage(e, "广告位保存失败，请检查目标作品编号与管理员权限。")); }
+            finally { setExplorationAdBusy(false); }
+          }}>
+            <div className="admin-topic-event-form-heading"><div><h2>探索页广告位</h2></div><span className={`admin-ai-status${explorationAd?.enabled ? " configured" : ""}`}>{explorationAdBusy ? "同步中" : explorationAd?.enabled ? "展示中" : "已关闭"}</span></div>
+            {!explorationAd && explorationAdBusy ? <p>正在读取服务端配置…</p> : explorationAd ? <>
+              <label className="admin-exploration-ad-switch"><input type="checkbox" checked={explorationAd.enabled} onChange={(event) => setExplorationAd({ ...explorationAd, enabled: event.target.checked })} />启用广告位</label>
+              <label>展示形式<ChoiceSelect label="广告展示形式" value={explorationAd.kind} onChange={(value) => setExplorationAd({ ...explorationAd, kind: value as "text" | "image" })} options={[{ value: "text", label: "文字" }, { value: "image", label: "图片 + 文字" }]} /></label>
+              <label>标题<input maxLength={80} value={explorationAd.title} onChange={(event) => setExplorationAd({ ...explorationAd, title: event.target.value })} /></label>
+              <label>说明<textarea maxLength={300} value={explorationAd.body} onChange={(event) => setExplorationAd({ ...explorationAd, body: event.target.value })} /></label>
+              {explorationAd.kind === "image" && <label>图片 HTTPS 地址<input type="url" maxLength={2048} value={explorationAd.image_url || ""} onChange={(event) => setExplorationAd({ ...explorationAd, image_url: event.target.value })} placeholder="https://…" /></label>}
+              <label>目标作品 client_id 或 UUID<input maxLength={80} value={explorationAdPostRef} onChange={(event) => setExplorationAdPostRef(event.target.value)} placeholder="可以手动填写编号" /></label>
+              <div className="admin-user-search"><input aria-label="按标题搜索公开作品" maxLength={60} value={explorationAdQuery} onChange={(event) => setExplorationAdQuery(event.target.value)} placeholder="按作品标题查找公开作品" /><button type="button" className="soft-button" disabled={explorationAdSearchBusy || explorationAdQuery.trim().length < 2} onClick={() => void searchExplorationAdPosts()}>{explorationAdSearchBusy ? "搜索中…" : "搜索作品"}</button></div>
+              {explorationAdCandidates.length > 0 && <div className="admin-user-list">{explorationAdCandidates.map((post) => <button type="button" className="admin-user-row" key={post.id} onClick={() => setExplorationAdPostRef(String(post.client_id))}><span className="admin-user-copy"><strong>{post.title}</strong><small>{post.author} · client_id {post.client_id}</small></span><span className="admin-ai-status">选择</span></button>)}</div>}
+              <button className="primary-button full" disabled={explorationAdBusy || !explorationAd || (explorationAd.enabled && (!explorationAd.title.trim() || !explorationAdPostRef.trim() || (explorationAd.kind === "image" && !explorationAd.image_url?.startsWith("https://"))))}>{explorationAdBusy ? "正在保存…" : "保存配置"}</button>
+            </> : <p>无法读取广告位配置，请刷新重试。</p>}
+          </form> : null}
+          {section === "app-download" ? <>
+            {versionInfo ? <div className="ab-group" style={{ marginBottom: 12 }}>
+              <div className="ab-row"><span className="ab-row__body"><span className="ab-row__title">Android 正式版</span><span className="ab-row__meta">versionCode {versionInfo.code} · {new Date(versionInfo.updated).toLocaleDateString("zh-CN")} · {Math.round(versionInfo.size / 1024 / 1024)} MB</span></span><span className="ab-chip ok">v{versionInfo.version}</span></div>
+              <div className="ab-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                <span className="ab-row__title" style={{ marginBottom: 4 }}>更新日志</span>
+                {versionInfo.notes.slice(0, 5).map((note, index) => <span key={index} className="ab-row__meta" style={{ whiteSpace: "normal", lineHeight: 1.6 }}>· {note}</span>)}
+              </div>
+            </div> : null}
+            <form className="admin-topic-event-form admin-ai-settings" onSubmit={async (event) => {
+              event.preventDefault();
+              if (!appDownload) return;
+              const downloadUrl = appDownload.download_url?.trim() || "";
+              if (appDownload.enabled && !/^https:\/\//i.test(downloadUrl)) { setError("启用下载入口需要填写 HTTPS 下载地址。"); return; }
+              setAppDownloadBusy(true); setError(""); setNotice("");
+              try {
+                const saved = await cloudRequest("/api/v1/admin/app-download", { enabled: appDownload.enabled, download_url: downloadUrl || null }, "PATCH") as AppDownloadSettings;
+                setAppDownload(saved);
+                setNotice(saved.enabled ? "App 下载入口已保存并启用。" : "App 下载入口已保存并关闭。");
+              } catch (e) { setError(userMessage(e, "App 下载入口保存失败，请检查链接和管理员权限。")); }
+              finally { setAppDownloadBusy(false); }
+            }}>
+              <div className="admin-topic-event-form-heading"><div><h2>网页下载入口</h2></div><span className={`admin-ai-status${appDownload?.enabled ? " configured" : ""}`}>{appDownloadBusy ? "同步中" : appDownload?.enabled ? "展示中" : "已关闭"}</span></div>
+              {!appDownload && appDownloadBusy ? <p>正在读取服务端配置…</p> : appDownload ? <>
+                <label className="admin-exploration-ad-switch"><input type="checkbox" checked={appDownload.enabled} onChange={(event) => setAppDownload({ ...appDownload, enabled: event.target.checked })} />启用网页端下载入口</label>
+                <label>App 下载链接（HTTPS）<input type="url" inputMode="url" autoComplete="url" maxLength={2048} value={appDownload.download_url || ""} onChange={(event) => setAppDownload({ ...appDownload, download_url: event.target.value })} placeholder="https://…" /></label>
+                <button className="primary-button full" disabled={appDownloadBusy || !appDownload || (appDownload.enabled && !/^https:\/\//i.test(appDownload.download_url?.trim() || ""))}>{appDownloadBusy ? "正在保存…" : "保存下载设置"}</button>
+              </> : <p>无法读取 App 下载配置，请刷新重试。</p>}
+            </form>
+          </> : null}
         </div>
-        <div className="moderation-preset-row is-reject">
-          <span>一键驳回</span>
-          {["不符合社区规范", "内容不完整，需要补充", "重复投稿，已有同类内容", "与所选分类不符"].map((reason) => <button type="button" key={reason} disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden", reason)}>{reason.split("，")[0]}</button>)}
-        </div>
-      </div>
-      <label className="moderation-note">审核说明<textarea value={notes[post.id] || ""} maxLength={500} onChange={(event) => setNotes((current) => ({ ...current, [post.id]: event.target.value }))} placeholder="也可以自己写审核依据，至少 3 个字" /></label>
-      <div className="moderation-actions"><button disabled={saving === post.id} onClick={() => void processSubmission(post, "published")}><Check size={15} /> {post.kind === "revision" ? "通过并替换公开版" : "审核通过并公开"}</button><button disabled={saving === post.id} onClick={() => void processSubmission(post, "hidden")}><X size={15} /> {post.kind === "revision" ? "驳回修改，保留原版" : "驳回并保持隐藏"}</button></div>
-    </article>)}</div> : <p className="moderation-empty">目前没有待审核的新内容。</p>}
-  </section>;
+      ) : null}
+
+      {section === "membership" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminMembership /></div> : null}
+      {section === "community-access" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminCommunityAccess mode="certification" /></div> : null}
+      {section === "official-notices" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminCommunityAccess mode="notices" /></div> : null}
+      {section === "ai-space" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminAIWorkspace key={`ai-space-${governanceRefreshKey}`} canManageCategories={role !== "reviewer"} /></div> : null}
+      {section === "ai-resource-center" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminAITasks key={`ai-resource-center-${governanceRefreshKey}`} /></div> : null}
+      {section === "ai-usage" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminAITasks key={`ai-usage-${governanceRefreshKey}`} mode="usage" /></div> : null}
+      {section === "decor-review" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminDecorReview /></div> : null}
+      {section === "appeals" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminAppeals key={`appeals-${governanceRefreshKey}`} canManageAccounts={role === "admin"} /></div> : null}
+      {section === "keywords" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminGovernance key={`keywords-${governanceRefreshKey}`} mode="keywords" /></div> : null}
+      {section === "comments" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminGovernance key={`comments-${governanceRefreshKey}`} mode="comments" /></div> : null}
+      {section === "audit" ? <div className="ab-legacy" style={{ marginTop: 16 }}><AdminGovernance key={`audit-${governanceRefreshKey}`} mode="audit" /></div> : null}
+    </AdminShell>
+  );
 }

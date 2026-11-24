@@ -59,6 +59,42 @@
 .publish-float-panel header strong { font-size: 13px; }
 .publish-float-panel header small { color: var(--muted); font-size: 11px; }
 .publish-float-cover { width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius-tag); border: 1px solid var(--line); }
+.publish-float-switch { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; width: 100%; }
+.publish-float-switch button {
+  flex: none;
+  max-width: 60%;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.publish-float-switch button.selected { border-color: var(--action); color: var(--ink); background: color-mix(in srgb, var(--action) 16%, var(--card)); }
+.publish-float-bar { height: 5px; border-radius: var(--radius-pill); background: var(--line); overflow: hidden; }
+.publish-float-bar span { display: block; height: 100%; border-radius: inherit; background: var(--action); transition: width var(--motion-base) var(--ease); }
+.publish-float-media { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 132px; overflow-y: auto; }
+.publish-float-media li { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.publish-float-media-index {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--muted);
+}
+.publish-float-media-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.publish-float-media-state { flex: none; font-size: 10px; }
+.publish-float-media-state.is-ready { color: var(--action); }
+.publish-float-media-state.is-failed { color: color-mix(in srgb, #d9534f 82%, var(--ink)); }
 .publish-float-panel dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px var(--space-3); margin: 0; }
 .publish-float-panel dl div { display: flex; flex-direction: column; gap: 1px; }
 .publish-float-panel dt { font-size: 10px; color: var(--muted); }

@@ -1,4 +1,4 @@
-const VERSION = '2.60.5';
+const VERSION = '2.61.0';
 const SHELL_CACHE = `heika-shell-${VERSION}`;
 const STATIC_CACHE = `heika-static-${VERSION}`;
 

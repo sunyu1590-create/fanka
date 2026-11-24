@@ -4,22 +4,25 @@
  * 全局发布悬浮窗口 + 发布任务管理中心。
  *
  * 挂载在应用根部（不属于任何单页），发布任务在页面切换期间保持稳定：
- * - 最小化：环形进度 + 状态 + 百分比 + 已就绪图片数；支持拖动，不遮挡底栏与操作按钮；
- * - 展开：任务详情面板（非模态，不模糊/压暗整页），可暂停/取消/单张重试；
- * - 结果：成功可跳转作品，等审核提示「已提交审核」，失败保留任务与重试入口；
+ * - 最小化：环形进度 + 状态 + 百分比 + 已就绪图片数；支持拖动，不遮挡底栏与安全区；
+ * - 展开：任务详情面板（非模态，不模糊/压暗整页），单张明细、阶段流水、返回创作、取消；
+ * - 多任务：展开面板顶部可直接切换正在进行的任务，不打断任何一个；
+ * - 结果：成功/待审提示 6 秒后自动收起（任务不删除），失败保留任务与重试入口；
  * - 任务中心：全部 / 正在发布 / 等待审核 / 发布失败 / 审核未通过 / 已完成 / 已取消。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   publishTaskManager,
+  PUBLISH_SETTLED,
   PUBLISH_STATUS_LABEL,
   type PublishTask,
   type PublishTaskStatus,
 } from "@/lib/publish-task-manager";
 import { uploadManager, UPLOAD_STATUS_LABEL, type UploadManagerSnapshot } from "@/lib/upload-manager";
 
-const TERMINAL: PublishTaskStatus[] = ["published", "failed", "rejected", "cancelled"];
+const TERMINAL: PublishTaskStatus[] = PUBLISH_SETTLED;
+const RESULT_VISIBLE_MS = 6000;
 
 const FILTERS: { key: string; label: string; match: (task: PublishTask) => boolean }[] = [
   { key: "all", label: "全部", match: () => true },
@@ -32,6 +35,7 @@ const FILTERS: { key: string; label: string; match: (task: PublishTask) => boole
 ];
 
 function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -61,12 +65,22 @@ function Ring({ percent, size = 44 }: { percent: number; size?: number }) {
   );
 }
 
+/** 任务整体进度：优先用真实字节，字节未知时退化为就绪张数；已完成/待审固定 100。 */
+export function taskPercent(task: PublishTask | null) {
+  if (!task) return 0;
+  if (["published", "waiting_for_human_review"].includes(task.status)) return 100;
+  if (task.media.totalBytes > 0) return Math.min(99, Math.round((task.media.sentBytes / task.media.totalBytes) * 100));
+  if (task.media.total > 0) return Math.min(99, Math.round((task.media.ready / task.media.total) * 100));
+  return ["submitting_content", "ai_classifying", "ai_reviewing", "publishing"].includes(task.status) ? 92 : 6;
+}
+
 export function PublishFloatingWindow({
   taskCenterOpen,
   onOpenTaskCenter,
   onCloseTaskCenter,
   onOpenPost,
   onRetryPublish,
+  onResumeCompose,
 }: {
   taskCenterOpen: boolean;
   onOpenTaskCenter: () => void;
@@ -74,6 +88,8 @@ export function PublishFloatingWindow({
   onOpenPost?: (task: PublishTask) => void;
   /** 失败任务重新提交：回到创作页继续（草稿在失败时仍保留）。 */
   onRetryPublish?: (task: PublishTask) => void;
+  /** 回到创作页并恢复当时现场（标题/正文/图片/封面/分类/话题/合集）。 */
+  onResumeCompose?: (task: PublishTask) => void;
 }) {
   const [tasks, setTasks] = useState<PublishTask[]>([]);
   const [active, setActive] = useState<PublishTask | null>(null);
@@ -88,6 +104,7 @@ export function PublishFloatingWindow({
     const off = publishTaskManager.subscribe((list, current) => {
       setTasks(list);
       setActive(current);
+      setHidden(publishTaskManager.hidden);
     });
     const offUploads = uploadManager.subscribe((snapshot) => setUploads(snapshot));
     try {
@@ -99,6 +116,18 @@ export function PublishFloatingWindow({
     } catch { /* 位置持久化失败用默认值 */ }
     return () => { off(); offUploads(); };
   }, []);
+
+  const recentlyFinished = tasks.find((task) => TERMINAL.includes(task.status) && Date.now() - task.updatedAt < 15_000);
+
+  // 成功/待审/失败提示短暂停留后自动收起；任务本身仍留在任务中心。
+  useEffect(() => {
+    if (!recentlyFinished) return;
+    const timer = window.setTimeout(() => {
+      setHidden(true);
+      publishTaskManager.hidden = true;
+    }, RESULT_VISIBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [recentlyFinished?.taskKey, recentlyFinished?.status, recentlyFinished?.updatedAt]);
 
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     dragRef.current = { startX: event.clientX, startY: event.clientY, moved: false };
@@ -128,20 +157,25 @@ export function PublishFloatingWindow({
     dragRef.current = null;
   }, []);
 
-  const recentlyFinished = tasks.find((task) => TERMINAL.includes(task.status) && Date.now() - task.updatedAt < 15_000);
+  const hide = useCallback(() => {
+    setHidden(true);
+    publishTaskManager.hidden = true;
+  }, []);
+
   const visible = Boolean(active || recentlyFinished) && !hidden && !taskCenterOpen;
-  const percent = active
-    ? active.media.totalBytes > 0
-      ? Math.min(99, Math.round((active.media.sentBytes / active.media.totalBytes) * 100))
-      : Math.min(99, Math.round((active.media.ready / Math.max(1, active.media.total)) * 100))
-    : 0;
+  const percent = taskPercent(active);
+  const runningTasks = tasks.filter((task) => !TERMINAL.includes(task.status));
+  const mediaRows = (active?.snapshot?.media || []).map((media) => ({
+    media,
+    upload: uploads?.items.find((item) => item.uploadId === media.id) || null,
+  }));
 
   return (
     <>
       {visible && active && (
         <div
           className={`publish-float${expanded ? " is-expanded" : ""}`}
-          style={{ right: position.right, bottom: position.bottom }}
+          style={{ right: position.right, bottom: `calc(${position.bottom}px + env(safe-area-inset-bottom, 0px))` }}
           role="status"
           aria-live="polite"
           onPointerDown={onPointerDown}
@@ -155,62 +189,99 @@ export function PublishFloatingWindow({
             aria-expanded={expanded}
             aria-label={`发布任务：${PUBLISH_STATUS_LABEL[active.status]}`}
           >
-            <Ring percent={active.status === "waiting_for_human_review" || active.status === "published" ? 100 : percent} />
+            <Ring percent={percent} />
             <span className="publish-float-copy">
               <strong>{PUBLISH_STATUS_LABEL[active.status]}</strong>
               <small>
-                {active.status === "published" || active.status === "waiting_for_human_review"
+                {active.status === "waiting_for_human_review"
                   ? active.title
                   : `${percent}% · 图片 ${active.media.ready}/${active.media.total}`}
               </small>
             </span>
           </button>
-          <button type="button" className="publish-float-hide" aria-label="隐藏浮窗（不取消任务）" onClick={() => setHidden(true)}>×</button>
+          <button type="button" className="publish-float-hide" aria-label="隐藏浮窗（不取消任务）" onClick={hide}>×</button>
           {expanded && (
             <div className="publish-float-panel" onPointerDown={(event) => event.stopPropagation()}>
+              {runningTasks.length > 1 && (
+                <div className="publish-float-switch" role="tablist" aria-label="切换发布任务">
+                  {runningTasks.slice(0, 4).map((task) => (
+                    <button
+                      key={task.taskKey}
+                      type="button"
+                      role="tab"
+                      aria-selected={task.taskKey === active.taskKey}
+                      className={task.taskKey === active.taskKey ? "selected" : ""}
+                      onClick={() => publishTaskManager.focus(task.taskKey)}
+                    >
+                      {task.title || "未命名"} · {taskPercent(task)}%
+                    </button>
+                  ))}
+                </div>
+              )}
               <header>
                 <strong>{active.title || "未命名作品"}</strong>
-                <small>{PUBLISH_STATUS_LABEL[active.status]}</small>
+                <small>{PUBLISH_STATUS_LABEL[active.status]} · {active.steps[active.steps.length - 1]?.label || "准备中"}</small>
               </header>
               {active.coverUrl && <img className="publish-float-cover" src={active.coverUrl} alt="封面缩略图" />}
+              <div className="publish-float-bar" aria-hidden="true"><span style={{ width: `${percent}%` }} /></div>
               <dl>
                 <div><dt>总体进度</dt><dd>{percent}%</dd></div>
-                <div><dt>图片</dt><dd>{active.media.ready} 成功 / {active.media.uploading} 上传中 / {active.media.failed} 失败</dd></div>
+                <div><dt>图片</dt><dd>{active.media.ready} 成功 · {active.media.uploading} 上传中 · {active.media.failed} 失败</dd></div>
                 <div><dt>上传速度</dt><dd>{formatSpeed(active.speedBps || uploads?.speedBps || 0)}</dd></div>
                 <div><dt>已传输</dt><dd>{formatBytes(active.media.sentBytes)} / {formatBytes(active.media.totalBytes)}</dd></div>
               </dl>
+              {mediaRows.length > 0 && (
+                <ul className="publish-float-media">
+                  {mediaRows.slice(0, 9).map(({ media, upload: item }, index) => (
+                    <li key={media.id}>
+                      <span className="publish-float-media-index">{index + 1}</span>
+                      <span className="publish-float-media-name">{media.name || `图片 ${index + 1}`}</span>
+                      <span className={`publish-float-media-state is-${item?.status || (media.path ? "ready" : "queued")}`}>
+                        {item ? UPLOAD_STATUS_LABEL[item.status] : media.path ? "已就绪" : "等待上传"}
+                        {item?.status === "uploading" ? ` ${item.progress}%` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {active.error && <p className="publish-float-error">{active.error}</p>}
               <ol className="publish-float-steps">
-                {active.steps.slice(-6).map((step) => <li key={`${step.at}-${step.label}`}><span>{step.label}</span></li>)}
+                {active.steps.slice(-5).map((step) => <li key={`${step.at}-${step.label}`}><span>{step.label}</span></li>)}
               </ol>
               <div className="publish-float-actions">
-                <button type="button" className="soft-button" onClick={onOpenTaskCenter}>任务详情</button>
-                {!TERMINAL.includes(active.status) && (
-                  <button type="button" className="soft-button" onClick={() => publishTaskManager.cancel(active.taskKey)}>取消发布</button>
+                {onResumeCompose && (
+                  <button type="button" className="soft-button" onClick={() => { setExpanded(false); onResumeCompose(active); }}>返回创作</button>
                 )}
+                <button type="button" className="soft-button" onClick={onOpenTaskCenter}>任务详情</button>
+                <button type="button" className="soft-button" onClick={() => publishTaskManager.cancel(active.taskKey)}>取消发布</button>
               </div>
             </div>
           )}
         </div>
       )}
       {visible && !active && recentlyFinished && (
-        <div className="publish-float is-result" style={{ right: position.right, bottom: position.bottom }} role="status">
+        <div
+          className={`publish-float is-result is-${recentlyFinished.status}`}
+          style={{ right: position.right, bottom: `calc(${position.bottom}px + env(safe-area-inset-bottom, 0px))` }}
+          role="status"
+          aria-live="polite"
+        >
           <span className="publish-float-result-icon" aria-hidden="true">{recentlyFinished.status === "published" ? "✓" : recentlyFinished.status === "waiting_for_human_review" ? "⌛" : "!"}</span>
           <span className="publish-float-copy">
             <strong>
               {recentlyFinished.status === "published" ? "发布成功"
                 : recentlyFinished.status === "waiting_for_human_review" ? "已提交审核"
-                : recentlyFinished.status === "rejected" ? "审核未通过" : "发布失败"}
+                : recentlyFinished.status === "rejected" ? "审核未通过" : recentlyFinished.status === "cancelled" ? "已取消发布" : "发布失败"}
             </strong>
-            <small>{recentlyFinished.title}{recentlyFinished.status === "waiting_for_human_review" ? " · 无需等待，审核结果将通知你" : ""}</small>
+            <small>{recentlyFinished.title}{recentlyFinished.status === "waiting_for_human_review" ? " · 无需等待，结果会通知你" : ""}</small>
           </span>
           {recentlyFinished.status === "published" && onOpenPost && (
             <button type="button" className="soft-button" onClick={() => onOpenPost(recentlyFinished)}>查看作品</button>
           )}
-          {(recentlyFinished.status === "failed") && (
-            <button type="button" className="soft-button" onClick={() => onRetryPublish?.(recentlyFinished)}>重新提交</button>
+          {recentlyFinished.status === "failed" && onResumeCompose && (
+            <button type="button" className="soft-button" onClick={() => onResumeCompose(recentlyFinished)}>返回创作</button>
           )}
-          <button type="button" className="publish-float-hide" aria-label="关闭提示" onClick={() => setHidden(true)}>×</button>
+          <button type="button" className="publish-float-hide" aria-label="关闭提示" onClick={hide}>×</button>
         </div>
       )}
       {taskCenterOpen && (
@@ -251,16 +322,21 @@ export function PublishFloatingWindow({
                   {!TERMINAL.includes(task.status) && (
                     <button type="button" className="soft-button" onClick={() => publishTaskManager.cancel(task.taskKey)}>取消发布</button>
                   )}
+                  {!TERMINAL.includes(task.status) && onResumeCompose && (
+                    <button type="button" className="soft-button" onClick={() => { onCloseTaskCenter(); onResumeCompose(task); }}>返回创作</button>
+                  )}
                   {task.status === "published" && onOpenPost && (
                     <button type="button" className="soft-button" onClick={() => onOpenPost(task)}>查看正式作品</button>
                   )}
-                  {task.status === "failed" && (
-                    <button type="button" className="soft-button" onClick={() => onRetryPublish?.(task)}>重新提交</button>
+                  {task.status === "failed" && onResumeCompose && (
+                    <button type="button" className="soft-button" onClick={() => { onCloseTaskCenter(); onResumeCompose(task); }}>返回创作</button>
                   )}
                   {task.status === "failed" && (
-                    <button type="button" className="soft-button" onClick={() => publishTaskManager.cancel(task.taskKey)}>放弃任务</button>
+                    <button type="button" className="soft-button" onClick={() => { onCloseTaskCenter(); onRetryPublish?.(task); }}>重新提交</button>
                   )}
-                  <button type="button" className="soft-button" onClick={() => publishTaskManager.clearFinished()}>清理</button>
+                  {TERMINAL.includes(task.status) && (
+                    <button type="button" className="soft-button" onClick={() => publishTaskManager.clearFinished()}>清理</button>
+                  )}
                 </div>
               </li>
             ))}

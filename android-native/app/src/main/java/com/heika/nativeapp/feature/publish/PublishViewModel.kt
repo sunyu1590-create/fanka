@@ -824,7 +824,7 @@ class PublishViewModel @Inject constructor(
         try {
             val current = mutableState.value
             saveJob?.cancel()
-            if (current.publishing || current.saving || current.images.any(PendingImage::progress)) return@launch
+            if (current.publishing || current.saving) return@launch
             if (current.pendingDeletePaths.isNotEmpty()) {
                 retryPendingDeletes()
                 if (mutableState.value.pendingDeletePaths.isNotEmpty()) {
@@ -851,21 +851,32 @@ class PublishViewModel @Inject constructor(
                 return@launch
             }
             mutableState.update { it.copy(publishing = true, error = null, notice = null) }
-            PublishTaskCoordinator.start(current.title.ifBlank { "未命名作品" })
+            val taskKey = PublishTaskCoordinator.start(current.title.ifBlank { "未命名作品" })
             // 基础校验全部通过后，才做这一次正式分类；内容没变就复用上次结果。
             if (!current.revisionMode) resolveRoute(mutableState.value)
             runCatching {
                 ensureSameAccount(current.accountId)
-                PublishTaskCoordinator.stage("正在上传图片", totalImages = current.images.size, readyImages = current.images.count { it.path != null })
-                current.images.filter { it.path == null }.forEach { image ->
-                    val activeUpload = uploads.active(image.key)
-                    if (activeUpload?.isActive == true) activeUpload.join()
-                    if (mutableState.value.images.firstOrNull { it.key == image.key }?.path == null) uploadPendingImage(image.key)
+                val waiting = mutableState.value.images.count { it.path == null }
+                PublishTaskCoordinator.stage(
+                    if (waiting > 0) "等待图片上传（$waiting 张）" else "图片已就绪",
+                    totalImages = current.images.size,
+                    readyImages = current.images.count { it.path != null },
+                    taskKey = taskKey,
+                )
+                val reporter = launch { reportPublishProgress(taskKey) }
+                try {
+                    current.images.filter { it.path == null }.forEach { image ->
+                        val activeUpload = uploads.active(image.key)
+                        if (activeUpload?.isActive == true) activeUpload.join()
+                        if (mutableState.value.images.firstOrNull { it.key == image.key }?.path == null) uploadPendingImage(image.key)
+                    }
+                } finally {
+                    reporter.cancel()
                 }
-                PublishTaskCoordinator.stage("正在校验媒体", readyImages = mutableState.value.images.count { it.path != null })
+                PublishTaskCoordinator.stage("正在校验媒体", readyImages = mutableState.value.images.count { it.path != null }, taskKey = taskKey)
                 val latest = mutableState.value
                 if (latest.images.any { it.path == null }) throw IOException("图片上传未完成，请检查网络后重试")
-                PublishTaskCoordinator.stage("正在提交内容")
+                PublishTaskCoordinator.stage("正在提交内容", percent = 92, taskKey = taskKey)
                 submitContent(latest)
             }
                 .onSuccess { result ->
@@ -873,16 +884,84 @@ class PublishViewModel @Inject constructor(
                     current.accountId?.let { repository.clearLocalPublishSnapshot(it, current.channel) }
                     needsServerSync = false
                     val serverStatus = result.optString("status").ifBlank { if (current.revisionMode) "published" else "pending_review" }
-                    PublishTaskCoordinator.succeed(underReview = serverStatus == "pending_review")
-                    mutableState.update { it.copy(publishing = false, serverStatus = serverStatus, notice = if (current.revisionMode) "修改已提交审核，原作品保持发布" else "内容已提交审核", publishedPost = result) }
+                    PublishTaskCoordinator.succeed(underReview = serverStatus == "pending_review", taskKey = taskKey)
+                    // 不再自动跳走：留在发布页展示结果，由用户决定查看作品或再写一篇。
+                    mutableState.update { it.copy(publishing = false, serverStatus = serverStatus, notice = null, publishedPost = result) }
                 }
                 .onFailure { error ->
-                    PublishTaskCoordinator.fail(error.message ?: "提交失败，请重试")
+                    PublishTaskCoordinator.fail(error.message ?: "提交失败，请重试", taskKey = taskKey)
                     mutableState.update { it.copy(publishing = false, error = error.message ?: "提交失败，请重试") }
                     persistLocalSnapshot()
                 }
         } finally {
             publishMutex.unlock()
+        }
+    }
+
+    /** 发布结果页：关闭提示或清空编辑区，回到可继续创作的状态。 */
+    fun consumePublishedOutcome(reset: Boolean) {
+        mutableState.update { state ->
+            if (reset) PublishState(
+                accountId = state.accountId,
+                categories = state.categories,
+                aiResourceTypes = state.aiResourceTypes,
+                seriesOptions = state.seriesOptions,
+                category = state.categories.firstOrNull()?.name.orEmpty(),
+                loading = false,
+            ) else state.copy(publishedPost = null)
+        }
+    }
+
+    /**
+     * 发布进度上报：真实字节（图片本地文件大小 × 已上传比例），
+     * 每 400ms 采样一次，同时算出瞬时速度。不制造假进度。
+     */
+    private suspend fun reportPublishProgress(taskKey: String) {
+        var lastBytes = 0L
+        var lastAt = System.currentTimeMillis()
+        var speed = 0L
+        while (true) {
+            val images = mutableState.value.images
+            var sent = 0L
+            var total = 0L
+            var ready = 0
+            var failed = 0
+            val rows = images.map { image ->
+                val size = withContext(Dispatchers.IO) { image.localFilePath?.let { File(it).length() } ?: 0L }
+                total += size
+                when {
+                    image.path != null -> { sent += size; ready += 1 }
+                    image.error != null -> failed += 1
+                    else -> sent += size * (image.progressPercent ?: 0) / 100
+                }
+                PublishTaskImageUi(
+                    key = image.key,
+                    name = image.name,
+                    percent = image.progressPercent ?: if (image.path != null) 100 else 0,
+                    state = when {
+                        image.path != null -> "已就绪"
+                        image.error != null -> "上传失败"
+                        image.progress -> "上传 ${image.progressPercent ?: 0}%"
+                        else -> "等待上传"
+                    },
+                    failed = image.error != null,
+                )
+            }
+            val now = System.currentTimeMillis()
+            val elapsed = (now - lastAt).coerceAtLeast(1)
+            if (sent >= lastBytes) speed = ((sent - lastBytes) * 1000 / elapsed + speed) / 2
+            lastBytes = sent
+            lastAt = now
+            PublishTaskCoordinator.progress(
+                sentBytes = sent,
+                totalBytes = total,
+                speedBps = speed,
+                readyImages = ready,
+                failedImages = failed,
+                images = rows,
+                taskKey = taskKey,
+            )
+            delay(400)
         }
     }
 

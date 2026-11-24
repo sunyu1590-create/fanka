@@ -138,3 +138,31 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
 .composer-upload-progress progress::-webkit-progress-bar{background:color-mix(in srgb,var(--line) 70%,transparent);border-radius:999px}
 .composer-upload-progress progress::-webkit-progress-value{background:var(--action,#2f6f5e);border-radius:999px;transition:width 160ms linear}
 .composer-upload-progress progress::-moz-progress-bar{background:var(--action,#2f6f5e);border-radius:999px}
+
+/* ---- 发布状态提示条：从浮窗返回创作 / 上次发布失败 ---- */
+.composer-status-banner{display:flex;align-items:flex-start;gap:10px;margin:0 0 14px;padding:11px 13px;border:1px solid color-mix(in srgb,var(--action) 32%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--action) 9%,var(--surface))}
+.composer-status-banner.is-error{border-color:color-mix(in srgb,#d9534f 38%,var(--line));background:color-mix(in srgb,#d9534f 9%,var(--surface))}
+.composer-status-icon{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:8px;background:color-mix(in srgb,var(--action) 16%,transparent);color:var(--action);font-size:12px;font-weight:700}
+.composer-status-banner.is-error .composer-status-icon{background:color-mix(in srgb,#d9534f 16%,transparent);color:#c6463f}
+.composer-status-banner>div{min-width:0}
+.composer-status-banner strong{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
+.composer-status-banner small{display:block;margin-top:2px;font-size:11.5px;line-height:1.5;color:var(--muted)}
+
+/* ---- 发布结果页：留在创作页，不强制跳转 ---- */
+.composer-outcome{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:24px 20px max(24px,env(safe-area-inset-bottom));background:var(--bg);animation:composer-outcome-in 220ms cubic-bezier(.22,.8,.22,1)}
+.composer-outcome-card{width:min(100%,420px);display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.composer-outcome-icon{display:grid;place-items:center;width:56px;height:56px;border-radius:20px;font-size:24px;font-weight:700;background:color-mix(in srgb,var(--action) 14%,transparent);color:var(--action);border:1px solid color-mix(in srgb,var(--action) 30%,transparent)}
+.composer-outcome-icon.is-pending_review{background:color-mix(in srgb,#c9a54b 16%,transparent);border-color:color-mix(in srgb,#c9a54b 34%,transparent);color:#a8812c}
+.composer-outcome-card h2{margin:2px 0 0;font-size:20px;font-weight:650;letter-spacing:-.01em;color:var(--ink)}
+.composer-outcome-card>p{margin:0;font-size:12.5px;line-height:1.65;color:var(--muted);max-width:34ch}
+.composer-outcome-summary{display:flex;align-items:center;gap:12px;width:100%;margin-top:6px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);text-align:left}
+.composer-outcome-summary img,.composer-outcome-cover-fallback{width:44px;height:44px;flex:none;border-radius:10px;object-fit:cover;border:1px solid var(--line)}
+.composer-outcome-cover-fallback{display:grid;place-items:center;background:color-mix(in srgb,var(--line) 40%,transparent);color:var(--muted)}
+.composer-outcome-summary>div{min-width:0}
+.composer-outcome-summary strong{display:block;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.composer-outcome-summary small{display:block;margin-top:2px;font-size:11px;color:var(--muted)}
+.composer-outcome-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;margin-top:8px}
+.composer-outcome-actions>button{min-width:96px;flex:1 1 0;min-height:42px;border-radius:10px;font-size:13px}
+.composer-outcome-hint{margin:2px 0 0;font-size:10.5px;color:var(--muted);opacity:.85}
+@keyframes composer-outcome-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.composer-outcome{animation:none}}

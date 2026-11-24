@@ -129,12 +129,7 @@ fun PublishScreen(
             if (uris.isNotEmpty()) HeikaNoticeBus.show("已选择 ${uris.size} 张图片", HeikaNoticeKind.SUCCESS)
         }
     }
-    LaunchedEffect(state.publishedPost) {
-        state.publishedPost?.let { data ->
-            val post = runCatching { HeikaPost.from(data) }.getOrNull()
-            if (post != null) onPublished(post)
-        }
-    }
+    // 发布成功后不再自动跳走：留在本页展示结果，由用户决定查看作品 / 再写一篇 / 完成。
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         BackHeader(if (state.revisionMode) "修改作品" else "发布内容", onBack = { viewModel.saveDraft(onBack) }, trailing = {
             if (state.revisionMode) {
@@ -624,6 +619,75 @@ fun PublishScreen(
                         Text(if (state.revisionMode) "提交修改" else "发布", fontWeight = FontWeight.SemiBold)
                     }
                 }
+            }
+        }
+    }
+    state.publishedPost?.let { data ->
+        val post = remember(data) { runCatching { HeikaPost.from(data) }.getOrNull() }
+        val underReview = data.optString("status") == "pending_review"
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { },
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 22.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = if (underReview) "⌛" else "✓",
+                    fontSize = 26.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+                Text(
+                    text = if (underReview) "已提交审核" else "发布成功",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    text = if (underReview) "内容已进入审核流程，通过后自动公开展示；这段时间可以直接离开。" else "作品已公开展示，可随时回到作品页继续编辑。",
+                    fontSize = 12.sp,
+                    lineHeight = 19.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (post != null) {
+                        Button(
+                            onClick = { viewModel.consumePublishedOutcome(reset = true); onPublished(post) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(11.dp),
+                        ) { Text("查看作品", fontSize = 12.sp) }
+                        OutlinedButton(
+                            onClick = { viewModel.consumePublishedOutcome(reset = true) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(11.dp),
+                        ) { Text("再写一篇", fontSize = 12.sp) }
+                    } else {
+                        Button(
+                            onClick = { viewModel.consumePublishedOutcome(reset = true) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(11.dp),
+                        ) { Text("再写一篇", fontSize = 12.sp) }
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.consumePublishedOutcome(reset = true); onBack() },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(11.dp),
+                    ) { Text("完成", fontSize = 12.sp) }
+                }
+                Text(
+                    "发布任务可在悬浮条与任务中心查看，离开本页不会中断。",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
