@@ -15,11 +15,14 @@ type Window = {
   lastErrors: { at: number; status: number; path: string }[];
 };
 
-const windows: Record<"m1" | "m5" | "m15", Window> = {
-  m1: newWindow(),
-  m5: newWindow(),
-  m15: newWindow(),
-};
+const windows: Record<"m1" | "m5" | "m15", Window> = (() => {
+  // 计数器挂在 globalThis 上：instrumentation 钩子与路由可能拿到不同模块实例，
+  // 必须共享同一份窗口，否则监控端看到的永远是 0。
+  const key = "__heika_request_metric_windows";
+  const holder = globalThis as unknown as Record<string, Record<"m1" | "m5" | "m15", Window> | undefined>;
+  if (!holder[key]) holder[key] = { m1: newWindow(), m5: newWindow(), m15: newWindow() };
+  return holder[key]!;
+})();
 
 function newWindow(): Window {
   return { startedAt: Date.now(), requests: 0, errors4xx: 0, errors5xx: 0, durationsMs: [], lastErrors: [] };

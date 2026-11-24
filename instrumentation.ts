@@ -6,7 +6,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   try {
     const httpModule = await import("node:http");
-    const { recordRequest } = await import("@/lib/server/request-metrics");
+    // 相对路径导入：standalone 运行时里 @/ 别名在 instrumentation 钩子中不可靠。
+    const { recordRequest } = await import("./lib/server/request-metrics");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serverPrototype = (httpModule as any).Server?.prototype;
@@ -33,7 +34,8 @@ export async function register() {
       }
       return originalEnd.apply(this, args);
     };
-  } catch {
-    /* instrumentation 失败不影响应用启动 */
+  } catch (error) {
+    // 指标挂载失败要可见：静默吞掉会让监控永远显示 0 请求。
+    console.warn("[instrumentation] 请求指标挂载失败：", error instanceof Error ? error.message : error);
   }
 }
