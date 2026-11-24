@@ -10,8 +10,8 @@ HEIKA 是内容探索社区，网页端与原生 Android App 共用账号和核�
 
 ## 当前版本
 
-- 网页端：`2.60.4`，版本号位于 `package.json`，更新内容位于 `lib/release-notes.ts`。
-- Android 原生端：`2.23.1`（`versionCode` 86），以 `android-native/app/build.gradle.kts` 为准。
+- 网页端：`2.60.5`，版本号位于 `package.json`，更新内容位于 `lib/release-notes.ts`。
+- Android 原生端：`2.23.2`（`versionCode` 87），以 `android-native/app/build.gradle.kts` 为准。
 - 当前网站域名配置：`https://moonclean.shop`。更改生产目标前，先检查 `Caddyfile`、Compose 文件和远程环境，不要从旧文档推断。
 
 ## 工程结构
