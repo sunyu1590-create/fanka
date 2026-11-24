@@ -52,7 +52,10 @@ fun HeikaGlassSurface(
     // 材质底色向中性灰偏一点，避免直接取 #1C1D21 造成「深灰实心卡片」。
     val glassBase = if (dark) lerp(Color(0xFF2B2D35), surface, .18f) else lerp(Color(0xFFFFFEFA), surface, .22f)
     val luminous = lerp(glassBase, Color.White, if (dark) .05f else .02f)
-    val alpha = (tintAlpha ?: ((if (hazeState != null) { if (dark) HeikaGlassTokens.darkDialogTintAlpha else HeikaGlassTokens.lightDialogTintAlpha } else { if (dark) .93f else .94f }) * emphasis))
+    // 去掉重复的背景层后，单层底色要自己承担可读性，比原来那层薄底再厚一点：
+    // 弹窗、菜单这类正文字号较小的面板，太透会让背后的内容干扰阅读。
+    val baseAlpha = if (dark) HeikaGlassTokens.darkDialogTintAlpha + .10f else HeikaGlassTokens.lightDialogTintAlpha + .10f
+    val alpha = (tintAlpha ?: ((if (hazeState != null) baseAlpha else { if (dark) .93f else .94f }) * emphasis))
         .coerceIn(if (hazeState != null) .50f else .88f, .98f)
     val clipped = modifier.clip(shape)
     Box(
