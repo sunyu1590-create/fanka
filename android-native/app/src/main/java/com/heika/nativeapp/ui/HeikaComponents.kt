@@ -197,6 +197,8 @@ fun GlassNavigationBar(
     //   ② 装饰皮肤默认 bgOpacity 就是 0.90–0.97，直接当 alpha 用，同样把玻璃压成板。
     // 现在只保留 haze 一层底色，并把 bgOpacity 按比例压到 .34–.86：
     // 背后文字被真模糊后只剩色晕，读不出内容，胶囊外也不画任何东西。
+    // tint 用白色而不是 surface：白色是玻璃的「反光」，用 surface 只会把玻璃再压暗，
+    // 在深色背景上看起来像一个凹下去的洞（这同样是「遮罩感」的来源之一）。
     val containerAlpha = (palette.bgOpacity * .82f).coerceIn(.34f, .86f)
     Row(
         modifier = modifier.fillMaxWidth()
@@ -214,7 +216,7 @@ fun GlassNavigationBar(
                     state = hazeState,
                     style = HazeStyle(
                         backgroundColor = surface.copy(alpha = containerAlpha),
-                        tint = HazeTint(surface.copy(alpha = if (dark) .10f else .05f)),
+                        tint = HazeTint(Color.White.copy(alpha = if (dark) .055f else .10f)),
                         blurRadius = 24.dp,
                         fallbackTint = HazeTint(surface.copy(alpha = .94f)),
                     ),
