@@ -85,10 +85,10 @@ function readMemInfo() {
     // Linux 可用内存应计入可回收缓存：MemAvailable 是内核给的口径。
     const available = info.MemAvailable ?? (info.MemFree || 0) + (info.Buffers || 0) + (info.Cached || 0);
     return {
-      total,
-      used: total ? total - available : null,
-      available,
-      percent: total ? Number((((total - available) / total) * 100).toFixed(1)) : null,
+      mem_total: total,
+      mem_used: total ? total - available : null,
+      mem_available: available,
+      mem_percent: total ? Number((((total - available) / total) * 100).toFixed(1)) : null,
       swap_total: info.SwapTotal || 0,
       swap_used: (info.SwapTotal || 0) - (info.SwapFree || 0),
     };
@@ -115,10 +115,10 @@ function readDisk() {
     const inodeTotal = stat.files;
     const inodeFree = stat.ffree;
     return {
-      total,
-      used,
-      free,
-      percent: total ? Number(((used / total) * 100).toFixed(1)) : null,
+      disk_total: total,
+      disk_used: used,
+      disk_free: free,
+      disk_percent: total ? Number(((used / total) * 100).toFixed(1)) : null,
       inode_percent: inodeTotal ? Number((((inodeTotal - inodeFree) / inodeTotal) * 100).toFixed(1)) : null,
     };
   } catch {
@@ -149,7 +149,7 @@ function readNetRates() {
     }
     prevNet = { rx, tx };
     prevNetAt = now;
-    return { rx_bytes: rx, tx_bytes: tx, rx_rate: rxRate, tx_rate: txRate };
+    return { net_rx_bytes: rx, net_tx_bytes: tx, net_rx_rate: rxRate, net_tx_rate: txRate };
   } catch {
     return {};
   }
