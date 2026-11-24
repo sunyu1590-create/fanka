@@ -145,10 +145,10 @@ export default function AdminSystemMonitor({ onNavigate }: { onNavigate?: (secti
             <div className="ab-card ab-c2 ab-m6" style={{ gap: 8 }}>
               <div className="ab-card__head"><span className="ab-card__title">API 性能</span><span className="ab-card__badge">5 分钟窗口</span></div>
               <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{live.avg_ms != null ? `${Math.round(live.avg_ms)} ms` : "—"}</b><div className="ab-label">平均响应</div></div>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{live.p95_ms != null ? `${Math.round(live.p95_ms)} ms` : "—"}</b><div className="ab-label">P95</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{live.avg_ms != null ? `${Math.round(live.avg_ms)} ms` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">平均响应</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{live.p95_ms != null ? `${Math.round(live.p95_ms)} ms` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">P95</div></div>
                 <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{fmtNum(live.requests)}</b><div className="ab-label">请求数</div></div>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums", color: (live.error_rate || 0) > 0.02 ? "var(--ab-coral)" : undefined }}>{live.error_rate != null ? `${(live.error_rate * 100).toFixed(1)}%` : "—"}</b><div className="ab-label">错误率</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums", color: (live.error_rate || 0) > 0.02 ? "var(--ab-coral)" : undefined }}>{live.error_rate != null ? `${(live.error_rate * 100).toFixed(1)}%` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">错误率</div></div>
               </div>
               <TrendChart points={series.api} unit=" ms" color="var(--ab-blue)" height={88} emptyText="暂无 API 采样" />
             </div>
