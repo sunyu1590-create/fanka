@@ -8,25 +8,6 @@
 -- 4) publish_tasks：发布任务持久化（与客户端任务中心对齐，服务端状态为最终事实）。
 -- 5) system_metrics / system_alerts：轻量监控采集与告警。
 
--- ============ 1. 存储读取策略修复 ============
-drop policy if exists covers_read on storage.objects;
-create policy covers_read on storage.objects for select using(
-  bucket_id='post-covers' and (
-    (storage.foldername(name))[1]=auth.uid()::text
-    or public.is_admin()
-    or exists(
-      select 1 from public.post_media m
-      join public.posts p on p.id=m.post_id
-      where (m.storage_path=name or m.thumbnail_path=name or m.retina_thumbnail_path=name)
-        and p.status='published'
-    )
-    or exists(
-      select 1 from public.media_assets a
-      where a.storage_path=name or a.thumbnail_path=name or a.retina_thumbnail_path=name
-    )
-  )
-);
-
 -- ============ 2. 媒体资产登记 ============
 create table if not exists public.media_assets (
   id uuid primary key default gen_random_uuid(),
@@ -60,6 +41,26 @@ create policy media_assets_owner_all on public.media_assets for all to authentic
 drop policy if exists media_assets_staff_read on public.media_assets;
 create policy media_assets_staff_read on public.media_assets for select to authenticated
   using (public.is_admin());
+
+-- ============ 存储读取策略修复（需在 media_assets 之后） ============
+drop policy if exists covers_read on storage.objects;
+create policy covers_read on storage.objects for select using(
+  bucket_id='post-covers' and (
+    (storage.foldername(name))[1]=auth.uid()::text
+    or public.is_admin()
+    or exists(
+      select 1 from public.post_media m
+      join public.posts p on p.id=m.post_id
+      where (m.storage_path=name or m.thumbnail_path=name or m.retina_thumbnail_path=name)
+        and p.status='published'
+    )
+    or exists(
+      select 1 from public.media_assets a
+      where a.storage_path=name or a.thumbnail_path=name or a.retina_thumbnail_path=name
+    )
+  )
+);
+
 
 -- ============ 3. 上传任务追踪 ============
 create table if not exists public.upload_tasks (
