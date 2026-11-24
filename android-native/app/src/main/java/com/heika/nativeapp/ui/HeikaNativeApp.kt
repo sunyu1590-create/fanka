@@ -159,13 +159,9 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                 openDestination(post.destination())
             }
         }
-        // 「我的」页的封面要压到状态栏后面，因此该路由不在这里扣 Top inset，
-        // 由 ProfileScreen 自己按 statusBars 高度给顶栏留位；其他页面照旧。
-        val pageSides = if (route == "profile") {
-            WindowInsetsSides.Horizontal
-        } else {
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-        }
+        // 所有顶层页面统一扣状态栏：个人页顶栏已改回实心条，不再需要把封面
+        // 顶到状态栏后面，也就不必为它单独放宽 Top inset。
+        val pageSides = WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         Box(
             Modifier.fillMaxSize()
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.background)

@@ -13,9 +13,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -116,22 +113,6 @@ private fun Modifier.bleedHorizontal(gutter: Dp) = layout { measurable, constrai
     }
 }
 
-/**
- * 把绘制区域向上多要 [extra] 的高度并整体上移，但上报给父级的高度不变。
- *
- * 个人页封面要顶到状态栏后面，列表就必须整体上移一个顶栏高度；
- * 如果用 offset 直接平移，列表底部会跟着少掉同样的高度，底栏那一段
- * 就永远没有内容经过，玻璃背后空无一物，看起来就是一块实心遮罩。
- */
-private fun Modifier.stretchVertically(extra: Dp) = layout { measurable, constraints ->
-    val px = extra.roundToPx()
-    val height = constraints.maxHeight + px
-    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
-    layout(constraints.maxWidth, constraints.maxHeight) {
-        placeable.place(0, -px)
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ProfileScreen(
@@ -155,9 +136,6 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    // 自己主页的封面要压到状态栏后面，顶栏自己补这个高度；
-    // 骨架屏与错误态同样需要，否则根容器去掉 Top inset 后会顶到状态栏。
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val context = androidx.compose.ui.platform.LocalContext.current
     var selected by remember(userId) { mutableStateOf("works") }
     var hasResumedOnce by remember(userId) { mutableStateOf(false) }
@@ -180,7 +158,7 @@ fun ProfileScreen(
 
     if (state.loading && state.profile == null) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (userId == null) ProfileBrandHeader(onSettings, onMembership, topInset = statusBarTop) else BackHeader("用户主页", onBack)
+            if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(13.dp), verticalAlignment = Alignment.CenterVertically) {
                     SkeletonBlock(62.dp, CircleShape)
@@ -206,7 +184,7 @@ fun ProfileScreen(
     }
     if (state.profile == null) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (userId == null) ProfileBrandHeader(onSettings, onMembership, topInset = statusBarTop) else BackHeader("用户主页", onBack)
+            if (userId == null) ProfileBrandHeader(onSettings, onMembership) else BackHeader("用户主页", onBack)
             Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.error ?: "个人主页暂不可用", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(if (state.error?.contains("登录") == true) "登录" else "重试", Modifier.clickable { if (state.error?.contains("登录") == true) onLogin() else viewModel.load(userId, force = true) }.padding(12.dp), color = MaterialTheme.colorScheme.primary)
@@ -217,12 +195,11 @@ fun ProfileScreen(
 
     val profile = state.profile!!
     val posts = when (selected) { "bookmarks" -> state.bookmarks; "liked" -> state.liked; "collections" -> emptyList(); else -> state.posts }
-    // 顶栏不再做毛玻璃：上一版把顶栏 haze 叠在封面上，滚到底时那层取样矩形会
-    // 顺着列表一起下滑，看起来就像底栏后面垫了一块板。改为纯色渐变压暗，
-    // 既能盖住封面亮部保住文字，也不再有任何取样区域。
+    // 顶栏回到最朴素的一版：实心背景条 + 正常占位，不做毛玻璃、不压封面。
+    // 之前为了「通透」把顶栏做成 haze 悬浮条，顶栏不再占位，只能靠负偏移把
+    // 列表整体上提——列表底部因此少掉一个顶栏高度，底栏那段永远没有内容经过，
+    // 玻璃背后空无一物，看起来就是垫了一块遮罩。
     val density = LocalDensity.current
-    // 他人主页没有通栏封面，顶栏需要一个实心占位高度；自己主页才让封面顶到状态栏。
-    val stickyTop = if (userId == null) HeikaSpacing.headerHeight + statusBarTop else HeikaSpacing.headerHeight
     // 下拉放大的位移量（像素）。列表已经在顶部时，向下的手势全部转成封面拉伸，
     // 不再交给 LazyGrid 做 overscroll，松手后由 spring 收回去。
     var coverPull by remember { mutableFloatStateOf(0f) }
@@ -253,10 +230,9 @@ fun ProfileScreen(
         }
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 内容层要比屏幕再高一个 stickyTop：封面从状态栏后开始，而列表底部
-        // 必须仍然落在屏幕底边，否则底栏那 88dp 里没有任何内容可透，
-        // 玻璃看上去就是一块实心板——这才是「底部遮罩」的真正来源。
-        Box(Modifier.fillMaxSize().stretchVertically(stickyTop)) {
+        // 列表从顶栏下沿开始，高度仍然一路落到屏幕底边：
+        // 滚到底栏那一段时有真实内容经过，玻璃才有东西可以模糊。
+        Box(Modifier.fillMaxSize().padding(top = HeikaSpacing.headerHeight)) {
             // 栅格的 contentPadding 会把每一项往里收 18dp。封面要通栏，
             // 但不能像旧版那样 requiredWidth + offset：那会把整个 item 左移 18dp，
             // 右边缘反而少一条。改成"按槽位宽度排版、绘制时左右各外扩 18dp"。
@@ -306,7 +282,6 @@ fun ProfileScreen(
                                             val stretch = 1f + coverPull / size.height.coerceAtLeast(1f)
                                             scaleX = coverZoom * stretch
                                             scaleY = coverZoom * stretch
-                                            translationY = -coverPull
                                             transformOrigin = TransformOrigin(focusX, 0f)
                                         },
                                         contentScale = ContentScale.Crop,
@@ -529,7 +504,6 @@ fun ProfileScreen(
             Box(
                 Modifier.align(Alignment.TopCenter).fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(top = statusBarTop)
                     .zIndex(3f),
             ) {
                 ProfileTabBar(selected, modifier = Modifier.fillMaxWidth(), compact = true) {
@@ -547,17 +521,10 @@ fun ProfileScreen(
             ProfileBrandHeader(
                 onSettings = onSettings,
                 onMembership = onMembership,
-                topInset = statusBarTop,
-                modifier = Modifier.zIndex(2f).background(
-                    Brush.verticalGradient(
-                        0f to MaterialTheme.colorScheme.background.copy(alpha = .92f),
-                        .55f to MaterialTheme.colorScheme.background.copy(alpha = .72f),
-                        1f to Color.Transparent,
-                    ),
-                ),
+                modifier = Modifier.zIndex(2f).background(MaterialTheme.colorScheme.background),
             )
         } else if (userId != null) {
-            BackHeader("用户主页", onBack, modifier = Modifier.zIndex(2f))
+            BackHeader("用户主页", onBack, modifier = Modifier.zIndex(2f).background(MaterialTheme.colorScheme.background))
         }
     }
     LaunchedEffect(selected, gridState, state.own, state.hasMoreWorks, state.hasMoreBookmarks, state.hasMoreLiked, state.loadingMore) {
