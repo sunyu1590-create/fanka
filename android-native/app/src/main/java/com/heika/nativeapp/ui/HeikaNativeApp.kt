@@ -94,7 +94,6 @@ import com.heika.nativeapp.feature.MembershipRedeemScreen
 import com.heika.nativeapp.feature.settings.AboutScreen
 import com.heika.nativeapp.feature.settings.SettingsScreen
 import com.heika.nativeapp.feature.settings.SettingsDetailScreen
-import com.heika.nativeapp.feature.settings.AdminCenterScreen
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -475,7 +474,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onSection = { section ->
                             when (section) {
                                 "about" -> nav.navigate("about")
-                                "admin" -> nav.navigate("admin")
+                                // 管理员中心统一指向网页端：APP 不再维护原生管理界面。
+                                "admin" -> nav.navigate("admin/web")
                                 // 需求 6.1：创意工坊与装扮编辑全部走原生页面，不再跳转网页。
                                 "decor-bar", "decor-card", "decor-gallery" -> nav.navigate("decor-center/$section")
                                 else -> nav.navigate("settings/$section")
@@ -554,12 +554,6 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         },
                     )
                 }
-                composable("admin") {
-                    AdminCenterScreen(
-                        onBack = { nav.popBackStack() },
-                        onOpenWebAdmin = { nav.navigate("admin/web") },
-                    )
-                }
                 composable("admin/web") {
                     // 网页版管理后台：与「编辑个人资料」同一套应用内网页容器，
                     // 会话通过桥接带入；若当前账号没有管理员权限，页面内会显示登录引导，
@@ -570,6 +564,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         title = "管理后台",
                         path = "/?app=1&admin=1&requireAuth=1",
                         sessionJson = webSession,
+                        // 网页管理后台自带顶栏（返回 + 刷新），原生不再叠一层头。
+                        showHeader = false,
                         onBack = { nav.popBackStack() },
                         onEvent = { type, _ ->
                             if (type == "close") nav.popBackStack()

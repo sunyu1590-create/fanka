@@ -40,6 +40,13 @@
   overflow-x: clip;
 }
 
+/* 全屏控制台：网页端顶栏、底栏与发布按钮全部让位给后台自己的导航，
+   否则移动端会同时出现「返回设置」和后台返回箭头两个返回键。 */
+.app.app-admin-console { padding-top: 0; padding-bottom: 0; }
+.app.app-admin-console .bottom-nav-shell,
+.app.app-admin-console .desktop-topbar,
+.app.app-admin-console .topline { display: none !important; }
+
 :root[data-theme="dark"] .admin-shell {
   --ab-bg: #0A0A0C;
   --ab-surface: #1C1C1E;
@@ -86,25 +93,28 @@
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 54px;
-  padding: 8px 10px;
+  gap: 4px;
+  min-height: calc(54px + env(safe-area-inset-top));
+  /* 应用内网页隐藏原生头后，状态栏安全区由网页顶栏自己让位。 */
+  padding: max(8px, env(safe-area-inset-top)) 10px 8px;
   background: color-mix(in srgb, var(--ab-bg) 78%, transparent);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   backdrop-filter: blur(18px) saturate(150%);
   border-bottom: 1px solid color-mix(in srgb, var(--ab-line) 60%, transparent);
 }
 
+/* 标题跟在操作按钮右侧，不再居中占位，避免「两侧各一个图标夹一段空标题」的松散感。 */
 .ab-topbar__title {
   flex: 1;
   min-width: 0;
-  font-size: 16.5px;
+  margin-left: 6px;
+  font-size: 15px;
   font-weight: 650;
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
+  text-align: left;
 }
 
 .ab-iconbtn {
@@ -238,6 +248,17 @@
 .ab-kpi--sm { font-size: 22px; }
 .ab-kpi--lg { font-size: 44px; }
 .ab-label { font-size: 11.5px; color: var(--ab-ink-3); }
+
+/* 健康卡底部指标：内存 / 磁盘 / API 延迟 / 错误率 四项同排，移动端也保持一行。 */
+.ab-health-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.ab-health-meta > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ab-health-meta i { font-style: normal; font-size: 10px; color: var(--ab-ink-3); white-space: nowrap; }
+.ab-health-meta b { font-size: 11.5px; font-weight: 600; color: var(--ab-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ab-health-meta small { font-size: 10px; color: var(--ab-ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .ab-metric-row { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
 .ab-metric { min-width: 0; }
@@ -650,3 +671,58 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- 审核详情固定操作条（移动端首屏可达） ---------- */
+.ab-actionbar {
+  position: sticky;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 25;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--ab-line) 70%, transparent);
+  border-radius: 16px;
+  background: var(--ab-surface);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: 0 12px 34px rgba(20, 20, 28, 0.16);
+}
+.ab-actionbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 42px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.ab-actionbar .is-ok { background: color-mix(in srgb, var(--ab-emerald) 16%, transparent); color: var(--ab-emerald); }
+.ab-actionbar .is-bad { background: color-mix(in srgb, var(--ab-coral) 15%, transparent); color: var(--ab-coral); }
+.ab-actionbar .is-warn { background: color-mix(in srgb, var(--ab-amber) 16%, transparent); color: var(--ab-amber); }
+.ab-actionbar .is-neutral { background: var(--ab-fill-strong); color: var(--ab-ink-2); }
+.ab-actionbar button[disabled] { opacity: 0.42; }
+@media (min-width: 1024px) {
+  .ab-actionbar { position: static; max-width: 520px; background: var(--ab-surface-2); box-shadow: none; }
+}
+
+/* APP 内登录引导页的独立返回键（网页顶栏已隐藏）。 */
+.admin-gate-back {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  margin: 0 0 6px -8px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+}
+.admin-gate-back:active { background: var(--ab-fill-strong); }
+
+/* 详情页给固定操作条留出滚动余量，最后一段内容不会被遮住。 */
+.ab-detail { padding-bottom: calc(82px + env(safe-area-inset-bottom)); }

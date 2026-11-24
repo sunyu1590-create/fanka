@@ -157,10 +157,12 @@ export function AdminShell({
         </aside>
 
         <main className="ab-main">
+          {/* 顶栏只保留操作：返回与刷新相邻成组；总览页不再重复「控制中心」标题
+              （底部导航已高亮「总览」），二级页保留标题作为当前位置提示。 */}
           <header className="ab-topbar">
             <button type="button" className="ab-iconbtn" aria-label="返回" onClick={goBack}><ArrowLeft size={19} /></button>
-            <span className="ab-topbar__title">{title}</span>
             <button type="button" className="ab-iconbtn" aria-label="刷新" onClick={onRefresh} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "ab-spin" : undefined} /></button>
+            {isOverview ? null : <span className="ab-topbar__title">{title}</span>}
           </header>
 
           <div className="ab-pagehead">

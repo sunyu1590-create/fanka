@@ -255,28 +255,24 @@ export async function POST(req: NextRequest) {
 
     if (body.id) {
       const series = await loadOwned(uuid(body.id, "合集"));
-      const publicChanged = series.title !== title
-        || series.description !== description
-        || (series.cover_url || "") !== (coverUrl || "")
-        || series.kind !== kind
-        || series.channel !== channel
-        || (series.category_id || null) !== categoryId;
-      if (!publicChanged) {
-        const { data, error } = await db.from("post_series").update({ status, updated_at: new Date().toISOString() }).eq("id", series.id).select(publicFields).single();
-        dbError(error);
-        return presentSeries(data as SeriesRow);
-      }
-      // 公开信息变更：线上版本保持不变，新信息进入待审快照。
-      const pending = { title, description, cover_url: coverUrl, kind, channel, category_id: categoryId };
+      // 合集不再走审核：资料修改即时生效，线上直接展示新版本。
       const { data, error } = await db.from("post_series").update({
+        title,
+        description,
+        cover_url: coverUrl,
+        kind,
+        channel,
+        category_id: categoryId,
         status,
-        pending_public: pending,
+        is_public: true,
+        review_status: "approved",
+        review_note: null,
+        pending_public: null,
         pending_review_note: null,
-        review_status: "pending",
         updated_at: new Date().toISOString(),
       }).eq("id", series.id).select(publicFields).single();
       dbError(error);
-      return presentSeries(data as SeriesRow, { awaitingReview: true });
+      return presentSeries(data as SeriesRow);
     }
 
     const { data, error } = await db.from("post_series").insert({
@@ -288,12 +284,12 @@ export async function POST(req: NextRequest) {
       channel,
       category_id: categoryId,
       status,
-      // 未过审的合集不对外公开：审核通过时由管理员侧置为 true，避免出现「待审但已公开」的错觉。
-      is_public: false,
-      review_status: "pending",
+      // 合集创建即上架：不再进入人工审核队列，也不再隐藏等审。
+      is_public: true,
+      review_status: "approved",
       updated_at: new Date().toISOString(),
     }).select(publicFields).single();
     dbError(error);
-    return presentSeries(data as SeriesRow, { awaitingReview: true });
+    return presentSeries(data as SeriesRow);
   });
 }

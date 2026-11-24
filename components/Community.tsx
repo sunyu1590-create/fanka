@@ -5313,6 +5313,20 @@ export default function Community({
   // 独立详情页里顶栏显示返回与作品名；其余页面沿用原有二级页标题。
   const topbarTitle = detailPageMode ? (post?.title?.trim() || "作品详情") : secondaryTitle;
   const topbarBack = detailPageMode ? () => closeDetail() : handleSecondaryBack;
+  // 管理后台是全屏控制台：隐藏网页端自己的顶栏与底栏，只保留后台的返回键，
+  // 否则移动端会同时出现「返回设置」和后台的返回箭头（两个返回键）。
+  const adminConsole = tab === "moderation" && isStaff;
+  // APP 内打开时，后台的返回键应关闭网页容器回原生设置页，而不是在网页里跳到设置。
+  const closeAdminConsole = () => {
+    if (appEmbed) {
+      try {
+        (window as unknown as { HeikaNative?: { post?: (message: string) => void } }).HeikaNative?.post?.(JSON.stringify({ type: "close" }));
+      } catch { /* 网页端无桥接时走网页返回 */ }
+      return;
+    }
+    setTab("settings");
+    requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" }));
+  };
   // 「更多」菜单在浮层里挂在头部，在独立页面里挂在左操作栏，共用同一份条目。
   const detailMoreMenu = post ? <>
     {post.channel === "ai" && <>
@@ -5368,7 +5382,9 @@ export default function Community({
     </div>
   </form> : null;
   return (
-    <main className={`app${detailPageMode ? " is-detail-page" : ""}${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
+    <main className={`app${detailPageMode ? " is-detail-page" : ""}${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${adminConsole ? " app-admin-console" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
+      {adminConsole ? null : (
+      <>
       <header className="desktop-topbar" aria-label="桌面主导航">
         <div className="dtb-inner">
           {topbarTitle ? (
@@ -5429,6 +5445,8 @@ export default function Community({
         {!secondaryTitle && tab === "today" && appDownloadUrl && !(typeof window !== "undefined" && "HeikaNative" in window) && <a className="app-download-link" href={appDownloadUrl} target="_blank" rel="noopener noreferrer" aria-label="下载黑卡 Android App"><Smartphone size={16}/><span>下载 App</span></a>}
         </div>
       </header>
+      </>
+      )}
       {/* 列表与详情独立：桌面进入详情时列表只隐藏不卸载，返回后频道、筛选、分页与滚动位置都还在。 */}
       <div className="app-views" hidden={detailPageMode || detailRouteState !== null}>
       {tab === "today" && (
@@ -5827,9 +5845,11 @@ export default function Community({
         onNotice={toast}
         onChanged={() => { void cloudRequest("/api/v1/series").then((data) => { const items = (data as { items?: PostSeries[] })?.items; if (Array.isArray(items)) setCreatorSeries(items); }).catch(() => {}); }}
       />}
-      {tab === "moderation" && isStaff && <AdminModeration role={adminRole as "admin" | "content_manager" | "reviewer"} onBack={() => { setTab("settings"); requestAnimationFrame(() => window.scrollTo({ top: scrollPositions.current.settings || 0, behavior: "instant" })); }} />}
+      {tab === "moderation" && isStaff && <AdminModeration role={adminRole as "admin" | "content_manager" | "reviewer"} onBack={closeAdminConsole} />}
       {tab === "moderation" && !isStaff && (
         <section className="page admin-gate-page">
+          {/* APP 内没有网页顶栏，登录引导页必须自带返回，否则会被困在后台入口。 */}
+          {appEmbed ? <button type="button" className="admin-gate-back" aria-label="返回" onClick={closeAdminConsole}><ArrowLeft size={19} /></button> : null}
           <h1>管理后台<span className="red-dot">.</span></h1>
           <p className="lead">{accountId ? "当前账号没有管理员权限，请使用管理员账号登录后进入后台。" : "管理后台只对管理员开放，请先使用管理员账号登录。"}</p>
           <button type="button" className="primary-button full" onClick={() => { adminEntryPending.current = true; setTab("messages"); }}>

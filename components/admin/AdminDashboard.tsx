@@ -5,6 +5,16 @@ import { Activity, ChevronRight, CreditCard, Download, Flag, ScrollText, ShieldC
 import { cloudRequest } from "@/lib/cloud";
 import { Empty, fmtBytes, fmtNum, fmtPct, fmtTime, Group, Ring, Row, TrendChart } from "./AdminUIKit";
 
+/** 容量成对显示：单位相同只写一次（1.6/1.9 GB），窄屏一行四项也不会截断。 */
+function fmtPair(used: number | null | undefined, total: number | null | undefined): string {
+  const a = fmtBytes(used);
+  const b = fmtBytes(total);
+  const [av, au] = a.split(" ");
+  const [bv, bu] = b.split(" ");
+  if (au && au === bu) return `${av}/${bv} ${bu}`;
+  return `${a}/${b}`;
+}
+
 type Overview = { usersToday: number; postsToday: number; pending: number; pendingReports: number; aiResources: number; views: number; likes: number; saves: number; comments: number };
 type MetricsCurrent = {
   captured_at?: string;
@@ -116,22 +126,30 @@ export default function AdminDashboard({
             <div className="ab-skel" style={{ height: 180 }} />
           ) : current ? (
             <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <Ring value={current.cpu_percent ?? null} label="CPU" size={78} stroke={7} />
-                  <Ring value={current.mem_percent ?? null} label="内存" size={78} stroke={7} />
-                  <Ring value={current.disk_percent ?? null} label="磁盘" size={78} stroke={7} />
-                </div>
-                <div style={{ textAlign: "right", display: "flex", flexDirection: "column", gap: 3, minWidth: 92 }}>
-                  <span className="ab-label">API 延迟</span>
-                  <b style={{ fontSize: live?.avg_ms != null ? 22 : 15, fontWeight: live?.avg_ms != null ? 700 : 550, color: live?.avg_ms != null ? undefined : "var(--ab-ink-3)", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{live?.avg_ms != null ? `${Math.round(live.avg_ms)} ms` : "暂无采样"}</b>
-                  <span className="ab-label">P95 {live?.p95_ms != null ? `${Math.round(live.p95_ms)} ms` : "—"}</span>
-                </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, maxWidth: 320 }}>
+                <Ring value={current.cpu_percent ?? null} label="CPU" size={78} stroke={7} />
+                <Ring value={current.mem_percent ?? null} label="内存" size={78} stroke={7} />
+                <Ring value={current.disk_percent ?? null} label="磁盘" size={78} stroke={7} />
               </div>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: "var(--ab-ink-3)" }}>
-                <span>内存 {fmtBytes(current.mem_used)} / {fmtBytes(current.mem_total)}</span>
-                <span>磁盘 {fmtBytes(current.disk_used)} / {fmtBytes(current.disk_total)}</span>
-                <span>错误率 {live?.error_rate != null ? `${(Number(live.error_rate) * 100).toFixed(1)}%` : "—"}</span>
+              {/* 指标压成同一行：API 延迟紧挨磁盘容量，四项同权、窄屏也不拆行。 */}
+              <div className="ab-health-meta">
+                <span>
+                  <i>内存</i>
+                  <b>{fmtPair(current.mem_used, current.mem_total)}</b>
+                </span>
+                <span>
+                  <i>磁盘</i>
+                  <b>{fmtPair(current.disk_used, current.disk_total)}</b>
+                </span>
+                <span>
+                  <i>API 延迟</i>
+                  <b style={{ color: live?.avg_ms != null ? "var(--ab-ink-2)" : "var(--ab-ink-3)", fontWeight: live?.avg_ms != null ? 650 : 550 }}>{live?.avg_ms != null ? `${Math.round(live.avg_ms)} ms` : "暂无采样"}</b>
+                  {live?.p95_ms != null ? <small>P95 {Math.round(live.p95_ms)} ms</small> : null}
+                </span>
+                <span>
+                  <i>错误率</i>
+                  <b>{live?.error_rate != null ? `${(Number(live.error_rate) * 100).toFixed(1)}%` : "—"}</b>
+                </span>
               </div>
               <TrendChart points={trend} unit="%" color="var(--ab-blue)" height={120} emptyText="最近 1 小时暂无 CPU 采样" />
               <div className="ab-card__foot">

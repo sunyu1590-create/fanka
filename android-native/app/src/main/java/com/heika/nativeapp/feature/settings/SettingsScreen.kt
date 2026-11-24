@@ -230,7 +230,7 @@ fun SettingsScreen(onBack: () -> Unit, onSection: (String) -> Unit) {
                     SettingsGroup {
                         SettingsRow(
                             "管理员中心",
-                            subtitle = "内容审核、会员与运营配置",
+                            subtitle = "网页版控制台 · 内容审核与运营",
                             iconRes = HeikaIconRes.Admin,
                             onClick = { onSection("admin") },
                         )

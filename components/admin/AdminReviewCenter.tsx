@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { ArrowLeft, Check, ChevronRight, FileWarning, PenLine, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { confirmInApp } from "@/lib/in-app-dialog";
+import ChoiceSelect from "../ChoiceSelect";
 import { Empty, fmtNum, fmtTime, Group, Ring, Segmented } from "./AdminUIKit";
 
 type ReviewResult = { decision?: string; riskLevel?: string; riskTypes?: string[]; reason?: string; evidence?: string[]; evidenceValidated?: boolean; manualDecision?: string; manualReason?: string };
@@ -17,7 +18,6 @@ type ReviewItem = {
 type Batch = { id: string; task_type: string; status: string; config_snapshot: { model?: string }; total_count: number; completed_count: number; review_count: number; failed_count: number; current_post_title: string | null; created_at: string };
 type ClassificationItem = { id: string; status: string; result: { applied?: boolean; reason?: string; categoryName?: string | null } | null; error_message: string | null; updated_at: string; post: { id: string; title: string; channel: string } | null };
 type HistoryRow = { id: number; postId: string | null; title: string; channel: string; author: string; decision: string; reason: string; actor: string; createdAt: string };
-type Collection = { id: string; title: string; description: string; kind: string; channel: string; pending_public: Record<string, unknown> | null; updated_at: string; profiles?: { nickname: string } | { nickname: string }[] | null };
 
 type Tab = "ai" | "manual" | "history" | "anomaly";
 
@@ -34,7 +34,6 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [classification, setClassification] = useState<ClassificationItem[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyFilters, setHistoryFilters] = useState({ days: "30", channel: "all", result: "all", q: "" });
@@ -48,9 +47,8 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const [taskResult, collectionResult, historyResult] = await Promise.allSettled([
+    const [taskResult, historyResult] = await Promise.allSettled([
       cloudRequest("/api/v1/admin/ai-tasks") as Promise<{ batches: Batch[]; reviewItems: ReviewItem[]; classificationItems: ClassificationItem[] }>,
-      cloudRequest("/api/v1/admin/collections") as Promise<{ items?: Collection[] }>,
       cloudRequest(`/api/v1/admin/review-history?days=${historyFilters.days}&channel=${historyFilters.channel}&result=${historyFilters.result}&q=${encodeURIComponent(historyFilters.q)}&page=1&limit=30`) as Promise<{ items?: HistoryRow[]; total?: number }>,
     ]);
     if (taskResult.status === "fulfilled") {
@@ -60,7 +58,6 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
     } else {
       setError(taskResult.reason instanceof Error ? taskResult.reason.message : "审核数据读取失败");
     }
-    if (collectionResult.status === "fulfilled") setCollections(collectionResult.value.items || []);
     if (historyResult.status === "fulfilled") {
       setHistory(historyResult.value.items || []);
       setHistoryTotal(historyResult.value.total || 0);
@@ -102,16 +99,6 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
     finally { setBusy(false); }
   };
 
-  const reviewCollection = async (collection: Collection, action: "approve" | "reject") => {
-    setBusy(true); setError("");
-    try {
-      await cloudRequest("/api/v1/admin/collections", { id: collection.id, action, note: action === "reject" ? "公开信息不符合发布规范" : undefined });
-      setNotice(action === "approve" ? "合集已通过审核。" : "合集已退回。");
-      setCollections((current) => current.filter((item) => item.id !== collection.id));
-    } catch (e) { setError(e instanceof Error ? e.message : "合集操作失败"); }
-    finally { setBusy(false); }
-  };
-
   const reviewRatio = batches.length ? Math.round((batches.filter((batch) => batch.status === "completed").length / batches.length) * 100) : 0;
 
   return (
@@ -123,10 +110,9 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Ring value={batches.length ? reviewRatio : null} size={82} stroke={8} tone="violet" label="任务完成" />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10, flex: 1 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10, flex: 1 }}>
             <div><b className="ab-kpi ab-kpi--sm" style={{ display: "block" }}>{fmtNum(pending.length)}</b><span className="ab-label">待人工复审</span></div>
             <div><b className="ab-kpi ab-kpi--sm" style={{ display: "block", color: anomalies.length ? "var(--ab-coral)" : undefined }}>{fmtNum(anomalies.length)}</b><span className="ab-label">审核异常</span></div>
-            <div><b className="ab-kpi ab-kpi--sm" style={{ display: "block" }}>{fmtNum(collections.length)}</b><span className="ab-label">合集待审</span></div>
           </div>
         </div>
         {runningBatch ? (
@@ -220,27 +206,6 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
                 );
               }) : <Empty icon={<ShieldCheck size={22} />} title="审核队列已清空" hint="AI 未转人工的内容不会出现在这里。" />}
             </Group>
-            {collections.length ? (
-              <div>
-                <div className="ab-section__head"><h2 className="ab-section__title">合集待审</h2><span className="ab-section__meta">{collections.length} 条</span></div>
-                <Group>
-                  {collections.map((collection) => (
-                    <div key={collection.id} className="ab-row" style={{ alignItems: "flex-start", flexDirection: "column" }}>
-                      <div style={{ display: "flex", width: "100%", gap: 8 }}>
-                        <span className="ab-row__body">
-                          <span className="ab-row__title">{collection.title}</span>
-                          <span className="ab-row__meta">{firstProfile(collection.profiles || null)} · {collection.channel === "ai" ? "AI 专区" : "精选"} · {collection.pending_public ? "公开信息修改" : "新建合集"}</span>
-                        </span>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button type="button" className="ab-chip ok" style={{ border: 0 }} disabled={busy} onClick={() => void reviewCollection(collection, "approve")}><Check size={12} />通过</button>
-                          <button type="button" className="ab-chip bad" style={{ border: 0 }} disabled={busy} onClick={() => void reviewCollection(collection, "reject")}><X size={12} />退回</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </Group>
-              </div>
-            ) : null}
           </div>
         )
       ) : null}
@@ -253,17 +218,19 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
                 <button key={days} type="button" aria-selected={historyFilters.days === days} onClick={() => setHistoryFilters((current) => ({ ...current, days }))}>{days} 天</button>
               ))}
             </div>
-            <select
-              value={historyFilters.result}
-              onChange={(event) => setHistoryFilters((current) => ({ ...current, result: event.target.value }))}
-              style={{ border: "1px solid var(--ab-line)", background: "var(--ab-surface)", color: "var(--ab-ink)", borderRadius: 10, padding: "8px 10px", fontSize: 12 }}
-              aria-label="审核结果筛选"
-            >
-              <option value="all">全部结果</option>
-              <option value="published">通过</option>
-              <option value="hidden">驳回</option>
-              <option value="revision">退回修改</option>
-            </select>
+            <div style={{ width: 128, flex: "none" }}>
+              <ChoiceSelect
+                label="审核结果"
+                value={historyFilters.result}
+                onChange={(value) => setHistoryFilters((current) => ({ ...current, result: value }))}
+                options={[
+                  { value: "all", label: "全部结果" },
+                  { value: "published", label: "通过" },
+                  { value: "hidden", label: "驳回" },
+                  { value: "revision", label: "退回修改" },
+                ]}
+              />
+            </div>
           </div>
           <Group>
             {history.length ? history.map((row) => (
@@ -413,17 +380,18 @@ function ReviewDetail({
           placeholder="写明核对结果和处理依据，至少 3 个字"
           style={{ width: "100%", minHeight: 76, border: "1px solid var(--ab-line)", borderRadius: 12, background: "var(--ab-fill)", color: "var(--ab-ink)", padding: 10, fontSize: 13, resize: "vertical" }}
         />
-        <div className="ab-actions" style={{ marginTop: 10 }}>
-          <button type="button" className="ab-chip ok" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "published")}><Check size={13} />通过</button>
-          <button type="button" className="ab-chip bad" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "hidden")}><X size={13} />驳回</button>
-          <button type="button" className="ab-chip warn" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "revision")}><PenLine size={13} />退回修改</button>
-          {deleted ? (
-            <button type="button" className="ab-chip bad" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy || reason.trim().length < 3} onClick={() => void onAct(item, "close")}><X size={13} />关闭审核项</button>
-          ) : (
-            <button type="button" className="ab-chip info" style={{ border: 0, padding: "9px 14px", fontSize: 12.5 }} disabled={busy} onClick={() => void onAct(item, "reanalyze")}><RotateCcw size={13} />重新分析</button>
-          )}
-        </div>
         {blocked ? <p className="ab-label" style={{ marginTop: 8, color: "var(--ab-coral)" }}>{deleted ? "作品已删除：不允许通过、驳回或退回，只能填写原因后关闭该审核项。" : "原文不可用：不允许执行通过、驳回或退回操作。"}</p> : null}
+      </div>
+      {/* 操作条固定在视口底部：手机上读完原文就能直接处理，不用滚回最底部。 */}
+      <div className="ab-actionbar" role="group" aria-label="审核操作">
+        <button type="button" className="is-ok" disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "published")}><Check size={15} />通过</button>
+        <button type="button" className="is-bad" disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "hidden")}><X size={15} />驳回</button>
+        <button type="button" className="is-warn" disabled={busy || blocked || reason.trim().length < 3} onClick={() => void onAct(item, "revision")}><PenLine size={15} />退回修改</button>
+        {deleted ? (
+          <button type="button" className="is-neutral" disabled={busy || reason.trim().length < 3} onClick={() => void onAct(item, "close")}><X size={15} />关闭</button>
+        ) : (
+          <button type="button" className="is-neutral" disabled={busy} onClick={() => void onAct(item, "reanalyze")}><RotateCcw size={15} />重新分析</button>
+        )}
       </div>
     </div>
   );

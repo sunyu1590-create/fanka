@@ -2,10 +2,15 @@ package com.heika.nativeapp.feature.web
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.webkit.JavascriptInterface
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -42,6 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.widget.EditText
+import android.widget.Toast
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.heika.nativeapp.BuildConfig
@@ -66,6 +73,8 @@ fun NativeWebScreen(
     path: String,
     sessionJson: String?,
     decorSynced: kotlinx.coroutines.flow.Flow<String>? = null,
+    // 网页自带完整顶栏时（如管理后台）隐藏原生头，避免同时出现两个返回键。
+    showHeader: Boolean = true,
     onBack: () -> Unit,
     onEvent: (type: String, payload: JSONObject) -> Unit,
 ) {
@@ -97,12 +106,14 @@ fun NativeWebScreen(
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BackHeader(title, onBack)
+        if (showHeader) BackHeader(title, onBack)
         Box(Modifier.fillMaxSize()) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
-                    WebView(context).apply {
+                    // 用 Activity 作为 WebView 的 context：原生 select 选择器与文件选择器
+                    // 都是 Dialog，必须挂在 Activity 窗口上；Application context 会静默不弹。
+                    WebView(context.findActivity() ?: context).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.allowFileAccess = false
@@ -115,6 +126,8 @@ fun NativeWebScreen(
                                 progress = newProgress / 100f
                             }
 
+                            // 网页里的「选择图片/文件」必须真的弹出系统选择器：
+                            // 先按网页声明的类型建 Intent，失败再退回通用选择器，最后才放弃。
                             override fun onShowFileChooser(
                                 webView: WebView?,
                                 filePathCallback: ValueCallback<Array<Uri>>?,
@@ -122,23 +135,75 @@ fun NativeWebScreen(
                             ): Boolean {
                                 pendingFileChooser?.onReceiveValue(null)
                                 pendingFileChooser = null
-                                val intent = try {
-                                    fileChooserParams?.createIntent()
-                                } catch (_: Exception) {
-                                    null
-                                } ?: Intent(Intent.ACTION_GET_CONTENT).apply {
-                                    addCategory(Intent.CATEGORY_OPENABLE)
-                                    type = "image/*"
+                                val declared = fileChooserParams?.acceptTypes
+                                    ?.filter { it.isNotBlank() }
+                                    ?.joinToString(",")
+                                    ?.takeIf { it.isNotEmpty() }
+                                val candidates = buildList {
+                                    runCatching { fileChooserParams?.createIntent() }.getOrNull()?.let(::add)
+                                    add(Intent(Intent.ACTION_GET_CONTENT).apply {
+                                        addCategory(Intent.CATEGORY_OPENABLE)
+                                        type = declared ?: "*/*"
+                                    })
+                                    add(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                        addCategory(Intent.CATEGORY_OPENABLE)
+                                        type = "*/*"
+                                    })
                                 }
-                                return try {
-                                    pendingFileChooser = filePathCallback
-                                    fileChooserLauncher.launch(intent)
-                                    true
-                                } catch (_: Exception) {
-                                    pendingFileChooser = null
-                                    filePathCallback?.onReceiveValue(null)
-                                    false
+                                pendingFileChooser = filePathCallback
+                                for (intent in candidates) {
+                                    val launched = runCatching { fileChooserLauncher.launch(intent) }.isSuccess
+                                    if (launched) return true
                                 }
+                                pendingFileChooser = null
+                                filePathCallback?.onReceiveValue(null)
+                                runCatching {
+                                    Toast.makeText(context, "没有可用的文件选择器", Toast.LENGTH_SHORT).show()
+                                }
+                                return false
+                            }
+
+                            override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                                val host = view?.context ?: return false
+                                AlertDialog.Builder(host)
+                                    .setMessage(message.orEmpty())
+                                    .setPositiveButton("确定") { _, _ -> result?.confirm() }
+                                    .setOnCancelListener { result?.cancel() }
+                                    .show()
+                                return true
+                            }
+
+                            override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                                val host = view?.context ?: return false
+                                AlertDialog.Builder(host)
+                                    .setMessage(message.orEmpty())
+                                    .setNegativeButton("取消") { _, _ -> result?.cancel() }
+                                    .setPositiveButton("确定") { _, _ -> result?.confirm() }
+                                    .setOnCancelListener { result?.cancel() }
+                                    .show()
+                                return true
+                            }
+
+                            override fun onJsPrompt(
+                                view: WebView?,
+                                url: String?,
+                                message: String?,
+                                defaultValue: String?,
+                                result: JsPromptResult?,
+                            ): Boolean {
+                                val host = view?.context ?: return false
+                                val input = EditText(host).apply {
+                                    setText(defaultValue.orEmpty())
+                                    setSelection(text.length)
+                                }
+                                AlertDialog.Builder(host)
+                                    .setMessage(message.orEmpty())
+                                    .setView(input)
+                                    .setNegativeButton("取消") { _, _ -> result?.cancel() }
+                                    .setPositiveButton("确定") { _, _ -> result?.confirm(input.text.toString()) }
+                                    .setOnCancelListener { result?.cancel() }
+                                    .show()
+                                return true
                             }
                         }
                         webViewClient = object : WebViewClient() {
@@ -259,4 +324,13 @@ private class Bridge(
         if (type.isBlank()) return
         onEvent(type, payload)
     }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return null
 }

@@ -8,7 +8,6 @@ type Batch = { id: string; task_type: string; status: string; config_snapshot: {
 type ReviewResult = { decision?: string; riskLevel?: string; riskTypes?: string[]; reason?: string; evidence?: string[]; evidenceValidated?: boolean; manualDecision?: string; manualReason?: string };
 type ClassificationResult = { applied?: boolean; reason?: string; applyReason?: string; categoryName?: string | null; tagNames?: string[] };
 type ReviewHistoryRow = { id: number; postId: string | null; title: string; channel: string; author: string; decision: string; reason: string; actor: string; createdAt: string };
-type CollectionReview = { id: string; title: string; description: string; cover_url: string | null; kind: string; channel: string; review_status: string; pending_public: Record<string, unknown> | null; updated_at: string; profiles?: { nickname: string } | { nickname: string }[] | null };
 type ClassificationItem = { id: string; batch_id: string; post_id: string | null; status: string; result: ClassificationResult | null; error_message: string | null; updated_at: string; post: { id: string; title: string; channel: string } | null };
 type Profile = { nickname: string };
 type ReviewItem = { id: string; batch_id: string; post_id: string | null; status: string; result: ReviewResult | null; result_history: Array<{ result: ReviewResult; model: string | null; recorded_at: string; status: string }>; error_message: string | null; created_at: string; updated_at: string; post: { id: string; title: string; body: string; channel: string; status: string; author_id: string | null; profiles: Profile | Profile[] | null } | null };
@@ -69,7 +68,6 @@ export default function AdminAITasks({ mode = "all" }: { mode?: "review" | "usag
   const [includeExisting, setIncludeExisting] = useState(true);
   const [priceDraft, setPriceDraft] = useState({ model: "", version: "", currency: "CNY", inputPerMillion: "", cacheHitInputPerMillion: "", outputPerMillion: "" });
   const [reviewReasons, setReviewReasons] = useState<Record<string, string>>({});
-  const [collectionReviews, setCollectionReviews] = useState<CollectionReview[]>([]);
   const [reviewFocus, setReviewFocus] = useState(false);
   const [reviewCursor, setReviewCursor] = useState(0);
   const [history, setHistory] = useState<ReviewHistoryRow[]>([]);
@@ -88,8 +86,6 @@ export default function AdminAITasks({ mode = "all" }: { mode?: "review" | "usag
         cloudRequest("/api/v1/admin/ai-model-config") as Promise<ModelState>,
       ]);
       setBatches(taskData.batches || []); setReviewItems(taskData.reviewItems || []); setClassificationItems(taskData.classificationItems || []); setMetrics(taskData.metrics || {}); setModelState(configData);
-      const collectionData = await cloudRequest("/api/v1/admin/collections").catch(() => ({ items: [] })) as { items?: CollectionReview[] };
-      setCollectionReviews(collectionData.items || []);
       if (!priceDraft.model) {
         const preferred = configData.usageModels?.[0]?.model || configData.availableModels?.[0];
         if (preferred) setPriceDraft((current) => ({ ...current, model: preferred }));
@@ -171,7 +167,7 @@ export default function AdminAITasks({ mode = "all" }: { mode?: "review" | "usag
   const visibleReviewItems = reviewFocus ? reviewItems.slice(Math.min(reviewCursor, Math.max(0, reviewItems.length - 1)), Math.min(reviewCursor, Math.max(0, reviewItems.length - 1)) + 1) : reviewItems;
 
   return <main className="admin-ai-center">
-    <header className="admin-ai-center-head"><div><span>{mode === "usage" ? "模型用量中心" : "AI 审核中心"}</span><h2>{mode === "usage" ? "模型用量" : "审核任务与人工复审"}</h2><p>{mode === "usage" ? "调用次数、Token、费用与响应时间均读取真实请求记录。" : "新作品、合集与修改版本统一进入 AI 初审，风险内容转人工复审。"}</p></div><button type="button" className="soft-button" onClick={() => void load()} disabled={busy}>刷新</button></header>
+    <header className="admin-ai-center-head"><div><span>{mode === "usage" ? "模型用量中心" : "AI 审核中心"}</span><h2>{mode === "usage" ? "模型用量" : "审核任务与人工复审"}</h2><p>{mode === "usage" ? "调用次数、Token、费用与响应时间均读取真实请求记录。" : "新作品与修改版本统一进入 AI 初审，风险内容转人工复审。"}</p></div><button type="button" className="soft-button" onClick={() => void load()} disabled={busy}>刷新</button></header>
     {error && <p className="admin-ai-center-message error" role="alert">{error}</p>}{notice && <p className="admin-ai-center-message" role="status">{notice}</p>}
 
     {mode !== "review" && <>
@@ -230,14 +226,6 @@ export default function AdminAITasks({ mode = "all" }: { mode?: "review" | "usag
         const outcome = item.status === "failed" ? "处理失败" : result.applied === true ? "已应用" : item.status === "skipped" || result.applied === false ? "未覆盖现有内容" : item.status;
         return <article key={item.id}><div className="admin-ai-task-top"><div><strong>{item.post?.title || "作品不可用"}</strong><small>{item.post?.channel === "ai" ? "AI 专区" : "精选内容"} · {new Date(item.updated_at).toLocaleString("zh-CN")}</small></div><span>{outcome}</span></div>{result.categoryName && <p className="admin-ai-data-note">建议分类：{result.categoryName} · 建议标签：{result.tagNames?.join("、") || "无"}</p>}<p className="admin-ai-data-note">{result.applyReason || result.reason || item.error_message || "尚无处理说明"}</p></article>;
       })}</div> : <p className="admin-ai-data-note">暂无自动分类记录。</p>}
-    </section>
-
-    <section className="admin-ai-center-panel"><div className="admin-ai-panel-title"><h3>合集待审</h3><small>{collectionReviews.length} 条 · 新建合集与公开信息修改；线上版本保持可用</small></div>
-      {collectionReviews.length ? <div className="admin-ai-task-list">{collectionReviews.map((collection) => {
-        const creator = firstProfile(collection.profiles)?.nickname || "作者不可用";
-        const pending = collection.pending_public || {};
-        return <article key={collection.id}><div className="admin-ai-task-top"><div><strong>{collection.title}</strong><small>{creator} · {collection.channel === "ai" ? "AI 专区" : "精选"} · {new Date(collection.updated_at).toLocaleString("zh-CN")}</small></div><span>{pending.title ? "公开信息修改" : "新建合集"}</span></div><p className="admin-ai-data-note">{collection.description || "（无简介）"}</p>{!!pending.title && <p className="admin-ai-data-note">待审标题：{String(pending.title)} · 待审简介：{String(pending.description || "（空）")}</p>}<div className="admin-ai-review-actions"><button disabled={busy} onClick={() => void execute("合集已通过审核。", async () => { await cloudRequest("/api/v1/admin/collections", { id: collection.id, action: "approve" }); setCollectionReviews((current) => current.filter((row) => row.id !== collection.id)); })}><Check size={14}/>通过</button><button disabled={busy} onClick={() => void execute("合集已退回。", async () => { await cloudRequest("/api/v1/admin/collections", { id: collection.id, action: "reject", note: "公开信息不符合发布规范" }); setCollectionReviews((current) => current.filter((row) => row.id !== collection.id)); })}><X size={14}/>退回</button></div></article>;
-      })}</div> : <p className="admin-ai-data-note">当前没有待审合集。</p>}
     </section>
 
     <section className="admin-ai-center-panel"><div className="admin-ai-panel-title"><h3>人工复审</h3><small>{reviewItems.length} 条待处理；AI 不能驳回或删除作品</small></div>

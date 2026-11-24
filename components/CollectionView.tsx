@@ -30,13 +30,6 @@ type Props = {
 const KIND_LABEL: Record<string, string> = { serial: "连载", tutorial: "教程", resource: "资源" };
 const STATUS_LABEL: Record<string, string> = { ongoing: "连载中", completed: "已完结" };
 
-/** 审核状态文案：只按真实状态渲染，不把 null/undefined 变成可见文字。 */
-function reviewState(series: Series) {
-  if (series.reviewStatus === "rejected") return { tone: "rejected", title: "退回修改", note: (series.reviewNote || "").trim() };
-  if (series.reviewStatus === "pending") return { tone: "pending", title: "审核中", note: "" };
-  return null;
-}
-
 export default function CollectionView({ id, accountId, ownPosts = [], onBack, onOpenChapter, onLogin, onNotice, onChanged }: Props) {
   const [series, setSeries] = useState<Series | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,17 +92,17 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
     if (!series || busy) return;
     setBusy(true);
     try {
-      const result = await cloudRequest("/api/v1/series", {
+      await cloudRequest("/api/v1/series", {
         id: series.id,
         title: form.title.trim(),
         description: form.description.trim(),
         coverUrl: form.coverUrl.trim() || undefined,
         kind: form.kind,
         status: form.status,
-      }) as { awaitingReview?: boolean };
+      });
       await load();
       onChanged?.();
-      onNotice(result?.awaitingReview ? "合集信息已提交审核，线上版本继续展示" : "合集信息已保存");
+      onNotice("合集资料已保存，已即时生效");
     } catch (e) {
       onNotice(e instanceof Error ? e.message : "保存失败");
     } finally {
@@ -182,7 +175,6 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
   };
 
   const candidates = useMemo(() => ownPosts.filter((post) => post.seriesId !== id), [ownPosts, id]);
-  const review = series ? reviewState(series) : null;
 
   if (loading) return <section className="page collection-page"><button className="back settings-back" type="button" onClick={onBack}><span aria-hidden="true">‹</span> 返回</button><div className="collection-empty"><Loader2 size={18} className="spin"/> 正在加载合集…</div></section>;
   if (error || !series) return <section className="page collection-page"><button className="back settings-back" type="button" onClick={onBack}><span aria-hidden="true">‹</span> 返回</button><div className="collection-empty">{error || "合集不存在"}</div></section>;
@@ -191,7 +183,7 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
   if (mode === "manage") {
     return <section className="page collection-page collection-manage-page">
       <button className="back settings-back" type="button" onClick={() => setMode("read")}><span aria-hidden="true">‹</span> 返回合集</button>
-      <div className="collection-manage-title"><h1>管理合集</h1><p>阅读页只负责阅读，资料、章节与审核集中在这里。</p></div>
+      <div className="collection-manage-title"><h1>管理合集</h1><p>阅读页只负责阅读，资料与章节集中在这里。</p></div>
 
       <section className="collection-manage-group" aria-labelledby="manage-profile-title">
         <div className="collection-manage-head"><h2 id="manage-profile-title">合集资料</h2></div>
@@ -226,18 +218,10 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
       </section>
 
       <section className="collection-manage-group" aria-labelledby="manage-review-title">
-        <div className="collection-manage-head"><h2 id="manage-review-title"><ShieldCheck size={15}/>发布与审核</h2></div>
-        <div className={`collection-review-state${review ? ` is-${review.tone}` : " is-approved"}`}>
-          <strong>{review ? review.title : "已通过审核"}</strong>
-          <small>{review
-            ? series.reviewStatus === "pending"
-              ? series.isPublic ? "公开信息修改已提交，线上版本继续展示。" : "新合集待审核，仅自己可见。"
-              : "按审核意见修改后可以重新提交。"
-            : "合集公开可见，新章节发布后自动进入审核。"}</small>
-          {review?.note ? <p className="collection-review-note-text">审核意见：{review.note}</p> : null}
-        </div>
-        <div className="collection-edit-actions">
-          <button type="button" className="collection-ghost" disabled={busy} onClick={() => void save()}>{busy ? "提交中…" : "重新提交审核"}</button>
+        <div className="collection-manage-head"><h2 id="manage-review-title"><ShieldCheck size={15}/>上架状态</h2></div>
+        <div className="collection-review-state is-approved">
+          <strong>已上架</strong>
+          <small>合集创建与资料修改都不需要审核，保存后立即对外生效。</small>
         </div>
       </section>
 
@@ -299,8 +283,6 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
       <button type="button" className="collection-ghost" onClick={() => void share()}><Share2 size={15}/>分享</button>
       {series.isOwner && <button type="button" className="collection-ghost collection-manage-entry" onClick={() => setMode("manage")}><Pencil size={15}/>管理</button>}
     </div>
-
-    {review && <p className={`collection-review-note is-${review.tone}`}>{review.tone === "pending" ? (series.isPublic ? "公开信息修改待审核，线上版本继续展示。" : "新合集待审核，仅自己可见。") : `已退回修改${review.note ? `：${review.note}` : ""}`}</p>}
 
     {series.following && <label className="collection-notify">
       <input type="checkbox" checked={series.notify} disabled={busy} onChange={(event) => {
