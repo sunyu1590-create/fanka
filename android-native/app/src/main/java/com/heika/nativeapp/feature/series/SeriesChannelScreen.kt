@@ -131,22 +131,6 @@ fun SeriesChannelPane(
             }
         }
 
-        if (data.continueReading.isNotEmpty()) {
-            item(key = "continue") {
-                Column(Modifier.padding(top = 22.dp)) {
-                    SeriesSectionHead(kicker = "接着上次", title = "继续阅读", trailing = "${data.continueReading.size} 个合集")
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 18.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(data.continueReading, key = { "continue-${it.id}" }) { card ->
-                            ContinueSeriesCard(card) { onOpenSeries(card.id) }
-                        }
-                    }
-                }
-            }
-        }
-
         if (data.trending.isNotEmpty()) {
             item(key = "trending") {
                 Column(Modifier.padding(top = 22.dp)) {
@@ -157,6 +141,23 @@ fun SeriesChannelPane(
                     ) {
                         items(data.trending, key = { "trend-${it.id}" }) { card ->
                             TrendingSeriesCard(card) { onOpenSeries(card.id) }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 继续阅读固定排在近期热门之后；没有阅读记录时整块不渲染。
+        if (data.continueReading.isNotEmpty()) {
+            item(key = "continue") {
+                Column(Modifier.padding(top = 22.dp)) {
+                    SeriesSectionHead(kicker = "接着上次", title = "继续阅读", trailing = "${data.continueReading.size} 个合集")
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 18.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(data.continueReading, key = { "continue-${it.id}" }) { card ->
+                            ContinueSeriesCard(card) { onOpenSeries(card.id) }
                         }
                     }
                 }

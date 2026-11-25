@@ -57,16 +57,27 @@ export async function POST(req: NextRequest) {
         }, { onConflict: "dedupe_key", ignoreDuplicates: true });
 
         if (user && percent >= 60) {
-          const { error } = await db.from("collection_read_items").upsert({
+          const writeItem = () => db.from("collection_read_items").upsert({
             user_id: user.id, series_id: seriesId, post_id: postId,
             progress: percent, dwell_seconds: seconds, read_at: new Date().toISOString(),
           }, { onConflict: "user_id,post_id" });
-          if (!error) {
-            await db.rpc("record_collection_progress", { p_series_id: seriesId, p_post_id: postId });
+          let { error } = await writeItem();
+          if (error?.code === "23503") {
+            // 极端情况下 profiles 缺行（Auth 侧新建用户、历史数据），外键会拒绝写入。
+            // 补建一次档案再重试，避免用户的阅读进度永远停在 0。
+            await admin.from("profiles").upsert({ id: user.id }, { onConflict: "id", ignoreDuplicates: true });
+            ({ error } = await writeItem());
           }
+          if (error) {
+            // 不能静默：写失败时前端会以为已记录，进度条却不动。
+            console.error("[events] collection_read_items write failed", error.code, error.message);
+            return { recorded: true, counted: true, readSaved: false };
+          }
+          const { error: progressError } = await db.rpc("record_collection_progress", { p_series_id: seriesId, p_post_id: postId });
+          if (progressError) console.error("[events] record_collection_progress failed", progressError.message);
         }
       }
-      return { recorded: true, counted: percent >= 25 || seconds >= 8 };
+      return { recorded: true, counted: percent >= 25 || seconds >= 8, readSaved: true };
     }
 
     if (type === "impression") {

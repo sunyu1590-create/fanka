@@ -87,6 +87,28 @@ const timeAgo = (iso: string) => {
   return `${Math.floor(days / 30)} 个月前更新`;
 };
 
+/**
+ * 继续阅读。位置固定在本周精选之后、近期热门之后（规格顺序），
+ * 但分区本身随真实数据隐藏：没有阅读记录就整块不出现。
+ */
+function ContinueReading({ cards, onOpenSeries }: { cards: SeriesCard[]; onOpenSeries: (id: string) => void }) {
+  if (!cards.length) return null;
+  return <section className="series-block" aria-label="继续阅读">
+    <header className="series-section-head"><div><h2>继续阅读</h2></div><span>上次读到的位置</span></header>
+    <div className="series-continue-list">
+      {cards.map((card) => <button key={card.id} type="button" className="series-continue" onClick={() => onOpenSeries(card.id)}>
+        <span className="series-continue-cover"><Cover card={card} /></span>
+        <span className="series-continue-copy">
+          <strong>{card.title}</strong>
+          <small>已读 {card.progress?.read || 0} / {card.progress?.total || card.chapters} 篇</small>
+          <span className="series-progress"><i style={{ width: `${card.progress?.percent || 0}%` }} /></span>
+        </span>
+        <span className="series-continue-action">{card.progress?.percent ? "继续" : "开始"}<ChevronRight size={15} /></span>
+      </button>)}
+    </div>
+  </section>;
+}
+
 export default function SeriesChannel({ accountId, onOpenSeries, onLogin }: Props) {
   const [data, setData] = useState<DiscoverData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -211,21 +233,8 @@ export default function SeriesChannel({ accountId, onOpenSeries, onLogin }: Prop
       </div>
     </section>
 
-    {/* 继续阅读 */}
-    {!!data.continueReading.length && <section className="series-block" aria-label="继续阅读">
-      <header className="series-section-head"><div><h2>继续阅读</h2></div><span>上次读到的位置</span></header>
-      <div className="series-continue-list">
-        {data.continueReading.map((card) => <button key={card.id} type="button" className="series-continue" onClick={() => onOpenSeries(card.id)}>
-          <span className="series-continue-cover"><Cover card={card}  /></span>
-          <span className="series-continue-copy">
-            <strong>{card.title}</strong>
-            <small>已读 {card.progress?.read || 0} / {card.progress?.total || card.chapters} 篇</small>
-            <span className="series-progress"><i style={{ width: `${card.progress?.percent || 0}%` }} /></span>
-          </span>
-          <span className="series-continue-action">{card.progress?.percent ? "继续" : "开始"}<ChevronRight size={15} /></span>
-        </button>)}
-      </div>
-    </section>}
+    {/* 数据还不够撑起近期热门时，继续阅读直接接在本周精选后面 */}
+    {!dense && <ContinueReading cards={data.continueReading} onOpenSeries={onOpenSeries} />}
 
     {dense && <>
       {/* 近期热门：横向书架 */}
@@ -242,6 +251,8 @@ export default function SeriesChannel({ accountId, onOpenSeries, onLogin }: Prop
           </button>)}
         </div>
       </section>
+
+      <ContinueReading cards={data.continueReading} onOpenSeries={onOpenSeries} />
 
       {/* 最近更新：紧凑列表 */}
       <section className="series-block" aria-label="最近更新">

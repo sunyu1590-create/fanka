@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
+import { adminClient } from "@/lib/server/admin-client";
+import { plainText } from "@/lib/text";
 
 const KINDS = ["serial", "tutorial", "resource"] as const;
 const CHANNELS = ["community", "ai"] as const;
@@ -92,7 +94,9 @@ export async function GET(req: NextRequest) {
         id: row.id,
         clientId: row.client_id,
         title: row.title,
-        excerpt: String(row.body || "").replace(/[#*`>_[\]()]/g, " ").replace(/\s+/g, " ").trim().slice(0, 90),
+        // 目录摘要必须清掉 Markdown：正文里的 ![](url) 只删符号会留下裸链接，
+        // 线上目录就出现「! 某截图 https://…」这种半截文本。
+        excerpt: plainText(row.body, 90),
         image: row.image_url || null,
         status: row.status,
         order: row.series_order,
@@ -242,12 +246,21 @@ export async function POST(req: NextRequest) {
         dbError(error);
         return { following: false };
       }
-      const { error } = await db.from("collection_follows").upsert(
-        { user_id: user!.id, series_id: seriesId, notify: body.notify !== false && body.value !== false },
+      const notify = body.notify !== false && body.value !== false;
+      const writeFollow = () => db.from("collection_follows").upsert(
+        { user_id: user!.id, series_id: seriesId, notify },
         { onConflict: "user_id,series_id" },
       );
+      let { error } = await writeFollow();
+      if (error?.code === "23503") {
+        // profiles 缺行时外键会让收藏直接失败（线上真实出现过）。
+        // 先补建档案再重试一次，仍失败才把错误返回给前端。
+        await adminClient().from("profiles").upsert({ id: user!.id }, { onConflict: "id", ignoreDuplicates: true });
+        ({ error } = await writeFollow());
+      }
+      if (error?.code === "23503") throw new ApiError(409, "账号档案尚未就绪，请重新登录后再试");
       dbError(error);
-      return { following: true, notify: body.notify !== false && body.value !== false };
+      return { following: true, notify };
     }
 
     if (action === "progress") {

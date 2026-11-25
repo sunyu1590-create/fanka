@@ -141,8 +141,11 @@ export default function SearchPage({ query, accountId, onBack, onSearch, onOpenP
       if (!alive) return;
       if (trendResult.status === "fulfilled") setTrending(trendResult.value);
       if (rankResult.status === "fulfilled") {
-        setHotWorks(rankResult.value?.rankings?.global?.items?.slice(0, 5) || []);
-        setAiPicks(rankResult.value?.rankings?.ai?.items?.slice(0, 4) || []);
+        // 榜单是作品与合集的混合榜，"热门作品"和"AI 资源"只能取作品：
+        // 之前直接切片，合集条目会被当成 post 去打开，接口 400、用户点了没反应。
+        const posts = (items?: RankingItem[]) => (items || []).filter((item) => item.type === "post");
+        setHotWorks(posts(rankResult.value?.rankings?.global?.items).slice(0, 5));
+        setAiPicks(posts(rankResult.value?.rankings?.ai?.items).slice(0, 4));
       }
       if (seriesResult.status === "fulfilled") setHotSeries((seriesResult.value?.all || seriesResult.value?.featured || []).slice(0, 4));
       if (topicResult.status === "fulfilled") setTopics((topicResult.value?.items || []).slice(0, 8));
