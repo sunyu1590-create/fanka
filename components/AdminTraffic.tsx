@@ -76,7 +76,7 @@ export default function AdminTraffic() {
       <div className="ab-stat-grid">
         <Stat label="应用层请求" value={fmtNum(overview.app.requests)} hint={`${fmtNum(overview.app.uniqueIps)} 个独立 IP`} />
         <Stat label="应用层响应字节" value={fmtBytes(overview.app.bytesOut)} hint={`平均 ${overview.app.avgMs}ms · P95 ${overview.app.p95Ms}ms`} tone="ok" />
-        <Stat label="网络层出网" value={fmtBytes(overview.nic.tx)} hint={`非 HTTP ${fmtBytes(overview.nic.nonHttpTx)}`} />
+        <Stat label="网络层出网" value={fmtBytes(overview.nic.tx)} hint={`采样 ${overview.nic.sampledDays} 天 · 非 HTTP ${fmtBytes(overview.nic.nonHttpTx)}`} />
         <Stat label="错误率" value={`${overview.app.errorRate}%`} hint={`${fmtNum(overview.app.errors)} 次 4xx/5xx`} tone={overview.app.errorRate > 3 ? "warn" : undefined} />
       </div>
 
