@@ -67,6 +67,9 @@ export default function AdminMediaService({ refreshKey = 0 }: { refreshKey?: num
   const [traceKey, setTraceKey] = useState<string | null>(null);
   const [speeds, setSpeeds] = useState<Record<string, number>>({});
   const prevBytes = useRef<Record<string, { bytes: number; at: number }>>({});
+  // 长历史默认折叠：只有展开后才拉取，展开后每页 20 条，实时刷新不清空页码。
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(20);
 
   const loadTraffic = useCallback(async () => {
     try {
@@ -88,7 +91,7 @@ export default function AdminMediaService({ refreshKey = 0 }: { refreshKey?: num
   }, [applied]);
 
   useEffect(() => { void loadTraffic(); }, [loadTraffic, refreshKey]);
-  useEffect(() => { if (tab === "transfer" || tab === "history") void loadTasks(); }, [tab, loadTasks, refreshKey]);
+  useEffect(() => { if (tab === "history" || (tab === "transfer" && historyOpen)) void loadTasks(); }, [tab, historyOpen, loadTasks, refreshKey]);
 
   // 活跃任务速度：用两次真实快照的 bytes_sent 差值计算，没有活跃任务就不显示速度。
   useEffect(() => {
@@ -252,28 +255,40 @@ export default function AdminMediaService({ refreshKey = 0 }: { refreshKey?: num
             <Empty title="当前没有活跃上传任务" hint="有新上传时会在这里实时出现。" />
           )}
 
-          <div className="ab-toolbar">
-            <Segmented value={status} ariaLabel="任务筛选" onChange={setStatus} options={[{ value: "all", label: "全部" }, { value: "active", label: "进行中" }, { value: "ready", label: "已完成" }, { value: "failed", label: "失败" }, { value: "cancelled", label: "已取消" }]} />
-          </div>
-          <form className="ab-search" onSubmit={(event) => { event.preventDefault(); setApplied(query.trim()); }}>
-            <FileText size={15} aria-hidden="true" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索任务编号或文件名" aria-label="搜索上传任务" />
-          </form>
-          <Group>
-            {loading ? <div className="ab-skel" style={{ height: 160, margin: 12 }} /> : filtered.length ? filtered.map((task) => {
-              const Icon = task.mime_type?.startsWith("video") ? Film : task.mime_type?.startsWith("image") ? ImageIcon : FileText;
-              return (
-                <button key={task.task_key} type="button" className="ab-item" style={{ border: 0, borderRadius: 0, background: "transparent" }} onClick={() => setTraceKey(task.task_key)}>
-                  <span className="ab-item__thumb"><Icon size={18} /></span>
-                  <span className="ab-item__body">
-                    <span className="ab-item__title">{task.file_name || `任务 ${task.task_key.slice(0, 10)}`}</span>
-                    <span className="ab-item__meta"><span>{fmtBytes(task.file_size)}</span><span>·</span><span>{task.client_type || "未知客户端"}</span><span>·</span><span>{fmtTime(task.created_at)}</span>{task.attempts && task.attempts > 1 ? <><span>·</span><span>重试 {task.attempts - 1} 次</span></> : null}</span>
-                  </span>
-                  <span className="ab-item__right"><span className={`ab-chip ${task.status === "ready" ? "ok" : task.status === "failed" ? "bad" : "info"}`}>{STATUS_LABEL[task.status] || task.status}</span></span>
+          <Collapse
+            title="历史传输任务"
+            count={historyOpen ? filtered.length : undefined}
+            hint="默认折叠，展开后才加载"
+            onOpen={() => setHistoryOpen(true)}
+          >
+            <div className="ab-toolbar">
+              <Segmented value={status} ariaLabel="任务筛选" onChange={(next) => { setStatus(next); setHistoryLimit(20); }} options={[{ value: "all", label: "全部" }, { value: "active", label: "进行中" }, { value: "ready", label: "已完成" }, { value: "failed", label: "失败" }, { value: "cancelled", label: "已取消" }]} />
+            </div>
+            <form className="ab-search" onSubmit={(event) => { event.preventDefault(); setApplied(query.trim()); setHistoryLimit(20); }}>
+              <FileText size={15} aria-hidden="true" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索任务编号或文件名" aria-label="搜索上传任务" />
+            </form>
+            <Group plain>
+              {loading ? <div className="ab-skel" style={{ height: 160, margin: 12 }} /> : filtered.length ? filtered.slice(0, historyLimit).map((task) => {
+                const Icon = task.mime_type?.startsWith("video") ? Film : task.mime_type?.startsWith("image") ? ImageIcon : FileText;
+                return (
+                  <button key={task.task_key} type="button" className="ab-item" style={{ border: 0, borderRadius: 0, background: "transparent" }} onClick={() => setTraceKey(task.task_key)}>
+                    <span className="ab-item__thumb"><Icon size={18} /></span>
+                    <span className="ab-item__body">
+                      <span className="ab-item__title">{task.file_name || `任务 ${task.task_key.slice(0, 10)}`}</span>
+                      <span className="ab-item__meta"><span>{fmtBytes(task.file_size)}</span><span>·</span><span>{task.client_type || "未知客户端"}</span><span>·</span><span>{fmtTime(task.created_at)}</span>{task.attempts && task.attempts > 1 ? <><span>·</span><span>重试 {task.attempts - 1} 次</span></> : null}</span>
+                    </span>
+                    <span className="ab-item__right"><span className={`ab-chip ${task.status === "ready" ? "ok" : task.status === "failed" ? "bad" : "info"}`}>{STATUS_LABEL[task.status] || task.status}</span></span>
+                  </button>
+                );
+              }) : <Empty title={applied ? "没有匹配的上传任务" : "暂无上传任务"} hint="上传任务由客户端创建，历史记录默认折叠。" />}
+              {filtered.length > historyLimit ? (
+                <button type="button" className="ab-row" style={{ justifyContent: "center" }} onClick={() => setHistoryLimit((value) => value + 20)}>
+                  <span className="ab-row__body" style={{ alignItems: "center" }}><span className="ab-row__title" style={{ fontSize: 12 }}>加载更多（已显示 {Math.min(historyLimit, filtered.length)} / {filtered.length}）</span></span>
                 </button>
-              );
-            }) : <Empty title={applied ? "没有匹配的上传任务" : "暂无上传任务"} hint="上传任务由客户端创建，历史记录默认折叠。" />}
-          </Group>
+              ) : null}
+            </Group>
+          </Collapse>
         </>
       ) : null}
 

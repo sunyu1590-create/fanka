@@ -6,8 +6,15 @@ import { cloudRequest } from "@/lib/cloud";
 import { Empty, fmtBytes, fmtNum, fmtPct, fmtTime, Group, Ring, Row, TrendChart } from "./AdminUIKit";
 import { useRealtime } from "@/lib/admin-live";
 
-/** 容量成对显示：单位相同只写一次（1.6/1.9 GB），窄屏一行四项也不会截断。 */
-function fmtPair(used: number | null | undefined, total: number | null | undefined): string {
+const RISK_LABEL: Record<string, string> = { clear: "低风险 · 建议放行", uncertain: "需人工判断", risky: "高风险 · 建议拦截" };
+
+/** 风险等级来自 AI 复审结果原文，缺失时明确写「未标注」，不臆测。 */
+function riskLabel(level?: string | null): string {
+  if (!level) return "风险等级未标注";
+  return RISK_LABEL[level] || `风险 ${level}`;
+}
+
+/** 容量成对显示：单位相同只写一次（1.6/1.9 GB），窄屏一行四项也不会截断。 */function fmtPair(used: number | null | undefined, total: number | null | undefined): string {
   const a = fmtBytes(used);
   const b = fmtBytes(total);
   const [av, au] = a.split(" ");
@@ -35,7 +42,7 @@ type MetricsCurrent = {
 type LiveRequests = { requests?: number; avg_ms?: number; p95_ms?: number; error_rate?: number; errors5xx?: number };
 type AlertRow = { id: string; alert_type: string; level: string; title: string; status: string; last_seen_at: string; occurrences: number };
 type MediaOverview = { window?: string; total_tasks?: number; ready?: number; failed?: number; first_attempt_success_rate?: number | null; final_success_rate?: number | null; total_bytes?: number; sample_note?: string };
-type AiReviewItem = { id: string; status: string; error_message?: string | null };
+type AiReviewItem = { id: string; status: string; error_message?: string | null; result?: { riskLevel?: string } | null; post?: { title?: string | null } | null };
 type AiBatch = { id: string; status: string };
 
 export default function AdminDashboard({
@@ -169,13 +176,25 @@ export default function AdminDashboard({
             <span className="ab-card__title">AI 人工复审</span>
             <ChevronRight size={15} style={{ color: "var(--ab-ink-3)" }} aria-hidden="true" />
           </div>
-          {/* 卡片与系统健康同处一行会被拉伸；内容整体垂直居中，避免出现大片空洞。 */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4, minHeight: 0 }}>
+          {/* 卡片与系统健康同处一行会被拉伸：顶部 KPI + 真实排队条目填满，不留空白。 */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflow: "hidden" }}>
             <div className="ab-kpi ab-kpi--lg" style={{ color: "var(--ab-violet)" }}>{fmtNum(reviewItems.length)}<small>项</small></div>
             <div className="ab-label">等待人工判断</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
               <span className="ab-chip violet">异常 {anomalies}</span>
               <span className="ab-chip info">运行中 {runningBatches}</span>
+            </div>
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6, minHeight: 0 }}>
+              {reviewItems.slice(0, 3).map((item) => (
+                <div key={item.id} className="ab-row" style={{ padding: "6px 0", borderTop: "1px solid var(--ab-line)" }}>
+                  <span className="ab-row__body">
+                    <span className="ab-row__title" style={{ fontSize: 12 }}>{item.post?.title || `条目 ${item.id.slice(0, 8)}`}</span>
+                    <span className="ab-row__meta">{riskLabel(item.result?.riskLevel)}</span>
+                  </span>
+                  <span className={`ab-chip ${item.result?.riskLevel === "uncertain" ? "bad" : "info"}`}>{item.error_message ? "异常" : "待判"}</span>
+                </div>
+              ))}
+              {!reviewItems.length ? <div className="ab-chart__empty">队列为空，没有等待人工判断的内容</div> : null}
             </div>
           </div>
           <div className="ab-card__foot">

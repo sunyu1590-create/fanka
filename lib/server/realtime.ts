@@ -42,7 +42,7 @@ export type RealtimeSnapshot = {
   ts: string;
   revision: number;
   server: RealtimeServer | null;
-  live: { requests: number; avg_ms: number | null; p95_ms: number | null; error_rate: number | null };
+  live: { window_seconds: number; requests: number; avg_ms: number | null; p95_ms: number | null; error_rate: number | null };
   counts: {
     review: number;
     reviewAnomaly: number;
@@ -194,14 +194,19 @@ async function build(db: SupabaseClient): Promise<RealtimeSnapshot> {
     alerts: (alerts.data || []).length,
   };
 
-  const liveRaw = requestMetricsSnapshot() as { m1?: { requests: number; avg_ms: number | null; p95_ms: number | null; error_rate: number } };
+  // 卡片标注「5 分钟窗口」就必须取 m5，否则刚重启后 m1 为空、页面显示「暂无采样」，
+  // 而同一时刻 m5 里明明有真实请求。m1 仅作为 m5 不可用时的兜底。
+  type MetricsWindow = { requests: number; avg_ms: number | null; p95_ms: number | null; error_rate: number };
+  const liveRaw = requestMetricsSnapshot() as { m1?: MetricsWindow; m5?: MetricsWindow };
+  const liveWindow = liveRaw.m5 ?? liveRaw.m1;
   const live = {
-    requests: Number(liveRaw.m1?.requests || 0),
-    avg_ms: liveRaw.m1?.avg_ms ?? null,
-    p95_ms: liveRaw.m1?.p95_ms ?? null,
+    window_seconds: 300,
+    requests: Number(liveWindow?.requests || 0),
+    avg_ms: liveWindow?.avg_ms ?? null,
+    p95_ms: liveWindow?.p95_ms ?? null,
     // request-metrics 的 error_rate 是百分数（0-100），前端按 0-1 小数渲染，这里换算一次，
     // 否则 0.44% 会被显示成 44.0%。
-    error_rate: liveRaw.m1?.error_rate == null ? null : Number(liveRaw.m1.error_rate) / 100,
+    error_rate: liveWindow?.error_rate == null ? null : Number(liveWindow.error_rate) / 100,
   };
   const revision = hash(JSON.stringify([
     counts,
