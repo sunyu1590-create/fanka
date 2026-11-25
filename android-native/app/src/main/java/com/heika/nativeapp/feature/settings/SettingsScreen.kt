@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -260,8 +261,9 @@ fun SettingsDetailScreen(
     val reading by viewModel.readingMode.collectAsStateWithLifecycle()
     val pageTransition by viewModel.pageTransition.collectAsStateWithLifecycle()
     val fontChoice by viewModel.fontChoice.collectAsStateWithLifecycle()
-    val bodyTextSize by viewModel.bodyTextSize.collectAsStateWithLifecycle()
-    val titleTextSize by viewModel.titleTextSize.collectAsStateWithLifecycle()
+    val bodyTextScale by viewModel.bodyTextScale.collectAsStateWithLifecycle()
+    val titleTextScale by viewModel.titleTextScale.collectAsStateWithLifecycle()
+    val readingProgressVisible by viewModel.readingProgressVisible.collectAsStateWithLifecycle()
     val capacity by viewModel.imageCacheMb.collectAsStateWithLifecycle()
     val comments by viewModel.commentsEnabled.collectAsStateWithLifecycle()
     val notificationError by viewModel.notificationError.collectAsStateWithLifecycle()
@@ -357,7 +359,24 @@ fun SettingsDetailScreen(
                 }
                 "theme" -> item { ChoiceList(SettingIconKey.THEME, listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色"), theme, viewModel::setTheme) }
                 "layout" -> item { ChoiceList(SettingIconKey.LAYOUT, listOf("waterfall" to "双列瀑布流", "single" to "单列列表"), layout, viewModel::setFeedLayout) }
-                "reading" -> item { ChoiceList(SettingIconKey.READING, listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
+                "reading" -> {
+                    item { ChoiceList(SettingIconKey.READING, listOf("standard" to "标准", "focus" to "专注", "night" to "夜读"), reading, viewModel::setReadingMode) }
+                    item { SettingsGroupTitle("阅读辅助") }
+                    item {
+                        SettingsGroup {
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("显示阅读进度条", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("默认关闭；关闭后顶栏下方不留任何占位", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.5.sp)
+                                }
+                                Switch(checked = readingProgressVisible, onCheckedChange = viewModel::setReadingProgressVisible)
+                            }
+                        }
+                    }
+                }
                 "transition" -> {
                     item { SettingsGroupTitle("选择页面切换方式") }
                     item { ChoiceList(SettingIconKey.TRANSITION, listOf("shared" to "卡片连贯", "crossfade" to "叠化", "lift" to "上下浮"), pageTransition, viewModel::setPageTransition) }
@@ -371,9 +390,9 @@ fun SettingsDetailScreen(
                 "text-size" -> {
                     item {
                         SettingsGroup {
-                            SettingsRow("正文大小", textSizeLabel(bodyTextSize), HeikaIconRes.Text) { onSection("body-size") }
+                            SettingsRow("正文大小", textSizeLabel(bodyTextScale), HeikaIconRes.Text) { onSection("body-size") }
                             SettingsDivider()
-                            SettingsRow("标题大小", textSizeLabel(titleTextSize), HeikaIconRes.Font) { onSection("title-size") }
+                            SettingsRow("标题大小", textSizeLabel(titleTextScale), HeikaIconRes.Font) { onSection("title-size") }
                         }
                     }
                     item { SettingsGroupTitle("预览") }
@@ -382,25 +401,25 @@ fun SettingsDetailScreen(
                             "阅读与字号会立即应用于详情正文、评论正文和内容标题。",
                             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.group)).background(MaterialTheme.colorScheme.surface).padding(16.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 14.sp * com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(bodyTextSize),
-                            lineHeight = 22.sp * com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(bodyTextSize),
+                            fontSize = 14.sp * bodyTextScale,
+                            lineHeight = 22.sp * bodyTextScale,
                         )
                     }
                 }
                 "body-size" -> item {
                     TextSizeChoiceList(
                         iconKey = SettingIconKey.READING,
-                        selected = bodyTextSize,
+                        selected = bodyTextScale,
                         title = false,
-                        onSelect = viewModel::setBodyTextSize,
+                        onSelect = viewModel::setBodyTextScale,
                     )
                 }
                 "title-size" -> item {
                     TextSizeChoiceList(
                         iconKey = SettingIconKey.FONT,
-                        selected = titleTextSize,
+                        selected = titleTextScale,
                         title = true,
-                        onSelect = viewModel::setTitleTextSize,
+                        onSelect = viewModel::setTitleTextScale,
                     )
                 }
                 "notifications" -> {
@@ -637,67 +656,65 @@ private fun transitionLabel(value: String) = when (value) {
 private fun themeLabel(value: String) = when (value) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" }
 private fun layoutLabel(value: String) = if (value == "single") "单列列表" else "双列瀑布流"
 private fun readingLabel(value: String) = when (value) { "focus" -> "专注"; "night" -> "夜读"; else -> "标准" }
-private fun textSizeLabel(value: String) = when (com.heika.nativeapp.ui.HeikaReadingSizes.normalize(value)) {
-    "slightly-large" -> "稍大"
-    "large" -> "大"
-    else -> "标准"
-}
+private fun textSizeLabel(value: Float) = "${(value * 100).toInt()}%"
 
+/** 无级字号：滑块即时生效，预览跟随，恢复默认不离开当前页。 */
 @Composable
 private fun TextSizeChoiceList(
     iconKey: SettingIconKey,
-    selected: String,
+    selected: Float,
     title: Boolean,
-    onSelect: (String) -> Unit,
+    onSelect: (Float) -> Unit,
 ) {
-    val scale = if (title) com.heika.nativeapp.ui.HeikaReadingSizes.titleScale(selected) else com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(selected)
-    val options = listOf("standard" to "标准", "slightly-large" to "稍大", "large" to "大")
+    val minimum = 0.85f
+    val maximum = if (title) 1.3f else 1.35f
+    val previewTitle = 22.sp * (if (title) selected else 1f)
+    val previewBody = 14.sp * (if (title) 1f else selected)
     Column(Modifier.fillMaxWidth()) {
-        SettingsGroupTitle("选择字号")
+        SettingsGroupTitle(if (title) "标题大小" else "正文大小")
         SettingsGroup {
-            options.forEachIndexed { index, (value, label) ->
-                val select = {
-                    if (selected != value) {
-                        onSelect(value)
-                        HeikaNoticeBus.show("${if (title) "标题" else "正文"}字号：$label", HeikaNoticeKind.SUCCESS)
-                    }
-                }
-                Row(
-                    Modifier.fillMaxWidth().clickable { select() }.heightIn(min = 62.dp).padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(
                         Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            painterResource(settingIcon(iconKey)), null,
-                            tint = if (selected == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp),
-                        )
+                        Icon(painterResource(settingIcon(iconKey)), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text(
-                            if (title) "黑卡内容标题" else "正文与评论示例",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = (if (title) 14.sp else 13.sp) * (if (title) com.heika.nativeapp.ui.HeikaReadingSizes.titleScale(value) else com.heika.nativeapp.ui.HeikaReadingSizes.bodyScale(value)),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    RadioButton(selected = selected == value, onClick = select)
+                    Text(
+                        "${(selected * 100).toInt()}%",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { if (selected != 1f) onSelect(1f) }) { Text("恢复默认", fontSize = 12.sp) }
                 }
-                if (index < options.lastIndex) SettingsDivider()
+                androidx.compose.material3.Slider(
+                    value = selected,
+                    onValueChange = onSelect,
+                    valueRange = minimum..maximum,
+                    steps = 0,
+                )
+                Row(Modifier.fillMaxWidth()) {
+                    Text("小", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp)
+                    Text("拖动即时预览", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text("大", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp)
+                }
             }
         }
         Text(
             if (title) "标题预览" else "正文预览",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = (if (title) 22.sp else 14.sp) * scale,
-            lineHeight = (if (title) 30.sp else 22.sp) * scale,
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 16.dp, bottom = 6.dp),
+        )
+        Text(
+            if (title) "黑卡 HEIKA" else "阅读是一种长期主义。正文会随滑块无级缩放，行高按比例调整。",
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = if (title) previewTitle else previewBody,
+            lineHeight = (if (title) previewTitle else previewBody) * if (title) 1.32f else 1.72f,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

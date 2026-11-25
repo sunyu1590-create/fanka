@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { ApiError, context, jsonBody, respond } from "@/lib/server/api";
 import { markdownPreservationIssues } from "@/lib/markdown-preservation.mjs";
 import { completeAiChat } from "@/lib/server/ai-provider";
+import { requireFeature } from "@/lib/server/feature-flags";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -17,6 +18,7 @@ const modes = {
 
 export async function POST(req: NextRequest) {
   return respond(async () => {
+    await requireFeature("ai");
     const { db, user } = await context(req);
     const body = await jsonBody(req);
     const mode = body.mode as keyof typeof modes;

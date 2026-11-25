@@ -335,11 +335,12 @@ async function flushProcesses() {
 
 // ---------- 边缘访问日志 → 媒体流量 ----------
 
-const MEDIA_KINDS = new Set(["image", "video", "attachment", "apk"]);
+const MEDIA_KINDS = new Set(["image", "video", "audio", "attachment", "apk"]);
 const dayFormatter = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
 const dayKey = (date) => dayFormatter.format(date);
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|avif|svg|bmp|heic)$/i;
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v|mkv)$/i;
+const AUDIO_EXT = /\.(mp3|m4a|aac|wav|flac|ogg|opus)$/i;
 const ARCHIVE_EXT = /\.(zip|rar|7z|pdf|docx?|xlsx?|pptx?|txt|md|json|ya?ml|apk)$/i;
 
 function classifyPath(uri) {
@@ -352,6 +353,7 @@ function classifyPath(uri) {
   if (path.startsWith("/storage/v1/object/")) {
     if (IMAGE_EXT.test(path)) return "image";
     if (VIDEO_EXT.test(path)) return "video";
+    if (AUDIO_EXT.test(path)) return "audio";
     if (ARCHIVE_EXT.test(path)) return "attachment";
     return "other";
   }
@@ -363,6 +365,9 @@ function classifyPath(uri) {
 let logCursor = { ino: null, offset: 0 };
 let pendingLine = "";
 const trafficAgg = { daily: new Map(), paths: new Map(), firstLineAt: null, lastLineAt: null };
+// 控制中心 3.0：全量访问按 IP 聚合；HTTP 日志只保留业务请求摘要（不含 Cookie / Token / 正文）。
+const ipAgg = new Map();
+const httpAgg = [];
 
 function ingestAccessLog() {
   let stat;
@@ -405,12 +410,40 @@ function ingestAccessLog() {
     }
     const uri = String(entry?.request?.uri || "");
     if (!uri) continue;
-    const kind = classifyPath(uri);
-    if (!MEDIA_KINDS.has(kind)) continue;
     const status = Number(entry?.status || 0);
     const bytes = Math.max(0, Number(entry?.size || 0));
     const at = entry?.ts ? new Date(Number(entry.ts) * 1000) : new Date();
     const day = dayKey(at);
+    const ip = String(entry?.request?.remote_ip || "");
+    const method = String(entry?.request?.method || "GET");
+    const ms = Math.round(Number(entry?.duration || 0) * 1000);
+    const userAgent = String(entry?.request?.headers?.["User-Agent"]?.[0] || "").slice(0, 300);
+    const path = uri.split("?")[0].slice(0, 240);
+
+    if (ip) {
+      const key = `${day}|${ip}`;
+      const row = ipAgg.get(key) || {
+        day, ip, requests: 0, bytes_in: 0, bytes_out: 0, status_4xx: 0, status_5xx: 0,
+        msSum: 0, first_seen: at.toISOString(), last_seen: at.toISOString(), paths: {},
+      };
+      row.requests += 1;
+      row.bytes_out += bytes;
+      row.bytes_in += Math.max(0, Number(entry?.request?.headers?.["Content-Length"]?.[0] || 0));
+      if (status >= 500) row.status_5xx += 1;
+      else if (status >= 400) row.status_4xx += 1;
+      row.msSum += ms;
+      if (at.toISOString() < row.first_seen) row.first_seen = at.toISOString();
+      if (at.toISOString() > row.last_seen) row.last_seen = at.toISOString();
+      if (Object.keys(row.paths).length < 30) row.paths[path] = (row.paths[path] || 0) + 1;
+      ipAgg.set(key, row);
+    }
+    // 静态资源只计入 IP 流量，不单独写 HTTP 日志，避免日志表被冲垮。
+    if (httpAgg.length < 500 && !/^\/(_next|assets|favicon|icons)\b/.test(path) && ip) {
+      httpAgg.push({ ts: at.toISOString(), ip, method, path, status, ms, bytes, ua: userAgent });
+    }
+
+    const kind = classifyPath(uri);
+    if (!MEDIA_KINDS.has(kind)) continue;
     const ok = status === 200 || status === 206 || status === 304;
     const dailyKey = `${day}|${kind}`;
     const daily = trafficAgg.daily.get(dailyKey) || { requests: 0, bytes: 0, completed: 0, failed: 0 };
@@ -430,6 +463,163 @@ function ingestAccessLog() {
     count += 1;
   }
   return count;
+}
+
+/** 按天累加 IP 统计；RPC 内部做 upsert + 增量，避免覆盖当天已有数据。 */
+async function flushIpStats() {
+  if (!ipAgg.size) return;
+  const entries = [...ipAgg.entries()].slice(0, 300);
+  const rows = entries.map(([, value]) => ({
+    day: value.day,
+    ip: value.ip,
+    requests: value.requests,
+    bytes_in: value.bytes_in,
+    bytes_out: value.bytes_out,
+    status_4xx: value.status_4xx,
+    status_5xx: value.status_5xx,
+    avg_ms: value.requests ? Math.round(value.msSum / value.requests) : 0,
+    first_seen: value.first_seen,
+    last_seen: value.last_seen,
+    paths: value.paths,
+  }));
+  await rest("rpc/heika_ip_stats_inc", { method: "POST", body: JSON.stringify({ p_rows: rows }) });
+  for (const [key] of entries) ipAgg.delete(key);
+}
+
+async function flushHttpLogs() {
+  if (!httpAgg.length) return;
+  const rows = httpAgg.splice(0, 500);
+  await rest("http_access_logs", { method: "POST", body: JSON.stringify(rows) });
+}
+
+// ---------- TCP 连接快照（宿主机 /proc/net/tcp + 进程映射） ----------
+
+const TCP_STATES = {
+  "01": "ESTABLISHED", "02": "SYN_SENT", "03": "SYN_RECV", "04": "FIN_WAIT1", "05": "FIN_WAIT2",
+  "06": "TIME_WAIT", "07": "CLOSE", "08": "CLOSE_WAIT", "09": "LAST_ACK", "0A": "LISTEN", "0B": "CLOSING",
+};
+
+function hexToIp(hex, v6 = false) {
+  if (v6) {
+    if (hex.length !== 32) return null;
+    const groups = [];
+    for (let index = 0; index < 32; index += 4) {
+      const word = hex.slice(index, index + 4);
+      // 内核按 4 字节小端分组输出，需要逐组翻转字节序。
+      groups.push(`${word.slice(2, 4)}${word.slice(0, 2)}`);
+    }
+    return groups.join(":").replace(/(^|:)(0:)+/, (match) => (match.startsWith(":") ? "::" : "::"));
+  }
+  if (hex.length !== 8) return null;
+  return [6, 4, 2, 0].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)).join(".");
+}
+
+function socketInodeMap() {
+  // 只扫描监听与已建立连接的 socket inode，避免遍历整棵 /proc。
+  const map = new Map();
+  let pids = [];
+  try {
+    pids = fs.readdirSync(HOST_PROC).filter((name) => /^\d+$/.test(name));
+  } catch {
+    return map;
+  }
+  for (const pid of pids) {
+    let fds = [];
+    try {
+      fds = fs.readdirSync(`${HOST_PROC}/${pid}/fd`);
+    } catch {
+      continue;
+    }
+    for (const fd of fds) {
+      try {
+        const link = fs.readlinkSync(`${HOST_PROC}/${pid}/fd/${fd}`);
+        const match = /^socket:\[(\d+)\]$/.exec(link);
+        if (!match) continue;
+        let name = "";
+        try {
+          name = fs.readFileSync(`${HOST_PROC}/${pid}/comm`, "utf8").trim();
+        } catch { /* 进程退出 */ }
+        map.set(match[1], { pid: Number(pid), process: name.slice(0, 60) });
+      } catch { /* 无权限或已关闭 */ }
+    }
+  }
+  return map;
+}
+
+function collectTcpSnapshot() {
+  const inodes = socketInodeMap();
+  const rows = [];
+  for (const [file, v6] of [[`${HOST_PROC}/net/tcp`, false], [`${HOST_PROC}/net/tcp6`, true]]) {
+    let text = "";
+    try {
+      text = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split("\n").slice(1)) {
+      const fields = line.trim().split(/\s+/);
+      if (fields.length < 10) continue;
+      const [local, remote, stateHex] = fields;
+      const state = TCP_STATES[stateHex];
+      if (!state) continue;
+      const [localHex, localPortHex] = local.split(":");
+      const [remoteHex, remotePortHex] = remote.split(":");
+      const localIp = hexToIp(localHex, v6);
+      const remoteIp = hexToIp(remoteHex, v6);
+      const localPort = parseInt(localPortHex, 16);
+      const remotePort = parseInt(remotePortHex, 16);
+      const direction = localPort === 443 || localPort === 80 || localPort === 3000 ? "inbound" : (remotePort === 443 || remotePort === 80 ? "outbound" : "local");
+      const socket = inodes.get(fields[9]);
+      rows.push({
+        state,
+        local_ip: localIp,
+        local_port: Number.isFinite(localPort) ? localPort : null,
+        remote_ip: remoteIp,
+        remote_port: Number.isFinite(remotePort) ? remotePort : null,
+        process: socket?.process || null,
+        pid: socket?.pid || null,
+        direction,
+        // 内核不暴露单连接累计字节；这里明确留空，不用估算值冒充。
+        bytes_sent: null,
+        bytes_recv: null,
+      });
+    }
+  }
+  return rows;
+}
+
+async function flushTcpSnapshot() {
+  const rows = collectTcpSnapshot();
+  if (!rows.length) return;
+  lastTcpTotal = rows.length;
+  const capturedAt = new Date().toISOString();
+  const counts = rows.reduce((acc, row) => {
+    acc[row.state] = (acc[row.state] || 0) + 1;
+    return acc;
+  }, {});
+  // 只保留最有诊断价值的 200 条明细；完整状态分布写在 SUMMARY 行里，
+  // 避免 60 秒一次的全量连接把 2C2G 服务器磁盘写满。
+  const priority = { ESTABLISHED: 0, LISTEN: 1, CLOSE_WAIT: 2, SYN_RECV: 3, SYN_SENT: 4, TIME_WAIT: 5 };
+  const detail = rows
+    .filter((row) => row.state !== "TIME_WAIT" || rows.filter((item) => item.state === "TIME_WAIT").length < 300)
+    .sort((a, b) => (priority[a.state] ?? 9) - (priority[b.state] ?? 9))
+    .slice(0, 200)
+    .map((row) => ({ ...row, captured_at: capturedAt }));
+  detail.push({
+    captured_at: capturedAt,
+    state: "SUMMARY",
+    local_ip: null,
+    local_port: null,
+    remote_ip: null,
+    remote_port: null,
+    process: null,
+    pid: null,
+    direction: null,
+    bytes_sent: null,
+    bytes_recv: null,
+    meta: { counts, total: rows.length },
+  });
+  await rest("tcp_snapshots", { method: "POST", body: JSON.stringify(detail) });
 }
 
 async function flushTraffic() {
@@ -455,49 +645,159 @@ async function flushTraffic() {
 
 // ---------- 告警规则 ----------
 
-const ALERT_RULES = [
-  { type: "cpu_high", level: "warning", title: "CPU 持续偏高", test: (m) => m.cpu_percent != null && m.cpu_percent > 80, detail: (m) => `CPU ${m.cpu_percent}%` },
-  { type: "mem_low", level: "critical", title: "可用内存不足", test: (m) => m.mem_percent != null && m.mem_percent > 85, detail: (m) => `内存使用 ${m.mem_percent}%` },
-  { type: "disk_high", level: "critical", title: "磁盘使用率过高", test: (m) => m.disk_percent != null && m.disk_percent > 85, detail: (m) => `磁盘 ${m.disk_percent}%` },
-  { type: "api_errors", level: "warning", title: "API 错误率偏高", test: (m) => m.api_requests > 20 && m.api_errors != null && (m.api_errors / m.api_requests) * 100 > 5, detail: (m) => `错误率 ${((m.api_errors / Math.max(1, m.api_requests)) * 100).toFixed(1)}%（${m.api_errors}/${m.api_requests}）` },
-  { type: "upload_first_fail", level: "warning", title: "上传成功率偏低", test: (m) => m.upload_success_rate != null && m.upload_tasks >= 10 && m.upload_success_rate < 90, detail: (m) => `24h 成功率 ${m.upload_success_rate}%（样本 ${m.upload_tasks}）` },
-  { type: "service_down", level: "critical", title: "服务健康检查失败", test: (_m, services) => services && Object.values(services).some((item) => item && item.ok === false), detail: (_m, services) => Object.entries(services || {}).filter(([, item]) => item?.ok === false).map(([name, item]) => `${name}: ${item.detail || "不可用"}`).join("; ") },
-];
+/**
+ * 阈值来自 alert_rules 表，管理员在管理中心改完即生效，不在代码里写死。
+ * 支持：持续时间（连续满足才触发）、冷却（恢复后一段时间不重复告警）、
+ * 降噪（同一规则只保留一条未恢复记录，重复命中累加 occurrences）。
+ */
+const METRIC_LABELS = {
+  cpu_percent: "CPU 使用率", mem_percent: "内存使用率", disk_percent: "磁盘使用率",
+  tcp_total: "TCP 连接总数", api_error_rate: "API 错误率", api_p95_ms: "API P95 耗时",
+  upload_fail_rate: "上传失败率", net_tx_rate: "出网速率", cert_days_left: "HTTPS 证书剩余天数",
+};
+
+function compare(value, operator, threshold) {
+  switch (operator) {
+    case ">": return value > threshold;
+    case ">=": return value >= threshold;
+    case "<": return value < threshold;
+    case "<=": return value <= threshold;
+    default: return false;
+  }
+}
+
+let rulesCache = { at: 0, rows: [] };
+let ruleState = new Map();
+let lastTcpTotal = null;
+let certDaysLeft = null;
+
+async function loadAlertRules() {
+  if (Date.now() - rulesCache.at < 5 * 60_000 && rulesCache.rows.length) return rulesCache.rows;
+  const rows = await rest("alert_rules?select=id,metric,operator,threshold,duration_seconds,cooldown_seconds,level,enabled&enabled=eq.true").catch(() => null);
+  if (Array.isArray(rows)) rulesCache = { at: Date.now(), rows };
+  return rulesCache.rows;
+}
+
+/** 真实指标取值；拿不到就返回 null，规则不会因为缺数据而误报。 */
+function metricValue(metric, metrics, services) {
+  switch (metric) {
+    case "cpu_percent": return metrics.cpu_percent ?? null;
+    case "mem_percent": return metrics.mem_percent ?? null;
+    case "disk_percent": return metrics.disk_percent ?? null;
+    case "tcp_total": return lastTcpTotal;
+    case "api_error_rate": return metrics.api_requests > 0 && metrics.api_errors != null ? (metrics.api_errors / metrics.api_requests) * 100 : null;
+    case "api_p95_ms": return metrics.api_p95_ms ?? null;
+    case "upload_fail_rate": return metrics.upload_tasks >= 10 && metrics.upload_success_rate != null ? 100 - metrics.upload_success_rate : null;
+    case "net_tx_rate": return metrics.net_tx_rate ?? null;
+    case "cert_days_left": return certDaysLeft;
+    case "service_down": return services && Object.values(services).some((item) => item && item.ok === false) ? 1 : 0;
+    default: return null;
+  }
+}
+
+function metricDetail(metric, value, metrics, services) {
+  if (metric === "service_down") {
+    return Object.entries(services || {}).filter(([, item]) => item?.ok === false).map(([name, item]) => `${name}: ${item?.detail || "不可用"}`).join("; ") || "服务不可用";
+  }
+  const label = METRIC_LABELS[metric] || metric;
+  if (metric === "api_error_rate") return `${label} ${value.toFixed(1)}%（${metrics.api_errors}/${metrics.api_requests}）`;
+  if (metric === "cert_days_left") return `${label} ${Math.floor(value)} 天`;
+  return `${label} ${typeof value === "number" ? Number(value.toFixed(1)) : value}`;
+}
+
+/** 读取本机 HTTPS 证书剩余天数；连不上就留空，不猜测。 */
+async function probeCertificate() {
+  const target = process.env.HEIKA_CERT_HOST || "moonclean.shop";
+  const [host, portRaw] = target.split(":");
+  const port = Number(portRaw || 443);
+  const tls = await import("node:tls");
+  return new Promise((resolve) => {
+    const socket = tls.connect({ host, port, servername: host, rejectUnauthorized: false, timeout: 8000 }, () => {
+      try {
+        const cert = socket.getPeerCertificate();
+        socket.end();
+        if (!cert?.valid_to) return resolve(null);
+        const days = (new Date(cert.valid_to).getTime() - Date.now()) / 86_400_000;
+        resolve(Number.isFinite(days) ? days : null);
+      } catch {
+        resolve(null);
+      }
+    });
+    socket.on("error", () => resolve(null));
+    socket.on("timeout", () => { socket.destroy(); resolve(null); });
+  });
+}
 
 async function evaluateAlerts(metrics, services) {
-  for (const rule of ALERT_RULES) {
-    let triggered = false;
-    try {
-      triggered = Boolean(rule.test(metrics, services));
-    } catch {
-      triggered = false;
+  const rules = await loadAlertRules();
+  if (!rules.length) return;
+  const now = Date.now();
+  for (const rule of rules) {
+    const value = metricValue(rule.metric, metrics, services);
+    if (value == null || !Number.isFinite(Number(value))) {
+      ruleState.delete(rule.id);
+      continue;
     }
-    const existing = await rest(`system_alerts?alert_type=eq.${encodeURIComponent(rule.type)}&status=neq.resolved&limit=1`).catch(() => null);
-    const row = Array.isArray(existing) ? existing[0] : null;
-    if (triggered) {
-      const snapshot = { ...metrics, services };
-      if (row) {
-        await rest(`system_alerts?id=eq.${row.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ last_seen_at: new Date().toISOString(), occurrences: (row.occurrences || 1) + 1, metric_snapshot: snapshot, detail: rule.detail(metrics, services) }),
-        }).catch(() => {});
-      } else {
-        await rest("system_alerts", {
-          method: "POST",
-          body: JSON.stringify({
-            alert_type: rule.type, level: rule.level, title: rule.title,
-            detail: rule.detail(metrics, services), metric_snapshot: snapshot, status: "open",
-          }),
-        }).catch(() => {});
-        console.warn(`[metrics-agent] 新告警：${rule.title} — ${rule.detail(metrics, services)}`);
-      }
-    } else if (row) {
-      await rest(`system_alerts?id=eq.${row.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "resolved", resolved_at: new Date().toISOString() }),
-      }).catch(() => {});
+    const hit = compare(Number(value), rule.operator, Number(rule.threshold));
+    const state = ruleState.get(rule.id) || { since: null, cooledUntil: 0 };
+    if (!hit) {
+      ruleState.set(rule.id, { since: null, cooledUntil: state.cooledUntil });
+      await resolveAlert(rule);
+      continue;
     }
+    if (!state.since) state.since = now;
+    const held = (now - state.since) / 1000;
+    if (held < Number(rule.duration_seconds || 0)) {
+      ruleState.set(rule.id, state);
+      continue;
+    }
+    if (state.cooledUntil && now < state.cooledUntil) continue;
+    ruleState.set(rule.id, state);
+    await fireAlert(rule, value, metrics, services, state);
   }
+}
+
+async function resolveAlert(rule) {
+  const existing = await rest(`system_alerts?alert_type=eq.${encodeURIComponent("rule:" + rule.metric)}&status=in.(open,acknowledged,resolving)&limit=1`).catch(() => null);
+  const row = Array.isArray(existing) ? existing[0] : null;
+  if (!row) return;
+  await rest(`system_alerts?id=eq.${row.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "resolved", resolved_at: new Date().toISOString(), handle_note: "指标已恢复到阈值以内（自动）" }),
+  }).catch(() => {});
+  ruleState.set(rule.id, { since: null, cooledUntil: Date.now() + Number(rule.cooldown_seconds || 0) * 1000 });
+}
+
+async function fireAlert(rule, value, metrics, services) {
+  const type = `rule:${rule.metric}`;
+  const existing = await rest(`system_alerts?alert_type=eq.${encodeURIComponent(type)}&status=in.(open,acknowledged,resolving,ignored)&limit=1`).catch(() => null);
+  const row = Array.isArray(existing) ? existing[0] : null;
+  const detail = metricDetail(rule.metric, Number(value), metrics, services);
+  const snapshot = { ...metrics, services, rule: { metric: rule.metric, operator: rule.operator, threshold: rule.threshold } };
+  if (row) {
+    await rest(`system_alerts?id=eq.${row.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        last_seen_at: new Date().toISOString(),
+        occurrences: (row.occurrences || 1) + 1,
+        metric_snapshot: snapshot,
+        detail,
+      }),
+    }).catch(() => {});
+    return;
+  }
+  await rest("system_alerts", {
+    method: "POST",
+    body: JSON.stringify({
+      alert_type: type,
+      level: rule.level || "warn",
+      title: `${METRIC_LABELS[rule.metric] || rule.metric} 触发阈值`,
+      detail,
+      metric_snapshot: snapshot,
+      status: "open",
+    }),
+  }).catch(() => {});
+  console.warn(`[metrics-agent] 新告警：${rule.metric} ${rule.operator} ${rule.threshold} — ${detail}`);
 }
 
 async function cleanup() {
@@ -505,6 +805,13 @@ async function cleanup() {
   await rest(`system_metrics?captured_at=lt.${encodeURIComponent(metricsCutoff)}`, { method: "DELETE" }).catch(() => {});
   const alertCutoff = new Date(Date.now() - ALERT_RETENTION_DAYS * 24 * 3600 * 1000).toISOString();
   await rest(`system_alerts?status=eq.resolved&resolved_at=lt.${encodeURIComponent(alertCutoff)}`, { method: "DELETE" }).catch(() => {});
+  // 监控自身也要有保留期限：TCP 明细 24 小时、HTTP 日志 30 天、IP 日聚合 180 天。
+  const tcpCutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  await rest(`tcp_snapshots?captured_at=lt.${encodeURIComponent(tcpCutoff)}`, { method: "DELETE" }).catch(() => {});
+  const httpCutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  await rest(`http_access_logs?ts=lt.${encodeURIComponent(httpCutoff)}`, { method: "DELETE" }).catch(() => {});
+  const ipCutoff = new Date(Date.now() - 180 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  await rest(`ip_access_stats?day=lt.${ipCutoff}`, { method: "DELETE" }).catch(() => {});
 }
 
 // ---------- 主循环 ----------
@@ -539,8 +846,16 @@ async function sample() {
   try {
     ingestAccessLog();
     await flushTraffic();
+    await flushIpStats();
+    await flushHttpLogs();
   } catch (error) {
     console.error("[metrics-agent] 流量汇总异常：", error instanceof Error ? error.message : error);
+  }
+  if (tick % 4 === 1) {
+    await flushTcpSnapshot().catch((error) => console.error("[metrics-agent] TCP 快照异常：", error instanceof Error ? error.message : error));
+  }
+  if (tick % 20 === 1) {
+    certDaysLeft = await probeCertificate().catch(() => null);
   }
   if (tick % 3 === 1) {
     await evaluateAlerts(metrics, services);

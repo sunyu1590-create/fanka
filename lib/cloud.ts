@@ -3,6 +3,7 @@ export async function cloudRequest(
   path: string,
   body?: unknown,
   method = body ? "POST" : "GET",
+  headers?: Record<string, string>,
 ) {
   const db = await browserDb();
   const { data } = await db.auth.getSession();
@@ -12,6 +13,7 @@ export async function cloudRequest(
     headers: {
       Authorization: `Bearer ${data.session.access_token}`,
       "Content-Type": "application/json",
+      ...headers,
     },
     body: body ? JSON.stringify(body) : undefined,
   });

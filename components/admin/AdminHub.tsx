@@ -35,6 +35,19 @@ const DESCRIPTIONS: Record<string, string> = {
   "app-download": "网页与 APP 版本信息",
   "home-banners": "首页图片与视频轮播、尺寸与运营数据",
   "cover-templates": "官方封面模板与历史补齐",
+  tcp: "连接状态、端口与进程归属",
+  ips: "独立 IP、请求量与归属分析",
+  traffic: "资源类型、接口与网络层流量",
+  "ip-rules": "黑白名单、封禁与限速",
+  "account-limits": "账号级能力限制，避免误封共享 IP",
+  services: "服务健康、运行时间与操作",
+  deployments: "部署版本与历史记录",
+  emergency: "维护模式与单项功能启停",
+  trash: "删除恢复、保留期与永久清理",
+  "review-stats": "自动通过率、复审率与 AI 推翻比例",
+  "review-policy": "提示词版本、生效与回滚",
+  "access-logs": "请求明细与错误摘要",
+  "alert-rules": "阈值、持续时间与冷却配置",
 };
 
 /** 一级导航的二级入口页：Apple Settings 式分组，一屏内完成选择。 */

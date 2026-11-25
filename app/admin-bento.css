@@ -1114,3 +1114,183 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
   .ab-spin { animation: none; }
   .ab-switch, .ab-switch i, .ab-chip-btn { transition: none; }
 }
+
+/* =========================================================================
+   Control Center 3.0：八个模块、数据表格、状态与工具栏
+   ========================================================================= */
+
+/* 移动端一级导航从 4 项扩到 9 项：横向滚动，不再压缩可点区域。 */
+.ab-bottomnav {
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding: 0 6px;
+  gap: 2px;
+}
+.ab-bottomnav::-webkit-scrollbar { display: none; }
+.ab-bottomnav button { flex: 0 0 62px; min-width: 62px; }
+
+.cc-stack { display: flex; flex-direction: column; gap: 12px; }
+
+.cc-bars { display: flex; flex-direction: column; gap: 7px; }
+.cc-bars__row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ab-ink-2);
+}
+.cc-bars__row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
+.cc-bars__row > i { height: 6px; border-radius: 3px; background: var(--ab-fill); overflow: hidden; }
+.cc-bars__row > i > b { display: block; height: 100%; border-radius: 3px; background: var(--ab-gold); transition: width .3s ease; }
+.cc-bars__row > em { font-style: normal; text-align: right; color: var(--ab-ink-3); font-variant-numeric: tabular-nums; }
+
+.cc-tablewrap { overflow-x: auto; border: 1px solid var(--ab-line); border-radius: 10px; background: var(--ab-surface); }
+.cc-table { width: 100%; border-collapse: collapse; font-size: 11.5px; min-width: 680px; }
+.cc-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 10px;
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--ab-ink-3);
+  background: var(--ab-fill);
+  border-bottom: 1px solid var(--ab-line);
+  white-space: nowrap;
+}
+.cc-table td { padding: 9px 10px; border-top: 1px solid var(--ab-line); color: var(--ab-ink); vertical-align: middle; }
+.cc-table tbody tr:first-child td { border-top: 0; }
+.cc-table td small { color: var(--ab-ink-3); font-size: 10px; }
+.cc-table td.warn { color: #d97706; }
+:root[data-theme="dark"] .cc-table td.warn { color: #f0b45e; }
+.cc-mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10.8px; white-space: nowrap; }
+
+.cc-state {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  background: var(--ab-fill);
+  color: var(--ab-ink-2);
+  white-space: nowrap;
+}
+.cc-state.ok { background: color-mix(in srgb, #1f9d55 14%, transparent); color: #1f7a45; }
+:root[data-theme="dark"] .cc-state.ok { color: #5ad08b; }
+.cc-state.warn { background: color-mix(in srgb, #d97706 14%, transparent); color: #a35a05; }
+:root[data-theme="dark"] .cc-state.warn { color: #f0b45e; }
+
+.cc-rowlink { cursor: pointer; }
+.cc-rowlink:hover td { background: var(--ab-fill); }
+.cc-expand td { background: color-mix(in srgb, var(--ab-fill) 60%, transparent); }
+.cc-expand__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 18px; padding: 4px 2px; }
+.cc-expand__grid > div { display: grid; gap: 2px; min-width: 0; }
+.cc-expand__grid strong { font-size: 10px; font-weight: 600; color: var(--ab-ink-3); letter-spacing: .03em; }
+.cc-expand__grid span { font-size: 11.5px; color: var(--ab-ink); overflow-wrap: anywhere; }
+
+.cc-note { margin: 8px 0 0; font-size: 10.5px; line-height: 1.6; color: var(--ab-ink-3); }
+.cc-muted { margin: 0; padding: 14px 0; font-size: 11.5px; color: var(--ab-ink-3); }
+.cc-notice {
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--ab-line);
+  background: var(--ab-fill);
+  font-size: 11.5px;
+  color: var(--ab-ink-2);
+}
+.cc-notice.warn { border-color: color-mix(in srgb, #d97706 35%, var(--ab-line)); background: color-mix(in srgb, #d97706 8%, var(--ab-surface)); color: #8a5207; }
+:root[data-theme="dark"] .cc-notice.warn { color: #f0b45e; }
+
+/* 二级页面表单 */
+.cc-form { display: grid; gap: 10px; }
+.cc-form label { display: grid; gap: 5px; font-size: 11px; color: var(--ab-ink-3); }
+.cc-form input, .cc-form select, .cc-form textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--ab-line);
+  border-radius: 9px;
+  background: var(--ab-surface);
+  color: var(--ab-ink);
+  font-size: 12.5px;
+  outline: 0;
+}
+.cc-form input:focus, .cc-form select:focus, .cc-form textarea:focus { border-color: var(--ab-gold); }
+.cc-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--ab-line);
+  border-radius: 9px;
+  background: var(--ab-surface);
+  color: var(--ab-ink);
+  font-size: 12px;
+  font-weight: 550;
+}
+.cc-btn.primary { background: var(--ab-gold); border-color: transparent; color: #17140c; }
+.cc-btn.danger { background: color-mix(in srgb, #dc2626 12%, var(--ab-surface)); border-color: color-mix(in srgb, #dc2626 40%, var(--ab-line)); color: #b91c1c; }
+:root[data-theme="dark"] .cc-btn.danger { color: #fca5a5; }
+.cc-btn:disabled { opacity: .5; }
+.cc-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.cc-kv > div { padding: 9px 11px; border-radius: 9px; background: var(--ab-fill); display: grid; gap: 2px; }
+.cc-kv strong { font-size: 10px; color: var(--ab-ink-3); font-weight: 600; }
+.cc-kv span { font-size: 12px; color: var(--ab-ink); }
+
+/* 紧急控制与功能开关 */
+.cc-featuregrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.cc-feature {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--ab-line);
+  border-radius: 9px;
+  background: var(--ab-surface);
+  color: var(--ab-ink);
+  font-size: 12px;
+}
+.cc-feature i { font-style: normal; font-size: 10px; color: #1f7a45; }
+.cc-feature.off { opacity: .72; }
+.cc-feature.off i { color: #b91c1c; }
+.ab-seg button { flex-direction: column; gap: 1px; }
+.ab-seg button small { font-size: 9px; color: var(--ab-ink-3); font-weight: 400; }
+
+/* 流量分析：双色日流量条、占比条、路径省略 */
+.cc-bars__row > i.cc-bars__dual { height: 8px; background: transparent; display: flex; flex-direction: column; gap: 2px; overflow: visible; }
+.cc-bars__row > i.cc-bars__dual > b,
+.cc-bars__row > i.cc-bars__dual > u { display: block; height: 3px; border-radius: 2px; text-decoration: none; transition: width .3s ease; }
+.cc-bars__row > i.cc-bars__dual > b { background: var(--ab-gold); }
+.cc-bars__row > i.cc-bars__dual > u { background: #4a9ed8; }
+.cc-share { display: inline-block; width: 64px; height: 5px; border-radius: 3px; background: var(--ab-fill); overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.cc-share > i { display: block; height: 100%; background: var(--ab-gold); }
+.cc-ellipsis { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-table small { color: var(--ab-ink-3); }
+
+/* 控制中心 3.0：八大模块快捷入口 */
+.ab-modules { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.ab-modules__item {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  padding: 10px 12px; border: 1px solid var(--ab-line); border-radius: 10px;
+  background: var(--ab-surface); color: var(--ab-ink-1); text-align: left; cursor: pointer;
+  transition: border-color .2s ease, background .2s ease;
+}
+.ab-modules__item:hover { border-color: var(--ab-gold); background: var(--ab-fill); }
+.ab-modules__item > span { font-size: 12.5px; font-weight: 650; }
+.ab-modules__item > small { font-size: 10.5px; color: var(--ab-ink-3); }
+.ab-modules__item > svg { color: var(--ab-gold); }
+@media (max-width: 900px) {
+  .ab-modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

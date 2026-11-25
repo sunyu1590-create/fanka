@@ -87,8 +87,9 @@ fun heikaReadingPalette(): HeikaReadingPalette =
 
 /** 正文排版基准：16sp / 1.75 倍行高，标题按层级递减，不做大面积粗体。 */
 object HeikaReadingType {
-    val body = 16.sp
-    const val bodyLineHeight = 1.75f
+    /** 阅读系统 2.0 之前的实际正文字号与行高（14sp / 1.72），2.30.2 起恢复。 */
+    val body = 14.sp
+    const val bodyLineHeight = 1.72f
     const val titleLineHeight = 1.32f
 
     fun heading(level: Int): Float = when (level) {

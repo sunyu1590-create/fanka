@@ -5,16 +5,22 @@ export type StaffRole = "admin" | "content_manager" | "reviewer";
 export type StaffPermission =
   | "content.read" | "content.review" | "content.manage"
   | "ai.read" | "ai.review" | "ai.manage" | "category.manage"
-  | "reports.manage" | "appeals.manage" | "accounts.manage" | "comments.manage" | "keywords.manage" | "audit.read";
+  | "reports.manage" | "appeals.manage" | "accounts.manage" | "comments.manage" | "keywords.manage" | "audit.read"
+  // 控制中心 3.0：监控、网络、服务器、资源与安全权限彼此独立，按需授予。
+  | "monitor.read" | "network.read" | "network.manage" | "server.read" | "server.manage"
+  | "resources.manage" | "logs.read" | "security.manage" | "policy.manage";
 
 const permissions: Record<StaffRole, ReadonlySet<StaffPermission>> = {
   admin: new Set([
     "content.read", "content.review", "content.manage", "ai.read", "ai.review", "ai.manage",
     "category.manage", "reports.manage", "appeals.manage", "accounts.manage", "comments.manage", "keywords.manage", "audit.read",
+    "monitor.read", "network.read", "network.manage", "server.read", "server.manage",
+    "resources.manage", "logs.read", "security.manage", "policy.manage",
   ]),
   content_manager: new Set([
     "content.read", "content.review", "content.manage", "ai.read", "ai.review", "ai.manage",
     "category.manage", "reports.manage", "appeals.manage", "comments.manage", "keywords.manage", "audit.read",
+    "monitor.read", "network.read", "logs.read",
   ]),
   reviewer: new Set(["content.read", "content.review", "ai.read", "ai.review", "reports.manage", "appeals.manage", "comments.manage", "audit.read"]),
 };

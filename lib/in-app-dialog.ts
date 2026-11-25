@@ -1,4 +1,4 @@
-export type ConfirmOptions = { title?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean };
+export type ConfirmOptions = { title?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean; inputType?: "text" | "password" };
 
 type Request =
   | { kind: "confirm"; message: string; options: ConfirmOptions; resolve: (value: boolean) => void }

@@ -162,19 +162,21 @@
 
 /* ---------- 正文排版 ---------- */
 
+/* 字号回到阅读系统 2.0 之前的实际参数（clamp 15–17px / 1.82），
+   颜色仍使用本轮升级后的高对比度令牌。--rd-body-scale 由阅读设置实时驱动。 */
 .detail .markdown-content,
 .detail-page .markdown-content {
   color: var(--rd-body);
-  font-size: 16px;
-  line-height: 1.75;
+  font-size: calc(clamp(15px, 4.2vw, 17px) * var(--rd-body-scale, 1));
+  line-height: 1.82;
   letter-spacing: 0;
 }
 
 .detail .markdown-content p,
 .detail-page .markdown-content p {
   color: var(--rd-body);
-  font-size: 16px;
-  line-height: 1.75;
+  font-size: inherit;
+  line-height: inherit;
   margin: 0 0 1.05em;
 }
 
@@ -197,9 +199,15 @@
   margin: 1.9em 0 .62em;
 }
 
+.detail .markdown-content h1,
+.detail-page .markdown-content h1 {
+  font-size: 1.55em;
+  color: var(--rd-heading);
+}
+
 .detail .markdown-content h2,
 .detail-page .markdown-content h2 {
-  font-size: 1.36em;
+  font-size: 1.35em;
   color: var(--rd-heading);
 }
 
@@ -1241,8 +1249,8 @@
 
 /* ---------- 移动端详情顶栏：实心，不透色 ---------- */
 
-/* 旧样式是半透明 + 18px 模糊，正文滚到下面就透上来；这里改成实心页面色。
-   顶栏右侧现在有目录与更多两个按钮，列宽从固定 48px 改成自适应。 */
+/* 顶栏回到品牌导航：中间只放品牌字样，不用文章标题挤压空间。
+   改 flex 布局后，返回键靠左，目录/更多从右依次排列，品牌绝对居中。 */
 .detail-header,
 :root[data-theme="dark"] .detail-header,
 :root[data-theme="light"] .detail-header {
@@ -1251,26 +1259,49 @@
   border-bottom: 1px solid var(--rd-line) !important;
   -webkit-backdrop-filter: blur(14px) saturate(120%) !important;
   backdrop-filter: blur(14px) saturate(120%) !important;
-  grid-template-columns: 44px minmax(0, 1fr) auto !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+  grid-template-columns: none !important;
   padding: 0 8px 0 4px;
 }
 
 .detail-header .detail-back {
   color: var(--rd-title);
+  margin-right: auto;
+  flex: none;
 }
 
-.detail-header-title {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.detail-header-brand {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: calc(100% - 168px);
   white-space: nowrap;
-  font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: 0;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  line-height: 1;
   color: var(--rd-title);
-  text-align: left;
+  pointer-events: none;
+}
+
+.detail-header-brand i {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  color: var(--rd-muted);
+}
+
+.detail-header .reader-toc-button,
+.detail-header .detail-more-wrap {
+  flex: none;
 }
 
 .detail-header .detail-more-button {
@@ -1445,4 +1476,255 @@ body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
 /* 超宽屏已常驻左侧目录，右栏那块目录卡就收起来，避免同一页出现两份目录 */
 @media (min-width: 1800px) {
   .detail-aside-card.detail-toc { display: none; }
+}
+
+/* ---------- 标题容器：占满正文列，长标题正常换行 ---------- */
+
+/* 旧规则把 .detail-body 限在 560px，作品标题和正文被挤在中间一条窄列里，
+   长标题还会因 overflow 隐藏被截断。阅读页统一放宽到 820px，并允许任意断行。 */
+.detail .detail-body,
+.detail-page .detail-body {
+  max-width: 820px;
+  padding-inline: clamp(18px, 4vw, 32px);
+}
+
+.detail .detail-body > h1,
+.detail-page .detail-body > h1,
+.detail .detail-body .article > h1,
+.detail-page .detail-body .article > h1,
+.detail .detail-body .detail-article-column h1,
+.detail-page .detail-body .detail-article-column h1 {
+  display: block;
+  width: 100%;
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: calc(clamp(19px, 5vw, 20px) * var(--rd-title-scale, 1));
+}
+
+/* ---------- 阅读字号设置 ---------- */
+
+.reader-type-controls {
+  margin: 18px 0 4px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  display: grid;
+  gap: 12px;
+}
+
+.reader-type-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.reader-type-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.reader-type-reset:not(:disabled):hover { color: var(--ink); }
+
+.reader-type-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.reader-type-row output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.reader-type-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  margin: 0;
+}
+
+.reader-type-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+.reader-type-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7.5px;
+  border-radius: 50%;
+  background: var(--rd-accent);
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px #0003;
+}
+
+.reader-type-row input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+.reader-type-row input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--rd-accent);
+  border: 2px solid var(--surface);
+}
+
+.reader-type-preview {
+  padding: 12px 13px;
+  border-radius: 10px;
+  background: var(--rd-page, var(--bg));
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.reader-type-preview-title {
+  color: var(--rd-title);
+  font-size: calc(17px * var(--rd-title-scale, 1));
+  line-height: 1.35;
+}
+
+.reader-type-preview-body {
+  color: var(--rd-body);
+  font-size: calc(15px * var(--rd-body-scale, 1));
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.reader-type-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.reader-type-switch > span {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.reader-type-switch strong { font-size: 12.5px; font-weight: 600; }
+.reader-type-switch small { font-size: 11px; color: var(--muted); }
+.reader-type-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+.reader-type-switch i {
+  flex: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  transition: background .18s ease;
+}
+
+.reader-type-switch i::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .18s ease;
+}
+
+.reader-type-switch input:checked + i { background: var(--rd-accent); }
+.reader-type-switch input:checked + i::after { transform: translateX(16px); }
+.reader-type-switch input:focus-visible + i { outline: 2px solid var(--rd-accent); outline-offset: 2px; }
+
+/* ---------- 底栏：图标、数字与输入入口统一垂直对齐 ---------- */
+
+.detail-dock-comment-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 0 16px;
+  color: var(--rd-body);
+  font-size: 13px;
+  line-height: 1;
+  text-align: left;
+}
+
+.detail-dock-comment-entry svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  transform: translateY(0);
+}
+
+.detail-dock-comment-entry span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.detail-dock-comment-entry small {
+  flex: none;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--rd-muted);
+}
+
+.detail-dock-actions .bar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.detail-dock-actions .bar-icon.like-action .detail-like-count {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 深色阅读页不允许出现白色底：外壳、滚动容器、安全区都跟随页面色。 */
+.app.is-detail-page,
+.detail-page,
+.detail-page .detail-scroll,
+.detail-page .detail-body {
+  background: var(--rd-page);
+}
+
+/* 详情外壳铺满前后安全区，避免深色下底部露出白色系统区域。 */
+@supports selector(body:has(*)) {
+  body:has(.app.is-detail-page) {
+    background: var(--rd-page);
+  }
 }

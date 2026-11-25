@@ -55,9 +55,10 @@ import com.heika.nativeapp.ui.heikaReadingPalette
  */
 @Composable
 fun ReadingTopBar(
-    title: String,
+    brand: String,
     progress: Float,
     showToc: Boolean,
+    showProgress: Boolean = true,
     onBack: () -> Unit,
     onToc: () -> Unit,
     trailing: @Composable () -> Unit,
@@ -66,36 +67,42 @@ fun ReadingTopBar(
     val palette = heikaReadingPalette()
     val animated by animateFloatAsState(progress.coerceIn(0f, 1f), tween(160), label = "reading-progress")
     Column(modifier.fillMaxWidth().background(palette.page.copy(alpha = .97f)).zIndex(2f)) {
-        Row(
-            Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-                Icon(HeikaIcons.Back, contentDescription = "返回", tint = palette.title, modifier = Modifier.size(20.dp))
+        Box(Modifier.fillMaxWidth().height(56.dp)) {
+            // 品牌字样绝对居中，不参与左右按钮的宽度分配；目录在右侧倒数第二，更多在最右。
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+                    Icon(HeikaIcons.Back, contentDescription = "返回", tint = palette.title, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                if (showToc) IconButton(onClick = onToc, modifier = Modifier.size(44.dp)) {
+                    Icon(HeikaIcons.List, contentDescription = "文章目录", tint = palette.title, modifier = Modifier.size(19.dp))
+                }
+                trailing()
             }
             Text(
-                title,
-                Modifier.weight(1f),
+                brand,
+                Modifier.align(Alignment.Center),
                 color = palette.title,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            if (showToc) IconButton(onClick = onToc, modifier = Modifier.size(44.dp)) {
-                Icon(HeikaIcons.List, contentDescription = "文章目录", tint = palette.title, modifier = Modifier.size(19.dp))
-            }
-            trailing()
         }
-        // 阅读进度：1.5dp 细线，只在长文出现，短文由调用方传入 0 并隐藏。
-        Box(Modifier.fillMaxWidth().height(1.5.dp).background(palette.progressTrack)) {
-            Box(
-                Modifier
-                    .fillMaxWidth(animated)
-                    .height(1.5.dp)
-                    .background(palette.accent),
-            )
+        // 阅读进度：1.5dp 细线；用户在阅读设置里关掉后整条移除，不留空位。
+        if (showProgress) {
+            Box(Modifier.fillMaxWidth().height(1.5.dp).background(palette.progressTrack)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(animated)
+                        .height(1.5.dp)
+                        .background(palette.accent),
+                )
+            }
         }
     }
 }
@@ -208,7 +215,7 @@ fun ReadingDock(
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            DockAction(HeikaIcons.Comment, "查看评论", false, false, onComment)
+            // 左侧评论入口已承载「看评论」，右侧不再重复放评论图标。
             DockAction(
                 if (liked) HeikaIcons.LikeFilled else HeikaIcons.LikeOutline,
                 "点赞",

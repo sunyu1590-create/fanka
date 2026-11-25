@@ -65,6 +65,7 @@ import DiscoveryPostCard from "./DiscoveryPostCard";
 import SharePanel, { type SharePayload } from "./SharePanel";
 const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
+import { ReaderTypeControls, useReaderTypePrefs } from "./ReaderTypeSettings";
 import { AuthorFollowButton, CommentPanel, ReaderProgress, ReaderTocAside, ReaderTocSheet, useReaderShell } from "./ReaderPanels";
 import RecoveryCodesPage from "./RecoveryCodesPage";
 import SeriesChapterNav from "./SeriesChapterNav";
@@ -1084,6 +1085,8 @@ export default function Community({
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [replyTargetName, setReplyTargetName] = useState<string | undefined>();
   const [detailMoreOpen, setDetailMoreOpen] = useState(false);
+  // 阅读字号是设备级偏好：标题与正文独立无极调节，进度条默认关闭。
+  const readerType = useReaderTypePrefs();
   const [sharePayloadState, setSharePayloadState] = useState<SharePayload | null>(null);
   const [shareClientId, setShareClientId] = useState<string | null>(null);
   const [aiDetailAction, setAiDetailAction] = useState<"versions" | "feedback" | "resources" | null>(null);
@@ -6411,8 +6414,11 @@ export default function Community({
                   <button className="detail-back" aria-label="返回" onClick={() => closeDetail()}>
                     <ArrowLeft size={21} />
                   </button>
-                  {/* 顶栏标题用作品名：长标题单行省略，右侧目录与更多按钮自适应列宽 */}
-                  <span className="detail-header-title" title={post.title}>{post.title}</span>
+                  {/* 顶栏回到品牌导航：不展示文章标题，AI 内容标注「AI · HEIKA」，
+                      品牌字样绝对居中；目录按钮位于右侧倒数第二位，更多在最右。 */}
+                  <span className="detail-header-brand" aria-label={post.channel === "ai" ? "AI · HEIKA" : "黑卡 HEIKA"}>
+                    {post.channel === "ai" ? <>AI<i>·</i>HEIKA</> : <>黑卡<i>HEIKA</i></>}
+                  </span>
                   {detailOutline.filter((item) => item.level <= 3).length >= 3 && (
                     <button type="button" className="reader-toc-button" aria-label="文章目录" onClick={() => setReaderTocOpen(true)}>
                       <ListTree size={19} />
@@ -6424,11 +6430,11 @@ export default function Community({
                     </button>
                     {detailMoreOpen && <div className="detail-more-menu">{detailMoreMenu}</div>}
                   </div>
-                  <ReaderProgress progress={detailProgress} />
+                  {readerType.prefs.progress && <ReaderProgress progress={detailProgress} />}
                 </header>
                 <div className="detail-scroll" id="detail-scroll" key={post.id}>
                   {post.cloudId && <PostReadTracker key={post.cloudId} postId={post.cloudId} seriesId={post.seriesId} />}
-                  <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
+                  <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`} style={readerType.style}>
                     <nav className="detail-rail" aria-label="作品操作栏">
                       <button type="button" className={`detail-rail-button${state.liked?.includes(post.id) ? " selected" : ""}`} aria-pressed={!!state.liked?.includes(post.id)} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} disabled={likeBusy} onClick={toggleDetailLike}>
                         <Heart size={20} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span>{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span>
@@ -6952,6 +6958,8 @@ export default function Community({
                     </button>
                   ))}
                 </div>
+                {/* 字号与进度条：与阅读模式一起持久化在本机，滑动即作用到正文。 */}
+                <ReaderTypeControls prefs={readerType.prefs} onChange={readerType.update} onReset={readerType.reset} />
                 <button
                   className="primary-button full"
                   onClick={() => setModal(null)}

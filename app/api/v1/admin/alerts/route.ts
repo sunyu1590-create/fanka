@@ -30,11 +30,23 @@ export async function PATCH(req: NextRequest) {
     else if (action === "resolve") {
       patch.status = "resolved";
       patch.resolved_at = new Date().toISOString();
+    } else if (action === "ignore") {
+      // 忽略不等于恢复：指标仍在阈值上，只是不再提醒，恢复记录仍会写入。
+      patch.status = "ignored";
+    } else if (action === "reopen") {
+      patch.status = "open";
+      patch.resolved_at = null;
     } else throw new ApiError(400, "操作无效");
     if (typeof body.note === "string") patch.handle_note = body.note.slice(0, 500);
     const { data, error } = await db.from("system_alerts").update(patch).eq("id", id).select("id,status").maybeSingle();
     dbError(error);
     if (!data) throw new ApiError(404, "告警不存在");
+    await db.from("admin_action_logs").insert({
+      actor_id: user.id,
+      action: `alert.${action}`,
+      target: id,
+      detail: { note: typeof body.note === "string" ? body.note.slice(0, 500) : null },
+    });
     return { alert: data };
   });
 }

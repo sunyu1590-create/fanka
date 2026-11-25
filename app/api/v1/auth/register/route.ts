@@ -3,6 +3,7 @@ import { adminClient } from "@/lib/server/admin-client";
 import { hashAccessCode, normalizeAccessCode } from "@/lib/access-codes";
 import { ApiError, dbError, jsonBody, respond, textField } from "@/lib/server/api";
 import { clientIp } from "@/lib/server/client-ip";
+import { requireFeature } from "@/lib/server/feature-flags";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DUPLICATE = /already|registered|exists|duplicate/i;
@@ -41,6 +42,7 @@ async function releaseSignupSlot(slot: number | null) {
  */
 export async function POST(req: NextRequest) {
   return respond(async () => {
+    await requireFeature("register");
     const body = await jsonBody(req);
     const email = textField(body.email, "邮箱", 3, 254).toLowerCase();
     if (!EMAIL.test(email)) throw new ApiError(400, "邮箱格式不正确");

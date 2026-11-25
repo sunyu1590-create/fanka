@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
+import { requireFeature } from "@/lib/server/feature-flags";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -51,6 +52,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   return respond(async () => {
+    await requireFeature("comment");
     const { db, user } = await context(req);
     const body = await jsonBody(req);
     const postId = uuid((await params).id);

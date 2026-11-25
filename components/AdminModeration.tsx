@@ -28,7 +28,15 @@ import AdminHub from "./admin/AdminHub";
 import AdminHomeBanners from "./admin/AdminHomeBanners";
 import AdminCoverTemplates from "./admin/AdminCoverTemplates";
 import { AdminBatchTasks, AdminClassifyRecords } from "./admin/AdminBatchPages";
-import { AdminShell } from "./admin/AdminUIKit";
+import AdminNetwork from "./AdminNetwork";
+import AdminAccess from "./AdminAccess";
+import AdminServer from "./AdminServer";
+import AdminLogs from "./AdminLogs";
+import AdminReviewInsights from "./AdminReviewInsights";
+import AdminTrash from "./AdminTrash";
+import AdminTraffic from "./AdminTraffic";
+import AdminAlertRules from "./AdminAlertRules";
+import { AdminShell, ADMIN_HUB_GROUPS, type AdminTab } from "./admin/AdminUIKit";
 
 type Report = {
   id: string;
@@ -47,7 +55,7 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "review" | "monitor" | "manage" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-batch" | "ai-classify" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "media-service" | "storage" | "alerts" | "system-monitor" | "distribution" | "tasks" | "process" | "cost" | "home-banners" | "cover-templates";
+type AdminSection = "overview" | "review" | "monitor" | "network" | "access" | "server" | "media" | "ai" | "business" | "logs" | "tcp" | "ips" | "ip-rules" | "account-limits" | "services" | "deployments" | "emergency" | "review-stats" | "review-policy" | "trash" | "traffic" | "alert-rules" | "manage" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-batch" | "ai-classify" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "media-service" | "storage" | "alerts" | "system-monitor" | "distribution" | "tasks" | "process" | "cost" | "home-banners" | "cover-templates";
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
 type AppDownloadSettings = { enabled: boolean; download_url: string | null; updated_at?: string };
@@ -379,7 +387,13 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       refreshing={loading || usersLoading || topicEventBusy || aiSettingsBusy || explorationAdBusy || appDownloadBusy}
     >
       {section === "overview" ? <AdminDashboard role={role} onNavigate={navigateAdminSection} refreshKey={sectionKey} /> : null}
-      {section === "review" || section === "monitor" || section === "manage" ? <AdminHub tab={section} counts={counts} onNavigate={navigateAdminSection} /> : null}
+      {section !== "overview" && Object.prototype.hasOwnProperty.call(ADMIN_HUB_GROUPS, section) ? <AdminHub tab={section as Exclude<AdminTab, "overview">} counts={counts} onNavigate={navigateAdminSection} /> : null}
+      {section === "tcp" || section === "ips" ? <AdminNetwork view={section} /> : null}
+      {section === "ip-rules" || section === "account-limits" ? <AdminAccess view={section} onNotice={setNotice} /> : null}
+      {section === "services" || section === "deployments" || section === "emergency" ? <AdminServer view={section} onNotice={setNotice} /> : null}
+      {section === "logs" ? <AdminLogs /> : null}
+      {section === "review-stats" || section === "review-policy" ? <AdminReviewInsights view={section} onNotice={setNotice} /> : null}
+      {section === "trash" ? <AdminTrash onNotice={setNotice} /> : null}
       {section === "ai-review" ? <AdminReviewCenter refreshKey={sectionKey} onNavigate={navigateAdminSection} /> : null}
       {section === "ai-batch" ? <AdminBatchTasks refreshKey={sectionKey} /> : null}
       {section === "ai-classify" ? <AdminClassifyRecords refreshKey={sectionKey} /> : null}
@@ -393,6 +407,8 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       {section === "media-service" ? <AdminMediaService refreshKey={sectionKey} /> : null}
       {section === "storage" ? <AdminResources refreshKey={sectionKey} /> : null}
       {section === "alerts" ? <AdminAlerts refreshKey={sectionKey} /> : null}
+      {section === "traffic" ? <AdminTraffic /> : null}
+      {section === "alert-rules" ? <AdminAlertRules /> : null}
 
       {["reports", "messages", "content", "users", "topic-events", "ai-settings", "exploration-ad", "app-download"].includes(section) ? (
         <div className="ab-legacy" style={{ marginTop: 16 }}>

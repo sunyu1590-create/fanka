@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, respond } from "@/lib/server/api";
+import { requireFeature } from "@/lib/server/feature-flags";
 import { adminClient } from "@/lib/server/admin-client";
 import {
   ATTACHMENT_BUCKET,
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
   return respond(async () => {
     const path = req.nextUrl.searchParams.get("path");
     if (path) {
+      await requireFeature("download");
       const { db, user } = await contextSafe(req, false);
       // 私有桶不给直链，签发 7 天有效的下载链接。
       if ((!user || attachmentOwner(path) !== user.id) && !(await canRead(db, path, user?.id || ""))) throw new ApiError(403, "附件不存在");
@@ -103,6 +105,7 @@ export async function GET(req: NextRequest) {
 /** 上传一个附件。名额在落盘前后各校验一次，抢不到就回滚。 */
 export async function POST(req: NextRequest) {
   return respond(async () => {
+    await requireFeature("upload");
     const { db, user } = await contextSafe(req);
     if (!user) throw new ApiError(401, "请先登录");
     const form = await req.formData();

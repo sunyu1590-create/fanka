@@ -27,8 +27,9 @@ class SettingsViewModel @Inject constructor(
     val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
     val pageTransition = preferences.pageTransition.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "shared")
     val fontChoice = preferences.fontChoice.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "oppo_sans")
-    val bodyTextSize = preferences.bodyTextSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
-    val titleTextSize = preferences.titleTextSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
+    val bodyTextScale = preferences.bodyTextScale.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1f)
+    val titleTextScale = preferences.titleTextScale.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1f)
+    val readingProgressVisible = preferences.readingProgressVisible.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     private val mutableCommentsEnabled = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
     val commentsEnabled = mutableCommentsEnabled.asStateFlow()
     private val mutableNotificationsLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -217,8 +218,9 @@ class SettingsViewModel @Inject constructor(
     fun setFontChoice(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setFontChoice(value) }
     fun setFeedLayout(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setFeedLayout(value) }
     fun setReadingMode(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setReadingMode(value) }
-    fun setBodyTextSize(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setBodyTextSize(value) }
-    fun setTitleTextSize(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setTitleTextSize(value) }
+    fun setBodyTextScale(value: Float) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setBodyTextScale(value) }
+    fun setTitleTextScale(value: Float) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setTitleTextScale(value) }
+    fun setReadingProgressVisible(value: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setReadingProgressVisible(value) }
     fun setCacheCapacity(value: Int) = viewModelScope.launch(HeikaCoroutineGuard) { imageCache.resize(value) }
     fun refreshCacheUsage() = viewModelScope.launch(HeikaCoroutineGuard) { mutableCacheBytes.value = imageCache.sizeBytes() }
     fun clearImageCache() = viewModelScope.launch(HeikaCoroutineGuard) {

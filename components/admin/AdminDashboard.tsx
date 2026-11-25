@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ChevronRight, CreditCard, Download, Flag, ScrollText, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { Activity, ChevronRight, CreditCard, Download, Flag, HardDrive, Network, ScrollText, Server, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { Empty, fmtBytes, fmtNum, fmtPct, fmtTime, Group, Ring, Row, TrendChart } from "./AdminUIKit";
 import { useRealtime } from "@/lib/admin-live";
@@ -140,6 +140,7 @@ export default function AdminDashboard({
     <div style={{ marginTop: 16 }}>
       {error ? <p className="ab-sub" style={{ marginBottom: 10, color: "var(--ab-amber)" }}>{error}</p> : null}
       <LiveStrip onNavigate={onNavigate} />
+      <ModuleStrip onNavigate={onNavigate} />
       <div className="ab-bento">
         <div className="ab-card tone-blue ab-c2 ab-m8" style={{ gap: 14 }}>
           <div className="ab-card__head">
@@ -355,6 +356,35 @@ function LiveStrip({ onNavigate }: { onNavigate: (section: string) => void }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+const MODULES: Array<{ key: string; title: string; hint: string; icon: typeof Activity }> = [
+  { key: "monitor", title: "全局监控", hint: "CPU / 内存 / 磁盘 / 接口", icon: Activity },
+  { key: "network", title: "网络与连接", hint: "TCP / IP / 流量", icon: Network },
+  { key: "access", title: "访问控制", hint: "IP 规则 / 账号能力", icon: ShieldCheck },
+  { key: "server", title: "服务器管理", hint: "服务 / 部署 / 应急", icon: Server },
+  { key: "media", title: "媒体与资源", hint: "资源 / 回收站", icon: HardDrive },
+  { key: "ai", title: "AI 审核与用量", hint: "审核 / 策略 / 模型", icon: Sparkles },
+  { key: "business", title: "用户与业务", hint: "用户 / 治理 / 运营", icon: Users },
+  { key: "logs", title: "日志与告警", hint: "日志 / 规则 / 审计", icon: ScrollText },
+];
+
+/** 八大模块快捷入口：桌面对齐一行，移动端两列，避免总览页只剩几块大留白卡片。 */
+function ModuleStrip({ onNavigate }: { onNavigate: (section: string) => void }) {
+  return (
+    <div className="ab-modules">
+      {MODULES.map((item) => {
+        const Icon = item.icon;
+        return (
+          <button key={item.key} type="button" className="ab-modules__item" onClick={() => onNavigate(item.key)}>
+            <Icon size={15} aria-hidden="true" />
+            <span>{item.title}</span>
+            <small>{item.hint}</small>
+          </button>
+        );
+      })}
     </div>
   );
 }

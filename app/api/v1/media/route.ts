@@ -4,6 +4,7 @@ import { mediaBucketForPath } from "@/lib/media-path";
 import { createMediaThumbnails } from "@/lib/server/media-thumbnails";
 import { createFeedThumbnail } from "@/lib/server/feed-thumbnail";
 import { verifyStoredMedia, upsertMediaAsset, sha256Hex } from "@/lib/server/media-assets";
+import { requireFeature } from "@/lib/server/feature-flags";
 
 export const runtime = "nodejs";
 
@@ -102,6 +103,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   return respond(async () => {
+    await requireFeature("upload");
     const { db, user } = await context(req);
     const form = await req.formData() as unknown as { get: (name: string) => unknown; has: (name: string) => boolean };
     const file = form.get("file");

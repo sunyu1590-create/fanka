@@ -188,8 +188,8 @@ val LocalHeikaTitleTextScale = staticCompositionLocalOf { 1f }
 fun HeikaTheme(
     theme: String,
     fontChoice: String = "oppo_sans",
-    bodyTextSize: String = "standard",
-    titleTextSize: String = "standard",
+    bodyTextScale: Float = 1f,
+    titleTextScale: Float = 1f,
     content: @Composable () -> Unit,
 ) {
     val dark = when (theme) {
@@ -232,8 +232,8 @@ fun HeikaTheme(
     )
     CompositionLocalProvider(
         LocalHeikaDark provides dark,
-        LocalHeikaBodyTextScale provides HeikaReadingSizes.bodyScale(bodyTextSize),
-        LocalHeikaTitleTextScale provides HeikaReadingSizes.titleScale(titleTextSize),
+        LocalHeikaBodyTextScale provides bodyTextScale.coerceIn(0.85f, 1.35f),
+        LocalHeikaTitleTextScale provides titleTextScale.coerceIn(0.85f, 1.3f),
     ) {
         val family = HeikaFontCatalog.resolve(fontChoice)
         val base = Typography()

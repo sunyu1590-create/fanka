@@ -1,7 +1,9 @@
 package com.heika.nativeapp.ui
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -27,6 +29,10 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val fontChoiceKey = stringPreferencesKey("font_choice")
     private val bodyTextSizeKey = stringPreferencesKey("body_text_size")
     private val titleTextSizeKey = stringPreferencesKey("title_text_size")
+    // 无级字号：0.85–1.35 的倍率，旧的三档字符串只作为迁移来源保留读取。
+    private val bodyTextScaleKey = floatPreferencesKey("body_text_scale")
+    private val titleTextScaleKey = floatPreferencesKey("title_text_scale")
+    private val readingProgressVisibleKey = booleanPreferencesKey("reading_progress_visible")
     private val searchHistoryKey = stringPreferencesKey("search_history")
     private val networkNoticeVersionKey = stringPreferencesKey("network_notice_seen_version")
     private val skippedUpdateCodeKey = intPreferencesKey("skipped_update_code")
@@ -47,12 +53,14 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     val fontChoice: Flow<String> = dataStore.data.map { value ->
         HeikaFontCatalog.normalize(value[fontChoiceKey].orEmpty())
     }
-    val bodyTextSize: Flow<String> = dataStore.data.map { value ->
-        HeikaReadingSizes.normalize(value[bodyTextSizeKey].orEmpty())
+    val bodyTextScale: Flow<Float> = dataStore.data.map { value ->
+        (value[bodyTextScaleKey] ?: legacyTextScale(value[bodyTextSizeKey], title = false)).coerceIn(0.85f, 1.35f)
     }
-    val titleTextSize: Flow<String> = dataStore.data.map { value ->
-        HeikaReadingSizes.normalize(value[titleTextSizeKey].orEmpty())
+    val titleTextScale: Flow<Float> = dataStore.data.map { value ->
+        (value[titleTextScaleKey] ?: legacyTextScale(value[titleTextSizeKey], title = true)).coerceIn(0.85f, 1.3f)
     }
+    /** 阅读进度条默认关闭；关闭时不渲染，也不为它留出任何高度。 */
+    val readingProgressVisible: Flow<Boolean> = dataStore.data.map { it[readingProgressVisibleKey] ?: false }
     val searchHistory: Flow<List<String>> = dataStore.data.map { values ->
         runCatching {
             val saved = JSONArray(values[searchHistoryKey].orEmpty())
@@ -85,8 +93,15 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     suspend fun setReadingMode(value: String) { dataStore.edit { it[readingModeKey] = value.takeIf { it in setOf("standard", "focus", "night") } ?: "standard" } }
     suspend fun setPageTransition(value: String) { dataStore.edit { it[pageTransitionKey] = HeikaPageTransitions.normalize(value) } }
     suspend fun setFontChoice(value: String) { dataStore.edit { it[fontChoiceKey] = HeikaFontCatalog.normalize(value) } }
-    suspend fun setBodyTextSize(value: String) { dataStore.edit { it[bodyTextSizeKey] = HeikaReadingSizes.normalize(value) } }
-    suspend fun setTitleTextSize(value: String) { dataStore.edit { it[titleTextSizeKey] = HeikaReadingSizes.normalize(value) } }
+    suspend fun setBodyTextScale(value: Float) { dataStore.edit { it[bodyTextScaleKey] = value.coerceIn(0.85f, 1.35f) } }
+    suspend fun setTitleTextScale(value: Float) { dataStore.edit { it[titleTextScaleKey] = value.coerceIn(0.85f, 1.3f) } }
+    suspend fun setReadingProgressVisible(value: Boolean) { dataStore.edit { it[readingProgressVisibleKey] = value } }
+    /** 兼容旧版三档字符串；新安装直接读 1.0。 */
+    private fun legacyTextScale(value: String?, title: Boolean): Float = when (value) {
+        "slightly-large" -> if (title) 1.12f else 1.14f
+        "large" -> if (title) 1.24f else 1.29f
+        else -> 1f
+    }
     suspend fun addRecentSearch(value: String) {
         val term = value.trim().take(60)
         if (term.isBlank()) return

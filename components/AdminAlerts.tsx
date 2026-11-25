@@ -10,9 +10,13 @@ type Alert = {
   status: string; first_seen_at: string; last_seen_at: string; resolved_at: string | null; occurrences: number; handle_note: string | null;
 };
 
-const STATUS_LABEL: Record<string, string> = { open: "待处理", acknowledged: "已确认", resolving: "处理中", resolved: "已恢复" };
+const STATUS_LABEL: Record<string, string> = { open: "待处理", acknowledged: "已确认", resolving: "处理中", ignored: "已忽略", resolved: "已恢复" };
 const TYPE_LABEL: Record<string, string> = {
   cpu_high: "CPU 偏高", mem_low: "内存不足", disk_high: "磁盘容量", api_errors: "API 错误", upload_first_fail: "上传失败", service_down: "服务不可用",
+  "rule:cpu_percent": "CPU 使用率", "rule:mem_percent": "内存使用率", "rule:disk_percent": "磁盘使用率",
+  "rule:tcp_total": "TCP 连接总数", "rule:api_error_rate": "API 错误率", "rule:api_p95_ms": "API P95 耗时",
+  "rule:upload_fail_rate": "上传失败率", "rule:net_tx_rate": "出网速率", "rule:cert_days_left": "HTTPS 证书剩余",
+  "rule:service_down": "服务健康检查",
 };
 
 export default function AdminAlerts({ refreshKey = 0 }: { refreshKey?: number }) {
@@ -42,7 +46,7 @@ export default function AdminAlerts({ refreshKey = 0 }: { refreshKey?: number })
     return true;
   }), [alerts, filter]);
 
-  const act = async (alert: Alert, action: "acknowledge" | "start" | "resolve") => {
+  const act = async (alert: Alert, action: "acknowledge" | "start" | "resolve" | "ignore" | "reopen") => {
     setBusy(alert.id);
     try {
       await cloudRequest("/api/v1/admin/alerts", { id: alert.id, action, note: action === "resolve" ? "管理员确认恢复" : undefined }, "PATCH");
@@ -66,6 +70,7 @@ export default function AdminAlerts({ refreshKey = 0 }: { refreshKey?: number })
           <span style={{ display: "flex", gap: 5 }}>
             {alert.status === "open" ? <button type="button" className="ab-chip info" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "acknowledge")}>确认</button> : null}
             <button type="button" className="ab-chip ok" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "resolve")}><Check size={11} />恢复</button>
+            {alert.status !== "ignored" ? <button type="button" className="ab-chip" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "ignore")}>忽略</button> : <button type="button" className="ab-chip" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "reopen")}>重新打开</button>}
           </span>
         ) : null}
       </div>

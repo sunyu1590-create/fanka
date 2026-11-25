@@ -1,57 +1,102 @@
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
-import { Activity, ArrowLeft, ChevronRight, LayoutGrid, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Activity, ArrowLeft, ChevronRight, HardDrive, LayoutGrid, Network, RefreshCw, ScrollText, Server, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { startRealtime, stopRealtime } from "@/lib/admin-live";
 import LiveIndicator, { LiveCount } from "./LiveIndicator";
 
-export type AdminTab = "overview" | "review" | "monitor" | "manage";
+export type AdminTab = "overview" | "monitor" | "network" | "access" | "server" | "media" | "ai" | "business" | "logs";
 
 export type AdminSectionMeta = { title: string; tab: AdminTab; group: string };
 
-/** 管理员信息架构：四大一级入口，所有二级页面归入对应分组。 */
+/** 管理中心 3.0：八个并列模块 + 总览，运维/安全/资源统一入口。 */
 export const ADMIN_NAV: Array<{ key: AdminTab; label: string; icon: typeof LayoutGrid }> = [
   { key: "overview", label: "总览", icon: LayoutGrid },
-  { key: "review", label: "审核", icon: ShieldCheck },
   { key: "monitor", label: "监控", icon: Activity },
-  { key: "manage", label: "管理", icon: SlidersHorizontal },
+  { key: "network", label: "网络", icon: Network },
+  { key: "access", label: "访问", icon: ShieldCheck },
+  { key: "server", label: "服务器", icon: Server },
+  { key: "media", label: "资源", icon: HardDrive },
+  { key: "ai", label: "审核与 AI", icon: Sparkles },
+  { key: "business", label: "用户与业务", icon: Users },
+  { key: "logs", label: "日志", icon: ScrollText },
 ];
 
 export const ADMIN_HUB_GROUPS: Record<Exclude<AdminTab, "overview">, Array<{ title: string; items: string[] }>> = {
-  review: [
-    { title: "审核工作台", items: ["ai-review", "content", "decor-review"] },
-    { title: "审核工具", items: ["ai-batch", "ai-classify"] },
-  ],
   monitor: [
-    { title: "运行状态", items: ["system-monitor", "process", "media-service", "storage", "alerts"] },
-    { title: "实时任务", items: ["tasks"] },
+    { title: "运行状态", items: ["system-monitor", "process", "tasks"] },
+    { title: "业务观测", items: ["traffic", "media-service"] },
+    { title: "告警", items: ["alerts", "alert-rules"] },
   ],
-  manage: [
-    { title: "内容分发", items: ["distribution"] },
-    { title: "运营位", items: ["home-banners", "cover-templates"] },
-    { title: "运营", items: ["cost"] },
-    { title: "社区治理", items: ["reports", "messages", "appeals", "comments", "keywords"] },
-    { title: "用户与运营", items: ["users", "membership", "community-access", "topic-events", "official-notices", "exploration-ad"] },
-    { title: "AI 与模型", items: ["ai-space", "ai-resource-center", "ai-usage", "ai-settings"] },
-    { title: "系统", items: ["audit", "app-download"] },
+  network: [
+    { title: "连接", items: ["tcp", "ips"] },
+    { title: "流量", items: ["traffic", "media-service"] },
+  ],
+  access: [
+    { title: "网络访问", items: ["ip-rules"] },
+    { title: "账号能力", items: ["account-limits"] },
+    { title: "内容拦截", items: ["keywords"] },
+  ],
+  server: [
+    { title: "服务", items: ["services", "deployments"] },
+    { title: "应急控制", items: ["emergency"] },
+    { title: "资源占用", items: ["process"] },
+  ],
+  media: [
+    { title: "资源", items: ["storage", "trash"] },
+    { title: "传输", items: ["media-service", "traffic"] },
+  ],
+  ai: [
+    { title: "审核", items: ["ai-review", "content", "decor-review"] },
+    { title: "质量与策略", items: ["review-stats", "review-policy"] },
+    { title: "模型", items: ["ai-usage", "ai-settings"] },
+    { title: "工具", items: ["ai-batch", "ai-classify", "ai-space", "ai-resource-center"] },
+  ],
+  business: [
+    { title: "用户", items: ["users", "membership", "community-access"] },
+    { title: "社区治理", items: ["reports", "messages", "appeals", "comments"] },
+    { title: "运营", items: ["distribution", "home-banners", "cover-templates", "topic-events", "official-notices", "exploration-ad", "cost"] },
+    { title: "版本", items: ["app-download"] },
+  ],
+  logs: [
+    { title: "日志", items: ["access-logs", "audit"] },
+    { title: "告警", items: ["alerts", "alert-rules"] },
   ],
 };
 
 export const ADMIN_TITLES: Record<string, string> = {
   overview: "控制中心",
-  review: "审核",
-  monitor: "监控",
-  manage: "管理",
+  monitor: "全局监控",
+  network: "网络与连接",
+  access: "访问控制",
+  server: "服务器管理",
+  media: "媒体与资源",
+  ai: "AI 审核与用量",
+  business: "用户与业务",
+  logs: "日志与告警",
   "ai-review": "AI 审核中心",
   content: "人工复审",
   "decor-review": "装扮复审",
   "ai-batch": "批量任务",
   "ai-classify": "自动分类记录",
+  "review-stats": "审核质量",
+  "review-policy": "审核策略",
   "system-monitor": "系统监控",
   process: "进程监控",
+  tcp: "TCP 连接",
+  ips: "IP 访问分析",
+  traffic: "流量分析",
+  "ip-rules": "IP 规则",
+  "account-limits": "账号限制",
+  services: "服务状态",
+  deployments: "部署记录",
+  emergency: "紧急控制",
+  trash: "资源回收站",
+  "access-logs": "访问日志",
   "media-service": "媒体服务",
   storage: "资源管理",
   alerts: "系统告警",
+  "alert-rules": "告警规则",
   tasks: "任务中心",
   cost: "运营成本",
   reports: "内容举报",
@@ -77,17 +122,26 @@ export const ADMIN_TITLES: Record<string, string> = {
 };
 
 export const ADMIN_HUB_DESC: Record<Exclude<AdminTab, "overview">, string> = {
-  review: "AI 初审、人工复审与审核工具",
-  monitor: "服务器、媒体与告警",
-  manage: "社区、用户与系统配置",
+  monitor: "服务器、业务、任务与告警",
+  network: "TCP 连接、IP 访问与真实流量",
+  access: "IP 规则、账号能力与内容拦截",
+  server: "服务健康、部署历史与应急控制",
+  media: "资源、回收站与传输任务",
+  ai: "审核、策略、质量与模型用量",
+  business: "用户、社区治理与运营位",
+  logs: "访问日志、审计记录与告警",
 };
 
 export function tabOfSection(section: string): AdminTab {
-  if (section === "overview" || section === "review" || section === "monitor" || section === "manage") return section;
-  if (["ai-review", "content", "decor-review", "ai-batch", "ai-classify"].includes(section)) return "review";
-  if (["system-monitor", "process", "media-service", "storage", "alerts", "tasks"].includes(section)) return "monitor";
-  if (section === "distribution" || section === "cost") return "manage";
-  return "manage";
+  if (section === "overview" || section === "monitor" || section === "network" || section === "access" || section === "server" || section === "media" || section === "ai" || section === "business" || section === "logs") return section;
+  if (["system-monitor", "process", "tasks"].includes(section)) return "monitor";
+  if (["tcp", "ips", "traffic", "media-service"].includes(section)) return "network";
+  if (["ip-rules", "account-limits", "keywords"].includes(section)) return "access";
+  if (["services", "deployments", "emergency"].includes(section)) return "server";
+  if (["storage", "trash"].includes(section)) return "media";
+  if (["ai-review", "content", "decor-review", "ai-batch", "ai-classify", "review-stats", "review-policy", "ai-usage", "ai-settings", "ai-space", "ai-resource-center"].includes(section)) return "ai";
+  if (["access-logs", "alerts", "alert-rules", "audit"].includes(section)) return "logs";
+  return "business";
 }
 
 export function titleOf(section: string): string {
@@ -117,7 +171,7 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const tab = tabOfSection(section);
-  const isHub = section === "review" || section === "monitor" || section === "manage";
+  const isHub = section !== "overview" && Boolean(ADMIN_HUB_GROUPS[tab as Exclude<AdminTab, "overview">]) && section === tab;
   const isOverview = section === "overview";
   const showBottomNav = isOverview || isHub;
   const title = titleOf(section);
@@ -136,7 +190,7 @@ export function AdminShell({
 
   const navItems: Array<{ key: string; label: string; count?: number; icon?: typeof LayoutGrid }> = [];
   for (const item of ADMIN_NAV) {
-    navItems.push({ key: item.key, label: item.label, icon: item.icon, count: item.key === "review" ? counts?.review : item.key === "monitor" ? counts?.alerts : undefined });
+    navItems.push({ key: item.key, label: item.label, icon: item.icon, count: item.key === "ai" ? counts?.review : item.key === "monitor" ? counts?.alerts : undefined });
   }
 
   return (
@@ -150,7 +204,7 @@ export function AdminShell({
               <button key={item.key} type="button" className={`ab-side-item${tab === item.key ? " active" : ""}`} onClick={() => onNavigate(item.key)}>
                 <Icon size={15} aria-hidden="true" />
                 <span className="ab-side-item__label">{item.label}</span>
-                {item.key === "review" ? <LiveCount of="review" fallback={counts?.review} /> : null}
+                {item.key === "ai" ? <LiveCount of="review" fallback={counts?.review} /> : null}
                 {item.key === "monitor" ? <LiveCount of="alerts" fallback={counts?.alerts} /> : null}
               </button>
             );
@@ -377,10 +431,10 @@ export function Segmented<T extends string>({
   value: T;
   options: Array<{ value: T; label: string; count?: number }>;
   onChange: (value: T) => void;
-  ariaLabel: string;
+  ariaLabel?: string;
 }) {
   return (
-    <div className="ab-seg" role="tablist" aria-label={ariaLabel}>
+    <div className="ab-seg" role="tablist" aria-label={ariaLabel || "筛选"}>
       {options.map((option) => (
         <button key={option.value} type="button" role="tab" aria-selected={value === option.value} onClick={() => onChange(option.value)}>
           {option.label}{option.count != null ? ` ${option.count}` : ""}

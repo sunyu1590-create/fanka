@@ -102,6 +102,7 @@ class PostDetailViewModel @Inject constructor(
     private val preferences: NativePreferences,
 ) : ViewModel() {
     val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
+    val readingProgressVisible = preferences.readingProgressVisible.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     private val mutableState = MutableStateFlow(PostDetailState())
     val state = mutableState.asStateFlow()
     private var loadedId: String? = null

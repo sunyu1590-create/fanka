@@ -162,6 +162,7 @@ fun PostDetailScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val readingMode by viewModel.readingMode.collectAsStateWithLifecycle()
+    val readingProgressVisible by viewModel.readingProgressVisible.collectAsStateWithLifecycle()
     val bodyTextScale = LocalHeikaBodyTextScale.current
     val titleTextScale = LocalHeikaTitleTextScale.current
     LaunchedEffect(state.notice) {
@@ -473,8 +474,9 @@ fun PostDetailScreen(
                                 }
                             }
                         }
-                        // 正文：16sp 起跳，行高 1.75；阅读模式只放大字号，不改颜色层级。
-                        val modeScale = when (readingMode) { "focus" -> 1.1f; "night" -> 1.04f; else -> 1f }
+                        // 正文回到 14sp 起跳（与阅读系统 2.0 之前一致），行高由 HeikaMarkdown 按 1.72 排；
+                        // 阅读模式只做整体放大，不改颜色层级。
+                        val modeScale = when (readingMode) { "focus" -> 1.14f; "night" -> 1.07f; else -> 1f }
                         val bodyFont = HeikaReadingType.body * bodyTextScale * modeScale
                         SelectionContainer {
                             HeikaMarkdown(
@@ -684,9 +686,10 @@ fun PostDetailScreen(
     // 顶栏：实心页面色 + 1.5dp 进度线，不再用「从顶部往下淡出」的大渐变，
     // 模糊层过去会一路盖到封面和正文顶部，滚动时正文还会透色。
     ReadingTopBar(
-        title = visiblePost?.title ?: "内容详情",
+        brand = if (visiblePost?.channel == "ai") "AI · HEIKA" else "黑卡 HEIKA",
         progress = if (readable) progress else 0f,
         showToc = headings.size >= 3,
+        showProgress = readingProgressVisible && readable,
         onBack = onBack,
         onToc = { tocOpen = true },
         modifier = Modifier.align(Alignment.TopCenter),

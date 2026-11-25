@@ -68,6 +68,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       throw new ApiError(409, "作品状态已变化，请刷新审核列表后重试");
     })();
     await recordModerationAudit(db, { actorId: user!.id, action: body.status === "published" ? "post_approved" : "post_hidden", targetType: "post", targetId: postId, reason: reviewNote });
+    // 记录人工最终结论，用于统计「人工推翻 AI 判断」的比例；不覆盖已有结论。
+    await db.from("ai_moderation_decisions")
+      .update({ human_decision: body.status === "published" ? "PASS" : "REJECT", human_actor: user!.id, human_at: new Date().toISOString() })
+      .eq("post_id", postId)
+      .is("human_decision", null);
     return result;
   });
 }
