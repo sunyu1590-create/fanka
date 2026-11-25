@@ -34,13 +34,13 @@ async function load(userId: string): Promise<Map<Ability, Restriction>> {
   if (url && key) {
     try {
       const response = await fetch(
-        `${url}/rest/v1/account_ability_restrictions?user_id=eq.${userId}&active=eq.true&select=ability,expires_at,reason`,
+        `${url}/rest/v1/account_ability_restrictions?user_id=eq.${userId}&active=eq.true&select=ability,until,reason`,
         { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" },
       );
       if (response.ok) {
-        for (const row of (await response.json()) as Array<{ ability: Ability; expires_at: string | null; reason: string }>) {
-          if (row.expires_at && new Date(row.expires_at).getTime() <= now) continue;
-          rows.set(row.ability, { until: row.expires_at, reason: row.reason || "" });
+        for (const row of (await response.json()) as Array<{ ability: Ability; until: string | null; reason: string }>) {
+          if (row.until && new Date(row.until).getTime() <= now) continue;
+          rows.set(row.ability, { until: row.until, reason: row.reason || "" });
         }
       }
     } catch {
