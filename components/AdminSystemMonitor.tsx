@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Server } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
+import { useRealtime } from "@/lib/admin-live";
 import { Empty, fmtBytes, fmtNum, fmtTime, Group, Ring, Segmented, TrendChart } from "./admin/AdminUIKit";
 
 type MetricRow = {
@@ -96,6 +97,32 @@ export default function AdminSystemMonitor({ onNavigate }: { onNavigate?: (secti
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   }, [series.cpu]);
 
+  // 实时卡片与总览页「系统健康」共用同一份快照：快照 1 秒一刷，metrics 的
+  // 20 秒轮询只负责历史趋势与告警，避免同一指标在两个页面出现不同数字。
+  const feed = useRealtime();
+  const rt = feed.snapshot?.server ?? null;
+  const rtLive = feed.snapshot?.live;
+  const cpu = rt?.cpu_percent ?? current?.cpu_percent ?? null;
+  const load1 = rt?.load1 ?? current?.load1 ?? null;
+  const mem = rt?.mem_percent ?? current?.mem_percent ?? null;
+  const memUsed = rt?.mem_used ?? current?.mem_used ?? null;
+  const memTotal = rt?.mem_total ?? current?.mem_total ?? null;
+  const memAvailable = current?.mem_available ?? null;
+  const disk = rt?.disk_percent ?? current?.disk_percent ?? null;
+  const diskUsed = rt?.disk_used ?? current?.disk_used ?? null;
+  const diskTotal = rt?.disk_total ?? current?.disk_total ?? null;
+  const diskFree = rt && rt.disk_total != null && rt.disk_used != null ? rt.disk_total - rt.disk_used : current?.disk_free ?? null;
+  const netRx = rt?.net_rx_rate ?? current?.net_rx_rate ?? null;
+  const netTx = rt?.net_tx_rate ?? current?.net_tx_rate ?? null;
+  const liveAt = rt?.captured_at ?? current?.captured_at;
+  const liveApi = {
+    avg_ms: rtLive?.avg_ms ?? live.avg_ms,
+    p95_ms: rtLive?.p95_ms ?? live.p95_ms,
+    requests: rtLive?.requests ?? live.requests,
+    error_rate: rtLive?.error_rate ?? live.error_rate,
+  };
+  const hasLive = Boolean(current || rt);
+
   if (loading && !current) {
     return <div style={{ marginTop: 16 }}><div className="ab-skel" style={{ height: 220, borderRadius: 20 }} /><div className="ab-skel" style={{ height: 160, marginTop: 12, borderRadius: 20 }} /></div>;
   }
@@ -103,52 +130,53 @@ export default function AdminSystemMonitor({ onNavigate }: { onNavigate?: (secti
   return (
     <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span className={`ab-chip ${error ? "bad" : current ? "ok" : "warn"}`}><i className={`ab-dot ${error ? "bad" : current ? "" : "warn"}`} aria-hidden="true" />{error ? "监控连接中断" : current ? "采集正常" : "等待采集"}</span>
-        <span className="ab-label">最后更新 {fmtTime(current?.captured_at)}</span>
+        <span className={`ab-chip ${error ? "bad" : hasLive ? "ok" : "warn"}`}><i className={`ab-dot ${error ? "bad" : hasLive ? "" : "warn"}`} aria-hidden="true" />{error ? "监控连接中断" : hasLive ? "采集正常" : "等待采集"}</span>
+        {rt ? <span className="ab-chip info" title="采集器每 15 秒采样一次，页面每秒对齐最新样本">实时 · 每秒对齐</span> : null}
+        <span className="ab-label">最后更新 {fmtTime(liveAt)}</span>
         {stale ? <span className="ab-chip warn">数据可能过期</span> : null}
       </div>
       {error ? <p className="ab-sub" style={{ color: "var(--ab-coral)" }}>{error}</p> : null}
 
-      {current ? (
+      {hasLive ? (
         <>
           <div className="ab-bento">
             <div className="ab-card ab-c2 ab-m4" style={{ alignItems: "center", gap: 8 }}>
-              <Ring value={current.cpu_percent} size={96} stroke={9} label="CPU" large />
+              <Ring value={cpu} size={96} stroke={9} label="CPU" large warnAt={80} critAt={92} />
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 12.5, color: "var(--ab-ink-2)" }}>系统负载 <b style={{ fontVariantNumeric: "tabular-nums" }}>{current.load1 != null ? current.load1.toFixed(2) : "—"}</b></div>
+                <div style={{ fontSize: 12.5, color: "var(--ab-ink-2)" }}>系统负载 <b style={{ fontVariantNumeric: "tabular-nums" }}>{load1 != null ? load1.toFixed(2) : "—"}</b></div>
                 <div className="ab-label" style={{ marginTop: 2 }}>{RANGE_LABEL[range]}最高 {cpuMax ? `${Math.round(cpuMax)}%` : "—"} · 均值 {cpuAvg != null ? `${Math.round(cpuAvg)}%` : "—"}</div>
               </div>
             </div>
             <div className="ab-card ab-c2 ab-m4" style={{ alignItems: "center", gap: 8 }}>
-              <Ring value={current.mem_percent} size={96} stroke={9} label="内存" large />
+              <Ring value={mem} size={96} stroke={9} label="内存" large warnAt={80} critAt={92} />
               <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--ab-ink-2)" }}>
-                <div>已用 <b>{fmtBytes(current.mem_used)}</b> / {fmtBytes(current.mem_total)}</div>
-                <div className="ab-label" style={{ marginTop: 2 }}>可用 {fmtBytes(current.mem_available)}（MemAvailable）</div>
+                <div>已用 <b>{fmtBytes(memUsed)}</b> / {fmtBytes(memTotal)}</div>
+                <div className="ab-label" style={{ marginTop: 2 }}>{memAvailable != null ? `可用 ${fmtBytes(memAvailable)}（MemAvailable）` : "可用内存以采集器采样为准"}</div>
               </div>
             </div>
             <div className="ab-card ab-c2 ab-m4" style={{ alignItems: "center", gap: 8 }}>
-              <Ring value={current.disk_percent} size={96} stroke={9} label="磁盘" large />
+              <Ring value={disk} size={96} stroke={9} label="磁盘" large warnAt={70} critAt={85} />
               <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--ab-ink-2)" }}>
-                <div>已用 <b>{fmtBytes(current.disk_used)}</b> / {fmtBytes(current.disk_total)}</div>
-                <div className="ab-label" style={{ marginTop: 2 }}>剩余 {fmtBytes(current.disk_free)}{(current.disk_percent || 0) >= 85 ? " · 容量紧张" : ""}</div>
+                <div>已用 <b>{fmtBytes(diskUsed)}</b> / {fmtBytes(diskTotal)}</div>
+                <div className="ab-label" style={{ marginTop: 2 }}>剩余 {fmtBytes(diskFree)}{(disk || 0) >= 85 ? " · 容量紧张" : ""}</div>
               </div>
             </div>
 
             <div className="ab-card ab-c2 ab-m6" style={{ gap: 8 }}>
               <div className="ab-card__head"><span className="ab-card__title">网络速率</span><span className="ab-card__badge">实时</span></div>
               <div style={{ display: "flex", gap: 24 }}>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{fmtBytes(current.net_rx_rate)}/s</b><div className="ab-label">入站</div></div>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{fmtBytes(current.net_tx_rate)}/s</b><div className="ab-label">出站</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{fmtBytes(netRx)}/s</b><div className="ab-label">入站</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{fmtBytes(netTx)}/s</b><div className="ab-label">出站</div></div>
               </div>
               <TrendChart points={series.net} unit=" KB/s" color="var(--ab-cyan)" height={88} emptyText="暂无网络采样" />
             </div>
             <div className="ab-card ab-c2 ab-m6" style={{ gap: 8 }}>
               <div className="ab-card__head"><span className="ab-card__title">API 性能</span><span className="ab-card__badge">5 分钟窗口</span></div>
               <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{live.avg_ms != null ? `${Math.round(live.avg_ms)} ms` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">平均响应</div></div>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{live.p95_ms != null ? `${Math.round(live.p95_ms)} ms` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">P95</div></div>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{fmtNum(live.requests)}</b><div className="ab-label">请求数</div></div>
-                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums", color: (live.error_rate || 0) > 0.02 ? "var(--ab-coral)" : undefined }}>{live.error_rate != null ? `${(live.error_rate * 100).toFixed(1)}%` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">错误率</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{liveApi.avg_ms != null ? `${Math.round(liveApi.avg_ms)} ms` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">平均响应</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{liveApi.p95_ms != null ? `${Math.round(liveApi.p95_ms)} ms` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">P95</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums" }}>{fmtNum(liveApi.requests)}</b><div className="ab-label">请求数</div></div>
+                <div><b style={{ fontSize: 20, fontWeight: 650, fontVariantNumeric: "tabular-nums", color: (liveApi.error_rate || 0) > 0.02 ? "var(--ab-coral)" : undefined }}>{liveApi.error_rate != null ? `${(liveApi.error_rate * 100).toFixed(1)}%` : <span style={{ fontSize: 13, fontWeight: 550, color: "var(--ab-ink-3)" }}>暂无</span>}</b><div className="ab-label">错误率</div></div>
               </div>
               <TrendChart points={series.api} unit=" ms" color="var(--ab-blue)" height={88} emptyText="暂无 API 采样" />
             </div>

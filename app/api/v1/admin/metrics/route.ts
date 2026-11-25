@@ -45,9 +45,11 @@ export async function GET(req: NextRequest) {
     // 在接口层换算一次，避免 0.44% 被显示成 44.0%。
     const rawLive = requestMetricsSnapshot();
     const asRatio = (window: typeof rawLive.m1) => ({ ...window, error_rate: Number(window.error_rate) / 100 });
+    // 顶层字段保持扁平（历史调用方读 live_requests.avg_ms），统一取 5 分钟窗口，
+    // 与页面上「5 分钟窗口」的标注一致；三个窗口另外给出，供需要更短窗口的页面自取。
     return {
       current: latest || null,
-      live_requests: { ...rawLive, m1: asRatio(rawLive.m1), m5: asRatio(rawLive.m5), m15: asRatio(rawLive.m15) },
+      live_requests: { ...asRatio(rawLive.m5), m1: asRatio(rawLive.m1), m5: asRatio(rawLive.m5), m15: asRatio(rawLive.m15) },
       open_alerts: alertRows || [],
       has_history: Boolean(latest),
     };

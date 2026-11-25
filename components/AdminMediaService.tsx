@@ -252,7 +252,13 @@ export default function AdminMediaService({ refreshKey = 0 }: { refreshKey?: num
               })}
             </div>
           ) : (
-            <Empty title="当前没有活跃上传任务" hint="有新上传时会在这里实时出现。" />
+            <div className="ab-card ab-card--tight" style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <span className="ab-row__icon tone-emerald"><Upload size={14} /></span>
+              <span className="ab-row__body">
+                <span className="ab-row__title">当前没有活跃上传任务</span>
+                <span className="ab-row__meta">有新上传时会在这里实时出现；历史任务在下方折叠区，展开后才加载。</span>
+              </span>
+            </div>
           )}
 
           <Collapse

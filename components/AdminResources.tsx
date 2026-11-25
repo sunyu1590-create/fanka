@@ -318,6 +318,8 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
 
           {tab === "health" ? (
             <>
+              {/* 服务器状态与「系统健康」「系统监控」同源，避免容量页看不到磁盘余量。 */}
+              <ServerStatusCard storageBytes={summary?.bytes ?? null} objects={summary?.objects ?? null} />
               <div className="ab-card">
                 <div className="ab-card__head"><span className="ab-card__title">资源健康</span><span className={`ab-chip ${health ? "ok" : "warn"}`}>{health ? `扫描于 ${fmtTime(health.scanned_at)}` : "未扫描"}</span></div>
                 <div className="ab-kv-grid">
@@ -515,6 +517,49 @@ function DetailView({
           <img src={url} alt={item.name} style={{ maxWidth: "100%", maxHeight: "86vh", borderRadius: 14 }} />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * 服务器状态卡：放在「健康检查」顶部，让资源页也能看到 CPU / 内存 / 磁盘余量。
+ * 数据来自 /api/v1/admin/realtime 的 server 段（metrics-agent 采样宿主机 /proc），
+ * 与运营总览的「系统健康」、系统监控页完全同源，每秒刷新，不做任何本地推算。
+ */
+function ServerStatusCard({ storageBytes, objects }: { storageBytes: number | null; objects: number | null }) {
+  const live = useRealtime();
+  const server = live.snapshot?.server ?? null;
+  const diskFree = server?.disk_total != null && server?.disk_used != null ? server.disk_total - server.disk_used : null;
+  const diskTone = (server?.disk_percent ?? 0) >= 85 ? "var(--ab-coral)" : (server?.disk_percent ?? 0) >= 70 ? "var(--ab-amber)" : undefined;
+  const storageShare = storageBytes != null && server?.disk_total ? (storageBytes / server.disk_total) * 100 : null;
+  return (
+    <div className="ab-card">
+      <div className="ab-card__head">
+        <span className="ab-card__title">服务器状态</span>
+        <span className={`ab-chip ${server ? "ok" : "warn"}`}>
+          <i className={`ab-dot ${server ? "" : "warn"}`} aria-hidden="true" />
+          {server ? "实时同步" : "等待采集"}
+        </span>
+      </div>
+      <div className="ab-kv-grid">
+        <div>
+          <b>{server?.cpu_percent != null ? `${server.cpu_percent.toFixed(1)}%` : "—"}</b>
+          <span>CPU{server?.load1 != null ? ` · 负载 ${server.load1.toFixed(2)}` : ""}</span>
+        </div>
+        <div>
+          <b>{server?.mem_percent != null ? `${server.mem_percent.toFixed(1)}%` : "—"}</b>
+          <span>内存{server?.mem_used != null ? ` · 已用 ${fmtBytes(server.mem_used)}` : ""}</span>
+        </div>
+        <div>
+          <b style={{ color: diskTone }}>{server?.disk_percent != null ? `${server.disk_percent.toFixed(1)}%` : "—"}</b>
+          <span>磁盘{diskFree != null ? ` · 剩余 ${fmtBytes(diskFree)}` : ""}</span>
+        </div>
+        <div>
+          <b>{fmtBytes(storageBytes)}</b>
+          <span>对象存储{objects != null ? ` · ${fmtNum(objects)} 个对象` : ""}{storageShare != null ? ` · 占磁盘 ${storageShare.toFixed(1)}%` : ""}</span>
+        </div>
+      </div>
+      <p className="ab-label" style={{ margin: 0 }}>CPU、内存与磁盘和「运营总览 → 系统健康」「系统监控」共用同一份实时快照，页面每秒对齐最新样本（采集器 15 秒采样一次）；容量仍以 storage.objects 的物理对象为准，同一文件多次引用只计一次。</p>
     </div>
   );
 }

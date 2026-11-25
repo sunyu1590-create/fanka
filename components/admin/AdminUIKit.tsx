@@ -225,6 +225,8 @@ export function Ring({
   tone,
   label,
   large,
+  warnAt = 75,
+  critAt = 90,
 }: {
   value: number | null;
   size?: number;
@@ -232,12 +234,16 @@ export function Ring({
   tone?: "auto" | "gold" | "violet" | "blue" | "emerald" | "amber" | "coral";
   label?: string;
   large?: boolean;
+  /** 转琥珀的阈值。磁盘比内存更不耐满，调用方可以单独下调。 */
+  warnAt?: number;
+  /** 转珊瑚红的阈值。 */
+  critAt?: number;
 }) {
   const safe = value == null || !Number.isFinite(value) ? 0 : Math.max(0, Math.min(100, value));
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const dash = (safe / 100) * circumference;
-  const resolvedTone = tone && tone !== "auto" ? tone : safe >= 90 ? "coral" : safe >= 75 ? "amber" : "emerald";
+  const resolvedTone = tone && tone !== "auto" ? tone : safe >= critAt ? "coral" : safe >= warnAt ? "amber" : "emerald";
   const color = `var(--ab-${resolvedTone})`;
   return (
     <div className={`ab-ring${large ? " ab-ring--lg" : ""}`} style={{ width: size, height: size }}>
@@ -286,9 +292,10 @@ export function TrendChart({
   const valid = points.filter((point) => point.v != null && Number.isFinite(point.v as number)) as Array<{ t: number; v: number }>;
   if (valid.length < 2) return <div className="ab-chart__empty">{emptyText}</div>;
   const width = 320;
-  const padL = 30;
-  const padR = 6;
-  const padT = 8;
+  // 左侧刻度右对齐到曲线左缘，标签再长也不会压住曲线；顶部多留 2px 避免最高点贴边。
+  const padL = 36;
+  const padR = 8;
+  const padT = 10;
   const padB = 16;
   const innerW = width - padL - padR;
   const innerH = height - padT - padB;
@@ -338,7 +345,7 @@ export function TrendChart({
           return (
             <g key={ratio}>
               <line x1={padL} y1={gy} x2={width - padR} y2={gy} stroke="var(--ab-line)" strokeDasharray="3 4" strokeWidth="1" />
-              <text x={4} y={gy + 3} fontSize="8.5" fill="var(--ab-ink-3)">{fmtValue(value)}</text>
+              <text x={padL - 5} y={gy + 3} fontSize="8.5" fill="var(--ab-ink-3)" textAnchor="end">{fmtValue(value)}</text>
             </g>
           );
         })}

@@ -68,6 +68,21 @@ export default function AdminDashboard({
   const [error, setError] = useState("");
   const mounted = useRef(true);
 
+  // 顶部实时条与下方健康卡必须同源：快照有值时一律用快照，metrics 仅作首屏兜底，
+  // 否则同一屏会出现两个不同的 CPU/磁盘数字。
+  const feed = useRealtime();
+  const server = feed.snapshot?.server ?? null;
+  const cpuValue = server?.cpu_percent ?? current?.cpu_percent ?? null;
+  const memValue = server?.mem_percent ?? current?.mem_percent ?? null;
+  const diskValue = server?.disk_percent ?? current?.disk_percent ?? null;
+  const memUsed = server?.mem_used ?? current?.mem_used ?? null;
+  const memTotal = server?.mem_total ?? current?.mem_total ?? null;
+  const diskUsed = server?.disk_used ?? current?.disk_used ?? null;
+  const diskTotal = server?.disk_total ?? current?.disk_total ?? null;
+  const healthLive = Boolean(server);
+  const healthAt = server?.captured_at ?? current?.captured_at;
+  const hasHealth = Boolean(current || server);
+
   const load = useCallback(async (initial: boolean) => {
     if (initial) setLoading(true);
     const [overviewResult, usersResult, dmResult, metricsResult, trendResult, mediaResult, aiResult] = await Promise.allSettled([
@@ -117,8 +132,8 @@ export default function AdminDashboard({
   const runningBatches = useMemo(() => batches.filter((batch) => batch.status === "running").length, [batches]);
   const anomalies = useMemo(() => reviewItems.filter((item) => Boolean(item.error_message)).length, [reviewItems]);
   const criticalAlerts = useMemo(() => alerts.filter((alert) => alert.level === "critical").length, [alerts]);
-  const healthTone = criticalAlerts > 0 ? "bad" : alerts.length > 0 ? "warn" : current ? "ok" : "warn";
-  const healthLabel = criticalAlerts > 0 ? `${criticalAlerts} 条严重告警` : alerts.length > 0 ? `${alerts.length} 条告警` : current ? "运行正常" : "等待采集";
+  const healthTone = criticalAlerts > 0 ? "bad" : alerts.length > 0 || (diskValue ?? 0) >= 85 ? "warn" : hasHealth ? "ok" : "warn";
+  const healthLabel = criticalAlerts > 0 ? `${criticalAlerts} 条严重告警` : alerts.length > 0 ? `${alerts.length} 条告警` : (diskValue ?? 0) >= 85 ? "磁盘容量紧张" : hasHealth ? "运行正常" : "等待采集";
   const pendingTotal = (overview?.pending ?? 0) + (overview?.pendingReports ?? 0) + (dmPending ?? 0) + alerts.length + (media?.failed ?? 0);
 
   return (
@@ -129,26 +144,29 @@ export default function AdminDashboard({
         <div className="ab-card tone-blue ab-c2 ab-m8" style={{ gap: 14 }}>
           <div className="ab-card__head">
             <span className="ab-card__title">系统健康</span>
-            <span className={`ab-chip ${healthTone}`}><i className={`ab-dot ${healthTone === "ok" ? "" : healthTone}`} aria-hidden="true" />{healthLabel}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {healthLive ? <span className="ab-chip info">实时</span> : null}
+              <span className={`ab-chip ${healthTone}`}><i className={`ab-dot ${healthTone === "ok" ? "" : healthTone}`} aria-hidden="true" />{healthLabel}</span>
+            </span>
           </div>
-          {loading && !current ? (
+          {loading && !hasHealth ? (
             <div className="ab-skel" style={{ height: 180 }} />
-          ) : current ? (
+          ) : hasHealth ? (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, maxWidth: 320 }}>
-                <Ring value={current.cpu_percent ?? null} label="CPU" size={78} stroke={7} />
-                <Ring value={current.mem_percent ?? null} label="内存" size={78} stroke={7} />
-                <Ring value={current.disk_percent ?? null} label="磁盘" size={78} stroke={7} />
+                <Ring value={cpuValue} label="CPU" size={78} stroke={7} warnAt={80} critAt={92} />
+                <Ring value={memValue} label="内存" size={78} stroke={7} warnAt={80} critAt={92} />
+                <Ring value={diskValue} label="磁盘" size={78} stroke={7} warnAt={70} critAt={85} />
               </div>
               {/* 指标压成同一行：API 延迟紧挨磁盘容量，四项同权、窄屏也不拆行。 */}
               <div className="ab-health-meta">
                 <span>
                   <i>内存</i>
-                  <b>{fmtPair(current.mem_used, current.mem_total)}</b>
+                  <b>{fmtPair(memUsed, memTotal)}</b>
                 </span>
                 <span>
                   <i>磁盘</i>
-                  <b>{fmtPair(current.disk_used, current.disk_total)}</b>
+                  <b>{fmtPair(diskUsed, diskTotal)}</b>
                 </span>
                 <span>
                   <i>API 延迟</i>
@@ -162,7 +180,7 @@ export default function AdminDashboard({
               </div>
               <TrendChart points={trend} unit="%" color="var(--ab-blue)" height={120} emptyText="最近 1 小时暂无 CPU 采样" />
               <div className="ab-card__foot">
-                <span>最后更新 {fmtTime(current.captured_at)}</span>
+                <span>{healthLive ? "实时同步 · " : ""}最后更新 {fmtTime(healthAt)}</span>
                 <button type="button" className="ab-label" style={{ border: 0, background: "none", color: "var(--ab-blue)", display: "inline-flex", alignItems: "center" }} onClick={() => onNavigate("system-monitor")}>系统监控<ChevronRight size={13} /></button>
               </div>
             </>
@@ -326,7 +344,7 @@ function LiveStrip({ onNavigate }: { onNavigate: (section: string) => void }) {
     <div className="ab-card ab-card--tight" style={{ marginBottom: 12, gap: 8 }}>
       <div className="ab-card__head">
         <span className="ab-card__title">实时</span>
-        <span className="ab-label">{live.status === "live" ? "每秒更新" : live.status === "reconnecting" ? "正在重连" : live.status === "offline" ? "连接中断" : "连接中"}</span>
+        <span className="ab-label">{live.status === "live" ? "每秒对齐采集样本" : live.status === "reconnecting" ? "正在重连" : live.status === "offline" ? "连接中断" : "连接中"}</span>
       </div>
       <div className="ab-livegrid">
         {items.map((item) => (
