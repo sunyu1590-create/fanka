@@ -217,6 +217,8 @@ export default function HomeBannerCarousel({
     }
     const video = videoRef.current;
     if (!video) return;
+    // 这里只设一次初始音量；后续切换静音由独立副作用处理，
+    // 否则每次点静音都会重置进度并重复上报 video_start。
     video.muted = settings.videoMuted ? muted : false;
     video.currentTime = 0;
     setVideoProgress(0);
@@ -257,7 +259,13 @@ export default function HomeBannerCarousel({
       video.removeEventListener("ended", onEnded);
       video.removeEventListener("error", onError);
     };
-  }, [item, posterOnly, settings, muted, next]);
+  }, [item, posterOnly, settings, next]);
+
+  // 静音切换：只改音量，不打断播放，也不重新计时。
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) video.muted = settings?.videoMuted ? muted : false;
+  }, [muted, settings?.videoMuted, index, posterOnly]);
 
   // 离开视口 / 标签页不可见 / 进入后台：暂停当前视频，回来再继续。
   useEffect(() => {
@@ -292,6 +300,7 @@ export default function HomeBannerCarousel({
   }, []);
 
   // ---- 手势：跟手位移 + 松手吸附，循环时不出现空白帧 ----
+  const suppressClick = useRef(false);
   const onPointerDown = (event: React.PointerEvent) => {
     if (items.length < 2) return;
     dragRef.current = { startX: event.clientX, delta: 0, active: true };
@@ -310,6 +319,8 @@ export default function HomeBannerCarousel({
     dragRef.current = { startX: 0, delta: 0, active: false };
     setDrag(0);
     if (Math.abs(delta) >= MIN_SWIPE) {
+      // 滑动是一次翻页手势，不该同时被当成点击去跳转目标。
+      suppressClick.current = true;
       setIndex((current) => {
         if (!items.length) return 0;
         const step = delta < 0 ? 1 : -1;
@@ -346,7 +357,10 @@ export default function HomeBannerCarousel({
         role={item?.targetType !== "none" && item?.targetValid ? "button" : "group"}
         tabIndex={item?.targetType !== "none" && item?.targetValid ? 0 : -1}
         aria-label={item?.alt || "首页推荐"}
-        onClick={() => item && open(item)}
+        onClick={() => {
+          if (suppressClick.current) { suppressClick.current = false; return; }
+          if (item) open(item);
+        }}
         onKeyDown={(event) => {
           if ((event.key === "Enter" || event.key === " ") && item) {
             event.preventDefault();
