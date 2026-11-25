@@ -1281,8 +1281,8 @@
 
 .reader-toc-aside {
   position: fixed;
-  /* 桌面左栏有固定操作轨（约 120px），目录必须让开它再贴住正文左侧 */
-  left: max(136px, calc(50% - 660px));
+  /* 桌面操作轨固定在 calc(50% - 660px)，目录要整块让开它，不能压住点赞/评论图标 */
+  left: max(16px, calc(50% - 880px));
   top: 132px;
   width: 196px;
   max-height: calc(100vh - 220px);
@@ -1338,10 +1338,14 @@
   background: var(--rd-accent);
 }
 
-/* 空间足够宽才显示左侧目录；更窄的桌面用右栏里的目录块，手机用顶栏面板 */
-@media (min-width: 1500px) {
+/* 空间足够宽才显示左侧目录（1800px 起，留出操作轨+间隙）；
+   更窄的桌面用右栏里的目录块，手机用顶栏面板，都不会挤压正文。 */
+@media (min-width: 1800px) {
   .reader-toc-aside { display: grid; }
 }
+
+/* 评论抽屉打开时优先保证正文与评论宽度，左侧目录自动折叠 */
+body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
 
 /* ---------- 数学公式 ---------- */
 
@@ -1436,4 +1440,9 @@
    滚到最底部时最后一屏内容不会被底栏压住。桌面独立页没有底栏，不额外留白。 */
 .app:not(.is-detail-page) .detail-body {
   padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+/* 超宽屏已常驻左侧目录，右栏那块目录卡就收起来，避免同一页出现两份目录 */
+@media (min-width: 1800px) {
+  .detail-aside-card.detail-toc { display: none; }
 }
