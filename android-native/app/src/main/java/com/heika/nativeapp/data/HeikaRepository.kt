@@ -1499,7 +1499,12 @@ class HeikaRepository @Inject constructor(
         val items = payload.optJSONArray("items")
         HeikaSuggestions(
             query = payload.optString("query", query),
-            items = (0 until (items?.length() ?: 0)).mapNotNull { index -> items?.optString(index)?.takeIf(String::isNotBlank) },
+            // 联想项是对象（type/id/label/hint），兼容纯字符串写法。
+            items = (0 until (items?.length() ?: 0)).mapNotNull { index ->
+                val row = items?.optJSONObject(index)
+                if (row != null) row.optString("label").takeIf { it.isNotBlank() }
+                else items?.optString(index)?.takeIf { it.isNotBlank() }
+            },
             corrected = payload.optString("corrected").takeIf(String::isNotBlank),
         )
     }
