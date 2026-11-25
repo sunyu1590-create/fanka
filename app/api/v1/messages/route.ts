@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { adminClient } from "@/lib/server/admin-client";
 import { ApiError, context, jsonBody, respond, uuid } from "@/lib/server/api";
 import { requireFeature } from "@/lib/server/feature-flags";
+import { requireAbility } from "@/lib/server/account-limits";
 
 type Conversation = { id: string; user_a: string; user_b: string; created_at: string };
 
@@ -132,6 +133,7 @@ export async function POST(req: NextRequest) {
   return respond(async () => {
     await requireFeature("dm");
     const { user } = await context(req);
+    await requireAbility(user!.id, "dm");
     const me = user!.id;
     const body = await jsonBody(req);
     const action = String(body.action ?? "");

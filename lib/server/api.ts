@@ -13,7 +13,14 @@ export async function context(req:NextRequest,required=true){
     if (error instanceof Error && error.name === 'AccessBlocked') throw new ApiError(429, error.message);
     throw error;
   }
-  const match=/^Bearer (.+)$/i.exec(req.headers.get('authorization')||'');const token=match?.[1];if(required&&!token)throw new ApiError(401,'请先登录');const db=client(token);if(!token)return {db,user:null};const {data,error}=await db.auth.getUser(token);if(error||!data.user)throw new ApiError(401,'登录状态已失效');return {db,user:data.user}}
+  const match=/^Bearer (.+)$/i.exec(req.headers.get('authorization')||'');const token=match?.[1];if(required&&!token)throw new ApiError(401,'请先登录');const db=client(token);if(!token)return {db,user:null};const {data,error}=await db.auth.getUser(token);if(error||!data.user)throw new ApiError(401,'登录状态已失效');
+  // 账号级能力限制：管理端不受影响，避免管理员被内容限制锁在外面。
+  if(!req.nextUrl.pathname.startsWith('/api/v1/admin')){
+    const {requireAbility}=await import('./account-limits');
+    await requireAbility(data.user.id,'login');
+    if(req.method==='GET')await requireAbility(data.user.id,'browse');
+  }
+  return {db,user:data.user}}
 export async function jsonBody(req:NextRequest){try{return await req.json() as Record<string,unknown>}catch{throw new ApiError(400,'请求内容不是有效 JSON')}}
 export function textField(value:unknown,name:string,min:number,max:number){if(typeof value!=='string'||value.trim().length<min||value.trim().length>max)throw new ApiError(400,`${name}长度须为 ${min}-${max}`);return value.trim()}
 export function uuid(value:unknown,name='id'){if(typeof value!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))throw new ApiError(400,`${name}无效`);return value}

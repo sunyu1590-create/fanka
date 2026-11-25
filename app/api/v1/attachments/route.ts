@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, respond } from "@/lib/server/api";
 import { requireFeature } from "@/lib/server/feature-flags";
+import { requireAbility } from "@/lib/server/account-limits";
 import { adminClient } from "@/lib/server/admin-client";
 import {
   ATTACHMENT_BUCKET,
@@ -81,6 +82,7 @@ export async function GET(req: NextRequest) {
     if (path) {
       await requireFeature("download");
       const { db, user } = await contextSafe(req, false);
+      if (user) await requireAbility(user.id, "download");
       // 私有桶不给直链，签发 7 天有效的下载链接。
       if ((!user || attachmentOwner(path) !== user.id) && !(await canRead(db, path, user?.id || ""))) throw new ApiError(403, "附件不存在");
       const preview = req.nextUrl.searchParams.get("preview") === "1";
@@ -108,6 +110,7 @@ export async function POST(req: NextRequest) {
     await requireFeature("upload");
     const { db, user } = await contextSafe(req);
     if (!user) throw new ApiError(401, "请先登录");
+    await requireAbility(user.id, "upload");
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File) || !file.size) throw new ApiError(400, "请选择要上传的文件");

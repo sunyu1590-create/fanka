@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ApiError, context, dbError, jsonBody, respond, textField, uuid } from "@/lib/server/api";
 import { requireFeature } from "@/lib/server/feature-flags";
+import { requireAbility } from "@/lib/server/account-limits";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   return respond(async () => {
     await requireFeature("comment");
     const { db, user } = await context(req);
+    await requireAbility(user!.id, "comment");
     const body = await jsonBody(req);
     const postId = uuid((await params).id);
     const parentId = body.parent_id ? uuid(body.parent_id, "回复目标") : null;
