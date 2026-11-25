@@ -133,17 +133,33 @@ export function wrapText(text: string, maxWidth: number, fontSize: number, maxLi
  * 标题字号：从阶梯值向下搜索，要求不出现孤字行、且整块能放进预留区域。
  * 宁可小一点，也不要出现「内容 / 包」这种单字尾行。
  */
-function titleSizeFor(title: string, maxWidth: number, regionHeight: number): number {
+function fitTitle(
+  title: string,
+  maxWidth: number,
+  regionHeight: number,
+  maxLines = 4,
+): { size: number; lines: string[] } {
   const length = [...title].length;
   const ladder = length <= 4 ? 108 : length <= 6 ? 92 : length <= 9 ? 78 : length <= 13 ? 62 : length <= 18 ? 52 : length <= 26 ? 44 : 38;
   for (let size = ladder; size >= 26; size -= 2) {
-    const lines = wrapAll(title, maxWidth, size);
-    if (!lines.length) return size;
+    const total = measure(title, size);
+    let lines: string[];
+    if (total <= maxWidth) {
+      lines = [title];
+    } else {
+      lines = wrapAll(title, maxWidth, size);
+      // 折行后尽量让各行等长：按「平均每行宽度」再折一次，
+      // 避免出现 5 字 + 3 字这种一头沉的断法。
+      const balanced = wrapAll(title, Math.min(maxWidth, Math.ceil(total / Math.max(lines.length, 1)) + size * 0.45), size);
+      if (balanced.length === lines.length && balanced.every((line) => [...line].length >= 3)) lines = balanced;
+    }
+    if (!lines.length) return { size, lines: [title] };
+    if (lines.length > maxLines) continue;
     const orphan = lines.length > 1 && lines.some((line) => [...line].length < 3);
     if (orphan) continue;
-    if (lines.length * size * 1.26 <= regionHeight) return size;
+    if (lines.length * size * 1.26 <= regionHeight) return { size, lines };
   }
-  return 26;
+  return { size: 26, lines: wrapAll(title, maxWidth, 26).slice(0, maxLines) };
 }
 
 const esc = (value: string) =>
@@ -317,19 +333,23 @@ function backdropFor(spec: CoverSpec) {
 function layoutFor(spec: CoverSpec) {
   const { renderType, params, palette, title, subtitle } = spec;
   const gutter = 56;
-  const maxWidth = COVER_WIDTH - gutter * 2;
+  // 瑞士编辑系列的 index 版式会在右侧排一条档案编号窄列（01…12），
+  // 正文必须让出这条列宽，否则长标题会压到编号上；其余版式不预留。
+  const rightColumn = renderType === "swiss" && String(params.layout || "") === "index" ? 64 : 0;
+  const maxWidth = COVER_WIDTH - gutter * 2 - rightColumn;
   const serif = renderType === "literary";
 
   // 杂志满版图：文字压在图片下部，靠遮罩保证可读性。
   if (renderType === "magazine" && String(params.layout) !== "frame") {
     const region = 300;
-    const size = titleSizeFor(title, maxWidth, region);
-    const lines = wrapText(title, maxWidth, size, 3);
-    const bottom = COVER_HEIGHT - 96;
+    const { size, lines } = fitTitle(title, maxWidth, region, 3);
+    const subLines = wrapText(subtitle, maxWidth, 22, 2);
+    // 副标题贴着底部排：行数越多越要向上让位，否则第二行会压到品牌行。
+    const bottom = COVER_HEIGHT - 96 - (subLines.length - 1) * 32;
     return {
       blocks: [
-        { lines, size, lineHeight: size * 1.22, x: gutter, y: bottom - (lines.length - 1) * size * 1.22 - 30, fill: palette.ink, weight: 800, align: "left" as const },
-        { lines: wrapText(subtitle, maxWidth, 22, 2), size: 22, lineHeight: 32, x: gutter, y: bottom, fill: palette.muted, weight: 500, align: "left" as const },
+        { lines, size, lineHeight: size * 1.22, x: gutter, y: bottom - (lines.length - 1) * size * 1.22 - 46, fill: palette.ink, weight: 800, align: "left" as const },
+        { lines: subLines, size: 22, lineHeight: 32, x: gutter, y: bottom, fill: palette.muted, weight: 500, align: "left" as const },
       ],
       kicker: { text: spec.index, x: gutter, y: 76, color: palette.ink },
       brandColor: palette.ink,
@@ -338,7 +358,7 @@ function layoutFor(spec: CoverSpec) {
   }
 
   if (renderType === "literary" && params.vertical) {
-    const size = titleSizeFor(title, 300, 460);
+    const { size } = fitTitle(title, 300, 460, 2);
     const chars = [...title].slice(0, 14);
     const columnX = COVER_WIDTH - gutter - 40;
     const vertical = chars.map((char, index) => `<text x="${columnX}" y="${150 + index * (size * 1.06)}" font-family="${SERIF_STACK}" font-size="${size}" font-weight="600" fill="${palette.ink}" text-anchor="middle">${esc(char)}</text>`).join("");
@@ -354,8 +374,8 @@ function layoutFor(spec: CoverSpec) {
   // 图形类模板（玻璃 / 创作实践）把标题压到下半部，上半部留给抽象图形。
   const topBlock = renderType === "glass" ? 418 : renderType === "creative" ? 380 : 258;
   const regionHeight = COVER_HEIGHT - topBlock - 128;
-  const size = titleSizeFor(title, maxWidth, regionHeight);
-  const lines = wrapText(title, maxWidth, size, 4);
+  const { size, lines } = fitTitle(title, maxWidth, regionHeight, 4);
+  const subLines = wrapText(subtitle, maxWidth, 21, 2);
   const startY = topBlock + size;
   const centered = renderType === "minimal" && String(params.align) === "center";
   const x = centered ? COVER_WIDTH / 2 : gutter;
@@ -364,7 +384,7 @@ function layoutFor(spec: CoverSpec) {
   return {
     blocks: [
       { lines, size, lineHeight: size * 1.26, x, y: startY, fill: palette.ink, weight: renderType === "minimal" ? 800 : 700, align },
-      { lines: wrapText(subtitle, maxWidth, 21, 2), size: 21, lineHeight: 32, x, y: Math.min(startY + lines.length * size * 1.26 + 30, COVER_HEIGHT - 116), fill: palette.muted, weight: 500, align },
+      { lines: subLines, size: 21, lineHeight: 32, x, y: Math.min(startY + lines.length * size * 1.26 + 30, COVER_HEIGHT - 118 - (subLines.length - 1) * 32), fill: palette.muted, weight: 500, align },
     ],
     kicker: { text: spec.index, x, y: 96, color: palette.accent, align },
     brandColor: palette.muted,
@@ -423,11 +443,36 @@ export function deriveSubtitle(series: CoverSourceSeries): string {
   }
   const parts: string[] = [];
   if (series.categoryName) parts.push(series.categoryName);
-  const kind = KIND_LABEL[series.kind || ""] || "合集";
-  parts.push(kind === "合集" ? "知识合集" : kind);
+  // 没有简介时也要读得通：用「资源合集 / 教程合集」这类名词短语，
+  // 而不是孤零零一个「资源」把封面下半部留空。
+  const kind = KIND_LABEL[series.kind || ""] || "";
+  parts.push(kind ? `${kind}合集` : "精选合集");
   if (series.chapters && series.chapters > 0) parts.push(`${series.chapters} 篇`);
   return parts.join(" · ");
 }
+
+/**
+ * 超长文案截断：英文优先在词边界收敛，避免出现 "Productio" 这种半截词；
+ * 中文按字数直接截断（汉字没有词边界问题），统一补省略号表示被截。
+ */
+function clampText(text: string, max: number): string {
+  if ([...text].length <= max) return text;
+  const chars = [...text].slice(0, max);
+  const cut = chars.join("");
+  const lastSpace = cut.lastIndexOf(" ");
+  const keep = lastSpace >= Math.floor(max * 0.6) ? cut.slice(0, lastSpace) : cut;
+  return `${keep.replace(/[\s,，、.。:：;；·\-—]+$/, "")}…`;
+}
+
+/** 封面右上角编号行的系列名：用完整单词，不再按字符数硬截断。 */
+const CATEGORY_LABEL: Record<string, string> = {
+  swiss: "SWISS",
+  glass: "GLASS",
+  magazine: "MAGAZINE",
+  minimal: "MINIMAL",
+  literary: "LITERARY",
+  creative: "STUDIO",
+};
 
 export function buildSpec(
   series: CoverSourceSeries,
@@ -454,12 +499,12 @@ export function buildSpec(
     templateVersion: Number(template.version || 1),
     renderType: template.render_type,
     category: template.category,
-    title: (overrides.title || series.title || "未命名合集").trim().slice(0, 40),
-    subtitle: (overrides.subtitle ?? deriveSubtitle(series)).slice(0, 60),
+    title: clampText((overrides.title || series.title || "未命名合集").trim(), 40),
+    subtitle: clampText((overrides.subtitle ?? deriveSubtitle(series)).trim(), 60),
     palette: overrides.palette ? paletteFrom(base, overrides.palette) : base,
     params,
     seed,
-    index: `${pad2((seed >>> 8) % 90 + 10)} / ${(template.category || "heika").toUpperCase().slice(0, 6)}`,
+    index: `${pad2((seed >>> 8) % 90 + 10)} / ${CATEGORY_LABEL[template.category || ""] || "HEIKA"}`,
   };
 }
 
