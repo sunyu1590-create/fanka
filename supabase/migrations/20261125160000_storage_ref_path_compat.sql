@@ -177,3 +177,7 @@ as $$
 $$;
 
 revoke all on function public.heika_storage_health() from public, anon, authenticated;
+
+-- 归档记录的内容侧状态扩到四种，便于区分「记录失效原因」。
+comment on column public.ai_task_items.content_state is
+  '内容侧状态：ok（作品已处理）/ post_deleted（作品已删除）/ post_published（作品已发布）/ post_hidden（作品已隐藏）/ post_unreadable（读取异常）';

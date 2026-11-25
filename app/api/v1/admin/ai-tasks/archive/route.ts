@@ -51,23 +51,32 @@ export async function POST(req: NextRequest) {
       if (!row) { blocked.push({ id: itemId, reason: "记录不存在" }); continue; }
       if (row.archived_at) { blocked.push({ id: itemId, reason: "已归档" }); continue; }
 
-      // 关键校验：作品还在、且仍在等待审核时，不允许通过删除记录让作品绕过审核。
+      // 关键校验：作品仍在审核流程里（草稿未提交 / 等待人工结论）时，
+      // 不允许通过删记录让作品绕过审核。作品已发布、已隐藏或已被删除的
+      // 复审记录属于陈旧数据，允许清理。
+      let contentState = "post_deleted";
       if (row.post_id) {
         const { data: post } = await db.from("posts").select("id,status").eq("id", row.post_id).maybeSingle();
-        if (post && (post.status === "pending" || row.status === "review")) {
-          blocked.push({ id: itemId, reason: "作品仍有效且待审核，请先做出审核结论" });
-          continue;
+        if (post) {
+          if (post.status === "pending_review" || post.status === "draft") {
+            blocked.push({ id: itemId, reason: "作品仍在审核流程中，请先做出审核结论" });
+            continue;
+          }
+          contentState = post.status === "published" ? "post_published" : post.status === "hidden" ? "post_hidden" : "ok";
         }
       }
 
-      const { error: updateError } = await db.from("ai_task_items").update({
+      // 乐观锁：只有 archived_at 仍为空时才写入。Supabase 的 update 在命中 0 行时
+      // 不报错，必须用 returning 判断是否真的抢到，否则并发下两个管理员都会计入成功。
+      const { data: updated, error: updateError } = await db.from("ai_task_items").update({
         archived_at: new Date().toISOString(),
         archived_by: user.id,
         archive_reason: reason,
-        content_state: row.post_id ? "ok" : "post_deleted",
+        content_state: contentState,
         updated_at: new Date().toISOString(),
-      }).eq("id", itemId).is("archived_at", null);
+      }).eq("id", itemId).is("archived_at", null).select("id");
       if (updateError) { blocked.push({ id: itemId, reason: "状态已变化，请刷新后重试" }); continue; }
+      if (!updated || !updated.length) { blocked.push({ id: itemId, reason: "已被其他管理员归档" }); continue; }
       archived.push(itemId);
 
       const { count } = await db.from("ai_task_items").select("id", { count: "exact", head: true }).eq("batch_id", batchId).eq("status", "review").is("archived_at", null);

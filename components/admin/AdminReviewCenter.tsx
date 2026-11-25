@@ -246,7 +246,7 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
                       <span className="ab-row__title" style={{ fontSize: 12 }}>{row.post_id ? `作品 ${row.post_id.slice(0, 8)}` : "关联作品已删除"}</span>
                       <span className="ab-row__meta">{row.archive_reason || "管理员清理"} · {fmtTime(row.archived_at)}</span>
                     </span>
-                    <span className="ab-chip">{row.content_state === "post_deleted" ? "作品已删除" : "已处理"}</span>
+                    <span className="ab-chip">{(row.content_state === "post_deleted" ? "作品已删除" : row.content_state === "post_published" ? "作品已发布" : row.content_state === "post_hidden" ? "作品已隐藏" : "已处理")}</span>
                   </div>
                 ))}
                 {archived && !archived.length ? <Empty title="还没有归档记录" /> : null}
