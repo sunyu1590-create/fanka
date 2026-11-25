@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ChevronRight, CreditCard, Download, Flag, ScrollText, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { Empty, fmtBytes, fmtNum, fmtPct, fmtTime, Group, Ring, Row, TrendChart } from "./AdminUIKit";
+import { useRealtime } from "@/lib/admin-live";
 
 /** 容量成对显示：单位相同只写一次（1.6/1.9 GB），窄屏一行四项也不会截断。 */
 function fmtPair(used: number | null | undefined, total: number | null | undefined): string {
@@ -116,6 +117,7 @@ export default function AdminDashboard({
   return (
     <div style={{ marginTop: 16 }}>
       {error ? <p className="ab-sub" style={{ marginBottom: 10, color: "var(--ab-amber)" }}>{error}</p> : null}
+      <LiveStrip onNavigate={onNavigate} />
       <div className="ab-bento">
         <div className="ab-card tone-blue ab-c2 ab-m8" style={{ gap: 14 }}>
           <div className="ab-card__head">
@@ -280,6 +282,42 @@ export default function AdminDashboard({
         </div>
       </div>
       {loading ? <p className="ab-sub" style={{ textAlign: "center", marginTop: 16 }}>正在读取实时数据…</p> : null}
+    </div>
+  );
+}
+
+
+/** 总览顶部实时条：每秒跟随统一快照更新，不额外发请求。 */
+function LiveStrip({ onNavigate }: { onNavigate: (section: string) => void }) {
+  const live = useRealtime();
+  const server = live.snapshot?.server;
+  const counts = live.snapshot?.counts;
+  const traffic = live.snapshot?.traffic;
+  const items: Array<{ label: string; value: string; hint?: string; section?: string }> = [
+    { label: "CPU", value: server?.cpu_percent != null ? `${server.cpu_percent.toFixed(1)}%` : "—", hint: server?.load1 != null ? `负载 ${server.load1.toFixed(2)}` : undefined, section: "process" },
+    { label: "内存", value: server?.mem_percent != null ? `${server.mem_percent.toFixed(1)}%` : "—", hint: server ? fmtBytes(server.mem_used) : undefined, section: "system-monitor" },
+    { label: "磁盘", value: server?.disk_percent != null ? `${server.disk_percent.toFixed(1)}%` : "—", hint: server ? `剩余 ${fmtBytes((server.disk_total || 0) - (server.disk_used || 0))}` : undefined, section: "system-monitor" },
+    { label: "网络", value: server?.net_tx_rate != null ? `${fmtBytes(server.net_tx_rate)}/s` : "—", hint: server?.net_rx_rate != null ? `入站 ${fmtBytes(server.net_rx_rate)}/s` : undefined, section: "media-service" },
+    { label: "活跃任务", value: fmtNum(counts?.tasksRunning), hint: counts?.uploadActive ? `上传 ${counts.uploadActive}` : "无进行中", section: "tasks" },
+    { label: "待复审", value: fmtNum(counts?.review), hint: counts?.reviewAnomaly ? `异常 ${counts.reviewAnomaly}` : "队列健康", section: "ai-review" },
+    { label: "今日上传", value: fmtBytes(traffic?.uploadBytes), hint: `${fmtNum(traffic?.uploadFiles)} 个文件`, section: "media-service" },
+    { label: "今日下载", value: fmtBytes(traffic?.downloadBytes), hint: `${fmtNum(traffic?.downloadRequests)} 次请求`, section: "media-service" },
+  ];
+  return (
+    <div className="ab-card ab-card--tight" style={{ marginBottom: 12, gap: 8 }}>
+      <div className="ab-card__head">
+        <span className="ab-card__title">实时</span>
+        <span className="ab-label">{live.status === "live" ? "每秒更新" : live.status === "reconnecting" ? "正在重连" : live.status === "offline" ? "连接中断" : "连接中"}</span>
+      </div>
+      <div className="ab-livegrid">
+        {items.map((item) => (
+          <button key={item.label} type="button" className="ab-livegrid__cell" onClick={() => item.section && onNavigate(item.section)}>
+            <span className="ab-label">{item.label}</span>
+            <b>{item.value}</b>
+            {item.hint ? <small>{item.hint}</small> : null}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

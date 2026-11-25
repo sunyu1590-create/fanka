@@ -801,3 +801,92 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
   .ab-dist-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ab-dist-rankings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------- Control Center 2.1：实时状态与通用容器 ---------- */
+.ab-live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 4px 9px 4px 8px;
+  border-radius: 999px;
+  background: var(--ab-fill);
+  font-size: 10.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ab-live b { font-weight: 620; color: var(--ab-ink); }
+.ab-live small { color: var(--ab-ink-3); font-variant-numeric: tabular-nums; font-size: 9.5px; }
+.ab-live .ab-dot { width: 6px; height: 6px; box-shadow: none; }
+.ab-live.tone-ok { color: var(--ab-emerald); }
+.ab-live.tone-ok .ab-dot { background: var(--ab-emerald); animation: ab-live-pulse 2.4s ease-in-out infinite; }
+.ab-live.tone-warn { color: var(--ab-amber); }
+.ab-live.tone-warn .ab-dot { background: var(--ab-amber); }
+.ab-live.tone-bad { color: var(--ab-coral); }
+.ab-live.tone-bad .ab-dot { background: var(--ab-coral); }
+@keyframes ab-live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ab-emerald) 45%, transparent); }
+  55% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ab-emerald) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .ab-live.tone-ok .ab-dot { animation: none; } }
+
+/* 传输进度条：5–8px，足够明显 */
+.ab-progress { position: relative; height: 6px; border-radius: 999px; background: var(--ab-fill-strong); overflow: hidden; }
+.ab-progress > i { display: block; height: 100%; border-radius: inherit; background: var(--ab-emerald); transition: width .45s cubic-bezier(.2,.7,.2,1); }
+.ab-progress.tone-blue > i { background: var(--ab-blue); }
+.ab-progress.tone-violet > i { background: var(--ab-violet); }
+.ab-progress.tone-amber > i { background: var(--ab-amber); }
+.ab-progress.tone-coral > i { background: var(--ab-coral); }
+.ab-progress.is-indeterminate > i { width: 34% !important; animation: ab-indeterminate 1.4s ease-in-out infinite; }
+@keyframes ab-indeterminate { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }
+
+/* 历史记录折叠容器：默认只露出标题与数量，展开才请求详情 */
+.ab-fold { border-radius: var(--ab-radius-sm); background: var(--ab-surface); border: 1px solid color-mix(in srgb, var(--ab-line) 70%, transparent); overflow: hidden; }
+.ab-fold + .ab-fold { margin-top: 8px; }
+.ab-fold__head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; border: 0; background: transparent; color: var(--ab-ink); font-size: 12.5px; text-align: left; cursor: pointer; }
+.ab-fold__head b { font-weight: 600; }
+.ab-fold__head small { margin-left: auto; color: var(--ab-ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ab-fold__head svg { color: var(--ab-ink-3); transition: transform .22s ease; flex: none; }
+.ab-fold.is-open .ab-fold__head svg { transform: rotate(90deg); }
+.ab-fold__body { padding: 0 6px 8px; border-top: 1px solid color-mix(in srgb, var(--ab-line) 60%, transparent); }
+
+/* 流量卡片：上传翡翠绿 / 下载科技蓝 */
+.ab-flow-card { position: relative; overflow: hidden; }
+.ab-flow-card::after { content: ""; position: absolute; inset: auto -30% -60% auto; width: 180px; height: 180px; border-radius: 50%; background: color-mix(in srgb, var(--tone) 16%, transparent); filter: blur(12px); pointer-events: none; }
+.ab-flow-card.tone-emerald { --tone: var(--ab-emerald); }
+.ab-flow-card.tone-blue { --tone: var(--ab-blue); }
+
+/* 容量堆叠条 */
+.ab-stack { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--ab-fill); }
+.ab-stack > i { height: 100%; min-width: 2px; }
+.ab-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; font-size: 10.5px; color: var(--ab-ink-2); }
+.ab-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.ab-legend i { width: 7px; height: 7px; border-radius: 2px; }
+
+/* 进程/资源行：大屏横向充分展开 */
+.ab-kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+@media (min-width: 720px) { .ab-kv-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ab-kv-grid > div { min-width: 0; }
+.ab-kv-grid b { display: block; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ab-kv-grid span { font-size: 10.5px; color: var(--ab-ink-3); }
+
+/* 日粒度柱状图 */
+.ab-bars { display: flex; align-items: stretch; }
+.ab-bars__plot { display: flex; align-items: flex-end; gap: 3px; flex: 1; min-height: 0; padding: 4px 2px 0; border-bottom: 1px solid var(--ab-line); }
+.ab-bars__col { position: relative; display: flex; flex: 1; align-items: flex-end; justify-content: center; height: 100%; min-width: 2px; }
+.ab-bars__col i { display: block; width: 100%; max-width: 18px; border-radius: 3px 3px 0 0; transition: height .4s cubic-bezier(.2,.7,.2,1); }
+.ab-bars__col.is-missing i { border: 1px dashed var(--ab-line-strong); border-bottom: 0; width: 70%; }
+.ab-bars__col small { position: absolute; bottom: -14px; font-size: 8.5px; color: var(--ab-ink-3); white-space: nowrap; }
+.ab-bars { padding-bottom: 14px; }
+
+/* 资源/任务筛选下拉 */
+.ab-select { min-height: 30px; padding: 0 10px; border: 1px solid var(--ab-line); border-radius: 9px; background: var(--ab-surface); color: var(--ab-ink); font-size: 11.5px; }
+
+/* 总览实时条 */
+.ab-livegrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.ab-livegrid__cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 7px 8px; border: 0; border-radius: 10px; background: var(--ab-fill); color: var(--ab-ink); text-align: left; cursor: pointer; }
+.ab-livegrid__cell b { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ab-livegrid__cell small { font-size: 9px; color: var(--ab-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ab-livegrid__cell .ab-label { font-size: 9.5px; }
+@media (min-width: 720px) { .ab-livegrid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }

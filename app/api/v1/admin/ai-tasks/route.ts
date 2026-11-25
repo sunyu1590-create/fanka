@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const admin = adminClient();
     const [batches, reviewItems, metrics] = await Promise.all([
       admin.from("ai_task_batches").select("*").order("created_at", { ascending: false }).limit(30),
-      admin.from("ai_task_items").select("id,batch_id,post_id,status,result,result_history,error_message,updated_at,created_at").eq("status", "review").order("updated_at", { ascending: false }).limit(100),
+      admin.from("ai_task_items").select("id,batch_id,post_id,status,result,result_history,error_message,content_state,updated_at,created_at").eq("status", "review").is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
       admin.rpc("get_ai_resource_summary"),
     ]);
     if (batches.error || reviewItems.error || metrics.error) throw new ApiError(503, "AI 任务数据暂不可用，请确认数据库迁移已由部署人员应用");

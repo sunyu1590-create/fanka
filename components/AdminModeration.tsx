@@ -16,7 +16,10 @@ import AdminAITasks from "./AdminAITasks";
 import AdminDecorReview from "./AdminDecorReview";
 import AdminSystemMonitor from "./AdminSystemMonitor";
 import AdminMediaService from "./AdminMediaService";
-import AdminStorage from "./AdminStorage";
+import AdminResources from "./AdminResources";
+import AdminTasks from "./admin/AdminTaskCenter";
+import AdminProcesses from "./AdminProcesses";
+import AdminCost from "./AdminCost";
 import AdminAlerts from "./AdminAlerts";
 import AdminDashboard from "./admin/AdminDashboard";
 import AdminDistribution from "./admin/AdminDistribution";
@@ -42,7 +45,7 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "review" | "monitor" | "manage" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-batch" | "ai-classify" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "media-service" | "storage" | "alerts" | "system-monitor" | "distribution";
+type AdminSection = "overview" | "review" | "monitor" | "manage" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-batch" | "ai-classify" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "media-service" | "storage" | "alerts" | "system-monitor" | "distribution" | "tasks" | "process" | "cost";
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
 type AppDownloadSettings = { enabled: boolean; download_url: string | null; updated_at?: string };
@@ -379,9 +382,12 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       {section === "ai-batch" ? <AdminBatchTasks refreshKey={sectionKey} /> : null}
       {section === "ai-classify" ? <AdminClassifyRecords refreshKey={sectionKey} /> : null}
       {section === "system-monitor" ? <AdminSystemMonitor onNavigate={navigateAdminSection} /> : null}
+      {section === "process" ? <AdminProcesses /> : null}
+      {section === "tasks" ? <AdminTasks onNavigate={navigateAdminSection} /> : null}
+      {section === "cost" ? <AdminCost /> : null}
       {section === "distribution" ? <AdminDistribution /> : null}
       {section === "media-service" ? <AdminMediaService refreshKey={sectionKey} /> : null}
-      {section === "storage" ? <AdminStorage /> : null}
+      {section === "storage" ? <AdminResources refreshKey={sectionKey} /> : null}
       {section === "alerts" ? <AdminAlerts refreshKey={sectionKey} /> : null}
 
       {["reports", "messages", "content", "users", "topic-events", "ai-settings", "exploration-ad", "app-download"].includes(section) ? (

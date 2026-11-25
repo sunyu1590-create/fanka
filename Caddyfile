@@ -1,6 +1,17 @@
 moonclean.shop {
 	encode gzip
 
+	# 访问日志：媒体流量统计的唯一真实来源（响应字节数、状态码、资源路径）。
+	# 写入独立卷，只读挂载给监控采集器增量解析；20MB 轮转、保留 5 份，上限约 100MB。
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20mb
+			roll_keep 5
+			roll_keep_for 72h
+		}
+		format json
+	}
+
 	# 安装包由 Caddy 直接托管，不经过 Next 容器：
 	# 支持 Range 断点续传，也不占用应用内存。
 	handle_path /dl/* {

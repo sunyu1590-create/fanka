@@ -30,8 +30,14 @@ services:
     container_name: fanka-metrics
     restart: unless-stopped
     env_file: .env
+    # 进程监控需要宿主机进程视图与只读 /proc；指标只读采集，不提供任何命令执行能力。
+    pid: host
     environment:
       METRICS_APP_URL: http://app:3000
+      CADDY_LOG_PATH: /var/log/caddy/access.log
+    volumes:
+      - /proc:/host/proc:ro
+      - caddy_logs:/var/log/caddy:ro
     command: ["node", "scripts/metrics-agent.mjs"]
     depends_on:
       - app
@@ -50,6 +56,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # 安装包目录：只读挂载，由 Caddy 直接对外提供下载
       - /home/ubuntu/downloads:/srv/dl:ro
+      - caddy_logs:/var/log/caddy
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -63,3 +70,4 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
+  caddy_logs:

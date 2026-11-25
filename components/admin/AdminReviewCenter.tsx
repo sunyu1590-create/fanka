@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, ChevronRight, FileWarning, PenLine, RotateCcw, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, FileWarning, PenLine, RotateCcw, ShieldCheck, Trash2, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { confirmInApp } from "@/lib/in-app-dialog";
 import ChoiceSelect from "../ChoiceSelect";
-import { Empty, fmtNum, fmtTime, Group, Ring, Segmented } from "./AdminUIKit";
+import { Collapse, Empty, fmtNum, fmtTime, Group, Ring, Segmented } from "./AdminUIKit";
 
 type ReviewResult = { decision?: string; riskLevel?: string; riskTypes?: string[]; reason?: string; evidence?: string[]; evidenceValidated?: boolean; manualDecision?: string; manualReason?: string };
 type ReviewItem = {
@@ -43,6 +43,10 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [selectMode, setSelectMode] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [archiving, setArchiving] = useState(false);
+  const [archived, setArchived] = useState<Array<{ id: string; post_id: string | null; archive_reason: string | null; archived_at: string; content_state: string | null }> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +101,28 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
       }
     } catch (e) { setError(e instanceof Error ? e.message : "操作失败，请重试"); }
     finally { setBusy(false); }
+  };
+
+  const loadArchived = async () => {
+    try {
+      const result = await cloudRequest("/api/v1/admin/ai-tasks/archive?limit=30") as { items: Array<{ id: string; post_id: string | null; archive_reason: string | null; archived_at: string; content_state: string | null }> };
+      setArchived(result.items || []);
+    } catch (e) { setError(e instanceof Error ? e.message : "归档记录读取失败"); }
+  };
+
+  const archiveRecords = async (items: ReviewItem[]) => {
+    if (!items.length) return;
+    const ok = await confirmInApp(`将清理 ${items.length} 条复审记录。只从复审列表移除，不会删除原作品；仍有效且待审核的作品会被拒绝。`, { title: "清理复审记录", confirmLabel: "清理", danger: true });
+    if (!ok) return;
+    setArchiving(true); setError(""); setNotice("");
+    try {
+      const result = await cloudRequest("/api/v1/admin/ai-tasks/archive", { items: items.map((item) => ({ batchId: item.batch_id, itemId: item.id })), reason: "管理员清理失效复审记录" }) as { archived: string[]; blocked: Array<{ id: string; reason: string }> };
+      setNotice(`已归档 ${result.archived.length} 条${result.blocked.length ? `，${result.blocked.length} 条被拒绝：${result.blocked[0]?.reason || ""}` : ""}。`);
+      setPicked([]); setSelectMode(false);
+      if (result.archived.length && archived) void loadArchived();
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "清理失败"); }
+    finally { setArchiving(false); }
   };
 
   const reviewRatio = batches.length ? Math.round((batches.filter((batch) => batch.status === "completed").length / batches.length) * 100) : 0;
@@ -179,15 +205,21 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
 
       {tab === "manual" ? (
         selected ? (
-          <ReviewDetail item={selected} reason={reason} setReason={setReason} busy={busy} onBack={() => setSelected(null)} onAct={act} />
+          <ReviewDetail item={selected} reason={reason} setReason={setReason} busy={busy} onBack={() => setSelected(null)} onAct={act} onArchive={() => void archiveRecords([selected])} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" className={`ab-chip ${selectMode ? "info" : ""}`} style={{ border: 0, padding: "7px 11px" }} onClick={() => { setSelectMode(!selectMode); setPicked([]); }}>{selectMode ? "退出选择" : "选择记录"}</button>
+              {selectMode && picked.length ? <button type="button" className="ab-chip bad" style={{ border: 0, padding: "7px 11px" }} disabled={archiving} onClick={() => void archiveRecords(pending.filter((item) => picked.includes(item.id)))}><Trash2 size={12} /> 清理所选（{picked.length}）</button> : null}
+              <span className="ab-label">{selectMode ? "勾选失效记录后可批量清理；有效且待审核的记录会被拒绝。" : "右上角可清理失效记录，不会删除原作品。"}</span>
+            </div>
             <Group>
               {loading ? <div className="ab-skel" style={{ height: 180, margin: 12 }} /> : pending.length ? pending.map((item) => {
                 const result = item.result || {};
                 const risk = result.riskLevel || "";
                 return (
-                  <button key={item.id} type="button" className="ab-item" style={{ border: 0, borderRadius: 0, background: "transparent" }} onClick={() => { setSelected(item); setReason(""); }}>
+                  <button key={item.id} type="button" className="ab-item" style={{ border: 0, borderRadius: 0, background: "transparent" }} onClick={() => { if (selectMode) { setPicked((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id]); return; } setSelected(item); setReason(""); }}>
+                    {selectMode ? <input type="checkbox" readOnly checked={picked.includes(item.id)} aria-label={`选择 ${item.post?.title || "记录"}`} /> : null}
                     <span className="ab-item__body">
                       <span className="ab-item__title">{item.post?.title || "作品不可用"}</span>
                       <span className="ab-item__meta">
@@ -206,6 +238,20 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
                 );
               }) : <Empty icon={<ShieldCheck size={22} />} title="审核队列已清空" hint="AI 未转人工的内容不会出现在这里。" />}
             </Group>
+            <Collapse title="已归档复审记录" count={archived?.length} hint="只保留审计信息，不进入复审计数" onOpen={() => void loadArchived()}>
+              <Group plain>
+                {(archived || []).map((row) => (
+                  <div key={row.id} className="ab-row">
+                    <span className="ab-row__body">
+                      <span className="ab-row__title" style={{ fontSize: 12 }}>{row.post_id ? `作品 ${row.post_id.slice(0, 8)}` : "关联作品已删除"}</span>
+                      <span className="ab-row__meta">{row.archive_reason || "管理员清理"} · {fmtTime(row.archived_at)}</span>
+                    </span>
+                    <span className="ab-chip">{row.content_state === "post_deleted" ? "作品已删除" : "已处理"}</span>
+                  </div>
+                ))}
+                {archived && !archived.length ? <Empty title="还没有归档记录" /> : null}
+              </Group>
+            </Collapse>
           </div>
         )
       ) : null}
@@ -299,7 +345,7 @@ export default function AdminReviewCenter({ refreshKey = 0, onNavigate }: { refr
 }
 
 function ReviewDetail({
-  item, reason, setReason, busy, onBack, onAct,
+  item, reason, setReason, busy, onBack, onAct, onArchive,
 }: {
   item: ReviewItem;
   reason: string;
@@ -307,6 +353,7 @@ function ReviewDetail({
   busy: boolean;
   onBack: () => void;
   onAct: (item: ReviewItem, action: "published" | "hidden" | "revision" | "reanalyze" | "close") => Promise<void>;
+  onArchive: () => void;
 }) {
   const result = item.result || {};
   const author = Array.isArray(item.post?.profiles) ? item.post?.profiles[0]?.nickname : item.post?.profiles?.nickname;
@@ -317,6 +364,7 @@ function ReviewDetail({
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button type="button" className="ab-iconbtn" aria-label="返回列表" onClick={onBack}><ArrowLeft size={18} /></button>
         <span style={{ fontSize: 13, color: "var(--ab-ink-3)" }}>人工复审详情</span>
+        <button type="button" className="ab-chip bad" style={{ marginLeft: "auto", border: 0, padding: "6px 10px" }} onClick={onArchive}><Trash2 size={12} /> 清理记录</button>
       </div>
       <div className="ab-panel">
         <h3 className="ab-panel__title">作品信息</h3>

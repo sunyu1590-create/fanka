@@ -1,7 +1,9 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Activity, ArrowLeft, ChevronRight, LayoutGrid, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { startRealtime, stopRealtime } from "@/lib/admin-live";
+import LiveIndicator, { LiveCount } from "./LiveIndicator";
 
 export type AdminTab = "overview" | "review" | "monitor" | "manage";
 
@@ -21,10 +23,12 @@ export const ADMIN_HUB_GROUPS: Record<Exclude<AdminTab, "overview">, Array<{ tit
     { title: "审核工具", items: ["ai-batch", "ai-classify"] },
   ],
   monitor: [
-    { title: "运行状态", items: ["system-monitor", "media-service", "storage", "alerts"] },
+    { title: "运行状态", items: ["system-monitor", "process", "media-service", "storage", "alerts"] },
+    { title: "实时任务", items: ["tasks"] },
   ],
   manage: [
     { title: "内容分发", items: ["distribution"] },
+    { title: "运营", items: ["cost"] },
     { title: "社区治理", items: ["reports", "messages", "appeals", "comments", "keywords"] },
     { title: "用户与运营", items: ["users", "membership", "community-access", "topic-events", "official-notices", "exploration-ad"] },
     { title: "AI 与模型", items: ["ai-space", "ai-resource-center", "ai-usage", "ai-settings"] },
@@ -43,9 +47,12 @@ export const ADMIN_TITLES: Record<string, string> = {
   "ai-batch": "批量任务",
   "ai-classify": "自动分类记录",
   "system-monitor": "系统监控",
+  process: "进程监控",
   "media-service": "媒体服务",
-  storage: "存储资源",
+  storage: "资源管理",
   alerts: "系统告警",
+  tasks: "任务中心",
+  cost: "运营成本",
   reports: "内容举报",
   messages: "私信举报",
   appeals: "申诉处理",
@@ -75,8 +82,8 @@ export const ADMIN_HUB_DESC: Record<Exclude<AdminTab, "overview">, string> = {
 export function tabOfSection(section: string): AdminTab {
   if (section === "overview" || section === "review" || section === "monitor" || section === "manage") return section;
   if (["ai-review", "content", "decor-review", "ai-batch", "ai-classify"].includes(section)) return "review";
-  if (["system-monitor", "media-service", "storage", "alerts"].includes(section)) return "monitor";
-  if (section === "distribution") return "manage";
+  if (["system-monitor", "process", "media-service", "storage", "alerts", "tasks"].includes(section)) return "monitor";
+  if (section === "distribution" || section === "cost") return "manage";
   return "manage";
 }
 
@@ -112,6 +119,12 @@ export function AdminShell({
   const showBottomNav = isOverview || isHub;
   const title = titleOf(section);
 
+  // 进入控制中心即启动全局实时通道，离开时停止；切换二级页面不会重建连接。
+  useEffect(() => {
+    startRealtime();
+    return () => stopRealtime();
+  }, []);
+
   const goBack = () => {
     if (isOverview) { onBack(); return; }
     if (isHub) { onNavigate("overview"); return; }
@@ -134,8 +147,8 @@ export function AdminShell({
               <button key={item.key} type="button" className={`ab-side-item${tab === item.key ? " active" : ""}`} onClick={() => onNavigate(item.key)}>
                 <Icon size={15} aria-hidden="true" />
                 <span className="ab-side-item__label">{item.label}</span>
-                {item.key === "review" && (counts?.review || 0) > 0 ? <span className="ab-side-item__count">{counts?.review}</span> : null}
-                {item.key === "monitor" && (counts?.alerts || 0) > 0 ? <span className="ab-side-item__count">{counts?.alerts}</span> : null}
+                {item.key === "review" ? <LiveCount of="review" fallback={counts?.review} /> : null}
+                {item.key === "monitor" ? <LiveCount of="alerts" fallback={counts?.alerts} /> : null}
               </button>
             );
           })}
@@ -166,6 +179,7 @@ export function AdminShell({
             <button type="button" className="ab-iconbtn" aria-label="返回" onClick={goBack}><ArrowLeft size={19} /></button>
             <button type="button" className="ab-iconbtn" aria-label="刷新" onClick={onRefresh} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "ab-spin" : undefined} /></button>
             {isOverview ? null : <span className="ab-topbar__title">{title}</span>}
+            <LiveIndicator />
           </header>
 
           <div className="ab-pagehead">
@@ -176,6 +190,7 @@ export function AdminShell({
             </div>
             <div className="ab-pagehead__actions">
               {actions}
+              <LiveIndicator compact />
               <button type="button" className="ab-iconbtn" aria-label="刷新" onClick={onRefresh} disabled={refreshing} style={{ background: "var(--ab-fill)" }}><RefreshCw size={16} className={refreshing ? "ab-spin" : undefined} /></button>
             </div>
           </div>
@@ -444,4 +459,81 @@ export function fmtDuration(ms: number | null | undefined): string {
   if (value < 1000) return `${Math.round(value)} ms`;
   if (value < 60_000) return `${(value / 1000).toFixed(1)} s`;
   return `${Math.floor(value / 60_000)} 分 ${Math.round((value % 60_000) / 1000)} 秒`;
+}
+
+/** 历史记录折叠容器：默认收起、展开才渲染内容，实时刷新不会改变展开状态。 */
+export function Collapse({
+  title,
+  count,
+  hint,
+  tone,
+  children,
+  defaultOpen = false,
+  onOpen,
+}: {
+  title: string;
+  count?: number;
+  hint?: string;
+  tone?: "emerald" | "violet" | "blue" | "amber" | "coral";
+  children: ReactNode;
+  defaultOpen?: boolean;
+  onOpen?: () => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [touched, setTouched] = useState(defaultOpen);
+  return (
+    <div className={`ab-fold${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="ab-fold__head"
+        aria-expanded={open}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next && !touched) { setTouched(true); onOpen?.(); }
+        }}
+      >
+        {tone ? <i className="ab-dot" style={{ background: `var(--ab-${tone})`, boxShadow: "none" }} aria-hidden="true" /> : null}
+        <b>{title}</b>
+        {hint ? <span className="ab-label" style={{ marginLeft: 2 }}>{hint}</span> : null}
+        <small>{count == null ? "" : `${count} 条`}</small>
+        <ChevronRight size={15} aria-hidden="true" />
+      </button>
+      {open ? <div className="ab-fold__body">{touched || defaultOpen ? children : null}</div> : null}
+    </div>
+  );
+}
+
+/** 日粒度柱状图：null 表示未采集（画虚线占位），0 表示真实为零。 */
+export function Bars({
+  items,
+  unit = "",
+  color = "var(--ab-emerald)",
+  height = 96,
+  emptyText = "该范围内暂无数据",
+}: {
+  items: Array<{ label: string; value: number | null }>;
+  unit?: string;
+  color?: string;
+  height?: number;
+  emptyText?: string;
+}) {
+  if (!items.length) return <div className="ab-chart__empty">{emptyText}</div>;
+  const max = Math.max(1, ...items.map((item) => item.value || 0));
+  const labelStep = Math.max(1, Math.ceil(items.length / 6));
+  return (
+    <div className="ab-bars" style={{ height }}>
+      <div className="ab-bars__plot">
+        {items.map((item, index) => {
+          const ratio = item.value == null ? 0 : item.value / max;
+          return (
+            <span key={`${item.label}-${index}`} className={`ab-bars__col${item.value == null ? " is-missing" : ""}`} title={`${item.label} · ${item.value == null ? "未采集" : `${item.value}${unit}`}`}>
+              <i style={{ height: `${Math.max(item.value == null ? 2 : 3, Math.round(ratio * 100))}%`, background: item.value == null ? "transparent" : color }} />
+              {index % labelStep === 0 ? <small>{item.label.slice(5)}</small> : null}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
