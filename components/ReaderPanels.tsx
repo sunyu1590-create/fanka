@@ -47,15 +47,14 @@ export function useReadingProgress(mode: "page" | "overlay") {
       setProgress(Math.min(1, Math.max(0, passed / Math.max(1, height - 120))));
     };
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(measure); };
-    const scroller = mode === "overlay" ? document.getElementById("detail-scroll") : null;
-    scroller?.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("scroll", schedule, { passive: true });
+    // 详情浮层的正文滚在自己的容器里，scroll 事件不冒泡；用捕获阶段统一收口，
+    // 容器换成哪个元素都不会漏掉进度更新。
+    document.addEventListener("scroll", schedule, { passive: true, capture: true });
     window.addEventListener("resize", schedule);
     schedule();
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
-      scroller?.removeEventListener("scroll", schedule);
-      window.removeEventListener("scroll", schedule);
+      document.removeEventListener("scroll", schedule, { capture: true });
       window.removeEventListener("resize", schedule);
     };
   }, [mode]);
@@ -82,14 +81,11 @@ export function useActiveHeading(outline: OutlineItem[], mode: "page" | "overlay
       setActiveId(current);
     };
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(measure); };
-    const scroller = mode === "overlay" ? document.getElementById("detail-scroll") : null;
-    scroller?.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("scroll", schedule, { passive: true });
+    document.addEventListener("scroll", schedule, { passive: true, capture: true });
     schedule();
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
-      scroller?.removeEventListener("scroll", schedule);
-      window.removeEventListener("scroll", schedule);
+      document.removeEventListener("scroll", schedule, { capture: true });
     };
   }, [outline, mode]);
   return activeId;

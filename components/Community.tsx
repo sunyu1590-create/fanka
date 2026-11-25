@@ -5341,8 +5341,13 @@ export default function Community({
     if (!node) return;
     const offset = detailPageMode ? 96 : 78;
     const scroller = detailPageMode ? null : document.getElementById("detail-scroll");
-    if (scroller) scroller.scrollTo({ top: node.offsetTop - offset, behavior: "smooth" });
-    else window.scrollTo({ top: node.getBoundingClientRect().top + window.scrollY - offset, behavior: "smooth" });
+    if (scroller) {
+      // 用两个 rect 的差值算，offsetTop 的参照元素在浮层里不一定是滚动容器。
+      const top = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - offset;
+      scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      return;
+    }
+    window.scrollTo({ top: node.getBoundingClientRect().top + window.scrollY - offset, behavior: "smooth" });
   };
   // 独立详情页里顶栏显示返回与作品名；其余页面沿用原有二级页标题。
   const topbarTitle = detailPageMode ? (post?.title?.trim() || "作品详情") : secondaryTitle;
@@ -6421,7 +6426,7 @@ export default function Community({
                   </div>
                   <ReaderProgress progress={detailProgress} />
                 </header>
-                <div className="detail-scroll" key={post.id}>
+                <div className="detail-scroll" id="detail-scroll" key={post.id}>
                   {post.cloudId && <PostReadTracker key={post.cloudId} postId={post.cloudId} seriesId={post.seriesId} />}
                   <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
                     <nav className="detail-rail" aria-label="作品操作栏">
