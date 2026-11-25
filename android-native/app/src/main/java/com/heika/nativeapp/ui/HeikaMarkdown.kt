@@ -67,10 +67,12 @@ private sealed interface MdBlock {
     data class Code(val language: String, val code: String) : MdBlock
     data class Table(val header: List<String>, val rows: List<List<String>>) : MdBlock
     data class Task(val checked: Boolean, val text: String) : MdBlock
+    /** 独立公式：APP 端不引第三方排版库，按等宽源码 + 横向滚动呈现，长公式不撑破版面。 */
+    data class Math(val tex: String) : MdBlock
     data object Rule : MdBlock
 }
 
-private val blockStart = Regex("^(#{1,6}\\s|>\\s?|[-*+]\\s|\\d+[.)]\\s|```|\\||!\\[|---+\\s*$)")
+private val blockStart = Regex("^(#{1,6}\\s|>\\s?|[-*+]\\s|\\d+[.)]\\s|```|\\||!\\[|\\$\\$|---+\\s*$)")
 
 private fun parseBlocks(source: String): List<MdBlock> {
     val lines = source.replace("\r\n", "\n").split("\n")
@@ -100,6 +102,25 @@ private fun parseBlocks(source: String): List<MdBlock> {
         if (i + 1 < lines.size && lines[i + 1].isNotBlank() && Regex("^\\s*=+\\s*$").matches(lines[i + 1])) {
             blocks.add(MdBlock.Heading(1, line.trim()))
             i += 2
+            continue
+        }
+
+        // 独立公式：$$ ... $$，可跨行。
+        if (line.trimStart().startsWith("$$")) {
+            val buffer = mutableListOf<String>()
+            val rest = line.trim().removePrefix("$$")
+            i++
+            if (rest.contains("$$")) buffer.add(rest.substringBefore("$$"))
+            else {
+                if (rest.isNotBlank()) buffer.add(rest)
+                while (i < lines.size) {
+                    val current = lines[i++]
+                    if (current.contains("$$")) { buffer.add(current.substringBefore("$$")); break }
+                    buffer.add(current)
+                }
+            }
+            val tex = buffer.joinToString("\n").trim()
+            if (tex.isNotEmpty()) blocks.add(MdBlock.Math(tex))
             continue
         }
 
@@ -412,6 +433,7 @@ fun HeikaMarkdown(
                     MdCodeBlock(block, baseSize, palette)
                 }
                 is MdBlock.Image -> MdImage(block, palette, onClick = { previewImage = it })
+                is MdBlock.Math -> MdMath(block, baseSize, palette)
                 is MdBlock.Table -> MdTable(block, baseSize, palette, onLinkClick)
                 is MdBlock.Task -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Text(
@@ -464,6 +486,34 @@ private fun MdImage(block: MdBlock.Image, palette: HeikaReadingPalette, onClick:
                 lineHeight = 17.sp,
             )
         }
+    }
+}
+
+/** 公式块：等宽源码、可横向滚动，深色下也按正文色，不额外引依赖。 */
+@Composable
+private fun MdMath(block: MdBlock.Math, baseSize: TextUnit, palette: HeikaReadingPalette) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape)
+            .background(palette.codeBackground)
+            .border(1.dp, palette.codeBorder, shape),
+    ) {
+        Text(
+            "公式",
+            Modifier.padding(start = 12.dp, top = 8.dp),
+            color = palette.muted,
+            fontSize = 10.5.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+        )
+        Text(
+            block.tex,
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            color = palette.body,
+            fontSize = (baseSize.value * 0.94f).sp,
+            lineHeight = (baseSize.value * 1.6f).sp,
+            fontFamily = FontFamily.Monospace,
+        )
     }
 }
 

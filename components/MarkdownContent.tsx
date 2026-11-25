@@ -401,6 +401,22 @@ export function MarkdownContent({ source, className }: { source: string; classNa
         continue;
       }
 
+      // 独立图片：整行只有一张图时用 figure + figcaption，alt 作为图片注释。
+      const soloImage = line.match(/^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$/);
+      if (soloImage) {
+        const src = safeHref(soloImage[2]);
+        if (src) {
+          out.push(<figure className="md-figure" key={`figure-${index}`}>
+            <img src={src} alt={soloImage[1]} loading="lazy" decoding="async" />
+            {soloImage[1].trim() && <figcaption>{soloImage[1]}</figcaption>}
+          </figure>);
+        } else {
+          out.push(<p key={`figure-text-${index}`}>{inline(line)}</p>);
+        }
+        index++;
+        continue;
+      }
+
       // 独立公式：$$ ... $$，可跨行；关闭 KaTeX 时退回可滚动的源码块。
       if (/^\s*\$\$/.test(line)) {
         const buffer: string[] = [];

@@ -1280,7 +1280,8 @@
 
 .reader-toc-aside {
   position: fixed;
-  left: max(20px, calc((100vw - 1120px) / 2 - 200px));
+  /* 桌面左栏有固定操作轨（约 120px），目录必须让开它再贴住正文左侧 */
+  left: max(136px, calc(50% - 660px));
   top: 132px;
   width: 196px;
   max-height: calc(100vh - 220px);
@@ -1336,7 +1337,8 @@
   background: var(--rd-accent);
 }
 
-@media (min-width: 1280px) {
+/* 空间足够宽才显示左侧目录；更窄的桌面用右栏里的目录块，手机用顶栏面板 */
+@media (min-width: 1500px) {
   .reader-toc-aside { display: grid; }
 }
 
@@ -1402,4 +1404,27 @@
 
 .post-ai-summary:not([data-expanded="true"]) p {
   mask-image: linear-gradient(180deg, #000 70%, transparent);
+}
+
+/* ---------- 正文插图与注释 ---------- */
+
+.md-figure {
+  margin: 18px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.md-figure img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--rd-line);
+  background: var(--rd-field);
+}
+
+.md-figure figcaption {
+  color: var(--rd-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: center;
 }
