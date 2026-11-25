@@ -1,0 +1,440 @@
+/* 控制中心 2.0 —— 专业监控仪表盘
+   设计约束：无渐变、无发光、无重阴影；12–16px 间距；8–12px 圆角；
+   颜色仅表达业务语义（绿=正常、黄=预警、红=故障、灰=未知），金色只用于品牌与选中。 */
+
+.admin-shell .cc2 {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 0 28px;
+}
+
+/* ---------- 页头 ---------- */
+.admin-shell .cc2-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 2px 2px 0;
+}
+.admin-shell .cc2-head__date {
+  font-size: 12px;
+  color: var(--ab-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.admin-shell .cc2-head__sub {
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--ab-ink-3);
+}
+.admin-shell .cc2-head__actions { display: flex; align-items: center; gap: 8px; }
+
+.admin-shell .cc2-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--ab-line);
+  border-radius: 8px;
+  background: var(--ab-surface);
+  color: var(--ab-ink-2);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.admin-shell .cc2-btn:hover { background: var(--ab-fill); color: var(--ab-ink); }
+.admin-shell .cc2-btn--primary { border-color: color-mix(in srgb, var(--ab-gold) 55%, var(--ab-line)); color: var(--ab-gold); }
+.admin-shell .cc2-btn--ghost { border-color: transparent; background: transparent; }
+.admin-shell .cc2-btn--danger { color: var(--ab-coral); border-color: color-mix(in srgb, var(--ab-coral) 40%, var(--ab-line)); }
+.admin-shell .cc2-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------- 网格与模块 ---------- */
+.admin-shell .cc2-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.admin-shell .cc2-mod {
+  min-width: 0;
+  border: 1px solid var(--ab-line);
+  border-radius: 12px;
+  background: var(--ab-surface);
+  overflow: hidden;
+}
+.admin-shell .cc2-mod[data-span="2"] { grid-column: 1 / -1; }
+.admin-shell .cc2-mod[data-hidden="1"] { display: none; }
+.admin-shell .cc2-mod__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--ab-line);
+}
+.admin-shell .cc2-mod__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--ab-ink);
+}
+.admin-shell .cc2-mod__title svg { color: var(--ab-ink-3); flex: none; }
+.admin-shell .cc2-mod__hint { font-size: 11px; color: var(--ab-ink-3); font-variant-numeric: tabular-nums; }
+.admin-shell .cc2-mod__body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.admin-shell .cc2-mod__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--ab-line);
+  font-size: 11px;
+  color: var(--ab-ink-3);
+}
+.admin-shell .cc2-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ab-blue);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-shell .cc2-link--muted { color: var(--ab-ink-3); font-weight: 500; }
+
+/* ---------- 环形仪表 ---------- */
+.admin-shell .cc2-rings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-items: center;
+  justify-items: center;
+}
+.admin-shell .cc2-ring { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.admin-shell .cc2-ring__cap { font-size: 11px; color: var(--ab-ink-3); }
+.admin-shell .cc2-ring__cap b { color: var(--ab-ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---------- 指标网格 ---------- */
+.admin-shell .cc2-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--ab-line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--ab-line);
+  gap: 1px;
+}
+.admin-shell .cc2-metric {
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--ab-surface);
+}
+.admin-shell .cc2-metric i {
+  display: block;
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--ab-ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-shell .cc2-metric b {
+  display: block;
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ab-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-shell .cc2-metric small { display: block; margin-top: 1px; font-size: 10px; color: var(--ab-ink-3); font-variant-numeric: tabular-nums; }
+.admin-shell .cc2-metric[data-tone="warn"] b { color: var(--ab-amber); }
+.admin-shell .cc2-metric[data-tone="bad"] b { color: var(--ab-coral); }
+
+/* ---------- 图表 ---------- */
+.admin-shell .cc2-chartbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.admin-shell .cc2-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--ab-fill); }
+.admin-shell .cc2-tab {
+  border: 0;
+  background: transparent;
+  color: var(--ab-ink-3);
+  font-size: 11px;
+  font-weight: 550;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.admin-shell .cc2-tab:hover { color: var(--ab-ink); }
+.admin-shell .cc2-tab[aria-selected="true"] { background: var(--ab-surface); color: var(--ab-ink); box-shadow: 0 0 0 1px var(--ab-line); font-weight: 650; }
+.admin-shell .cc2-chart {
+  position: relative;
+  height: 208px;
+  min-height: 208px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.admin-shell .cc2-chart svg { display: block; width: 100%; height: 100%; }
+.admin-shell .cc2-chart__tip {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--ab-line-strong);
+  background: var(--ab-surface);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  font-size: 10.5px;
+  color: var(--ab-ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.admin-shell .cc2-chart__tip small { display: block; color: var(--ab-ink-3); font-size: 9.5px; }
+.admin-shell .cc2-chart__empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 160px;
+  font-size: 11.5px;
+  color: var(--ab-ink-3);
+  text-align: center;
+  padding: 12px;
+  line-height: 1.6;
+}
+.admin-shell .cc2-chart[data-pending="1"] svg { opacity: 0.55; }
+.admin-shell .cc2-chart svg { transition: opacity 0.18s ease; }
+
+/* ---------- 待办 ---------- */
+.admin-shell .cc2-todo { display: flex; flex-direction: column; }
+.admin-shell .cc2-todo__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  border: 0;
+  border-top: 1px solid var(--ab-line);
+  background: transparent;
+  text-align: left;
+  color: var(--ab-ink);
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+.admin-shell .cc2-todo__row:first-child { border-top: 0; }
+.admin-shell .cc2-todo__row:hover { background: var(--ab-fill); }
+.admin-shell .cc2-todo__icon { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--ab-fill); color: var(--ab-ink-2); flex: none; }
+.admin-shell .cc2-todo__icon[data-tone="bad"] { color: var(--ab-coral); background: color-mix(in srgb, var(--ab-coral) 12%, transparent); }
+.admin-shell .cc2-todo__icon[data-tone="warn"] { color: var(--ab-amber); background: color-mix(in srgb, var(--ab-amber) 12%, transparent); }
+.admin-shell .cc2-todo__body { flex: 1; min-width: 0; }
+.admin-shell .cc2-todo__name { display: block; font-size: 12.5px; font-weight: 600; }
+.admin-shell .cc2-todo__meta { display: block; margin-top: 1px; font-size: 10.5px; color: var(--ab-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-shell .cc2-todo__count { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+.admin-shell .cc2-todo__count[data-tone="bad"] { color: var(--ab-coral); }
+.admin-shell .cc2-todo__count[data-tone="warn"] { color: var(--ab-amber); }
+.admin-shell .cc2-todo__empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  font-size: 12px;
+  color: var(--ab-ink-3);
+}
+.admin-shell .cc2-todo__alert { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: color-mix(in srgb, var(--ab-coral) 8%, var(--ab-surface)); border-bottom: 1px solid color-mix(in srgb, var(--ab-coral) 24%, var(--ab-line)); font-size: 11.5px; color: var(--ab-coral); }
+.admin-shell .cc2-todo__alert b { font-weight: 650; }
+.admin-shell .cc2-todo__alert span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ab-ink-2); }
+.admin-shell .cc2-fold { border: 0; background: none; color: var(--ab-ink-3); font-size: 11px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; padding: 0; }
+
+/* ---------- 运营 ---------- */
+.admin-shell .cc2-ops__top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.admin-shell .cc2-kpi { min-width: 0; }
+.admin-shell .cc2-kpi b { display: block; font-size: 28px; font-weight: 680; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.admin-shell .cc2-kpi i { display: block; margin-top: 2px; font-style: normal; font-size: 11px; color: var(--ab-ink-3); }
+.admin-shell .cc2-kpi small { font-size: 12px; font-weight: 600; color: var(--ab-ink-3); margin-left: 6px; }
+.admin-shell .cc2-kpi[data-tone="ok"] b { color: var(--ab-emerald); }
+.admin-shell .cc2-kpi[data-tone="warn"] b { color: var(--ab-amber); }
+.admin-shell .cc2-cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--ab-line); border: 1px solid var(--ab-line); border-radius: 10px; overflow: hidden; }
+.admin-shell .cc2-col { background: var(--ab-surface); padding: 9px 10px; }
+.admin-shell .cc2-col dt { font-size: 10.5px; color: var(--ab-ink-3); margin: 0 0 3px; }
+.admin-shell .cc2-col dd { margin: 0; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.admin-shell .cc2-col dd small { font-size: 10px; font-weight: 500; color: var(--ab-ink-3); margin-left: 4px; }
+.admin-shell .cc2-note { font-size: 10.5px; color: var(--ab-ink-3); line-height: 1.6; margin: 0; }
+
+/* ---------- 服务列表 ---------- */
+.admin-shell .cc2-svc { display: flex; flex-direction: column; }
+.admin-shell .cc2-svc__row {
+  display: grid;
+  grid-template-columns: 26px minmax(96px, 1.1fr) minmax(0, 2fr) auto 14px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  border: 0;
+  border-top: 1px solid var(--ab-line);
+  background: transparent;
+  text-align: left;
+  color: var(--ab-ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.admin-shell .cc2-svc__row:first-child { border-top: 0; }
+.admin-shell .cc2-svc__row:hover { background: var(--ab-fill); }
+.admin-shell .cc2-svc__icon { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--ab-fill); color: var(--ab-ink-2); }
+.admin-shell .cc2-svc__name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-shell .cc2-svc__metric { min-width: 0; font-size: 11px; color: var(--ab-ink-3); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-shell .cc2-svc__state { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.admin-shell .cc2-svc__state[data-tone="ok"] { color: var(--ab-emerald); }
+.admin-shell .cc2-svc__state[data-tone="warn"] { color: var(--ab-amber); }
+.admin-shell .cc2-svc__state[data-tone="bad"] { color: var(--ab-coral); }
+.admin-shell .cc2-svc__state[data-tone="idle"] { color: var(--ab-ink-3); }
+.admin-shell .cc2-svc__chev { color: var(--ab-ink-3); }
+
+/* ---------- 快捷入口 ---------- */
+.admin-shell .cc2-quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 12px 14px; }
+.admin-shell .cc2-quick__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--ab-line);
+  border-radius: 9px;
+  background: var(--ab-surface);
+  color: var(--ab-ink);
+  font-size: 12px;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+.admin-shell .cc2-quick__item:hover { background: var(--ab-fill); border-color: var(--ab-line-strong); }
+.admin-shell .cc2-quick__item svg { color: var(--ab-ink-2); flex: none; }
+.admin-shell .cc2-quick__item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-shell .cc2-quick__item i { margin-left: auto; font-style: normal; font-size: 10px; color: var(--ab-ink-3); font-variant-numeric: tabular-nums; }
+
+/* ---------- 状态点 ---------- */
+.admin-shell .cc2-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ab-ink-3); flex: none; }
+.admin-shell .cc2-dot[data-tone="ok"] { background: var(--ab-emerald); }
+.admin-shell .cc2-dot[data-tone="warn"] { background: var(--ab-amber); }
+.admin-shell .cc2-dot[data-tone="bad"] { background: var(--ab-coral); }
+
+/* ---------- 骨架 ---------- */
+.admin-shell .cc2-skel { border-radius: 8px; background: linear-gradient(90deg, var(--ab-fill) 25%, var(--ab-fill-strong) 45%, var(--ab-fill) 65%); background-size: 240% 100%; animation: cc2-skel 1.4s ease-in-out infinite; }
+@keyframes cc2-skel { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+
+/* ---------- 编辑抽屉 ---------- */
+.admin-shell .cc2-drawer { position: fixed; inset: 0; z-index: 90; display: flex; justify-content: flex-end; background: rgba(0, 0, 0, 0.34); }
+.admin-shell .cc2-drawer__panel {
+  width: min(420px, 100%);
+  height: 100%;
+  overflow: auto;
+  background: var(--ab-surface);
+  border-left: 1px solid var(--ab-line);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: cc2-slide 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes cc2-slide { from { transform: translateX(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+.admin-shell .cc2-drawer__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.admin-shell .cc2-drawer__head h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.admin-shell .cc2-drawer__group { display: flex; flex-direction: column; gap: 8px; }
+.admin-shell .cc2-drawer__label { font-size: 11px; font-weight: 650; color: var(--ab-ink-3); letter-spacing: 0.04em; }
+.admin-shell .cc2-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ab-line);
+  border-radius: 9px;
+  background: var(--ab-surface);
+}
+.admin-shell .cc2-row__name { flex: 1; min-width: 0; font-size: 12px; font-weight: 550; }
+.admin-shell .cc2-row__mini { width: 26px; height: 26px; display: inline-grid; place-items: center; border: 1px solid var(--ab-line); border-radius: 6px; background: var(--ab-surface); color: var(--ab-ink-2); cursor: pointer; }
+.admin-shell .cc2-row__mini:disabled { opacity: 0.35; cursor: default; }
+.admin-shell .cc2-row__mini--on { border-color: color-mix(in srgb, var(--ab-gold) 55%, var(--ab-line)); color: var(--ab-gold); }
+.admin-shell .cc2-switch { position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--ab-fill-strong); border: 0; cursor: pointer; flex: none; }
+.admin-shell .cc2-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ab-surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: transform 0.18s ease; }
+.admin-shell .cc2-switch[aria-checked="true"] { background: var(--ab-gold); }
+.admin-shell .cc2-switch[aria-checked="true"]::after { transform: translateX(14px); }
+.admin-shell .cc2-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.admin-shell .cc2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border: 1px solid var(--ab-line);
+  border-radius: 999px;
+  background: var(--ab-surface);
+  color: var(--ab-ink-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.admin-shell .cc2-chip[data-on="1"] { border-color: color-mix(in srgb, var(--ab-gold) 55%, var(--ab-line)); color: var(--ab-gold); background: color-mix(in srgb, var(--ab-gold) 8%, var(--ab-surface)); }
+.admin-shell .cc2-drawer__foot { margin-top: auto; display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--ab-line); }
+.admin-shell .cc2-drawer__foot .cc2-btn { flex: 1; justify-content: center; height: 36px; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1023px) {
+  .admin-shell .cc2-grid { grid-template-columns: minmax(0, 1fr); }
+  .admin-shell .cc2-mod[data-span="2"] { grid-column: auto; }
+  .admin-shell .cc2-chart { height: 190px; min-height: 190px; }
+}
+
+@media (max-width: 720px) {
+  .admin-shell .cc2 { gap: 10px; padding-bottom: 18px; }
+  .admin-shell .cc2-head { align-items: center; padding: 0; }
+  .admin-shell .cc2-head__date { font-size: 11px; }
+  .admin-shell .cc2-mod__head { min-height: 40px; padding: 0 12px; }
+  .admin-shell .cc2-mod__body { padding: 10px 12px; gap: 10px; }
+  .admin-shell .cc2-mod__foot { padding: 8px 12px; }
+  .admin-shell .cc2-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-shell .cc2-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-shell .cc2-quick { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 12px; }
+  .admin-shell .cc2-chart { height: 170px; min-height: 170px; }
+  .admin-shell .cc2-svc__row { grid-template-columns: 24px minmax(78px, 1.2fr) minmax(0, 1.6fr) auto; gap: 8px; padding: 9px 12px; }
+  .admin-shell .cc2-svc__chev { display: none; }
+  .admin-shell .cc2-kpi b { font-size: 24px; }
+  .admin-shell .cc2-todo__row { padding: 9px 12px; }
+  .admin-shell .cc2-drawer__panel { border-left: 0; }
+}
+
+@media (min-width: 721px) and (max-width: 1023px) {
+  .admin-shell .cc2-rings { max-width: 420px; margin: 0 auto; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell .cc2-skel { animation: none; }
+  .admin-shell .cc2-drawer__panel { animation: none; }
+}
+
+/* 模块头允许换行，避免运营范围切换器在窄屏挤出容器 */
+.admin-shell .cc2-mod__head { flex-wrap: wrap; row-gap: 6px; padding-top: 6px; padding-bottom: 6px; }
+.admin-shell .cc2-mod__head .cc2-tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.admin-shell .cc2-mod__head .cc2-tabs::-webkit-scrollbar { display: none; }
+.admin-shell .cc2-switch[disabled] { opacity: 0.4; cursor: default; }
+.admin-shell .cc2-head .cc2-chip { cursor: default; }

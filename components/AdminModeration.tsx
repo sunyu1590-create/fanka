@@ -21,7 +21,7 @@ import AdminTasks from "./admin/AdminTaskCenter";
 import AdminProcesses from "./AdminProcesses";
 import AdminCost from "./AdminCost";
 import AdminAlerts from "./AdminAlerts";
-import AdminDashboard from "./admin/AdminDashboard";
+import ControlCenter2 from "./admin/ControlCenter2";
 import AdminDistribution from "./admin/AdminDistribution";
 import AdminReviewCenter from "./admin/AdminReviewCenter";
 import AdminHub from "./admin/AdminHub";
@@ -386,7 +386,7 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
       onRefresh={refreshCurrent}
       refreshing={loading || usersLoading || topicEventBusy || aiSettingsBusy || explorationAdBusy || appDownloadBusy}
     >
-      {section === "overview" ? <AdminDashboard role={role} onNavigate={navigateAdminSection} refreshKey={sectionKey} /> : null}
+      {section === "overview" ? <ControlCenter2 role={role} onNavigate={navigateAdminSection} refreshKey={sectionKey} /> : null}
       {section !== "overview" && Object.prototype.hasOwnProperty.call(ADMIN_HUB_GROUPS, section) ? <AdminHub tab={section as Exclude<AdminTab, "overview">} counts={counts} onNavigate={navigateAdminSection} /> : null}
       {section === "tcp" || section === "ips" ? <AdminNetwork view={section} /> : null}
       {section === "ip-rules" || section === "account-limits" ? <AdminAccess view={section} onNotice={setNotice} /> : null}

@@ -10,6 +10,7 @@ import './settings.css';
 import './composer.css';
 import './publish-tasks.css';
 import './admin-bento.css';
+import './control-center.css';
 import './public-profile.css';
 import './community-access.css';
 import './profile.css';

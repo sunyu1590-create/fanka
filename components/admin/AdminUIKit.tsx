@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
-import { Activity, ArrowLeft, ChevronRight, HardDrive, LayoutGrid, Network, RefreshCw, ScrollText, Server, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { Activity, ArrowLeft, ChevronRight, HardDrive, LayoutGrid, Network, RefreshCw, ScrollText, Server, Settings2, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { startRealtime, stopRealtime } from "@/lib/admin-live";
 import LiveIndicator, { LiveCount } from "./LiveIndicator";
 
@@ -235,8 +235,11 @@ export function AdminShell({
           <header className="ab-topbar">
             <button type="button" className="ab-iconbtn" aria-label="返回" onClick={goBack}><ArrowLeft size={19} /></button>
             <button type="button" className="ab-iconbtn" aria-label="刷新" onClick={onRefresh} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "ab-spin" : undefined} /></button>
-            {isOverview ? null : <span className="ab-topbar__title">{title}</span>}
+            <span className="ab-topbar__title">{title}</span>
             <LiveIndicator />
+            {isOverview ? (
+              <button type="button" className="ab-iconbtn" aria-label="控制台设置" onClick={() => window.dispatchEvent(new Event("heika:console-settings"))}><Settings2 size={17} /></button>
+            ) : null}
           </header>
 
           <div className="ab-pagehead">
@@ -248,6 +251,9 @@ export function AdminShell({
             <div className="ab-pagehead__actions">
               {actions}
               <LiveIndicator compact />
+              {isOverview ? (
+                <button type="button" className="ab-iconbtn" aria-label="控制台设置" onClick={() => window.dispatchEvent(new Event("heika:console-settings"))} style={{ background: "var(--ab-fill)" }}><Settings2 size={16} /></button>
+              ) : null}
               <button type="button" className="ab-iconbtn" aria-label="刷新" onClick={onRefresh} disabled={refreshing} style={{ background: "var(--ab-fill)" }}><RefreshCw size={16} className={refreshing ? "ab-spin" : undefined} /></button>
             </div>
           </div>

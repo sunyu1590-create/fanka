@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
     const query = (params.get("q") || "").trim().slice(0, 80);
     const page = Math.max(1, Number(params.get("page") || 1));
     const pageSize = Math.min(200, Math.max(20, Number(params.get("pageSize") || 60)));
+    // summary=1 只返回状态分布，供控制中心首页轻量展示，不拉取 200 条明细。
+    const summaryOnly = params.get("summary") === "1";
 
     const latest = await db.from("tcp_snapshots").select("captured_at").order("captured_at", { ascending: false }).limit(1).maybeSingle();
     const capturedAt = latest.data?.captured_at || null;
@@ -44,7 +46,7 @@ export async function GET(req: NextRequest) {
         .select("state,local_ip,local_port,remote_ip,remote_port,process,pid,direction,bytes_sent,bytes_recv,first_seen")
         .eq("captured_at", capturedAt)
         .neq("state", "SUMMARY")
-        .limit(500),
+        .limit(summaryOnly ? 1 : 500),
     ]);
     if (error) throw new ApiError(500, "TCP 快照读取失败");
     const rows = data || [];
@@ -76,29 +78,47 @@ export async function GET(req: NextRequest) {
     const timeWait = counts.get("TIME_WAIT") || 0;
     const closeWait = counts.get("CLOSE_WAIT") || 0;
     const totalConnections = Number((summary?.meta as { total?: number } | null)?.total) || rows.length;
+    const totals = {
+      total: totalConnections,
+      established,
+      time_wait: timeWait,
+      close_wait: closeWait,
+      listen: counts.get("LISTEN") || 0,
+      by_state: ordered,
+      inbound: rows.filter((row) => row.direction === "inbound").length,
+      outbound: rows.filter((row) => row.direction === "outbound").length,
+      bytes_sent: null,
+      bytes_recv: null,
+    };
+    const note = stale ? "采集快照已超过 90 秒未更新，请检查 fanka-metrics 容器" : undefined;
+
+    if (summaryOnly) {
+      return {
+        available: true,
+        captured_at: capturedAt,
+        stale,
+        age_seconds: Math.round(age / 1000),
+        summary_only: true,
+        totals,
+        items: [],
+        page: 1,
+        pageSize: 0,
+        total: 0,
+        note,
+      };
+    }
 
     return {
       available: true,
       captured_at: capturedAt,
       stale,
       age_seconds: Math.round(age / 1000),
-      totals: {
-        total: totalConnections,
-        established,
-        time_wait: timeWait,
-        close_wait: closeWait,
-        listen: counts.get("LISTEN") || 0,
-        by_state: ordered,
-        inbound: rows.filter((row) => row.direction === "inbound").length,
-        outbound: rows.filter((row) => row.direction === "outbound").length,
-        bytes_sent: null,
-        bytes_recv: null,
-      },
+      totals,
       items,
       page,
       pageSize,
       total,
-      note: stale ? "采集快照已超过 90 秒未更新，请检查 fanka-metrics 容器" : undefined,
+      note,
     };
   });
 }
