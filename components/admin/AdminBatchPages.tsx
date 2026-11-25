@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pause, Play, RotateCcw, Square, Sparkles } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
-import { Empty, fmtNum, fmtTime, Group, Segmented } from "./AdminUIKit";
+import { Collapse, Empty, fmtNum, fmtTime, Group, Segmented } from "./AdminUIKit";
 
 type Batch = {
   id: string; task_type: string; status: string; config_snapshot: { model?: string };
@@ -22,6 +22,8 @@ export function AdminBatchTasks({ refreshKey = 0 }: { refreshKey?: number }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // 历史批次默认折叠、展开后分页，避免 60 多个已完成任务一次铺开。
+  const [historyLimit, setHistoryLimit] = useState(20);
 
   const load = useCallback(async () => {
     try {
@@ -85,12 +87,16 @@ export function AdminBatchTasks({ refreshKey = 0 }: { refreshKey?: number }) {
         </Group>
       </div>
 
-      <div>
-        <div className="ab-section__head"><h2 className="ab-section__title">历史任务</h2><span className="ab-section__meta">{finished.length} 个</span></div>
-        <Group>
-          {finished.length ? finished.slice(0, 20).map((batch) => <BatchRow key={batch.id} batch={batch} busy={busy} onAction={action} />) : <Empty title="暂无历史任务" />}
+      <Collapse title="历史任务" count={finished.length} hint="默认折叠，展开后按 20 条分页加载">
+        <Group plain>
+          {finished.length ? finished.slice(0, historyLimit).map((batch) => <BatchRow key={batch.id} batch={batch} busy={busy} onAction={action} />) : <Empty title="暂无历史任务" />}
+          {finished.length > historyLimit ? (
+            <button type="button" className="ab-row" style={{ justifyContent: "center" }} onClick={() => setHistoryLimit((value) => value + 20)}>
+              <span className="ab-row__body" style={{ alignItems: "center" }}><span className="ab-row__title" style={{ fontSize: 12 }}>加载更多（已显示 {Math.min(historyLimit, finished.length)} / {finished.length}）</span></span>
+            </button>
+          ) : null}
         </Group>
-      </div>
+      </Collapse>
     </div>
   );
 }

@@ -69,6 +69,9 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
   const [detail, setDetail] = useState<{ item: Item; refs: Array<{ kind: string; post_id: string | null; post_title: string | null; post_status: string | null }>; etag: string; upload_tasks: Array<{ task_key: string; status: string; client_type: string | null; created_at: string }> } | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  // 健康检查里的孤立与缺失列表可能上百条，先显示一屏，按需加载。
+  const [orphanLimit, setOrphanLimit] = useState(12);
+  const [missingLimit, setMissingLimit] = useState(20);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -341,7 +344,7 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
                     <div>
                       <div className="ab-section__head"><h2 className="ab-section__title">孤立资源</h2><span className="ab-section__meta">未被任何业务引用且超过 7 天保留期</span></div>
                       <Group>
-                        {health.orphans.slice(0, 12).map((row) => {
+                        {health.orphans.slice(0, orphanLimit).map((row) => {
                           const key = `${row.bucket}/${row.name}`;
                           return (
                             <label key={key} className="ab-row" style={{ cursor: "pointer" }}>
@@ -353,6 +356,11 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
                             </label>
                           );
                         })}
+                        {health.orphans.length > orphanLimit ? (
+                          <button type="button" className="ab-row" style={{ justifyContent: "center" }} onClick={() => setOrphanLimit((value) => value + 24)}>
+                            <span className="ab-row__body" style={{ alignItems: "center" }}><span className="ab-row__title" style={{ fontSize: 12 }}>加载更多（已显示 {Math.min(orphanLimit, health.orphans.length)} / {health.orphans.length}）</span></span>
+                          </button>
+                        ) : null}
                       </Group>
                       <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
                         <button type="button" className="ab-chip bad" style={{ border: 0, padding: "8px 12px" }} disabled={!selected.length || busy === "cleanup"} onClick={() => void cleanup()}><Trash2 size={12} /> 清理所选（{selected.length}）</button>
@@ -378,12 +386,17 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
 
                   <Collapse title="登记但对象缺失" count={health.missing.length} hint="数据库有引用，存储里找不到文件">
                     <Group plain>
-                      {health.missing.slice(0, 20).map((row) => (
+                      {health.missing.slice(0, missingLimit).map((row) => (
                         <div key={row.path} className="ab-row">
                           <span className="ab-row__icon tone-amber"><ShieldAlert size={14} /></span>
                           <span className="ab-row__body"><span className="ab-row__title" style={{ fontSize: 11.5 }}>{row.path}</span><span className="ab-row__meta">{row.post_id ? `作品 ${row.post_id.slice(0, 8)}` : "无作品关联"}</span></span>
                         </div>
                       ))}
+                      {health.missing.length > missingLimit ? (
+                        <button type="button" className="ab-row" style={{ justifyContent: "center" }} onClick={() => setMissingLimit((value) => value + 30)}>
+                          <span className="ab-row__body" style={{ alignItems: "center" }}><span className="ab-row__title" style={{ fontSize: 12 }}>加载更多（已显示 {Math.min(missingLimit, health.missing.length)} / {health.missing.length}）</span></span>
+                        </button>
+                      ) : null}
                     </Group>
                   </Collapse>
                 </>

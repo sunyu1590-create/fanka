@@ -103,7 +103,8 @@ export default function AdminCost() {
 
       <div className="ab-bento">
         {[
-          { label: "服务器", value: report?.server.monthly ?? 0, meta: report?.server.period || "", tone: "gold" },
+          // 服务器月费未配置时不能显示 ¥0.00，否则会被读成「服务器免费」。
+          { label: "服务器", value: report?.server.monthly && report.server.monthly > 0 ? report.server.monthly : null, meta: report?.server.period || "未配置月费", tone: "gold" },
           { label: "存储（当前）", value: report?.storage.estimate ?? null, meta: `${fmtBytes(report?.storage.bytes)} · 计费 ${report?.storage.billableGb ?? 0} GB`, tone: "blue" },
           { label: "本月下行流量", value: report?.egress.estimate ?? null, meta: `${fmtBytes(report?.egress.bytes)} · 计费 ${report?.egress.billableGb ?? 0} GB`, tone: "emerald" },
           { label: "本月 AI", value: report?.ai.estimate ?? null, meta: `${fmtNum((report?.ai.inputTokens || 0) + (report?.ai.outputTokens || 0))} Token · ${fmtNum(report?.ai.requests)} 次`, tone: "violet" },

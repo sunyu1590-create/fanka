@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BellOff, Check, ChevronDown } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
-import { Empty, fmtNum, fmtTime, Group, Segmented } from "./admin/AdminUIKit";
+import { Collapse, Empty, fmtNum, fmtTime, Group, Segmented } from "./admin/AdminUIKit";
 
 type Alert = {
   id: string; alert_type: string; level: string; title: string; detail: string; metric_snapshot: Record<string, unknown> | null;
@@ -22,6 +22,8 @@ export default function AdminAlerts({ refreshKey = 0 }: { refreshKey?: number })
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  // 历史告警默认折叠、展开后分页，避免 80 多条一次铺开。
+  const [limit, setLimit] = useState(20);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,6 +53,38 @@ export default function AdminAlerts({ refreshKey = 0 }: { refreshKey?: number })
 
   const activeCount = alerts.filter((alert) => alert.status !== "resolved").length;
 
+  const renderAlert = (alert: Alert) => (
+    <div key={alert.id} className="ab-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className={`ab-row__icon ${alert.level === "critical" ? "tone-coral" : "tone-amber"}`}><BellOff size={14} /></span>
+        <span className="ab-row__body">
+          <span className="ab-row__title">{alert.title}</span>
+          <span className="ab-row__meta">{TYPE_LABEL[alert.alert_type] || alert.alert_type} · {fmtTime(alert.first_seen_at)} 起 · 出现 {alert.occurrences} 次</span>
+        </span>
+        <span className={`ab-chip ${alert.status === "resolved" ? "ok" : alert.level === "critical" ? "bad" : "warn"}`}>{STATUS_LABEL[alert.status] || alert.status}</span>
+        {alert.status !== "resolved" ? (
+          <span style={{ display: "flex", gap: 5 }}>
+            {alert.status === "open" ? <button type="button" className="ab-chip info" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "acknowledge")}>确认</button> : null}
+            <button type="button" className="ab-chip ok" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "resolve")}><Check size={11} />恢复</button>
+          </span>
+        ) : null}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 11, color: "var(--ab-ink-3)", flex: 1 }}>{alert.detail}{alert.resolved_at ? ` · ${fmtTime(alert.resolved_at)} 恢复` : ""}</span>
+        {alert.metric_snapshot ? (
+          <button type="button" className="ab-label" style={{ border: 0, background: "none", color: "var(--ab-ink-3)", display: "inline-flex", alignItems: "center", gap: 2 }} onClick={() => setExpanded(expanded === alert.id ? null : alert.id)}>
+            指标快照<ChevronDown size={12} style={{ transform: expanded === alert.id ? "rotate(180deg)" : undefined, transition: "transform .2s" }} />
+          </button>
+        ) : null}
+      </div>
+      {expanded === alert.id && alert.metric_snapshot ? (
+        <pre style={{ margin: 0, fontSize: 10, lineHeight: 1.6, color: "var(--ab-ink-3)", background: "var(--ab-fill)", borderRadius: 10, padding: 10, overflow: "auto", maxHeight: 180 }}>
+          {JSON.stringify(alert.metric_snapshot, null, 2)}
+        </pre>
+      ) : null}
+    </div>
+  );
+
   return (
     <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <div className="ab-bento">
@@ -66,7 +100,7 @@ export default function AdminAlerts({ refreshKey = 0 }: { refreshKey?: number })
       <Segmented
         value={filter}
         ariaLabel="告警筛选"
-        onChange={setFilter}
+        onChange={(next: "active" | "all" | "resolved") => { setFilter(next); setLimit(20); }}
         options={[
           { value: "active", label: "当前", count: activeCount },
           { value: "all", label: "全部", count: alerts.length },
@@ -74,39 +108,27 @@ export default function AdminAlerts({ refreshKey = 0 }: { refreshKey?: number })
         ]}
       />
       {error ? <p className="ab-sub" style={{ color: "var(--ab-coral)" }}>{error}</p> : null}
-      <Group>
-        {loading ? <div className="ab-skel" style={{ height: 180, margin: 12 }} /> : filtered.length ? filtered.map((alert) => (
-          <div key={alert.id} className="ab-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className={`ab-row__icon ${alert.level === "critical" ? "tone-coral" : "tone-amber"}`}><BellOff size={14} /></span>
-              <span className="ab-row__body">
-                <span className="ab-row__title">{alert.title}</span>
-                <span className="ab-row__meta">{TYPE_LABEL[alert.alert_type] || alert.alert_type} · {fmtTime(alert.first_seen_at)} 起 · 出现 {alert.occurrences} 次</span>
-              </span>
-              <span className={`ab-chip ${alert.status === "resolved" ? "ok" : alert.level === "critical" ? "bad" : "warn"}`}>{STATUS_LABEL[alert.status] || alert.status}</span>
-              {alert.status !== "resolved" ? (
-                <span style={{ display: "flex", gap: 5 }}>
-                  {alert.status === "open" ? <button type="button" className="ab-chip info" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "acknowledge")}>确认</button> : null}
-                  <button type="button" className="ab-chip ok" style={{ border: 0 }} disabled={busy === alert.id} onClick={() => void act(alert, "resolve")}><Check size={11} />恢复</button>
-                </span>
-              ) : null}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, color: "var(--ab-ink-3)", flex: 1 }}>{alert.detail}{alert.resolved_at ? ` · ${fmtTime(alert.resolved_at)} 恢复` : ""}</span>
-              {alert.metric_snapshot ? (
-                <button type="button" className="ab-label" style={{ border: 0, background: "none", color: "var(--ab-ink-3)", display: "inline-flex", alignItems: "center", gap: 2 }} onClick={() => setExpanded(expanded === alert.id ? null : alert.id)}>
-                  指标快照<ChevronDown size={12} style={{ transform: expanded === alert.id ? "rotate(180deg)" : undefined, transition: "transform .2s" }} />
-                </button>
-              ) : null}
-            </div>
-            {expanded === alert.id && alert.metric_snapshot ? (
-              <pre style={{ margin: 0, fontSize: 10, lineHeight: 1.6, color: "var(--ab-ink-3)", background: "var(--ab-fill)", borderRadius: 10, padding: 10, overflow: "auto", maxHeight: 180 }}>
-                {JSON.stringify(alert.metric_snapshot, null, 2)}
-              </pre>
+      {filter === "active" ? (
+        <Group>
+          {loading ? <div className="ab-skel" style={{ height: 180, margin: 12 }} /> : filtered.length ? filtered.map(renderAlert) : <Empty title="当前没有未恢复告警" hint="告警恢复后会自动关闭并保留历史。" />}
+        </Group>
+      ) : (
+        <Collapse
+          title={filter === "resolved" ? "已恢复告警" : "全部告警"}
+          count={filtered.length}
+          hint="历史默认折叠，展开后按 20 条分页加载"
+        >
+          <Group plain>
+            {filtered.slice(0, limit).map(renderAlert)}
+            {filtered.length > limit ? (
+              <button type="button" className="ab-row" style={{ justifyContent: "center" }} onClick={() => setLimit((value) => value + 20)}>
+                <span className="ab-row__body" style={{ alignItems: "center" }}><span className="ab-row__title" style={{ fontSize: 12 }}>加载更多（已显示 {Math.min(limit, filtered.length)} / {filtered.length}）</span></span>
+              </button>
             ) : null}
-          </div>
-        )) : <Empty title={filter === "active" ? "当前没有未恢复告警" : "暂无告警记录"} hint="告警恢复后会自动关闭并保留历史。" />}
-      </Group>
+            {!filtered.length ? <Empty title="暂无告警记录" /> : null}
+          </Group>
+        </Collapse>
+      )}
     </div>
   );
 }
