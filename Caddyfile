@@ -26,34 +26,28 @@ moonclean.shop {
 		file_server
 	}
 
-	# Supabase Storage 反向代理：图片统一走本站域名，
-	# 避免客户端跨境直连存储节点造成的间歇性加载失败。
-	handle /storage/* {
-		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
-			header_up Host dnotobyltytpgplfimzo.supabase.co
+	# Supabase 全部走本机自托管实例（同 docker 网络内的 rest/auth/storage/realtime）。
+	# 反代必须剥掉 /xxx/v1 前缀：PostgREST 只认 /{table}，GoTrue 只认 /token、/user，
+	# storage-api 只认 /object/...。此前这里指向一个已失效的云端项目，
+	# 会造成全站 REST 401「Invalid API key」，务必保持指向本机容器。
+	handle_path /storage/v1/* {
+		reverse_proxy storage:5000 {
 			header_down Cache-Control "public, max-age=86400"
+			header_down X-Content-Type-Options "nosniff"
 		}
 	}
 
-	# Supabase Auth 反向代理：登录与 token 刷新同样走本站域名。
-	# 手机端不再跨境直连东京认证节点，弱网下也不会卡在 TLS 握手。
-	handle /auth/v1/* {
-		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
-			header_up Host dnotobyltytpgplfimzo.supabase.co
-		}
+	handle_path /auth/v1/* {
+		reverse_proxy auth:9999
 	}
 
-	# 数据与实时通道同样兜底反代，避免客户端跨境直连。
-	handle /rest/v1/* {
-		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
-			header_up Host dnotobyltytpgplfimzo.supabase.co
-		}
+	handle_path /rest/v1/* {
+		reverse_proxy rest:3000
 	}
 
-	handle /realtime/v1/* {
-		reverse_proxy https://dnotobyltytpgplfimzo.supabase.co {
-			header_up Host dnotobyltytpgplfimzo.supabase.co
-		}
+	# 实时通道：SSE / WebSocket 长连接，必须原样透传 Upgrade 头。
+	handle_path /realtime/v1/* {
+		reverse_proxy realtime:4000
 	}
 
 	reverse_proxy app:3000
