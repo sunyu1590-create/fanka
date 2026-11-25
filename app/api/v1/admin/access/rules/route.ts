@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { respond, ApiError, jsonBody, dbError } from "@/lib/server/api";
 import { requirePermission } from "@/lib/server/require-permission";
+import { adminClient } from "@/lib/server/admin-client";
 import { requireReauth } from "@/lib/server/reauth";
 
 export const runtime = "nodejs";
@@ -26,7 +27,8 @@ function cleanTarget(value: unknown) {
 /** 访问控制：IP 规则与账号能力限制。两者独立，避免共享出口被整段封禁。 */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await requirePermission(req, "network.read");
+    await requirePermission(req, "network.read");
+    const db = adminClient();
     const [{ data: rules, error: ruleError }, { data: accounts, error: accountError }] = await Promise.all([
       db.from("access_rules").select("*").order("created_at", { ascending: false }).limit(500),
       db.from("account_ability_restrictions").select("*").eq("active", true).order("created_at", { ascending: false }).limit(500),
@@ -54,7 +56,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   return respond(async () => {
-    const { db, user } = await requirePermission(req, "network.manage");
+    const { user } = await requirePermission(req, "network.manage");
+    const db = adminClient();
     // 防火墙与封禁类操作会直接影响线上连通性，必须二次验证身份。
     requireReauth(req, user.id);
     const body = await jsonBody(req);
@@ -108,7 +111,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   return respond(async () => {
-    const { db, user } = await requirePermission(req, "network.manage");
+    const { user } = await requirePermission(req, "network.manage");
+    const db = adminClient();
     requireReauth(req, user.id);
     const kind = req.nextUrl.searchParams.get("kind") || "rule";
     const id = req.nextUrl.searchParams.get("id") || "";

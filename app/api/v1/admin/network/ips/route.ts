@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { respond, ApiError } from "@/lib/server/api";
 import { requirePermission } from "@/lib/server/require-permission";
+import { adminClient } from "@/lib/server/admin-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,8 @@ const RANGE_DAYS: Record<string, number> = { "1d": 1, "7d": 7, "30d": 30 };
  */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await requirePermission(req, "network.read");
+    await requirePermission(req, "network.read");
+    const db = adminClient();
     const params = req.nextUrl.searchParams;
     const range = params.get("range") || "1d";
     const days = RANGE_DAYS[range] || 1;

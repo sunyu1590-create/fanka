@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { respond, ApiError } from "@/lib/server/api";
 import { requirePermission } from "@/lib/server/require-permission";
+import { adminClient } from "@/lib/server/admin-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,8 @@ const RANGE_HOURS: Record<string, number> = { "1h": 1, "24h": 24, "7d": 168, "30
  */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await requirePermission(req, "logs.read");
+    await requirePermission(req, "logs.read");
+    const db = adminClient();
     const params = req.nextUrl.searchParams;
     const source = params.get("source") || "http";
     const range = params.get("range") || "24h";
@@ -80,18 +82,20 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: false })
         .range((page - 1) * pageSize, page * pageSize - 1);
       if (keyword) query = query.ilike("action", `%${keyword.replace(/[%_]/g, "")}%`);
-      if (source === "security") {
-        query = query.or(securityPrefixes.map((prefix) => `action.ilike.${prefix}%`).join(","));
-      }
+      // 安全类动作在内存里筛，避免把通配符拼进 PostgREST 的 or 表达式。
+      const securityOnly = source === "security";
       const { data, error, count } = await query;
       if (error) throw new ApiError(500, "操作日志读取失败");
-      const actorIds = [...new Set((data || []).map((row) => row.actor_id).filter(Boolean))] as string[];
+      const rows = securityOnly
+        ? (data || []).filter((row) => securityPrefixes.some((prefix) => String(row.action || "").startsWith(prefix)))
+        : (data || []);
+      const actorIds = [...new Set(rows.map((row) => row.actor_id).filter(Boolean))] as string[];
       const names = actorIds.length
         ? new Map(((await db.from("profiles").select("id,nickname").in("id", actorIds)).data || []).map((row) => [row.id as string, row.nickname as string]))
         : new Map<string, string>();
       return {
         source, range, since,
-        items: (data || []).map((row) => ({
+        items: rows.map((row) => ({
           id: String(row.id), at: row.created_at, kind: row.action,
           summary: row.action,
           detail: row.detail ? JSON.stringify(row.detail).slice(0, 400) : "",
@@ -99,8 +103,8 @@ export async function GET(req: NextRequest) {
           ip: null, account: row.actor_id ? names.get(row.actor_id) || String(row.actor_id).slice(0, 8) : null,
           target: row.target,
         })),
-        total: count ?? 0, page, pageSize,
-        summary: { requests: count ?? 0, errors: 0, error_rate: null, slow: 0, bytes: 0 },
+        total: securityOnly ? rows.length : count ?? 0, page, pageSize,
+        summary: { requests: securityOnly ? rows.length : count ?? 0, errors: 0, error_rate: null, slow: 0, bytes: 0 },
         note: "操作日志记录操作人、动作与结果，不含密码与令牌。",
       };
     }

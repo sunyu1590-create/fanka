@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { respond, ApiError, jsonBody, dbError } from "@/lib/server/api";
 import { requirePermission } from "@/lib/server/require-permission";
+import { adminClient } from "@/lib/server/admin-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +9,8 @@ export const dynamic = "force-dynamic";
 /** 审核策略版本：查看、创建、激活（回滚即激活历史版本）。 */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await requirePermission(req, "ai.read");
+    await requirePermission(req, "ai.read");
+    const db = adminClient();
     const { data, error } = await db.from("ai_review_policies")
       .select("id,version,name,thresholds,active,created_at,activated_at,system_prompt")
       .order("created_at", { ascending: false })
@@ -20,7 +22,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   return respond(async () => {
-    const { db, user } = await requirePermission(req, "policy.manage");
+    const { user } = await requirePermission(req, "policy.manage");
+    const db = adminClient();
     const body = await jsonBody(req);
     const action = String(body.action || "");
 

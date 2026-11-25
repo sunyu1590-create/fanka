@@ -14,7 +14,8 @@ const RANGES: Record<string, number> = { "1d": 1, "7d": 7, "30d": 30 };
  */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await requirePermission(req, "ai.read");
+    await requirePermission(req, "ai.read");
+    const db = adminClient();
     const range = req.nextUrl.searchParams.get("range") || "7d";
     const days = RANGES[range] || 7;
     const since = new Date(Date.now() - days * 86_400_000).toISOString();

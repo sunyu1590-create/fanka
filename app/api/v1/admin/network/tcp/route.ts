@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { respond, ApiError } from "@/lib/server/api";
 import { requirePermission } from "@/lib/server/require-permission";
+import { adminClient } from "@/lib/server/admin-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,9 @@ const STATES = ["ESTABLISHED", "TIME_WAIT", "CLOSE_WAIT", "SYN_SENT", "SYN_RECV"
  */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { db } = await requirePermission(req, "network.read");
+    await requirePermission(req, "network.read");
+    // 采集表对 authenticated 全部 revoke，管理接口统一走 service role。
+    const db = adminClient();
     const params = req.nextUrl.searchParams;
     const state = (params.get("state") || "").toUpperCase();
     const query = (params.get("q") || "").trim().slice(0, 80);

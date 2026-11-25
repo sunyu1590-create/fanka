@@ -3,6 +3,7 @@ import { ApiError, dbError, jsonBody, respond, textField, uuid } from "@/lib/ser
 import { signPostMedia } from "@/lib/server/media";
 import { recordModerationAudit } from "@/lib/server/moderation-audit";
 import { requirePermission } from "@/lib/server/require-permission";
+import { adminClient } from "@/lib/server/admin-client";
 
 function applyError(error: { code?: string; message?: string }) {
   const message = error.message || "";
@@ -69,7 +70,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })();
     await recordModerationAudit(db, { actorId: user!.id, action: body.status === "published" ? "post_approved" : "post_hidden", targetType: "post", targetId: postId, reason: reviewNote });
     // 记录人工最终结论，用于统计「人工推翻 AI 判断」的比例；不覆盖已有结论。
-    await db.from("ai_moderation_decisions")
+    // 该表只对 service_role 开放，必须用管理客户端。
+    await adminClient().from("ai_moderation_decisions")
       .update({ human_decision: body.status === "published" ? "PASS" : "REJECT", human_actor: user!.id, human_at: new Date().toISOString() })
       .eq("post_id", postId)
       .is("human_decision", null);
