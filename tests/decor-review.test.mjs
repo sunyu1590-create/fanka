@@ -3,15 +3,17 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const moderation = await readFile(new URL("../components/AdminModeration.tsx", import.meta.url), "utf8");
+// 3.0 起后台导航集中到 AdminUIKit，模块渲染仍在 AdminModeration。
+const adminUiKit = await readFile(new URL("../components/admin/AdminUIKit.tsx", import.meta.url), "utf8");
 const panel = await readFile(new URL("../components/AdminDecorReview.tsx", import.meta.url), "utf8");
 const route = await readFile(new URL("../app/api/v1/admin/decor-themes/route.ts", import.meta.url), "utf8");
 const decorCenter = await readFile(new URL("../components/DecorCenter.tsx", import.meta.url), "utf8");
 
 test("装扮审核作为独立模块挂在现有管理后台内，而不是新建重复后台", () => {
   assert.match(moderation, /"decor-review"/);
-  assert.match(moderation, /id: "decor-review", title: "人工复审 · 装扮"/);
-  assert.match(moderation, /"decor-review": "装扮审核"/);
-  assert.match(moderation, /section === "decor-review" \? <AdminDecorReview \/>/);
+  assert.match(adminUiKit, /items: \["ai-review", "content", "decor-review"\]/);
+  assert.match(adminUiKit, /"decor-review": "装扮复审"/);
+  assert.match(moderation, /section === "decor-review" \?[\s\S]{0,80}<AdminDecorReview \/>/);
 });
 
 test("审核接口在后端做管理员校验，前端显隐不作为权限", () => {
