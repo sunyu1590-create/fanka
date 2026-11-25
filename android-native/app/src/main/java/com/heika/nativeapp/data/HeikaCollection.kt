@@ -12,6 +12,7 @@ data class HeikaChapter(
     val status: String,
     val chapter: Int,
     val date: String,
+    val read: Boolean = false,
 ) {
     val published: Boolean get() = status == "published"
     val statusLabel: String
@@ -49,6 +50,10 @@ data class HeikaCollection(
     val notify: Boolean,
     val progressPostId: String?,
     val updatedAt: String,
+    val readCount: Int = 0,
+    val progressPercent: Int = 0,
+    val nextChapterId: String? = null,
+    val lastReadAt: String? = null,
 ) {
     val kindLabel: String
         get() = when (kind) {
@@ -102,6 +107,7 @@ data class HeikaCollection(
                         status = row.optString("status", "published"),
                         chapter = row.optInt("chapter"),
                         date = row.optString("date"),
+                        read = row.optBoolean("read"),
                     )
                 },
                 publishedCount = json.optInt("publishedCount"),
@@ -110,6 +116,10 @@ data class HeikaCollection(
                 notify = !json.has("notify") || json.optBoolean("notify", true),
                 progressPostId = json.optString("progressPostId").takeIf(String::isNotBlank),
                 updatedAt = json.optString("updatedAt"),
+                readCount = json.optInt("readCount"),
+                progressPercent = json.optInt("progressPercent"),
+                nextChapterId = json.optString("nextChapterId").takeIf(String::isNotBlank),
+                lastReadAt = json.optString("lastReadAt").takeIf(String::isNotBlank),
             )
         }
 

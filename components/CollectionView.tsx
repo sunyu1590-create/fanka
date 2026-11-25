@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Bookmark, Check, ChevronDown, ChevronUp, Layers, ListOrdered, Loader2, Pencil, Plus, Share2, ShieldCheck, Trash2, X } from "lucide-react";
+import { ArrowDownUp, BookOpen, Bookmark, Check, ChevronDown, ChevronUp, Layers, ListOrdered, Loader2, Pencil, Plus, Share2, ShieldCheck, Trash2, X } from "lucide-react";
 import { cloudRequest, publicRequest } from "@/lib/cloud";
 import { confirmInApp } from "@/lib/in-app-dialog";
 
-type Chapter = { id: string; clientId: number; title: string; excerpt: string; image: string | null; status: string; chapter: number; date: string };
+type Chapter = { id: string; clientId: number; title: string; excerpt: string; image: string | null; status: string; chapter: number; date: string; read?: boolean };
 type Series = {
   id: string; creatorId: string; title: string; description: string; coverUrl: string | null;
   kind: "serial" | "tutorial" | "resource"; channel: "community" | "ai"; categoryId: number | null;
@@ -14,6 +14,7 @@ type Series = {
   creator: { id: string; nickname: string; avatarUrl: string | null } | null;
   chapters: Chapter[]; publishedCount: number; followCount: number;
   following: boolean; notify: boolean; progressPostId: string | null; isOwner: boolean;
+  readCount: number; progressPercent: number; nextChapterId: string | null; lastReadAt: string | null;
 };
 type OwnPost = { id: number; cloudId?: string; title: string; seriesId?: string };
 type Props = {
@@ -38,6 +39,8 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
   const [mode, setMode] = useState<"read" | "manage">("read");
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", coverUrl: "", kind: "serial", status: "ongoing" });
+  const [tocOrder, setTocOrder] = useState<"asc" | "desc">("asc");
+  const [tocLimit, setTocLimit] = useState(12);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -253,35 +256,68 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
     </section>;
   }
 
-  /* ---------------- 阅读页：紧凑封面 + 基础信息 + 主要操作 + 章节目录 ---------------- */
-  return <section className="page collection-page">
+  /* ---------------- 阅读页：数字书籍式封面 / 进度 / 目录 ---------------- */
+  const publishedChapters = chapters.filter((chapter) => chapter.status === "published");
+  const sortedChapters = tocOrder === "asc" ? publishedChapters : [...publishedChapters].reverse();
+  const visibleChapters = sortedChapters.slice(0, tocLimit);
+  const nextChapter = series.nextChapterId
+    ? publishedChapters.find((chapter) => chapter.id === series.nextChapterId) || null
+    : publishedChapters.find((chapter) => !chapter.read) || publishedChapters[0] || null;
+  const lastRead = publishedChapters.find((chapter) => chapter.id === series.progressPostId) || null;
+  const readCount = series.readCount || 0;
+  const percent = series.progressPercent || 0;
+
+  const openChapter = (chapter: Chapter) => {
+    if (chapter.status !== "published") return;
+    onOpenChapter(chapter);
+  };
+
+  return <section className="page collection-page collection-book">
     <button className="back settings-back" type="button" onClick={onBack}><span aria-hidden="true">‹</span> 返回</button>
-    <header className={`collection-hero${series.coverUrl ? " has-cover" : ""}`}>
-      <div className="collection-cover" aria-hidden="true">
+
+    <header className={`book-hero${series.coverUrl ? " has-cover" : ""}`}>
+      <div className={`book-cover ${series.coverUrl ? "has-image" : `series-cover-art tone-${series.id.charCodeAt(0) % 5}`}`}>
         {series.coverUrl
-          ? <span className="collection-cover-image" style={{ backgroundImage: `url(${series.coverUrl})` }}/>
-          : <span className="collection-cover-fallback"><Layers size={20}/><em>{KIND_LABEL[series.kind] || "连载"}</em></span>}
+          ? <img src={series.coverUrl} alt="" loading="eager" decoding="async" />
+          : <>
+            <em>{KIND_LABEL[series.kind] || "合集"}</em>
+            <strong>{series.title}</strong>
+            <i>{series.creator?.nickname || "HEIKA"}</i>
+          </>}
       </div>
-      <div className="collection-hero-copy">
-        <div className="collection-hero-eyebrow">
+      <div className="book-copy">
+        <div className="book-eyebrow">
           <span>{KIND_LABEL[series.kind] || "连载"}</span>
-          <span>{series.status === "completed" ? "已完结" : STATUS_LABEL[series.status]}</span>
-          <span>{series.publishedCount} 章</span>
+          <span>{series.status === "completed" ? "已完结" : "连载中"}</span>
+          <span>{series.publishedCount} 篇</span>
         </div>
         <h1>{series.title}</h1>
         {series.description && <p>{series.description}</p>}
-        <div className="collection-hero-meta">
-          {series.creator && <span>{series.creator.nickname}</span>}
+        <div className="book-author">
+          {series.creator?.avatarUrl
+            ? <img src={series.creator.avatarUrl} alt="" loading="lazy" />
+            : <span className="book-avatar-fallback">{(series.creator?.nickname || "创").slice(0, 1)}</span>}
+          <span>{series.creator?.nickname || "创作者"}</span>
+          <i>·</i>
           <span>{series.followCount} 人收藏</span>
+        </div>
+        <div className="book-progress" aria-label={`阅读进度 ${percent}%`}>
+          <div className="book-progress-head"><span>{readCount ? `已读 ${readCount} / ${series.publishedCount} 篇` : "还没开始读"}</span><b>{percent}%</b></div>
+          <span className="book-progress-track"><i style={{ width: `${percent}%` }} /></span>
+          {lastRead && <small>上次读到：{lastRead.title}</small>}
         </div>
       </div>
     </header>
 
-    <div className="collection-actions">
-      {continueChapter && <button type="button" className="collection-primary" onClick={() => { if (series.progressPostId) void cloudRequest("/api/v1/series", { action: "progress", id: series.id, postId: continueChapter.id }).catch(() => {}); onOpenChapter(continueChapter); }}><BookOpen size={15}/>{series.progressPostId ? "继续阅读" : "开始阅读"}</button>}
-      <button type="button" className={`collection-ghost${series.following ? " active" : ""}`} onClick={() => void toggleFollow()} disabled={busy}><Bookmark size={15} fill={series.following ? "currentColor" : "none"}/>{series.following ? "已收藏" : "收藏"}</button>
-      <button type="button" className="collection-ghost" onClick={() => void share()}><Share2 size={15}/>分享</button>
-      {series.isOwner && <button type="button" className="collection-ghost collection-manage-entry" onClick={() => setMode("manage")}><Pencil size={15}/>管理</button>}
+    <div className="book-actions">
+      {nextChapter && <button type="button" className="collection-primary book-primary" onClick={() => openChapter(nextChapter)}>
+        <BookOpen size={16} />{readCount ? "继续阅读" : "开始阅读"}
+      </button>}
+      <button type="button" className={`collection-ghost${series.following ? " active" : ""}`} onClick={() => void toggleFollow()} disabled={busy}>
+        <Bookmark size={15} fill={series.following ? "currentColor" : "none"} />{series.following ? "已收藏" : "收藏合集"}
+      </button>
+      <button type="button" className="collection-ghost" onClick={() => void share()}><Share2 size={15} />分享</button>
+      {series.isOwner && <button type="button" className="collection-ghost collection-manage-entry" onClick={() => setMode("manage")}><Pencil size={15} />管理</button>}
     </div>
 
     {series.following && <label className="collection-notify">
@@ -291,21 +327,39 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
         void cloudRequest("/api/v1/series", { action: "notify", id: series.id, notify: next })
           .then(() => onNotice(next ? "已开启更新提醒" : "已关闭更新提醒"))
           .catch((error) => { setSeries({ ...series, notify: !next }); onNotice(error instanceof Error ? error.message : "设置失败"); });
-      }}/>
-      <span>新章节通过审核后提醒我</span>
+      }} />
+      <span>有新章节时提醒我</span>
     </label>}
 
-    <section className="collection-toc">
-      <div className="collection-toc-head"><h2><ListOrdered size={16}/> 章节目录</h2><span>{series.publishedCount} 章已发布</span></div>
-      {chapters.length ? <ol className="collection-chapter-list">
-        {chapters.map((chapter) => <li key={chapter.id} className={`${series.progressPostId === chapter.id ? "is-progress" : ""}${chapter.status !== "published" ? " is-unpublished" : ""}`}>
-          <button type="button" className="collection-chapter-open" onClick={() => { if (chapter.status === "published") { void cloudRequest("/api/v1/series", { action: "progress", id: series.id, postId: chapter.id }).catch(() => {}); onOpenChapter(chapter); } }}>
-            <span className="collection-chapter-index">{String(chapter.chapter).padStart(2, "0")}</span>
-            <span className="collection-chapter-copy"><strong>{chapter.title}</strong>{chapter.excerpt && <small>{chapter.excerpt}</small>}<i>{chapter.date}{chapter.status !== "published" ? ` · ${chapter.status === "draft" ? "草稿" : "审核中"}` : ""}</i></span>
-            {series.progressPostId === chapter.id && <em className="collection-chapter-current">正在读</em>}
-          </button>
-        </li>)}
-      </ol> : <div className="collection-empty"><Layers size={18}/> 合集还没有章节{series.isOwner ? "，去「管理」里添加一篇已有作品。" : "。"}</div>}
+    <section className="book-toc">
+      <div className="book-toc-head">
+        <div><h2><ListOrdered size={16} /> 目录</h2><small>{series.publishedCount} 篇 · {readCount} 篇已读</small></div>
+        <button type="button" className="book-order" onClick={() => setTocOrder((current) => current === "asc" ? "desc" : "asc")}>
+          <ArrowDownUp size={14} />{tocOrder === "asc" ? "正序" : "倒序"}
+        </button>
+      </div>
+      {publishedChapters.length ? <>
+        <ol className="book-chapters">
+          {visibleChapters.map((chapter) => {
+            const absoluteIndex = publishedChapters.findIndex((item) => item.id === chapter.id) + 1;
+            const isCurrent = series.progressPostId === chapter.id;
+            return <li key={chapter.id} className={`${chapter.read ? "is-read" : ""}${isCurrent ? " is-current" : ""}`}>
+              <button type="button" className="book-chapter" onClick={() => openChapter(chapter)}>
+                <span className="book-chapter-index">{String(absoluteIndex).padStart(2, "0")}</span>
+                <span className="book-chapter-copy">
+                  <strong>{chapter.title}</strong>
+                  <small>{chapter.date}{chapter.excerpt ? ` · ${chapter.excerpt}` : ""}</small>
+                </span>
+                {chapter.read ? <span className="book-chapter-state is-read"><Check size={12} />已读</span>
+                  : isCurrent ? <span className="book-chapter-state is-current">正在读</span>
+                    : chapter.status === "published" ? null : <span className="book-chapter-state">未发布</span>}
+              </button>
+            </li>;
+          })}
+        </ol>
+        {sortedChapters.length > visibleChapters.length && <button type="button" className="book-more" onClick={() => setTocLimit((current) => current + 20)}>展开更多（还有 {sortedChapters.length - visibleChapters.length} 篇）</button>}
+      </> : <div className="collection-empty"><Layers size={18} /> 合集还没有章节{series.isOwner ? "，去「管理」里添加一篇已有作品。" : "。"}</div>}
+      {chapters.length > publishedChapters.length && <p className="book-toc-note">另有 {chapters.length - publishedChapters.length} 篇未发布的章节，仅作者可见。</p>}
     </section>
   </section>;
 }

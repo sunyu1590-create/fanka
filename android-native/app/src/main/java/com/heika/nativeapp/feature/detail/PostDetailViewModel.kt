@@ -8,6 +8,7 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.HeikaRepository
 import com.heika.nativeapp.ui.NativePreferences
 import com.heika.nativeapp.data.jsonObjects
+import com.heika.nativeapp.data.HeikaRelated
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,6 +91,8 @@ data class PostDetailState(
     val chapterCount: Int = 0,
     val prevChapterKey: String? = null,
     val nextChapterKey: String? = null,
+    // 正文后的关联内容：同主题、作者其他、AI 资源、话题，全部来自真实关联查询。
+    val related: HeikaRelated = HeikaRelated(),
 )
 
 @HiltViewModel
@@ -108,6 +111,7 @@ class PostDetailViewModel @Inject constructor(
     private var commentPage = 0
     private var commentsRequestVersion = 0
     private var requestedKey: String? = null
+    private var relatedVersion = 0
 
     init {
         // 管理员可以在任意作品上执行删除；普通账号隐藏该入口。
@@ -137,6 +141,7 @@ class PostDetailViewModel @Inject constructor(
                     mutableState.update { it.copy(post = detail, likeCount = detail.likeCount, loading = false, refreshing = false, error = null) }
                     loadComments(detail, version)
                     loadInteractions(detail, version)
+                    loadRelated(detail)
                     if (detail.seriesId != null) loadSeriesContext(detail)
                 }
                 .onFailure { if (version == requestVersion) mutableState.update { it.copy(loading = false, refreshing = false, error = "内容暂时无法加载，请重试") } }
@@ -164,6 +169,7 @@ class PostDetailViewModel @Inject constructor(
                     loadComments(detail, version)
                     loadInteractions(detail, version)
                     if (detail.channel == "ai") loadAiVersions(detail)
+                    loadRelated(detail)
                     if (detail.seriesId != null) loadSeriesContext(detail)
                 }
                 .onFailure { if (version == requestVersion) mutableState.update { it.copy(loading = false, refreshing = false, error = "内容暂时无法加载，请重试") } }
@@ -173,6 +179,17 @@ class PostDetailViewModel @Inject constructor(
     fun reload() {
         val key = requestedKey ?: return
         if (mutableState.value.post != null) load(mutableState.value.post!!, force = true) else loadByKey(key, force = true)
+    }
+
+    /** 拉取正文后的关联内容；失败只是少一块推荐，不影响正文与评论。 */
+    fun loadRelated(post: HeikaPost) {
+        val key = post.cloudId.ifBlank { post.id.toString() }
+        val version = ++relatedVersion
+        viewModelScope.launch(HeikaCoroutineGuard) {
+            val result = runCatching { repository.postRelated(key) }.getOrNull() ?: return@launch
+            if (version != relatedVersion) return@launch
+            mutableState.update { it.copy(related = result) }
+        }
     }
 
     /**

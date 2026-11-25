@@ -16,6 +16,7 @@ import './profile.css';
 import './decor.css';
 import './decor-center.css';
 import './drafts.css';
+import './series.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',

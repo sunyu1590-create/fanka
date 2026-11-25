@@ -45,6 +45,10 @@ data class DiscoveryUiState(
 class DiscoveryViewModel @Inject constructor(private val repository: HeikaRepository, preferences: NativePreferences) : ViewModel() {
     private val mutableState = MutableStateFlow(DiscoveryUiState())
     val state = mutableState.asStateFlow()
+    // 合集频道不接内容流接口：它有自己的分区聚合接口，切过去时保留上次的社区/AI 数据，
+    // 切回来仍是原来的分页与滚动位置，不会重新拉一遍。
+    private val mutableSeriesActive = MutableStateFlow(false)
+    val seriesActive = mutableSeriesActive.asStateFlow()
     val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     private val filter = MutableStateFlow(FeedFilter())
     private var communityFilter = FeedFilter()
@@ -73,7 +77,12 @@ class DiscoveryViewModel @Inject constructor(private val repository: HeikaReposi
     }
 
     fun selectChannel(channel: String) {
+        if (channel == "series") {
+            mutableSeriesActive.value = true
+            return
+        }
         if (channel !in setOf("community", "ai")) return
+        mutableSeriesActive.value = false
         val current = filter.value
         rememberChannelFilter(current)
         val next = if (channel == "ai") aiFilter else communityFilter

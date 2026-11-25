@@ -94,6 +94,18 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
             values[searchHistoryKey] = JSONArray((listOf(term) + previous.filterNot { it.equals(term, ignoreCase = true) }).take(8)).toString()
         }
     }
+    /** 删除单条搜索历史：只影响这一条，其余顺序保持不变。 */
+    suspend fun removeRecentSearch(value: String) {
+        val term = value.trim()
+        if (term.isBlank()) return
+        dataStore.edit { values ->
+            val previous = runCatching {
+                val saved = JSONArray(values[searchHistoryKey].orEmpty())
+                buildList { for (index in 0 until saved.length()) add(saved.optString(index)) }
+            }.getOrDefault(emptyList())
+            values[searchHistoryKey] = JSONArray(previous.filterNot { it.equals(term, ignoreCase = true) }).toString()
+        }
+    }
     suspend fun clearRecentSearches() { dataStore.edit { it.remove(searchHistoryKey) } }
     suspend fun hasSeenNetworkNotice(version: String): Boolean =
         dataStore.data.map { it[networkNoticeVersionKey] == version }.first()

@@ -6,6 +6,8 @@ import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import type { Post } from "@/lib/content";
 import { ProfileBadgeMarks } from "./ProfileBadgeList";
 import MasonryFeed from "./MasonryFeed";
+import AIHotSections from "./AIHotSections";
+import { plainText } from "@/lib/text";
 
 type Category = { id: number; name: string; description: string; sort_order: number; is_featured: boolean; parent_id: number | null };
 type FeedResult = { items: Post[]; total: number; page: number; limit: number };
@@ -16,6 +18,9 @@ type Props = {
   onLogin: () => void;
   onNotice: (message: string) => void;
   hidden?: boolean;
+  onOpenPostById?: (id: string) => void;
+  onOpenSeries?: (id: string) => void;
+  onOpenSeriesChannel?: () => void;
 };
 
 /** 与 Android 端 resourceTypePresentation 完全一致：名称、描述、排序以服务端目录为准，图标按类型固定。 */
@@ -71,7 +76,7 @@ function ResourceCard({ post, saved, onOpen, onToggleSave }: {
   const textOnly = !rawCover;
   const Icon = typeIcons[post.contentType || "knowledge_article"] || FileText;
   const typeLabel = typeLabels[post.contentType || "knowledge_article"] || "AI 内容";
-  const excerpt = post.body.replace(/[#*`>_\[\]()]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+  const excerpt = plainText(post.body, 160);
   return <article className={`ai-resource-card${textOnly ? " is-text-only" : ""}${rawCover && coverFailed ? " is-cover-failed" : ""}`}>
     <button className="ai-resource-open" type="button" data-discover-id={post.id} onClick={(event) => onOpen(post, event.currentTarget)}>
       {rawCover ? <>
@@ -88,7 +93,7 @@ function ResourceCard({ post, saved, onOpen, onToggleSave }: {
   </article>;
 }
 
-export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden = false }: Props) {
+export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden = false, onOpenPostById, onOpenSeries, onOpenSeriesChannel }: Props) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [resourceTypes, setResourceTypes] = useState<ResourceType[]>([]);
   const [view, setView] = useState<AISpaceView>("home");
@@ -299,8 +304,9 @@ export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden =
             <span className="ai-space-explore-copy"><strong>探索 AI 资源</strong><small>按 Agent、Prompt、Skills 与教程分类进入资源中心</small></span>
             <ChevronRight size={16} aria-hidden="true"/>
           </button>
-          {!!featured.length && <section className="ai-space-section ai-space-featured"><div className="ai-space-section-head"><div><h2>AI 内容推荐</h2></div><button type="button" onClick={() => openTypeFeed("")}>查看全部 <ChevronRight size={15}/></button></div><div className="ai-resource-grid">{featured.slice(0, 3).map(card)}</div></section>}
-          {!!popular.length && <section className="ai-space-section"><div className="ai-space-section-head"><div><h2>热门 AI 资源</h2></div></div><div className="ai-resource-grid">{popular.slice(0, 3).map(card)}</div></section>}
+          {onOpenPostById && onOpenSeries && onOpenSeriesChannel
+            ? <AIHotSections onOpenPostById={onOpenPostById} onOpenSeries={onOpenSeries} onOpenSeriesChannel={onOpenSeriesChannel} />
+            : null}
         </div>
         <ResultsSection heading="最新发布" eyebrow="内容列表" total={total} error={error} loading={loading} items={list} card={card} hasMore={list.length < total} onMore={() => void loadMore()} />
       </>}

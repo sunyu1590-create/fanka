@@ -66,14 +66,30 @@ import com.heika.nativeapp.ui.HeikaNoticeBus
 import com.heika.nativeapp.ui.HeikaPulsePage
 import com.heika.nativeapp.ui.HeikaPulseDot
 import com.heika.nativeapp.ui.HeikaPulseRow
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import com.heika.nativeapp.ui.HeikaRadii
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Color
 
-private val searchKinds = listOf("all" to "综合", "content" to "内容", "people" to "用户", "topics" to "话题", "ai" to "AI 资源")
+private val searchKinds = listOf("all" to "综合", "content" to "精选", "ai" to "AI", "series" to "合集", "people" to "用户", "topics" to "话题")
+private val searchSorts = listOf(
+    "relevance" to "相关度", "hot" to "热度", "latest" to "最新", "bookmarks" to "最多收藏", "likes" to "最多点赞",
+)
 
 @Composable
 fun SearchScreen(
     onBack: () -> Unit,
     onPost: (HeikaPost) -> Unit,
     onProfile: (String) -> Unit,
+    onSeries: (String) -> Unit,
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     sharedElementsEnabled: Boolean = false,
@@ -125,11 +141,57 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(22.dp),
             ) {
                 items(searchKinds, key = { it.first }) { (key, label) ->
-                    SearchKindTab(label, selected = state.kind == key) {
+                    val count = when (key) {
+                        "all" -> state.counts["all"]
+                        "content" -> state.counts["featured"]
+                        "ai" -> state.counts["ai"]
+                        "series" -> state.counts["series"]
+                        "people" -> state.counts["people"]
+                        "topics" -> state.counts["topics"]
+                        else -> null
+                    }
+                    SearchKindTab(label, selected = state.kind == key, count = count) {
                         if (state.kind != key) {
                             viewModel.setKind(key)
                             HeikaNoticeBus.showSelection("搜索范围：$label")
                         }
+                    }
+                }
+            }
+        }
+
+        if (state.submittedQuery.isNotBlank() && state.kind !in setOf("people", "topics")) {
+            LazyRow(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                items(searchSorts, key = { "sort-${it.first}" }) { (key, label) ->
+                    val selected = state.sort == key
+                    Text(
+                        label,
+                        Modifier.clip(RoundedCornerShape(50))
+                            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .13f) else Color.Transparent)
+                            .border(.8.dp, if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .5f) else MaterialTheme.colorScheme.outline.copy(alpha = .4f), RoundedCornerShape(50))
+                            .clickable { viewModel.setSort(key) }
+                            .padding(horizontal = 11.dp, vertical = 5.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.5.sp,
+                    )
+                }
+            }
+        }
+
+        if (state.submittedQuery.isBlank() && state.query.isNotBlank() && state.suggestions.isNotEmpty()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp)) {
+                state.suggestions.forEach { suggestion ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { viewModel.submitRecentSearch(suggestion) }.padding(vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        Icon(HeikaIcons.Search, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f))
+                        Text(suggestion, color = MaterialTheme.colorScheme.onSurface, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -150,19 +212,20 @@ fun SearchScreen(
                 state = state,
                 onTopic = viewModel::submitRecentSearch,
                 onRecent = viewModel::submitRecentSearch,
+                onDeleteRecent = viewModel::deleteRecentSearch,
                 onClearRecent = viewModel::clearRecentSearches,
                 onRetryTopics = viewModel::loadHotTopics,
             )
         } else if (state.loading && state.posts.isEmpty() && state.people.isEmpty() && state.topics.isEmpty() && state.aiPosts.isEmpty()) {
             HeikaPulsePage(cards = 3, cardHeight = 88.dp)
         } else {
-            SearchResults(state, onPost, onProfile, viewModel::setKind, viewModel::submitTopicSearch, viewModel::loadMore, sharedTransitionScope, animatedVisibilityScope, sharedElementsEnabled)
+            SearchResults(state, onPost, onProfile, onSeries, viewModel::setKind, viewModel::submitTopicSearch, viewModel::loadMore, sharedTransitionScope, animatedVisibilityScope, sharedElementsEnabled)
         }
     }
 }
 
 @Composable
-private fun SearchKindTab(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun SearchKindTab(label: String, selected: Boolean, count: Int? = null, onClick: () -> Unit) {
     val color by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
         tween(220), label = "search-kind-color",
@@ -173,7 +236,16 @@ private fun SearchKindTab(label: String, selected: Boolean, onClick: () -> Unit)
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(label, color = color, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(label, color = color, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+            if (count != null && count > 0) {
+                Text(
+                    if (count > 99) "99+" else "$count",
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .65f),
+                    fontSize = 8.5.sp,
+                )
+            }
+        }
         Box(Modifier.width(indicatorWidth).height(2.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
     }
 }
@@ -183,6 +255,7 @@ private fun SearchLanding(
     state: SearchState,
     onTopic: (String) -> Unit,
     onRecent: (String) -> Unit,
+    onDeleteRecent: (String) -> Unit,
     onClearRecent: () -> Unit,
     onRetryTopics: () -> Unit,
 ) {
@@ -228,12 +301,18 @@ private fun SearchLanding(
             }
             items(state.recentSearches, key = { "recent-$it" }) { term ->
                 Row(
-                    Modifier.fillMaxWidth().clickable { onRecent(term) }.padding(vertical = 12.dp),
+                    Modifier.fillMaxWidth().clickable { onRecent(term) }.padding(vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(11.dp),
                 ) {
                     Icon(HeikaIcons.Search, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(term, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
+                    Text(term, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Icon(
+                        HeikaIcons.Close,
+                        contentDescription = "删除这条历史",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .55f),
+                        modifier = Modifier.size(15.dp).clickable { onDeleteRecent(term) }.padding(1.dp),
+                    )
                 }
             }
         }
@@ -262,6 +341,7 @@ private fun SearchResults(
     state: SearchState,
     onPost: (HeikaPost) -> Unit,
     onProfile: (String) -> Unit,
+    onSeries: (String) -> Unit,
     onKind: (String) -> Unit,
     onTopicSearch: (String) -> Unit,
     onLoadMore: () -> Unit,
@@ -289,6 +369,24 @@ private fun SearchResults(
                 item(span = StaggeredGridItemSpan.FullLine) {
                     SearchGridFooter(state, posts.isEmpty(), onLoadMore)
                 }
+            }
+        }
+        "series" -> {
+            val listState = rememberLazyListState()
+            LaunchedEffect(listState, state.series.size, state.hasMore, state.loadingMore) {
+                val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                if (state.hasMore && !state.loadingMore && state.series.isNotEmpty() && lastVisible >= state.series.size - 3) onLoadMore()
+            }
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                items(state.series, key = { "series-${it.id}" }) { hit ->
+                    SeriesResultRow(hit) { onSeries(hit.id) }
+                }
+                item { SearchListFooter(state, state.series.isEmpty(), onLoadMore) }
             }
         }
         "people" -> {
@@ -330,11 +428,15 @@ private fun SearchResults(
                     item(key = "ai-heading") { ResultSectionHeader("AI 资源", state.aiPosts.size) { onKind("ai") } }
                     itemsIndexed(aiRows, key = { _, row -> "all-ai-${row.first().cloudId}" }) { _, row -> FeedCardPair(row, onPost, sharedTransitionScope, animatedVisibilityScope, sharedElementsEnabled) }
                 }
+                if (state.series.isNotEmpty()) {
+                    item(key = "series-heading") { ResultSectionHeader("合集", state.series.size) { onKind("series") } }
+                    items(state.series.take(3), key = { "all-series-${it.id}" }) { hit -> SeriesResultRow(hit) { onSeries(hit.id) } }
+                }
                 if (state.people.isNotEmpty()) {
                     item(key = "people-heading") { ResultSectionHeader("用户", state.people.size) { onKind("people") } }
                     items(state.people.take(4), key = { "all-user-${it.id}" }) { person -> PersonResultRow(person) { onProfile(person.id) } }
                 }
-                if (state.posts.isEmpty() && state.aiPosts.isEmpty() && state.people.isEmpty() && state.topics.isEmpty()) {
+                if (state.posts.isEmpty() && state.aiPosts.isEmpty() && state.series.isEmpty() && state.people.isEmpty() && state.topics.isEmpty()) {
                     item { EmptySearchResult("没有找到相关内容") }
                 }
             }
@@ -356,6 +458,73 @@ private fun ResultSectionHeader(title: String, count: Int, onViewAll: () -> Unit
     Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         TextButton(onClick = onViewAll) { Text("$count 条 · 查看全部", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/** 合集结果行：封面 + 名称 + 简介 + 作者/篇数/收藏，点击进入合集详情。 */
+@Composable
+private fun SeriesResultRow(hit: SearchSeriesHit, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(HeikaRadii.chip))
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(9.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.width(58.dp).aspectRatio(.75f).clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            val cover = hit.cover
+            if (cover != null) {
+                val context = LocalContext.current
+                var failed by remember(hit.id) { mutableStateOf(false) }
+                if (!failed) {
+                    val request = remember(context, cover) { ImageRequest.Builder(context).data(cover).crossfade(true).build() }
+                    AsyncImage(
+                        model = request,
+                        contentDescription = "${hit.title}封面",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        onError = { failed = true },
+                    )
+                } else {
+                    SeriesCoverFallback(hit)
+                }
+            } else {
+                SeriesCoverFallback(hit)
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    hit.kindLabel,
+                    Modifier.clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .11f)).padding(horizontal = 4.dp, vertical = 1.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 8.sp,
+                )
+                Text("${hit.chapters} 篇 · ${hit.bookmarks} 收藏", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 8.5.sp)
+            }
+            Text(hit.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (hit.excerpt.isNotBlank()) {
+                Text(hit.excerpt, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Text(hit.author, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .75f), fontSize = 8.5.sp)
+        }
+    }
+}
+
+@Composable
+private fun SeriesCoverFallback(hit: SearchSeriesHit) {
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.linearGradient(
+                listOf(
+                    MaterialTheme.colorScheme.primary.copy(alpha = .18f),
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f),
+                ),
+            ),
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(hit.title, color = MaterialTheme.colorScheme.primary, fontSize = 8.sp, maxLines = 3, textAlign = TextAlign.Center, modifier = Modifier.padding(4.dp), overflow = TextOverflow.Ellipsis)
     }
 }
 

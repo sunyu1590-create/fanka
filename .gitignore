@@ -27,3 +27,6 @@ android-native/.gradle/
 android-native/.kotlin/
 
 # 自托管 AI 密钥密文（本地文件后端）
+
+# 本地验收截图与临时脚本，不进仓库
+shots-tmp/

@@ -107,6 +107,7 @@ import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
 import com.heika.nativeapp.ui.HeikaPulseFeed
 import com.heika.nativeapp.ui.HeikaPulseRow
+import com.heika.nativeapp.feature.series.SeriesChannelPane
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3Api::class)
@@ -115,6 +116,9 @@ fun DiscoveryScreen(
     onNotifications: () -> Unit,
     onAiResources: () -> Unit,
     onOpenMall: () -> Unit,
+    onOpenSeries: (String) -> Unit,
+    onOpenPostById: (String) -> Unit,
+    onLogin: () -> Unit,
     onPost: (HeikaPost) -> Unit,
     hazeState: HazeState,
     sharedTransitionScope: SharedTransitionScope,
@@ -128,6 +132,7 @@ fun DiscoveryScreen(
         onDispose { }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val seriesActive by viewModel.seriesActive.collectAsStateWithLifecycle()
     val adState by adViewModel.state.collectAsStateWithLifecycle()
     val feedLayout by viewModel.feedLayout.collectAsStateWithLifecycle()
     val posts = viewModel.posts.collectAsLazyPagingItems()
@@ -179,6 +184,9 @@ fun DiscoveryScreen(
         }
     }
 
+    // 合集频道有自己的分区结构，不需要社区/AI 的分类吸顶条，避免它压住频道内容。
+    val collapseRange = if (seriesActive) 0.dp else rangeDp
+    val collapsePx = if (seriesActive) 0f else collapsedPx
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).nestedScroll(collapseConnection)) {
         BrandHeader(
             onSearch = onSearch,
@@ -189,13 +197,17 @@ fun DiscoveryScreen(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ChannelOption("精选", filter.channel == "community", compact = true) {
+                    ChannelOption("精选", !seriesActive && filter.channel == "community", compact = true) {
                         viewModel.selectChannel("community")
                         HeikaNoticeBus.showSelection("已切换到精选")
                     }
-                    ChannelOption("AI", filter.channel == "ai", compact = true, leadingIcon = HeikaIcons.Sparkles, goldAccent = true) {
+                    ChannelOption("AI", !seriesActive && filter.channel == "ai", compact = true, leadingIcon = HeikaIcons.Sparkles, goldAccent = true) {
                         viewModel.selectChannel("ai")
                         HeikaNoticeBus.showSelection("已切换到 AI")
+                    }
+                    ChannelOption("合集", seriesActive, compact = true) {
+                        viewModel.selectChannel("series")
+                        HeikaNoticeBus.showSelection("已切换到合集")
                     }
                     ChannelOption("商城", false, compact = true) { onOpenMall() }
                 }
@@ -204,11 +216,11 @@ fun DiscoveryScreen(
         )
         Box(
             Modifier.fillMaxWidth()
-                .height(with(density) { (rangePx - collapsedPx).coerceAtLeast(0f).toDp() })
+                .height(with(density) { (collapseRange.toPx() - collapsePx).coerceAtLeast(0f).toDp() })
                 .clipToBounds(),
         ) {
             Column(
-                Modifier.fillMaxWidth().height(rangeDp).offset { IntOffset(0, -collapsedPx.toInt()) },
+                Modifier.fillMaxWidth().height(collapseRange).offset { IntOffset(0, -collapsePx.toInt()) },
             ) {
                 // 分类由 AI 自动打，长尾分类默认收进「更多」；与网页端保持同一套交互。
                 val primaryCategories = categories.take(3)
@@ -343,6 +355,14 @@ fun DiscoveryScreen(
                 }
             }
         }
+        if (seriesActive) {
+            SeriesChannelPane(
+                onOpenSeries = onOpenSeries,
+                onLogin = onLogin,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            return@Column
+        }
         val gridState = if (filter.channel == "community") communityGrid else aiGrid
         PullToRefreshBox(
             isRefreshing = posts.itemCount > 0 && posts.loadState.refresh is LoadState.Loading,
@@ -364,7 +384,12 @@ fun DiscoveryScreen(
                 ad = if (filter.channel == "community") adState.ad else null,
                 adUnavailable = filter.channel == "community" && adState.unavailable,
                 aiEntry = if (filter.channel == "ai") {
-                    { AiResourceSpaceEntry(hazeState = badgeHazeState, onClick = onAiResources) }
+                    {
+                        Column {
+                            AiHotSections(onOpenPost = onOpenPostById, onOpenSeries = onOpenSeries)
+                            AiResourceSpaceEntry(hazeState = badgeHazeState, onClick = onAiResources)
+                        }
+                    }
                 } else null,
             )
         }

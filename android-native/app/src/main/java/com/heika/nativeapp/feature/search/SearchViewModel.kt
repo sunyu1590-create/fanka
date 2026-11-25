@@ -11,8 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -31,22 +30,39 @@ data class SearchTopic(
     val activity: Int get() = postCount + participantCount
 }
 
+/** 合集搜索结果：点进去走合集详情，不复制章节内容。 */
+data class SearchSeriesHit(
+    val id: String,
+    val title: String,
+    val excerpt: String,
+    val cover: String?,
+    val kindLabel: String,
+    val author: String,
+    val authorAvatar: String?,
+    val chapters: Int,
+    val bookmarks: Int,
+    val updatedAt: String,
+)
+
 data class SearchState(
     val query: String = "",
     val submittedQuery: String = "",
     val kind: String = "all",
+    val sort: String = "relevance",
     val posts: List<HeikaPost> = emptyList(),
     val aiPosts: List<HeikaPost> = emptyList(),
+    val series: List<SearchSeriesHit> = emptyList(),
     val people: List<SearchPerson> = emptyList(),
     val topics: List<SearchTopic> = emptyList(),
     val hotTopics: List<SearchTopic> = emptyList(),
     val recentSearches: List<String> = emptyList(),
+    val suggestions: List<String> = emptyList(),
+    val counts: Map<String, Int> = emptyMap(),
     val loading: Boolean = false,
     val loadingMore: Boolean = false,
     val loadingHotTopics: Boolean = false,
     val hasMore: Boolean = false,
     val page: Int = 1,
-    val contentCursor: String? = null,
     val error: String? = null,
     val hotTopicsError: String? = null,
 )
@@ -60,13 +76,20 @@ class SearchViewModel @Inject constructor(
     val state = mutableState.asStateFlow()
     private var searchJob: Job? = null
     private var hotTopicsJob: Job? = null
+    private var suggestJob: Job? = null
     private var generation = 0
+    private var suggestGeneration = 0
 
     init {
         viewModelScope.launch(HeikaCoroutineGuard) {
             preferences.searchHistory.collect { history -> mutableState.update { it.copy(recentSearches = history) } }
         }
         loadHotTopics()
+        // 从详情页话题/关联内容带词进来时，直接搜索一次。
+        SearchIntent.consume()?.let { term ->
+            mutableState.update { it.copy(query = term) }
+            search()
+        }
     }
 
     fun setQuery(value: String) {
@@ -78,9 +101,29 @@ class SearchViewModel @Inject constructor(
             it.copy(
                 query = query,
                 submittedQuery = "",
-                posts = emptyList(), aiPosts = emptyList(), people = emptyList(), topics = emptyList(),
+                posts = emptyList(), aiPosts = emptyList(), series = emptyList(), people = emptyList(), topics = emptyList(),
+                counts = emptyMap(), suggestions = emptyList(),
                 loading = false, loadingMore = false, hasMore = false, error = null,
             )
+        }
+        requestSuggestions(query)
+    }
+
+    /** 联想：防抖 220ms；本地校验 query 与序号，旧请求不会覆盖新结果。 */
+    private fun requestSuggestions(raw: String) {
+        val query = raw.trim()
+        suggestJob?.cancel()
+        if (query.isEmpty()) {
+            mutableState.update { it.copy(suggestions = emptyList()) }
+            return
+        }
+        val ticket = ++suggestGeneration
+        suggestJob = viewModelScope.launch(HeikaCoroutineGuard) {
+            delay(220)
+            runCatching { repository.searchSuggest(query) }.onSuccess { result ->
+                if (ticket != suggestGeneration || mutableState.value.query.trim() != query) return@onSuccess
+                mutableState.update { it.copy(suggestions = result.items.take(8)) }
+            }
         }
     }
 
@@ -90,15 +133,25 @@ class SearchViewModel @Inject constructor(
         if (mutableState.value.submittedQuery.isNotBlank()) search()
     }
 
+    fun setSort(value: String) {
+        if (value !in SORTS || value == mutableState.value.sort) return
+        mutableState.update { it.copy(sort = value) }
+        if (mutableState.value.submittedQuery.isNotBlank()) search()
+    }
+
     fun submitRecentSearch(term: String) {
         setQuery(term)
         search()
     }
 
     fun submitTopicSearch(term: String) {
-        mutableState.update { it.copy(kind = "content") }
+        mutableState.update { it.copy(kind = "topics") }
         setQuery(term)
         search()
+    }
+
+    fun deleteRecentSearch(term: String) {
+        viewModelScope.launch(HeikaCoroutineGuard) { preferences.removeRecentSearch(term) }
     }
 
     fun clearRecentSearches() {
@@ -126,56 +179,26 @@ class SearchViewModel @Inject constructor(
         val query = current.query.trim().take(60)
         if (query.isBlank()) return
         searchJob?.cancel()
-        val requestGeneration = ++generation
-        val kind = current.kind
+        val ticket = ++generation
+        val tab = tabOf(current.kind)
+        val sort = current.sort
         mutableState.update {
             it.copy(
-                submittedQuery = query, posts = emptyList(), aiPosts = emptyList(), people = emptyList(), topics = emptyList(),
-                loading = true, loadingMore = false, hasMore = false, page = 1, contentCursor = null, error = null,
+                submittedQuery = query, posts = emptyList(), aiPosts = emptyList(), series = emptyList(),
+                people = emptyList(), topics = emptyList(), suggestions = emptyList(),
+                loading = true, loadingMore = false, hasMore = false, page = 1, error = null,
             )
         }
         searchJob = viewModelScope.launch(HeikaCoroutineGuard) {
             try {
                 preferences.addRecentSearch(query)
-                val result = when (kind) {
-                    "all" -> coroutineScope {
-                        val content = async { repository.search(query, "content", limit = 8) }
-                        val people = async { repository.search(query, "people", limit = 8) }
-                        val ai = async { repository.searchAi(query, limit = 8) }
-                        val topics = async { repository.searchTopics(query) }
-                        SearchPayload(content.await(), people.await(), ai.await(), topics.await().toTopicList())
-                    }
-                    "content" -> SearchPayload(content = repository.search(query, "content"))
-                    "people" -> SearchPayload(people = repository.search(query, "people"))
-                    "topics" -> SearchPayload(topics = repository.searchTopics(query).toTopicList())
-                    "ai" -> SearchPayload(ai = repository.searchAi(query))
-                    else -> return@launch
-                }
-                if (requestGeneration != generation) return@launch
-                val contentItems = result.content?.posts().orEmpty()
-                val aiItems = result.ai?.posts().orEmpty()
-                val peopleItems = result.people?.people().orEmpty()
-                val contentHasMore = result.content?.optBoolean("has_more") == true
-                val aiPage = result.ai?.optInt("page", 1) ?: 1
-                val aiHasMore = result.ai?.let { it.optInt("page", aiPage) * it.optInt("limit", 24) < it.optInt("total") } == true
-                val peoplePage = result.people?.optInt("page", 1) ?: 1
-                val peopleHasMore = result.people?.let { peoplePage * it.optInt("limit", 24) < it.optInt("total") } == true
-                mutableState.update {
-                    it.copy(
-                        posts = contentItems,
-                        aiPosts = aiItems,
-                        people = peopleItems,
-                        topics = result.topics,
-                        loading = false,
-                        hasMore = when (kind) { "content" -> contentHasMore; "people" -> peopleHasMore; "ai" -> aiHasMore; else -> false },
-                        page = when (kind) { "people" -> peoplePage; "ai" -> aiPage; else -> 1 },
-                        contentCursor = result.content?.optString("next_cursor")?.takeIf(String::isNotBlank),
-                    )
-                }
+                val payload = repository.searchUnified(query, tab, sort, 1, 12)
+                if (ticket != generation) return@launch
+                apply(payload, append = false)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (requestGeneration == generation) mutableState.update { it.copy(loading = false, loadingMore = false, error = error.message ?: "搜索失败，请重试") }
+                if (ticket == generation) mutableState.update { it.copy(loading = false, loadingMore = false, error = error.message ?: "搜索失败，请重试") }
             }
         }
     }
@@ -183,78 +206,110 @@ class SearchViewModel @Inject constructor(
     fun loadMore() {
         val current = mutableState.value
         if (current.loading || current.loadingMore || !current.hasMore || current.submittedQuery.isBlank()) return
-        if (current.kind !in setOf("content", "people", "ai")) return
-        val query = current.submittedQuery
-        val kind = current.kind
-        val requestGeneration = generation
+        val ticket = generation
+        val tab = tabOf(current.kind)
+        val sort = current.sort
         val nextPage = current.page + 1
         mutableState.update { it.copy(loadingMore = true, error = null) }
         searchJob = viewModelScope.launch(HeikaCoroutineGuard) {
             try {
-                val payload = when (kind) {
-                    "content" -> repository.search(query, "content", nextPage, current.contentCursor)
-                    "people" -> repository.search(query, "people", nextPage)
-                    else -> repository.searchAi(query, nextPage)
-                }
-                if (requestGeneration != generation || mutableState.value.kind != kind || mutableState.value.submittedQuery != query) return@launch
-                if (kind == "content") {
-                    val items = payload.posts()
-                    mutableState.update {
-                        it.copy(
-                            posts = it.posts + items,
-                            contentCursor = payload.optString("next_cursor").takeIf(String::isNotBlank),
-                            hasMore = payload.optBoolean("has_more"),
-                            page = nextPage,
-                            loadingMore = false,
-                        )
-                    }
-                } else if (kind == "people") {
-                    val items = payload.people()
-                    val page = payload.optInt("page", nextPage)
-                    val hasMore = page * payload.optInt("limit", 24) < payload.optInt("total")
-                    mutableState.update { it.copy(people = it.people + items, hasMore = hasMore, page = page, loadingMore = false) }
-                } else {
-                    val items = payload.posts()
-                    val page = payload.optInt("page", nextPage)
-                    val hasMore = page * payload.optInt("limit", 24) < payload.optInt("total")
-                    mutableState.update { it.copy(aiPosts = it.aiPosts + items, hasMore = hasMore, page = page, loadingMore = false) }
-                }
+                val payload = repository.searchUnified(current.submittedQuery, tab, sort, nextPage, 12)
+                if (ticket != generation) return@launch
+                apply(payload, append = true)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (requestGeneration == generation) mutableState.update { it.copy(loadingMore = false, error = error.message ?: "加载更多失败") }
+                if (ticket == generation) mutableState.update { it.copy(loadingMore = false, error = error.message ?: "加载更多失败") }
             }
         }
     }
 
-    private data class SearchPayload(
-        val content: JSONObject? = null,
-        val people: JSONObject? = null,
-        val ai: JSONObject? = null,
-        val topics: List<SearchTopic> = emptyList(),
+    /** 服务端已按分类与排序返回结果，这里只做结构与去重合并。 */
+    private fun apply(payload: JSONObject, append: Boolean) {
+        val items = payload.optJSONArray("items").jsonObjects()
+        val hitPosts = items.filter { it.optString("type") == "post" }.map(::postOf)
+        val hitSeries = items.filter { it.optString("type") == "series" }.map(::seriesOf)
+        val people = payload.optJSONArray("people").jsonObjects().map(::personOf)
+        val topics = payload.optJSONArray("topics").toTopicList()
+        val counts = payload.optJSONObject("counts")
+        val page = payload.optInt("page", 1)
+        mutableState.update { state ->
+            val community = hitPosts.filter { it.channel != "ai" }
+            val ai = hitPosts.filter { it.channel == "ai" }
+            state.copy(
+                posts = if (append) state.posts + community else community,
+                aiPosts = if (append) state.aiPosts + ai else ai,
+                series = if (append) state.series + hitSeries else hitSeries,
+                people = people,
+                topics = topics,
+                counts = buildMap {
+                    listOf("featured", "ai", "series", "people", "topics", "all").forEach { key ->
+                        counts?.optInt(key)?.let { put(key, it) }
+                    }
+                },
+                loading = false,
+                loadingMore = false,
+                hasMore = payload.optBoolean("hasMore"),
+                page = page,
+            )
+        }
+    }
+
+    private fun postOf(row: JSONObject): HeikaPost = HeikaPost.from(JSONObject().apply {
+        put("id", row.optString("id"))
+        put("clientId", row.optInt("clientId"))
+        put("title", row.optString("title"))
+        put("body", row.optString("excerpt"))
+        put("channel", row.optString("channel", "community"))
+        put("tag", row.optString("tag"))
+        put("contentType", row.optString("contentType"))
+        put("author", row.optJSONObject("author")?.optString("name").orEmpty().ifBlank { "黑卡作者" })
+        put("image", row.optString("cover"))
+        put("createdAt", row.optString("createdAt"))
+        put("likeCount", row.optInt("likes"))
+    })
+
+    private fun seriesOf(row: JSONObject): SearchSeriesHit = SearchSeriesHit(
+        id = row.optString("id"),
+        title = row.optString("title"),
+        excerpt = row.optString("excerpt"),
+        cover = row.optString("cover").takeIf(String::isNotBlank),
+        kindLabel = when (row.optString("kind")) {
+            "tutorial" -> "教程"
+            "resource" -> "资源"
+            else -> "连载"
+        },
+        author = row.optJSONObject("author")?.optString("name").orEmpty().ifBlank { "黑卡作者" },
+        authorAvatar = row.optJSONObject("author")?.optString("avatar")?.takeIf { it.isNotBlank() },
+        chapters = row.optInt("chapters"),
+        bookmarks = row.optInt("bookmarks"),
+        updatedAt = row.optString("updatedAt"),
     )
 
-    private fun JSONObject.posts(): List<HeikaPost> = optJSONArray("items").jsonObjects().map(HeikaPost::from)
-
-    private fun JSONObject.people(): List<SearchPerson> = optJSONArray("items").jsonObjects().map { row ->
-        SearchPerson(
-            id = row.optString("id"),
-            name = row.optString("nickname").ifBlank { "探索者" },
-            bio = row.optString("bio"),
-            avatar = row.optString("avatar_url").takeIf(String::isNotBlank),
-        )
-    }
+    private fun personOf(row: JSONObject) = SearchPerson(
+        id = row.optString("id"),
+        name = row.optString("nickname").ifBlank { "探索者" },
+        bio = row.optString("bio"),
+        avatar = row.optString("avatar").takeIf(String::isNotBlank),
+    )
 
     private fun JSONArray.toTopicList(): List<SearchTopic> = jsonObjects().map { row ->
         SearchTopic(
             id = row.optString("id"),
             name = row.optString("name"),
-            postCount = row.optInt("postCount"),
-            participantCount = row.optInt("participantCount"),
+            postCount = row.optInt("count"),
+            participantCount = 0,
         )
-    }.filter { it.id.isNotBlank() && it.name.isNotBlank() }
+    }.filter { it.name.isNotBlank() }
+
+    private fun tabOf(kind: String) = when (kind) {
+        "content" -> "featured"
+        "series", "people", "topics", "ai" -> kind
+        else -> "all"
+    }
 
     private companion object {
-        val SEARCH_KINDS = setOf("all", "content", "people", "topics", "ai")
+        val SEARCH_KINDS = setOf("all", "content", "ai", "series", "people", "topics")
+        val SORTS = setOf("relevance", "hot", "latest", "bookmarks", "likes")
     }
 }

@@ -83,6 +83,11 @@ export async function GET(req: NextRequest) {
       const progress = user
         ? await db.from("collection_progress").select("post_id,updated_at").eq("series_id", series.id).eq("user_id", user.id).maybeSingle()
         : { data: null, error: null };
+      // 逐篇阅读记录：只有真正读过（停留/进度达标）才算已读，点开即走不算。
+      const readItems = user
+        ? await db.from("collection_read_items").select("post_id").eq("series_id", series.id).eq("user_id", user.id)
+        : { data: [], error: null };
+      const readIds = new Set(((readItems.data || []) as { post_id: string }[]).map((row) => row.post_id));
       const chapters = (items.data || []).map((row, index) => ({
         id: row.id,
         clientId: row.client_id,
@@ -94,16 +99,25 @@ export async function GET(req: NextRequest) {
         chapter: index + 1,
         date: String(row.created_at || "").slice(0, 10),
         mediaPaths: mediaByPost.get(String(row.id)) || [],
+        read: readIds.has(String(row.id)),
       }));
+      const published = chapters.filter((chapter) => chapter.status === "published");
+      const readCount = published.filter((chapter) => chapter.read).length;
+      const lastRead = progress.data ? (progress.data as { post_id: string | null }).post_id : null;
+      const nextChapter = published.find((chapter) => !chapter.read) || published[0] || null;
       return presentSeries(series, {
         isOwner,
         creator: profile.data ? { id: profile.data.id, nickname: profile.data.nickname, avatarUrl: profile.data.avatar_url } : null,
         chapters,
-        publishedCount: chapters.filter((chapter) => chapter.status === "published").length,
+        publishedCount: published.length,
         followCount: followCount.count || 0,
         following: !!following.data,
         notify: following.data ? (following.data as { notify: boolean }).notify : true,
-        progressPostId: progress.data ? (progress.data as { post_id: string | null }).post_id : null,
+        progressPostId: lastRead,
+        readCount,
+        progressPercent: published.length ? Math.round((readCount / published.length) * 100) : 0,
+        nextChapterId: nextChapter ? nextChapter.id : null,
+        lastReadAt: progress.data ? (progress.data as { updated_at: string }).updated_at : null,
       });
     }
 

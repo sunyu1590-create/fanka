@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { context, dbError, respond, ApiError } from "@/lib/server/api";
 import { libraryFeedFields, presentFeedMany, type LibraryRow } from "@/lib/server/library";
+import { recordSearch, searchAll, type SearchSort, type SearchTab } from "@/lib/server/search";
 
 type Cursor = { created_at: string; id: string };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,8 +26,23 @@ export async function GET(req: NextRequest) {
   const kindParam = params.get("kind");
   const kind = kindParam === "people" ? "people" : kindParam === "collections" ? "collections" : "content";
   const response = await respond(async () => {
-    const { db } = await context(req, false);
+    const { db, user } = await context(req, false);
     const query = (params.get("q") || "").trim().replace(/[%,_()."\\*,]/g, "").slice(0, 60);
+
+    // 统一搜索：综合 / 精选 / AI / 合集 / 用户 / 话题 + 排序。旧版 kind 参数继续兼容原生端。
+    if (params.get("mode") === "unified") {
+      const tab = (["all", "featured", "ai", "series", "people", "topics"].includes(params.get("tab") || "") ? params.get("tab") : "all") as SearchTab;
+      const sort = (["relevance", "hot", "latest", "updated", "bookmarks", "likes"].includes(params.get("sort") || "") ? params.get("sort") : "relevance") as SearchSort;
+      const payload = await searchAll(db, {
+        query,
+        tab,
+        sort,
+        page: Math.max(1, Math.min(200, Number(params.get("page")) || 1)),
+        limit: Math.max(4, Math.min(24, Number(params.get("limit")) || 12)),
+      });
+      if (query) await recordSearch(query, user?.id || null, payload.counts.all);
+      return payload;
+    }
     const page = Math.max(1, Math.min(10000, Number(params.get("page")) || 1));
     const limit = Math.max(1, Math.min(24, Number(params.get("limit")) || 12));
     if (query.length < 1) return { kind, items: [], total: 0, has_more: false, next_cursor: null, page, limit };

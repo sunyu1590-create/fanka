@@ -21,4 +21,4 @@ function rewriteStorage(value:unknown):unknown{
   if(value&&typeof value==='object'){const out:Record<string,unknown>={};for(const [key,item] of Object.entries(value as Record<string,unknown>))out[key]=rewriteStorage(item);return out}
   return value;
 }
-export function respond(fn:()=>Promise<unknown>){return fn().then(data=>NextResponse.json({data:rewriteStorage(data)})).catch(error=>NextResponse.json({error:error instanceof ApiError?error.message:'服务器内部错误'},{status:error instanceof ApiError?error.status:500}))}
+export function respond(fn:()=>Promise<unknown>){return fn().then(data=>NextResponse.json({data:rewriteStorage(data)})).catch(error=>{if(!(error instanceof ApiError))console.error('[api]',error);return NextResponse.json({error:error instanceof ApiError?error.message:'服务器内部错误'},{status:error instanceof ApiError?error.status:500})})}

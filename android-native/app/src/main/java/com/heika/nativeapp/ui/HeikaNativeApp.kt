@@ -257,6 +257,9 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onAiResources = { nav.navigate("ai-resources") },
                         onOpenMall = { nav.navigate("mall") },
+                        onOpenSeries = { id -> nav.navigate("collection/${Uri.encode(id)}") },
+                        onOpenPostById = { id -> openDestination(HeikaDestination.CommunityPost(id.toIntOrNull() ?: 0, id)) },
+                        onLogin = { nav.navigate("account") },
                         onPost = openPost,
                         hazeState = hazeState,
                         sharedTransitionScope = sharedTransitionScope,
@@ -313,6 +316,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onBack = { nav.popBackStack() },
                         onPost = openPost,
                         onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
+                        onSeries = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
                         sharedElementsEnabled = pageTransition == "shared",
@@ -376,6 +380,11 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         sharedElementsEnabled = pageTransition == "shared",
                         onOpenCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         onOpenChapter = { key -> nav.navigate("post/${Uri.encode(key)}") },
+                        onOpenPostById = { id -> nav.navigate("post/${Uri.encode(id)}") },
+                        onOpenTopic = { name ->
+                            com.heika.nativeapp.feature.search.SearchIntent.send(name)
+                            nav.navigate("search")
+                        },
                     )
                 }
                 composable(

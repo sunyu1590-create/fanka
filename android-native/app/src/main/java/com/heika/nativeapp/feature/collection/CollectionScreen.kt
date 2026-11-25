@@ -39,7 +39,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -280,22 +282,43 @@ private fun ReadBody(
     onToggleNotify: (Boolean) -> Unit,
     onOpenChapter: (HeikaChapter) -> Unit,
 ) {
+    // 目录顺序与展开量只影响展示：服务端返回的章节顺序永远是真实阅读顺序。
+    var descending by rememberSaveable(collection.id) { mutableStateOf(false) }
+    var tocLimit by rememberSaveable(collection.id) { mutableIntStateOf(12) }
+    val ordered = remember(collection.chapters, descending) {
+        if (descending) collection.chapters.reversed() else collection.chapters
+    }
+    val visible = ordered.take(tocLimit)
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 120.dp),
     ) {
         item { CollectionSummary(collection, imageLoader, onAuthor) }
         item { CollectionActions(collection, busy, onResume = onResume, onToggleFollow = onToggleFollow, onToggleNotify = onToggleNotify, onManage = onManage) }
+        if (collection.publishedCount > 0) item { ReadingProgress(collection) }
         reviewNoteOrState(collection)?.let { note ->
             item { ReviewStrip(note.title, note.text, note.tone) }
         }
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("章节目录", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("目录", color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.width(6.dp))
-                Text("${collection.publishedCount} 章已发布", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text("${collection.publishedCount} 章 · 已读 ${collection.readCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                 Spacer(Modifier.weight(1f))
-                if (collection.status == "completed") Text("已完结", color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
+                if (collection.status == "completed") Text("已完结", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp)
+                if (collection.chapters.size > 1) {
+                    Spacer(Modifier.width(8.dp))
+                    Row(
+                        Modifier.clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f))
+                            .clickable { descending = !descending }
+                            .padding(horizontal = 9.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text(if (descending) "倒序 ↓" else "正序 ↑", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
+                    }
+                }
             }
         }
         if (collection.chapters.isEmpty()) {
@@ -308,8 +331,8 @@ private fun ReadBody(
                 )
             }
         }
-        items(collection.chapters.size, key = { collection.chapters[it].id }) { index ->
-            val chapter = collection.chapters[index]
+        items(visible.size, key = { visible[it].id }) { index ->
+            val chapter = visible[index]
             ChapterRow(
                 chapter = chapter,
                 active = chapter.id == collection.progressPostId,
@@ -321,6 +344,50 @@ private fun ReadBody(
                 onToggleMenu = {},
                 onMove = {},
                 onRemove = {},
+            )
+        }
+        if (ordered.size > tocLimit) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
+                        .clip(RoundedCornerShape(HeikaRadii.chip))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .4f))
+                        .clickable { tocLimit += 24 }
+                        .padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("展开剩余 ${ordered.size - tocLimit} 章", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                }
+            }
+        }
+    }
+}
+
+/** 阅读进度：只展示真实已读章节数，未开始阅读时不占位。 */
+@Composable
+private fun ReadingProgress(collection: HeikaCollection) {
+    val percent = collection.progressPercent.coerceIn(0, 100)
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (percent == 0) "还没开始读" else "已读 ${collection.readCount}/${collection.publishedCount} 章",
+                Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp,
+            )
+            Text("$percent%", color = if (percent == 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Box(
+            Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)),
+        ) {
+            Box(
+                Modifier.fillMaxWidth(percent / 100f).height(3.dp).clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primary),
             )
         }
     }
@@ -697,6 +764,8 @@ private fun ChapterRow(
                         )
                     } else if (active) {
                         Text("读到这", color = MaterialTheme.colorScheme.primary, fontSize = 8.sp)
+                    } else if (chapter.read) {
+                        Text("已读", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 8.sp)
                     }
                 }
                 if (chapter.excerpt.isNotBlank()) {

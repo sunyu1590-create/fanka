@@ -65,6 +65,8 @@ const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
 import RecoveryCodesPage from "./RecoveryCodesPage";
 import SeriesChapterNav from "./SeriesChapterNav";
+import RelatedContent from "./RelatedContent";
+import PostReadTracker from "./PostReadTracker";
 import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelcomePage";
 import { FollowedTopicsSettings, TopicFollowButton, PostPoll, PrivateHighlights, RecommendationControls } from "./InteractiveDiscovery";
 const AccountProfile = dynamic(() => import("./AccountProfile"), { loading: () => <div className="empty">正在加载…</div> });
@@ -124,7 +126,9 @@ const CacheManager = dynamic(() => import("./CacheManager"));
 const FeedbackForm = dynamic(() => import("./FeedbackForm"));
 const FeedbackAdmin = dynamic(() => import("./FeedbackAdmin"));
 const NotificationSettings = dynamic(() => import("./NotificationSettings"));
+import SearchPage from "./SearchPage";
 const AISpace = dynamic(() => import("./AISpace"), { loading: () => <div className="empty">正在加载 AI 空间…</div> });
+const SeriesChannel = dynamic(() => import("./SeriesChannel"), { loading: () => <div className="empty">正在加载合集…</div> });
 const CollectionView = dynamic(() => import("./CollectionView"), { loading: () => <div className="empty">正在加载合集…</div> });
 const AIResourceDetails = dynamic(() => import("./AIResourceDetails"));
 const DetailAside = dynamic(() => import("./DetailAside"), { ssr: false });
@@ -519,11 +523,11 @@ export default function Community({
     viewerStageRef = useRef<HTMLDivElement | null>(null),
     loadMoreRef = useRef<HTMLDivElement | null>(null),
     scrollPositions = useRef<Record<string, number>>({});
-  const discoverScrollPositions = useRef<Record<"community" | "ai" | "mall", number>>({ community: 0, ai: 0, mall: 0 });
+  const discoverScrollPositions = useRef<Record<"community" | "ai" | "series" | "mall", number>>({ community: 0, ai: 0, series: 0, mall: 0 });
   const discoverChannelBusy = useRef(false);
-  const queuedDiscoverChannel = useRef<"community" | "ai" | "mall" | null>(null);
+  const queuedDiscoverChannel = useRef<"community" | "ai" | "series" | "mall" | null>(null);
   const discoverChannelTimer = useRef<number | null>(null);
-  const switchDiscoverChannelRef = useRef<(next: "community" | "ai" | "mall") => void>(() => {});
+  const switchDiscoverChannelRef = useRef<(next: "community" | "ai" | "series" | "mall") => void>(() => {});
   const sharedPostHandled = useRef<string | null>(null);
   const sharedProfileHandled = useRef<string | null>(null);
   const searchCursorRef = useRef<string | null>(null);
@@ -724,8 +728,8 @@ export default function Community({
     >(null),
     [justFlippedId, setJustFlippedId] = useState<number | null>(null),
     [category, setCategory] = useState("全部"),
-    [discoverChannel, setDiscoverChannel] = useState<"community" | "ai" | "mall">("community"),
-    [outgoingDiscoverChannel, setOutgoingDiscoverChannel] = useState<"community" | "ai" | "mall" | null>(null),
+    [discoverChannel, setDiscoverChannel] = useState<"community" | "ai" | "series" | "mall">("community"),
+    [outgoingDiscoverChannel, setOutgoingDiscoverChannel] = useState<"community" | "ai" | "series" | "mall" | null>(null),
     [discoverChannelPhase, setDiscoverChannelPhase] = useState<"primed" | "running" | null>(null),
     [searchDraft, setSearchDraft] = useState(""),
     [searchTerm, setSearchTerm] = useState(""),
@@ -1646,41 +1650,6 @@ export default function Community({
       if (Array.isArray(saved)) setSearchRecent(saved.filter((item): item is string => typeof item === "string").slice(0, 8));
     } catch {}
   }, []);
-  useEffect(() => {
-    if (tab !== "search" || !searchTerm) return;
-    const controller = new AbortController();
-    setSearchLoading(true);
-    setSearchError("");
-    const cursor = searchKind === "content" && searchPage > 1 && searchCursorRef.current
-      ? `&cursor=${encodeURIComponent(searchCursorRef.current)}`
-      : "";
-    const url = `/api/v1/search?q=${encodeURIComponent(searchTerm)}&kind=${searchKind}&page=${searchPage}&limit=12${cursor}`;
-    void fetch(url, { signal: controller.signal, cache: "default" })
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok || !Array.isArray(result.data?.items)) throw new Error(result.error || "搜索失败，请重试");
-        const items = result.data.items as (Post | SearchPerson)[];
-        if (searchKind === "content") {
-          searchCursorRef.current = result.data.next_cursor || null;
-          setSearchHasMore(Boolean(result.data.has_more));
-          setSearchPosts((current) => searchPage === 1 ? items as Post[] : [...current, ...(items as Post[])]);
-        } else if (searchKind === "collections") {
-          setSearchTotal(result.data.total || 0);
-          setSearchHasMore(false);
-          const rows = result.data.items as Array<{ id: string; title: string; description: string; cover_url: string | null; kind: string; channel: string; updated_at: string }>;
-          setSearchCollections((current) => searchPage === 1 ? rows : [...current, ...rows]);
-        } else {
-          setSearchTotal(result.data.total || 0);
-          setSearchHasMore(false);
-          setSearchPeople((current) => searchPage === 1 ? items as SearchPerson[] : [...current, ...(items as SearchPerson[])]);
-        }
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setSearchError(error instanceof Error ? error.message : "搜索失败，请重试");
-      })
-      .finally(() => { if (!controller.signal.aborted) setSearchLoading(false); });
-    return () => controller.abort();
-  }, [tab, searchTerm, searchKind, searchPage, searchRetry]);
   const update = (fn: (s: State) => State) => setState((s) => fn({ ...s }));
   const openSettingsDetail = (detail: SettingsDetail | "feedbackAdmin", returnTab: "settings" | "mine" = "settings") => {
     scrollPositions.current[returnTab] = window.scrollY;
@@ -3912,7 +3881,7 @@ export default function Community({
       setDetail(postId); setDetailReady(true); setTransitionPhase(null); setTopicReturnPostId(null);
     }
   };
-  const switchDiscoverChannel = (next: "community" | "ai" | "mall") => {
+  const switchDiscoverChannel = (next: "community" | "ai" | "series" | "mall") => {
     if (discoverChannelBusy.current) {
       queuedDiscoverChannel.current = next;
       return;
@@ -3946,6 +3915,16 @@ export default function Community({
     }, 260);
   };
   switchDiscoverChannelRef.current = switchDiscoverChannel;
+  // 从首页/消息等页面点顶部「AI 专区」「合集」时只会排队一个目标频道，
+  // 这里在真正进入发现页后消费它，否则按钮看起来点了没反应。
+  useEffect(() => {
+    if (tab !== "discover") return;
+    const queued = queuedDiscoverChannel.current;
+    if (!queued) return;
+    queuedDiscoverChannel.current = null;
+    const frame = requestAnimationFrame(() => switchDiscoverChannelRef.current(queued));
+    return () => cancelAnimationFrame(frame);
+  }, [tab]);
   useEffect(() => () => {
     if (discoverChannelTimer.current !== null) window.clearTimeout(discoverChannelTimer.current);
   }, []);
@@ -4037,6 +4016,20 @@ export default function Community({
       else openPost(post.id, "discover", null, post);
     } catch {
       toast("这一章暂时无法打开，请稍后重试");
+    }
+  };
+  // 搜索结果只有云端 id：先取完整作品再按普通详情打开，避免用不完整对象渲染正文。
+  const openSearchPost = async (cloudId: string, source: Element | null) => {
+    try {
+      const response = await fetch(`/api/v1/posts/${encodeURIComponent(cloudId)}`, { cache: "no-store" });
+      const result = await response.json();
+      const post = result?.data as Post | undefined;
+      if (!response.ok || !post || typeof post.id !== "number") throw new Error("unavailable");
+      setPublicFeed((current) => current.some((item) => item.id === post.id) ? current : [...current, post]);
+      if (detail !== null) switchDetailChapter(post);
+      else openPost(post.id, "discover", source, post);
+    } catch {
+      toast("这篇内容暂时不可用");
     }
   };
   const openAiPost = (item: Post, source: Element | null) => {
@@ -5398,8 +5391,9 @@ export default function Community({
           )}
           <nav className="dtb-nav" aria-label="主入口">
             <button type="button" className={tab === "today" ? "active" : ""} aria-current={tab === "today" ? "page" : undefined} onClick={() => leaveDetailThen(() => { setTab("today"); requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" })); })}>首页</button>
-            <button type="button" className={tab === "discover" && discoverChannel !== "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel !== "ai" ? "page" : undefined} onClick={() => leaveDetailThen(() => { if (tab !== "discover") setTab("discover"); if (discoverChannel === "ai") switchDiscoverChannel("community"); })}>发现</button>
+            <button type="button" className={tab === "discover" && discoverChannel !== "ai" && discoverChannel !== "series" ? "active" : ""} aria-current={tab === "discover" && discoverChannel !== "ai" && discoverChannel !== "series" ? "page" : undefined} onClick={() => leaveDetailThen(() => { if (tab !== "discover") setTab("discover"); if (discoverChannel === "ai") switchDiscoverChannel("community"); })}>发现</button>
             <button type="button" className={tab === "discover" && discoverChannel === "ai" ? "active" : ""} aria-current={tab === "discover" && discoverChannel === "ai" ? "page" : undefined} onClick={() => leaveDetailThen(() => { if (tab !== "discover") { setTab("discover"); queuedDiscoverChannel.current = "ai"; } else if (discoverChannel !== "ai") switchDiscoverChannel("ai"); })}>AI 专区</button>
+            <button type="button" className={tab === "discover" && discoverChannel === "series" ? "active" : ""} aria-current={tab === "discover" && discoverChannel === "series" ? "page" : undefined} onClick={() => leaveDetailThen(() => { if (tab !== "discover") { setTab("discover"); queuedDiscoverChannel.current = "series"; } else if (discoverChannel !== "series") switchDiscoverChannel("series"); })}>合集</button>
             <button type="button" className={tab === "messages" ? "active" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => leaveDetailThen(() => setTab("messages"))}>消息<InboxBadge enabled={state.notifications.messages} inAppEnabled={tab !== "messages"} onNotice={toast} onOpenConversationPeer={(peerId) => { setMessagePeer(peerId); setTab("messages"); }} /></button>
           </nav>
           <form className="dtb-search" role="search" onSubmit={(event) => { event.preventDefault(); const value = desktopSearch.trim(); if (!value) return; setSearchReturnTab(tab === "discover" ? "discover" : "today"); leaveDetailThen(() => { submitSearch(value); setTab("search"); }); }}>
@@ -5435,6 +5429,7 @@ export default function Community({
         {tab === "discover" && !secondaryTitle ? <div className="discover-channel-tabs topline-channel-tabs" role="tablist" aria-label="发现频道">
             <button type="button" role="tab" aria-selected={discoverChannel === "community"} className={discoverChannel === "community" ? "selected" : ""} onClick={() => switchDiscoverChannel("community")}><span>精选</span></button>
             <button type="button" role="tab" aria-selected={discoverChannel === "ai"} className={discoverChannel === "ai" ? "selected ai-channel-active" : ""} onClick={() => switchDiscoverChannel("ai")}><span><Sparkles size={13} aria-hidden="true"/>AI</span></button>
+            <button type="button" role="tab" aria-selected={discoverChannel === "series"} className={discoverChannel === "series" ? "selected" : ""} onClick={() => switchDiscoverChannel("series")}><span>合集</span></button>
             <button type="button" role="tab" aria-selected={discoverChannel === "mall"} className={discoverChannel === "mall" ? "selected" : ""} onClick={() => switchDiscoverChannel("mall")}><span>商城</span></button>
           </div> : null}</>}
         <div className="topline-end-actions">
@@ -5533,58 +5528,16 @@ export default function Community({
           )}
         </section>
       )}
-      {tab === "search" && (
-        <section className="page search-page" aria-label="搜索结果">
-          <form className="search-page-form" role="search" onSubmit={(event) => { event.preventDefault(); submitSearch(); }}>
-            <label className="search-page-field">
-              <Search size={18} aria-hidden="true" />
-              <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜内容、昵称或兴趣" aria-label="搜索内容或用户" maxLength={60} autoComplete="off" />
-              {searchDraft && <button type="button" aria-label="清除搜索词" onClick={() => { setSearchDraft(""); setSearchTerm(""); setSearchPosts([]); setSearchPeople([]); setSearchTotal(0); setSearchHasMore(false); searchCursorRef.current = null; }}><X size={16}/></button>}
-            </label>
-            <button className="search-page-submit" type="submit" disabled={!searchDraft.trim()}>搜索</button>
-          </form>
-          {searchTerm ? <>
-            <div className="search-result-toolbar">
-              <div className="search-result-tabs" role="tablist" aria-label="搜索范围">
-                {([ ["content", "内容"], ["collections", "合集"], ["people", "用户"] ] as const).map(([kind, label]) => <button key={kind} role="tab" aria-selected={searchKind === kind} className={searchKind === kind ? "selected" : ""} onClick={() => { setSearchKind(kind); setSearchPage(1); searchCursorRef.current = null; setSearchTotal(0); setSearchHasMore(false); setSearchPosts([]); setSearchPeople([]); setSearchCollections([]); setSearchError(""); }}>{label}</button>)}
-              </div>
-              <small>{searchLoading && searchPage === 1 ? "正在搜索" : searchKind === "content" ? `已加载 ${searchPosts.length} 条${searchHasMore ? "" : "结果"}` : `${searchTotal} 条结果`}</small>
-            </div>
-            {searchError && <div className="search-state search-error"><span>{searchError}</span><button onClick={() => setSearchRetry((n) => n + 1)}>重试</button></div>}
-            {searchKind === "content" ? <div className="search-post-results" role="tabpanel">
-              {searchPosts.map((item) => <button className="search-post-result" key={item.id} onClick={(event) => openPost(item.id, "discover", event.currentTarget)}>
-                <span className="search-post-thumbnail">{item.image && <img src={item.image} srcSet={item.imageRetina ? `${item.image} 480w, ${item.imageRetina} 960w` : undefined} sizes="72px" alt="" loading="lazy" decoding="async" onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}/>}<small>{item.tag}</small></span>
-                <span className="search-post-copy"><strong>{item.title}</strong><span>{markdownToText(item.body).slice(0, 96)}</span><small>{item.author} · {item.date}</small></span>
-                <ChevronRight size={17}/>
-              </button>)}
-              {!searchLoading && !searchError && !searchPosts.length && <div className="search-state">没有找到相关内容，试试更短的关键词。</div>}
-              {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
-              {searchHasMore && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多内容"}</button>}
-            </div> : searchKind === "collections" ? <div className="search-collection-results" role="tabpanel">
-              {searchCollections.map((collection) => <button className="search-post-result" key={collection.id} onClick={() => openCollection(collection.id)}>
-                <span className="search-post-thumbnail">{collection.cover_url ? <img src={collection.cover_url} alt="" loading="lazy"/> : <small>合集</small>}</span>
-                <span className="search-post-copy"><strong>{collection.title}</strong><span>{collection.description || "持续更新中"}</span><small>{collection.kind === "serial" ? "连载" : collection.kind === "tutorial" ? "教程" : "资源"} · {collection.channel === "ai" ? "AI 专区" : "精选"}</small></span>
-                <ChevronRight size={17}/>
-              </button>)}
-              {!searchLoading && !searchError && !searchCollections.length && <div className="search-state">没有找到相关合集。</div>}
-              {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
-            </div> : <div className="search-people-results" role="tabpanel">
-              {searchPeople.map((person) => <button className="search-person-result" key={person.id} onClick={() => setAuthorProfile(person.id)}>
-                <span className="search-person-avatar"><span>{(person.nickname || "探").slice(0, 1)}</span>{person.avatar_url && <img src={person.avatar_url} alt="" loading="lazy" onError={(event) => { event.currentTarget.dataset.failed = "true"; }}/>}</span>
-                <span className="search-person-copy"><strong>{person.nickname || "探索者"}</strong><small>{person.bio || "还没有填写简介"}</small></span>
-                <ChevronRight size={17}/>
-              </button>)}
-              {!searchLoading && !searchError && !searchPeople.length && <div className="search-state">没有找到相关用户，试试昵称或兴趣关键词。</div>}
-              {searchLoading && searchPage === 1 && <div className="search-skeleton-list"><i/><i/><i/></div>}
-              {searchPeople.length < searchTotal && <button className="search-more-button" disabled={searchLoading} onClick={() => setSearchPage((page) => page + 1)}>{searchLoading ? "正在加载…" : "加载更多用户"}</button>}
-            </div>}
-          </> : <div className="search-suggestions">
-            {!!searchRecent.length && <section><div className="search-suggestion-heading"><strong>最近搜索</strong><button onClick={() => { setSearchRecent([]); localStorage.removeItem("heika-search-recent"); }}>清除</button></div><div className="search-suggestion-chips">{searchRecent.map((term) => <button key={term} onClick={() => { setSearchDraft(term); submitSearch(term); }}>{term}</button>)}</div></section>}
-            <section><div className="search-suggestion-heading"><strong>热门话题</strong><span>精选</span></div><div className="search-suggestion-chips topic-suggestions">{topicChoices.slice(0, 8).map((topic) => <button key={topic.id} onClick={() => { setSearchDraft(topic.name); submitSearch(topic.name); }}>#{topic.name}</button>)}</div></section>
-            <p>搜索内容标题、正文，也可以查找用户昵称和兴趣。</p>
-          </div>}
-        </section>
-      )}
+      {tab === "search" && <SearchPage
+        query={searchTerm}
+        accountId={accountId}
+        onBack={closeSearch}
+        onSearch={(term) => submitSearch(term)}
+        onOpenPost={(cloudId, source) => void openSearchPost(cloudId, source)}
+        onOpenSeries={(seriesId) => openCollection(seriesId)}
+        onOpenPerson={(personId) => setAuthorProfile(personId)}
+        onOpenTopic={(name) => { setSearchDraft(name); submitSearch(name); }}
+      />}
       {tab === "discover" && (
         <section className="page editorial-home discover-page">
           
@@ -5665,7 +5618,13 @@ export default function Community({
           {feed(list)}
           </div>
           <div className={`discover-ai-channel discover-channel-panel${discoverChannel === "ai" ? " is-active" : ""}${outgoingDiscoverChannel === "ai" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "ai" && outgoingDiscoverChannel !== "ai"}>
-            <AISpace accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}/>
+            <AISpace accountId={accountId} onOpen={openAiPost} onLogin={() => setTab("messages")} onNotice={toast}
+              onOpenPostById={(cloudId) => void openSearchPost(cloudId, null)}
+              onOpenSeries={(seriesId) => openCollection(seriesId)}
+              onOpenSeriesChannel={() => switchDiscoverChannel("series")} />
+          </div>
+          <div className={`discover-series-channel discover-channel-panel${discoverChannel === "series" ? " is-active" : ""}${outgoingDiscoverChannel === "series" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "series" && outgoingDiscoverChannel !== "series"}>
+            <SeriesChannel accountId={accountId} onOpenSeries={(seriesId) => openCollection(seriesId)} onLogin={() => setTab("messages")} />
           </div>
           <div className={`discover-mall-channel discover-channel-panel${discoverChannel === "mall" ? " is-active" : ""}${outgoingDiscoverChannel === "mall" ? " is-outgoing" : ""}`} hidden={discoverChannel !== "mall" && outgoingDiscoverChannel !== "mall"}>
             <div className="mall-shell">
@@ -6410,6 +6369,7 @@ export default function Community({
                   </div>
                 </header>
                 <div className="detail-scroll" key={post.id}>
+                  {post.cloudId && <PostReadTracker key={post.cloudId} postId={post.cloudId} seriesId={post.seriesId} />}
                   <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`}>
                     <nav className="detail-rail" aria-label="作品操作栏">
                       <button type="button" className={`detail-rail-button${state.liked?.includes(post.id) ? " selected" : ""}`} aria-pressed={!!state.liked?.includes(post.id)} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} disabled={likeBusy} onClick={toggleDetailLike}>
@@ -6526,6 +6486,13 @@ export default function Community({
                       postId={post.cloudId}
                       onOpen={(chapterId) => void openCollectionChapter({ id: chapterId })}
                       onOpenCollection={openCollectionFromDetail}
+                    />}
+                    {post.cloudId && <RelatedContent
+                      key={`related-${post.cloudId}`}
+                      postId={post.cloudId}
+                      onOpenPost={(cloudId) => void openSearchPost(cloudId, null)}
+                      onOpenSeries={(seriesId) => openCollectionFromDetail(seriesId)}
+                      onOpenTopic={(name) => void openTopic(name)}
                     />}
                     <section id="detail-comments" className="detail-comments">
                       <div className="comments-heading">

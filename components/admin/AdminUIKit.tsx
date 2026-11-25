@@ -24,6 +24,7 @@ export const ADMIN_HUB_GROUPS: Record<Exclude<AdminTab, "overview">, Array<{ tit
     { title: "运行状态", items: ["system-monitor", "media-service", "storage", "alerts"] },
   ],
   manage: [
+    { title: "内容分发", items: ["distribution"] },
     { title: "社区治理", items: ["reports", "messages", "appeals", "comments", "keywords"] },
     { title: "用户与运营", items: ["users", "membership", "community-access", "topic-events", "official-notices", "exploration-ad"] },
     { title: "AI 与模型", items: ["ai-space", "ai-resource-center", "ai-usage", "ai-settings"] },
@@ -62,6 +63,7 @@ export const ADMIN_TITLES: Record<string, string> = {
   "ai-settings": "AI 服务",
   audit: "操作记录",
   "app-download": "版本发布",
+  distribution: "内容分发",
 };
 
 export const ADMIN_HUB_DESC: Record<Exclude<AdminTab, "overview">, string> = {
@@ -74,6 +76,7 @@ export function tabOfSection(section: string): AdminTab {
   if (section === "overview" || section === "review" || section === "monitor" || section === "manage") return section;
   if (["ai-review", "content", "decor-review", "ai-batch", "ai-classify"].includes(section)) return "review";
   if (["system-monitor", "media-service", "storage", "alerts"].includes(section)) return "monitor";
+  if (section === "distribution") return "manage";
   return "manage";
 }
 

@@ -148,6 +148,8 @@ fun PostDetailScreen(
     sharedElementsEnabled: Boolean,
     onOpenCollection: (String) -> Unit = {},
     onOpenChapter: (String) -> Unit = {},
+    onOpenPostById: (String) -> Unit = {},
+    onOpenTopic: (String) -> Unit = {},
     hazeState: HazeState? = null,
     viewModel: PostDetailViewModel = hiltViewModel(),
 ) {
@@ -480,6 +482,12 @@ fun PostDetailScreen(
                                 if (nextKey != null) ChapterNavButton("下一章", nextKey, Modifier.weight(1f), onOpenChapter)
                             }
                         }
+                        RelatedBlocks(
+                            related = state.related,
+                            onOpenPost = onOpenPostById,
+                            onOpenSeries = onOpenCollection,
+                            onOpenTopic = onOpenTopic,
+                        )
                         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             Icon(HeikaIcons.Comment, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
                             Text("评论 ${state.comments.size}", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)

@@ -1423,6 +1423,101 @@ class HeikaRepository @Inject constructor(
         HeikaCollection.from(payload)
     }
 
+    /** 合集频道：分区、分类、排序与分页都由服务端按真实数据裁剪，前端不补假数据。 */
+    suspend fun seriesDiscover(
+        sort: String = "recommended",
+        category: Int? = null,
+        channel: String? = null,
+        page: Int = 1,
+        limit: Int = 18,
+    ): HeikaSeriesDiscover = withContext(Dispatchers.IO) {
+        val params = buildList {
+            add("sort=$sort")
+            add("page=$page")
+            add("limit=$limit")
+            category?.let { add("category=$it") }
+            channel?.takeIf(String::isNotBlank)?.let { add("channel=$it") }
+        }
+        val payload = request("/api/v1/series/discover?" + params.joinToString("&"), includeSession = true) as? JSONObject
+            ?: throw IOException("合集频道暂不可用")
+        HeikaSeriesDiscover.from(payload)
+    }
+
+    /** 正文后的关联内容：真实关联，不做随机填充。 */
+    suspend fun postRelated(postId: String): HeikaRelated = withContext(Dispatchers.IO) {
+        val payload = request("/api/v1/posts/${encode(postId)}/related", includeSession = true) as? JSONObject
+            ?: JSONObject()
+        relatedFrom(payload)
+    }
+
+    /** 榜单快照读取：服务端已做缓存与降级，这里只取当前快照。 */
+    suspend fun rankings(keys: String = "global,ai,series,rising,long"): Map<String, List<HeikaRankItem>> =
+        withContext(Dispatchers.IO) {
+            val payload = request("/api/v1/rankings?keys=$keys", includeSession = true) as? JSONObject
+                ?: return@withContext emptyMap()
+            rankingsFrom(payload)
+        }
+
+    /** 推荐：surface=series 返回合集，surface=ai|discover 返回作品。 */
+    suspend fun recommendationSeries(limit: Int = 8): List<HeikaSeriesCard> = withContext(Dispatchers.IO) {
+        val payload = request("/api/v1/recommendations?surface=series&limit=$limit", includeSession = true) as? JSONObject
+            ?: return@withContext emptyList()
+        recommendationSeriesFrom(payload)
+    }
+
+    suspend fun recommendationPosts(surface: String = "ai", limit: Int = 6): List<HeikaRelatedPost> =
+        withContext(Dispatchers.IO) {
+            val payload = request("/api/v1/recommendations?surface=$surface&limit=$limit", includeSession = true) as? JSONObject
+                ?: return@withContext emptyList()
+            recommendationPostsFrom(payload)
+        }
+
+    /** 统一搜索：综合 / 精选 / AI / 合集 / 用户 / 话题共用一次召回与相关性排序。 */
+    suspend fun searchUnified(
+        query: String,
+        tab: String = "all",
+        sort: String = "relevance",
+        page: Int = 1,
+        limit: Int = 12,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val params = buildList {
+            add("mode=unified")
+            add("q=${encode(query)}")
+            add("tab=$tab")
+            add("sort=$sort")
+            add("page=$page")
+            add("limit=$limit")
+        }
+        request("/api/v1/search?" + params.joinToString("&"), includeSession = true) as? JSONObject
+            ?: JSONObject()
+    }
+
+    /** 搜索联想：服务端已去重、纠正前缀错字，并做过异常词过滤。 */
+    suspend fun searchSuggest(query: String): HeikaSuggestions = withContext(Dispatchers.IO) {
+        val payload = request("/api/v1/search/suggest?q=${encode(query)}", includeSession = true) as? JSONObject
+            ?: return@withContext HeikaSuggestions(query)
+        val items = payload.optJSONArray("items")
+        HeikaSuggestions(
+            query = payload.optString("query", query),
+            items = (0 until (items?.length() ?: 0)).mapNotNull { index -> items?.optString(index)?.takeIf(String::isNotBlank) },
+            corrected = payload.optString("corrected").takeIf(String::isNotBlank),
+        )
+    }
+
+    /** 搜索点击回执：用于搜索分析与热搜可信度，失败不打扰用户。 */
+    suspend fun recordSearchClick(term: String, entityType: String, entityId: String) = withContext(Dispatchers.IO) {
+        runCatching {
+            request(
+                "/api/v1/events",
+                method = "POST",
+                body = JSONObject().put("type", "search_click").put("query", term)
+                    .put("entityType", entityType).put("entityId", entityId).toString(),
+                includeSession = true,
+            )
+        }
+        Unit
+    }
+
     /** 作者合集列表；scope=all 时作者本人可见未过审合集。 */
     suspend fun creatorCollections(creatorId: String? = null, scope: String? = null): List<HeikaCollection> = withContext(Dispatchers.IO) {
         val params = buildList {
