@@ -41,9 +41,13 @@ export async function GET(req: NextRequest) {
     ]);
     dbError(latestError);
     dbError(alertError);
+    // request-metrics 里的 error_rate 是百分数（0-100），管理端统一按 0-1 小数渲染，
+    // 在接口层换算一次，避免 0.44% 被显示成 44.0%。
+    const rawLive = requestMetricsSnapshot();
+    const asRatio = (window: typeof rawLive.m1) => ({ ...window, error_rate: Number(window.error_rate) / 100 });
     return {
       current: latest || null,
-      live_requests: requestMetricsSnapshot(),
+      live_requests: { ...rawLive, m1: asRatio(rawLive.m1), m5: asRatio(rawLive.m5), m15: asRatio(rawLive.m15) },
       open_alerts: alertRows || [],
       has_history: Boolean(latest),
     };

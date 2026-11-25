@@ -199,7 +199,9 @@ async function build(db: SupabaseClient): Promise<RealtimeSnapshot> {
     requests: Number(liveRaw.m1?.requests || 0),
     avg_ms: liveRaw.m1?.avg_ms ?? null,
     p95_ms: liveRaw.m1?.p95_ms ?? null,
-    error_rate: liveRaw.m1?.error_rate ?? null,
+    // request-metrics 的 error_rate 是百分数（0-100），前端按 0-1 小数渲染，这里换算一次，
+    // 否则 0.44% 会被显示成 44.0%。
+    error_rate: liveRaw.m1?.error_rate == null ? null : Number(liveRaw.m1.error_rate) / 100,
   };
   const revision = hash(JSON.stringify([
     counts,
