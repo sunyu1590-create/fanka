@@ -91,7 +91,8 @@ await withPage(async (page) => {
   // 4) 系统告警
   await nav(page, "监控");
   await row(page, "系统告警");
-  await inspectFolds(page, "系统告警");
+  await seg(page, "告警筛选", "全部");
+  await inspectFolds(page, "系统告警/全部");
 });
 
 await withPage(async (page) => {
@@ -100,10 +101,10 @@ await withPage(async (page) => {
   await row(page, "资源管理");
   await seg(page, "资源管理视图", "资源列表");
   // 设置筛选：切换到「孤立」
-  const segs = page.locator('[role="tablist"]').filter({ hasText: /全部|孤立|临时/ }).first();
+  const segs = page.locator('[role="tablist"][aria-label="引用状态"]').first();
   if (await segs.count()) {
     await segs.locator("button:visible").filter({ hasText: /^孤立/ }).first().click();
-    await page.waitForTimeout(1600);
+    await page.waitForTimeout(1800);
   }
   const before = await page.evaluate(() => ({
     rows: document.querySelectorAll("button.ab-item").length,

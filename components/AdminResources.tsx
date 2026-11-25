@@ -155,6 +155,14 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
     finally { setBusy(""); }
   };
 
+  // 进入健康检查就自动算一次实时健康度：heika_storage_health 是只读函数，
+  // 342 个对象实测 53 ms，不需要用户先点按钮才知道有没有孤立文件。
+  useEffect(() => {
+    if (tab !== "health" || health) return;
+    void loadHealth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, health]);
+
   const cleanup = async () => {
     const targets = (health?.orphans || []).filter((row) => selected.includes(`${row.bucket}/${row.name}`));
     if (!targets.length) { setError("请先选择要清理的孤立资源"); return; }
@@ -324,7 +332,7 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
               {/* 服务器状态与「系统健康」「系统监控」同源，避免容量页看不到磁盘余量。 */}
               <ServerStatusCard storageBytes={summary?.bytes ?? null} objects={summary?.objects ?? null} />
               <div className="ab-card">
-                <div className="ab-card__head"><span className="ab-card__title">资源健康</span><span className={`ab-chip ${health ? "ok" : "warn"}`}>{health ? `扫描于 ${fmtTime(health.scanned_at)}` : "未扫描"}</span></div>
+                <div className="ab-card__head"><span className="ab-card__title">资源健康</span><span className={`ab-chip ${health ? "ok" : "warn"}`}>{health ? `实时计算 · ${fmtTime(health.scanned_at)}` : "读取中"}</span></div>
                 <div className="ab-kv-grid">
                   <div><b style={{ color: (health?.orphans.length || 0) > 0 ? "var(--ab-coral)" : undefined }}>{health ? fmtNum(health.orphans.length) : "—"}</b><span>孤立资源 {health ? `· ${fmtBytes(health.orphan_bytes)}` : ""}</span></div>
                   <div><b>{health ? fmtNum(health.duplicates.length) : "—"}</b><span>重复文件组 {health ? `· 可省 ${fmtBytes(health.duplicate_bytes)}` : ""}</span></div>
@@ -332,10 +340,10 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
                   <div><b>{health ? fmtNum(health.temporary) : "—"}</b><span>保留期内未引用 {health ? `· ${fmtBytes(health.temporary_bytes)}` : ""}</span></div>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" className="ab-chip info" style={{ border: 0, padding: "8px 12px" }} disabled={busy === "scan"} onClick={() => void runScan()}>{busy === "scan" ? "扫描中…" : "开始扫描"}</button>
-                  {health ? <button type="button" className="ab-chip" style={{ border: 0, padding: "8px 12px" }} onClick={() => void loadHealth()}>读取最近结果</button> : null}
+                  <button type="button" className="ab-chip info" style={{ border: 0, padding: "8px 12px" }} disabled={busy === "scan"} onClick={() => void runScan()}>{busy === "scan" ? "扫描中…" : "记录一次扫描"}</button>
+                  <button type="button" className="ab-chip" style={{ border: 0, padding: "8px 12px" }} disabled={busy === "health"} onClick={() => void loadHealth()}>{busy === "health" ? "检测中…" : "重新检测"}</button>
                 </div>
-                <p className="ab-label" style={{ margin: 0 }}>扫描只生成报告，不删除任何对象；重复判定使用文件大小 + 存储内容指纹（ETag），分片上传的 ETag 不参与判定。</p>
+                <p className="ab-label" style={{ margin: 0 }}>上方数字是进入页面时实时计算的只读结果，不等同于扫描记录；「记录一次扫描」只写入一条可追溯的扫描日志，不删除任何对象。重复判定使用文件大小 + 存储内容指纹（ETag），分片上传的 ETag 不参与判定。</p>
               </div>
 
               {health ? (
@@ -401,7 +409,7 @@ export default function AdminResources({ refreshKey = 0, initialTab = "overview"
                   </Collapse>
                 </>
               ) : (
-                <Empty icon={<ShieldAlert size={20} />} title="还没有扫描结果" hint="点击「开始扫描」生成真实报告。" />
+                <Empty icon={<ShieldAlert size={20} />} title="正在读取健康度" hint="首次进入会自动计算一次，也可以点「重新检测」。" />
               )}
             </>
           ) : null}
