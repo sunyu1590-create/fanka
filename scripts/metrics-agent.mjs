@@ -609,7 +609,8 @@ async function flushTcpSnapshot() {
     .filter((row) => row.state !== "TIME_WAIT" || rows.filter((item) => item.state === "TIME_WAIT").length < 300)
     .sort((a, b) => (priority[a.state] ?? 9) - (priority[b.state] ?? 9))
     .slice(0, 200)
-    .map((row) => ({ ...row, captured_at: capturedAt }));
+    // PostgREST 批量插入要求所有行键集合一致，明细行显式补上 meta。
+    .map((row) => ({ ...row, meta: {}, captured_at: capturedAt }));
   detail.push({
     captured_at: capturedAt,
     state: "SUMMARY",
