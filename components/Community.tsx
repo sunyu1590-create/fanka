@@ -4403,7 +4403,7 @@ export default function Community({
     setCommentPanelFocus,
     tocOpen: readerTocOpen,
     setTocOpen: setReaderTocOpen,
-  } = useReaderShell(post?.body, detailReaderMode);
+  } = useReaderShell(post?.body, detailReaderMode, { postId: post ? String(post.id) : null, accountId });
   const sharePayload = (target: Post, summary = "") => {
     const url = postShareUrl(target);
     const plain = markdownToText(target.body || "").replace(/\s+/g, " ").replace(/^#+\s*/, "").trim();

@@ -99,8 +99,151 @@ export function useActiveHeading(outline: OutlineItem[], mode: "page" | "overlay
  * 阅读系统 2.0 的详情页外壳状态：目录大纲、进度、当前章节与三个面板开关。
  * 一次成组返回，调用方只需在组件顶层调用一次，避免面板开关触发正文重挂。
  */
-export function useReaderShell(source: string | null | undefined, mode: "page" | "overlay") {
+
+/* ---------- 阅读记忆：本地保存与恢复 ---------- */
+
+type ReadingMemo = { anchor?: string; fraction: number; ts: number; length: number };
+
+const MEMORY_PREFIX = "heika:reading-memo";
+
+function memoryKey(accountId?: string | null) {
+  return `${MEMORY_PREFIX}:${accountId || "guest"}`;
+}
+
+function readMemory(accountId?: string | null): Record<string, ReadingMemo> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(memoryKey(accountId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, ReadingMemo>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMemory(accountId: string | null | undefined, postId: string, memo: ReadingMemo) {
+  if (typeof window === "undefined") return;
+  try {
+    const store = readMemory(accountId);
+    store[postId] = memo;
+    // 只留最近 60 篇，localStorage 不会无限长大
+    const kept = Object.entries(store)
+      .sort((a, b) => b[1].ts - a[1].ts)
+      .slice(0, 60);
+    window.localStorage.setItem(memoryKey(accountId), JSON.stringify(Object.fromEntries(kept)));
+  } catch {
+    /* 隐私模式写不进去就放弃，不影响阅读 */
+  }
+}
+
+/**
+ * 阅读记忆：再次打开同一篇长文时回到上次位置。
+ * 章节锚点优先（内容改过也能落在有效章节上），没有锚点才按相对进度恢复；
+ * 短文（可滚动距离不足）不恢复也不写入，滚动写盘做 700ms 防抖。
+ */
+export function useReadingMemo({
+  postId,
+  accountId,
+  source,
+  mode,
+}: {
+  postId?: string | null;
+  accountId?: string | null;
+  source?: string | null;
+  mode: "page" | "overlay";
+}) {
+  const restoredFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!postId || !source) return;
+    let timer = 0;
+    const restore = () => {
+      if (restoredFor.current === postId) return;
+      const article = document.getElementById("detail-article");
+      if (!article || article.offsetHeight < 1200) return;
+      const scroller = mode === "overlay" ? document.getElementById("detail-scroll") : null;
+      const viewport = mode === "page" ? window.innerHeight - 64 : (scroller?.clientHeight ?? window.innerHeight);
+      const span = article.offsetHeight - viewport;
+      if (span <= 120) return;
+      // 明确的章节链接优先，不被历史进度抢走
+      const hash = window.location.hash.replace("#", "");
+      if (hash && document.getElementById(hash)) {
+        restoredFor.current = postId;
+        return;
+      }
+      const memo = readMemory(accountId)[postId];
+      if (!memo || memo.fraction <= 0.04) {
+        restoredFor.current = postId;
+        return;
+      }
+      const baseTop = mode === "page" ? 64 : (scroller?.getBoundingClientRect().top ?? 54);
+      const current = scroller ? scroller.scrollTop : window.scrollY;
+      const offset = mode === "page" ? 96 : 78;
+      const anchorNode = memo.anchor ? document.getElementById(memo.anchor) : null;
+      let target: number;
+      if (anchorNode) {
+        target = current + (anchorNode.getBoundingClientRect().top - baseTop - offset);
+      } else {
+        const passed = baseTop - article.getBoundingClientRect().top;
+        target = current + (memo.fraction * span - passed);
+      }
+      const max = scroller ? scroller.scrollHeight - viewport : document.documentElement.scrollHeight - window.innerHeight;
+      target = Math.max(0, Math.min(target, Math.max(0, max - 8)));
+      if (scroller) scroller.scrollTo({ top: target, behavior: "instant" });
+      else window.scrollTo({ top: target, behavior: "instant" });
+      restoredFor.current = postId;
+    };
+    // 正文是异步挂载的，图片解码还会再改一次高度，分两次尝试即可覆盖
+    const early = window.setTimeout(restore, 320);
+    const late = window.setTimeout(restore, 1100);
+    return () => {
+      window.clearTimeout(early);
+      window.clearTimeout(late);
+      window.clearTimeout(timer);
+    };
+  }, [postId, source, mode, accountId]);
+
+  useEffect(() => {
+    if (!postId || !source) return;
+    let timer = 0;
+    const save = () => {
+      const article = document.getElementById("detail-article");
+      if (!article || article.offsetHeight < 1200) return;
+      const scroller = mode === "overlay" ? document.getElementById("detail-scroll") : null;
+      const baseTop = mode === "page" ? 64 : (scroller?.getBoundingClientRect().top ?? 54);
+      const viewport = mode === "page" ? window.innerHeight - 64 : (scroller?.clientHeight ?? window.innerHeight);
+      const span = article.offsetHeight - viewport;
+      if (span <= 120) return;
+      const passed = baseTop - article.getBoundingClientRect().top;
+      const fraction = Math.min(1, Math.max(0, passed / span));
+      if (fraction < 0.03) return;
+      let anchor: string | undefined;
+      document.querySelectorAll<HTMLElement>("#detail-article h1[id], #detail-article h2[id], #detail-article h3[id]").forEach((node) => {
+        if (node.getBoundingClientRect().top - baseTop <= 140) anchor = node.id;
+      });
+      writeMemory(accountId, postId, { anchor, fraction, ts: Date.now(), length: source.length });
+    };
+    const onScroll = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(save, 700);
+    };
+    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener("scroll", onScroll, { capture: true });
+      window.clearTimeout(timer);
+      // 关闭详情前兜底写一次，避免最后一次滚动没到防抖时间就离开
+      save();
+    };
+  }, [postId, source, mode, accountId]);
+}
+
+export function useReaderShell(
+  source: string | null | undefined,
+  mode: "page" | "overlay",
+  memory?: { postId?: string | null; accountId?: string | null },
+) {
   const outline = useMemo(() => (source ? markdownOutline(source) : []), [source]);
+  useReadingMemo({ postId: memory?.postId, accountId: memory?.accountId, source, mode });
   const progress = useReadingProgress(mode);
   const activeHeading = useActiveHeading(outline, mode);
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
