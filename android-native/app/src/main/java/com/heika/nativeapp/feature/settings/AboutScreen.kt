@@ -43,6 +43,11 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(95, "2026.11.25", listOf(
+        "与网页端 2.64.6 同步发布。客户端代码无功能变更。",
+        "内嵌网页部分自动获得管理控制中心升级：每秒实时刷新、媒体上传下载流量统计、资源容量管理、统一任务控制台、进程监控与运营成本分析。",
+        "管理后台长历史默认折叠，AI 人工复审记录支持清理与归档。",
+    )),
     NativeRelease(94, "2026.11.25", listOf(
         "合集频道分区顺序对齐网页端：本周精选 → 近期热门 → 继续阅读 → 最近更新 → 为你推荐 → 全部合集，没有内容的分区继续自动隐藏。",
         "修复新注册账号收藏合集失败的问题：服务端补齐账号档案触发器，收藏、阅读进度与提醒开关恢复正常。",
