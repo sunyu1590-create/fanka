@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -283,20 +285,31 @@ private fun buildInline(
     if (cursor < text.length) appendRichText(text.substring(cursor), linkColor, onLinkClick)
 }
 
+/** 目录条目：只保留可导航的 H1–H3，附带它在正文里的序号，供滚动定位使用。 */
+data class MdHeading(val level: Int, val text: String, val ordinal: Int)
+
+/** 目录提取直接复用正文解析结果，不做字符串截取，避免把代码块里的 # 当成标题。 */
+fun markdownHeadings(source: String): List<MdHeading> =
+    parseBlocks(source).mapNotNull { it as? MdBlock.Heading }
+        .filter { it.level in 1..3 && it.text.isNotBlank() }
+        .mapIndexed { index, heading -> MdHeading(heading.level, heading.text, index) }
+
 @Composable
 fun HeikaMarkdown(
     source: String,
     modifier: Modifier = Modifier,
-    baseSize: TextUnit = 15.sp,
-    textColor: Color = MaterialTheme.colorScheme.onSurface,
+    baseSize: TextUnit = HeikaReadingType.body,
+    palette: HeikaReadingPalette = heikaReadingPalette(),
     onLinkClick: (String) -> Unit = {},
+    /** 标题落位回调：ordinal 与 [markdownHeadings] 的顺序一致，offset 是相对正文顶部的像素。 */
+    onHeadingPositioned: ((ordinal: Int, offsetY: Float) -> Unit)? = null,
 ) {
     val blocks = remember(source) { parseBlocks(source) }
-    val linkColor = MaterialTheme.colorScheme.primary
-    val codeColor = MaterialTheme.colorScheme.primary
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val codeBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    val linkColor = palette.link
+    val codeColor = palette.link
+    val bodyColor = palette.body
     var previewImage by remember { mutableStateOf<String?>(null) }
+    var headingOrdinal by remember(source) { mutableStateOf(0) }
 
     previewImage?.let { url ->
         androidx.compose.ui.window.Dialog(onDismissRequest = { previewImage = null }) {
@@ -318,80 +331,104 @@ fun HeikaMarkdown(
 
     Column(modifier = modifier) {
         blocks.forEachIndexed { index, block ->
-            if (index > 0) Spacer(Modifier.height(if (block is MdBlock.Item) 4.dp else 10.dp))
+            val heading = block as? MdBlock.Heading
+            val gap = when {
+                heading != null -> HeikaReadingSpacing.headingTop
+                block is MdBlock.Item -> HeikaReadingSpacing.listItem
+                block is MdBlock.Paragraph -> HeikaReadingSpacing.paragraph
+                block is MdBlock.Rule -> 18.dp
+                else -> 14.dp
+            }
+            if (index > 0) Spacer(Modifier.height(gap))
             when (block) {
-                is MdBlock.Heading -> Text(
-                    text = buildInline(block.text, linkColor, codeColor, onLinkClick),
-                    color = textColor,
-                    fontSize = when (block.level) {
-                        1 -> baseSize * 1.55f
-                        2 -> baseSize * 1.32f
-                        3 -> baseSize * 1.16f
-                        else -> baseSize * 1.06f
-                    },
-                    fontWeight = FontWeight.SemiBold,
-                    lineHeight = (baseSize.value * 1.5f).sp,
-                )
+                is MdBlock.Heading -> {
+                    val ordinal = headingOrdinal++
+                    val color = when (block.level) {
+                        1, 2 -> palette.heading1
+                        3 -> palette.heading2
+                        else -> palette.heading3
+                    }
+                    Text(
+                        text = buildInline(block.text, linkColor, codeColor, onLinkClick),
+                        color = color,
+                        fontSize = baseSize * HeikaReadingType.heading(block.level),
+                        fontWeight = if (block.level <= 2) FontWeight.SemiBold else FontWeight.Medium,
+                        lineHeight = (baseSize.value * HeikaReadingType.headingLineHeight(block.level)).sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (onHeadingPositioned != null) Modifier.onGloballyPositioned { coords ->
+                                    onHeadingPositioned(ordinal, coords.positionInParent().y)
+                                } else Modifier,
+                            ),
+                    )
+                }
                 is MdBlock.Paragraph -> Text(
                     text = buildInline(block.text, linkColor, codeColor, onLinkClick),
-                    color = textColor,
+                    color = bodyColor,
                     fontSize = baseSize,
-                    lineHeight = (baseSize.value * 1.72f).sp,
+                    lineHeight = (baseSize.value * HeikaReadingType.bodyLineHeight).sp,
                 )
-                is MdBlock.Quote -> Row(Modifier.fillMaxWidth()) {
+                is MdBlock.Quote -> Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(palette.quoteBackground)
+                        .padding(end = 12.dp, top = 10.dp, bottom = 10.dp),
+                ) {
                     Box(
                         Modifier
                             .width(3.dp)
-                            .height((18 + block.lines.size * 18).dp)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.45f), RoundedCornerShape(2.dp)),
+                            .height((18 + block.lines.size * 20).dp)
+                            .background(palette.accent.copy(alpha = 0.72f), RoundedCornerShape(2.dp)),
                     )
                     Spacer(Modifier.width(11.dp))
                     Text(
                         text = buildInline(block.lines.joinToString("\n"), linkColor, codeColor, onLinkClick),
-                        color = muted,
-                        fontSize = baseSize,
-                        lineHeight = (baseSize.value * 1.7f).sp,
+                        color = palette.body,
+                        fontSize = baseSize * .96f,
+                        lineHeight = (baseSize.value * 1.72f).sp,
                         modifier = Modifier.weight(1f),
                     )
                 }
-                is MdBlock.Item -> Row(Modifier.fillMaxWidth().padding(start = (block.depth * 14).dp)) {
+                is MdBlock.Item -> Row(Modifier.fillMaxWidth().padding(start = (block.depth * 16).dp)) {
                     Text(
                         text = if (block.ordered) "${block.index}." else if (block.depth == 0) "·" else "◦",
-                        color = muted,
+                        color = palette.muted,
                         fontSize = baseSize,
-                        modifier = Modifier.width(if (block.ordered) 22.dp else 14.dp),
+                        lineHeight = (baseSize.value * HeikaReadingType.bodyLineHeight).sp,
+                        modifier = Modifier.width(if (block.ordered) 26.dp else 16.dp),
                     )
                     Text(
                         text = buildInline(block.text, linkColor, codeColor, onLinkClick),
-                        color = textColor,
+                        color = bodyColor,
                         fontSize = baseSize,
-                        lineHeight = (baseSize.value * 1.68f).sp,
+                        lineHeight = (baseSize.value * HeikaReadingType.bodyLineHeight).sp,
                         modifier = Modifier.weight(1f),
                     )
                 }
                 is MdBlock.Code -> if (block.language.equals("mermaid", true)) {
                     MermaidBlock(block.code, baseSize)
                 } else {
-                    MdCodeBlock(block, baseSize, textColor, codeBackground, linkColor)
+                    MdCodeBlock(block, baseSize, palette)
                 }
-                is MdBlock.Image -> MdImage(block, onClick = { previewImage = it })
-                is MdBlock.Table -> MdTable(block, baseSize, textColor, linkColor, codeColor, onLinkClick)
+                is MdBlock.Image -> MdImage(block, palette, onClick = { previewImage = it })
+                is MdBlock.Table -> MdTable(block, baseSize, palette, onLinkClick)
                 is MdBlock.Task -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Text(
                         text = if (block.checked) "☑" else "☐",
-                        color = if (block.checked) MaterialTheme.colorScheme.primary else muted,
+                        color = if (block.checked) palette.accent else palette.muted,
                         fontSize = baseSize,
-                        modifier = Modifier.width(22.dp),
+                        modifier = Modifier.width(24.dp),
                     )
                     Text(
                         text = buildInline(block.text, linkColor, codeColor, onLinkClick),
-                        color = if (block.checked) muted else textColor,
+                        color = if (block.checked) palette.secondary else bodyColor,
                         fontSize = baseSize,
-                        lineHeight = (baseSize.value * 1.68f).sp,
+                        lineHeight = (baseSize.value * HeikaReadingType.bodyLineHeight).sp,
                         modifier = Modifier.weight(1f),
                     )
                 }
-                MdBlock.Rule -> HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                MdBlock.Rule -> HorizontalDivider(color = palette.line)
             }
         }
     }
@@ -399,7 +436,7 @@ fun HeikaMarkdown(
 
 /** 正文插图：按宽度铺满、限制最大高度，点击可全屏查看。 */
 @Composable
-private fun MdImage(block: MdBlock.Image, onClick: (String) -> Unit) {
+private fun MdImage(block: MdBlock.Image, palette: HeikaReadingPalette, onClick: (String) -> Unit) {
     val url = if (block.url.startsWith("/")) BuildConfig.API_BASE_URL + block.url else block.url
     // 正文图片过去是解码完直接"啪"地出现；这里统一 180ms 叠化，
     // 内存命中时 coil 不会重复播，只在首次落位时淡入一次。
@@ -414,7 +451,7 @@ private fun MdImage(block: MdBlock.Image, onClick: (String) -> Unit) {
             imageLoader = LocalHeikaImageLoader.current,
             modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 460.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f))
+                .background(palette.field)
                 .clickable { onClick(url) },
             contentScale = ContentScale.Fit,
         )
@@ -422,9 +459,9 @@ private fun MdImage(block: MdBlock.Image, onClick: (String) -> Unit) {
             Text(
                 block.alt,
                 Modifier.padding(top = 5.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 10.5.sp,
-                lineHeight = 15.sp,
+                color = palette.muted,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
             )
         }
     }
@@ -435,24 +472,24 @@ private fun MdImage(block: MdBlock.Image, onClick: (String) -> Unit) {
 private fun MdCodeBlock(
     block: MdBlock.Code,
     baseSize: TextUnit,
-    textColor: Color,
-    codeBackground: Color,
-    accent: Color,
+    palette: HeikaReadingPalette,
 ) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val shape = RoundedCornerShape(10.dp)
     Column(
-        Modifier.fillMaxWidth().clip(shape).background(codeBackground),
+        Modifier.fillMaxWidth().clip(shape)
+            .background(palette.codeBackground)
+            .border(1.dp, palette.codeBorder, shape),
     ) {
         Row(
-            Modifier.fillMaxWidth().background(Color.Black.copy(alpha = .06f)).padding(start = 12.dp, end = 6.dp),
+            Modifier.fillMaxWidth().background(palette.tableHeader).padding(start = 12.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 block.language.ifBlank { "text" }.lowercase(),
                 modifier = Modifier.weight(1f).padding(vertical = 7.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.5.sp,
+                color = palette.muted,
+                fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
             )
             Text(
@@ -461,14 +498,14 @@ private fun MdCodeBlock(
                     clipboard.setText(AnnotatedString(block.code))
                     HeikaNoticeBus.show("代码已复制", HeikaNoticeKind.SUCCESS)
                 }.padding(horizontal = 9.dp, vertical = 5.dp),
-                color = accent,
-                fontSize = 10.sp,
+                color = palette.accent,
+                fontSize = 11.sp,
             )
         }
-        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 11.dp)) {
             Text(
                 text = block.code,
-                color = textColor,
+                color = palette.body,
                 fontSize = baseSize * 0.86f,
                 lineHeight = (baseSize.value * 1.55f).sp,
                 fontFamily = FontFamily.Monospace,
@@ -483,13 +520,13 @@ private fun MdCodeBlock(
 private fun MdTable(
     block: MdBlock.Table,
     baseSize: TextUnit,
-    textColor: Color,
-    linkColor: Color,
-    codeColor: Color,
+    palette: HeikaReadingPalette,
     onLinkClick: (String) -> Unit,
 ) {
-    val border = MaterialTheme.colorScheme.outline.copy(alpha = .35f)
-    val headerBackground = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+    val border = palette.line
+    val headerBackground = palette.tableHeader
+    val linkColor = palette.link
+    val codeColor = palette.link
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
             .border(1.dp, border, RoundedCornerShape(10.dp)),
@@ -498,9 +535,9 @@ private fun MdTable(
             block.header.forEachIndexed { index, cell ->
                 Text(
                     text = buildInline(cell, linkColor, codeColor, onLinkClick),
-                    modifier = Modifier.weight(1f).padding(horizontal = 9.dp, vertical = 8.dp),
-                    color = textColor,
-                    fontSize = baseSize * 0.88f,
+                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 9.dp),
+                    color = palette.heading2,
+                    fontSize = baseSize * 0.9f,
                     fontWeight = FontWeight.SemiBold,
                     lineHeight = (baseSize.value * 1.45f).sp,
                 )
@@ -513,9 +550,9 @@ private fun MdTable(
                 block.header.indices.forEach { column ->
                     Text(
                         text = buildInline(row.getOrElse(column) { "" }, linkColor, codeColor, onLinkClick),
-                        modifier = Modifier.weight(1f).padding(horizontal = 9.dp, vertical = 8.dp),
-                        color = textColor,
-                        fontSize = baseSize * 0.86f,
+                        modifier = Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 9.dp),
+                        color = palette.body,
+                        fontSize = baseSize * 0.88f,
                         lineHeight = (baseSize.value * 1.5f).sp,
                     )
                     if (column < block.header.lastIndex) Box(Modifier.width(1.dp).height(IntrinsicSize.Min).background(border))

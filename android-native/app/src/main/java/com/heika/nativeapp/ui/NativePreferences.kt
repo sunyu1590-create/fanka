@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.userPrefs by preferencesDataStore("heika_native_preferences")
 
@@ -32,6 +33,8 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val decorKey = stringPreferencesKey("decor_config")
     private val decorDraftKey = stringPreferencesKey("decor_working_draft")
     private val homeBannersKey = stringPreferencesKey("home_banners_payload")
+    /** 阅读进度：{ "postId": {"u": userId, "f": 0.42, "t": 时间戳} }，按用户隔离。 */
+    private val readingProgressKey = stringPreferencesKey("reading_progress")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
@@ -126,6 +129,35 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
 
     suspend fun saveHomeBanners(payload: String) {
         dataStore.edit { it[homeBannersKey] = payload }
+    }
+
+    /**
+     * 读取上一篇作品的进度。账号不同就当作没有记录，避免换号后跳到别人的位置。
+     * 只存相对进度（0–1），正文改版导致长度变化时仍然落在合理位置。
+     */
+    suspend fun readingProgress(postId: String, userId: String?): Float? {
+        val raw = dataStore.data.map { it[readingProgressKey] }.first() ?: return null
+        val entry = runCatching { JSONObject(raw).optJSONObject(postId) }.getOrNull() ?: return null
+        if (entry.optString("u") != (userId ?: "")) return null
+        val fraction = entry.optDouble("f", -1.0)
+        return fraction.takeIf { it in 0.02..0.985 }?.toFloat()
+    }
+
+    /** 写入阅读进度：节流由调用方负责，这里只做容量控制，避免无限增长。 */
+    suspend fun saveReadingProgress(postId: String, userId: String?, fraction: Float) {
+        if (postId.isBlank()) return
+        dataStore.edit { prefs ->
+            val root = runCatching { JSONObject(prefs[readingProgressKey].orEmpty()) }.getOrDefault(JSONObject())
+            root.put(postId, JSONObject().put("u", userId ?: "").put("f", fraction.toDouble()).put("t", System.currentTimeMillis()))
+            if (root.length() > 200) {
+                val keep = root.keys().asSequence().sortedByDescending { root.optJSONObject(it)?.optLong("t") ?: 0L }.take(120).toList()
+                val trimmed = JSONObject()
+                keep.forEach { key -> root.optJSONObject(key)?.let { trimmed.put(key, it) } }
+                prefs[readingProgressKey] = trimmed.toString()
+            } else {
+                prefs[readingProgressKey] = root.toString()
+            }
+        }
     }
 
 }

@@ -99,7 +99,7 @@ data class PostDetailState(
 class PostDetailViewModel @Inject constructor(
     private val repository: HeikaRepository,
     private val auth: AuthRepository,
-    preferences: NativePreferences,
+    private val preferences: NativePreferences,
 ) : ViewModel() {
     val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
     private val mutableState = MutableStateFlow(PostDetailState())
@@ -112,6 +112,16 @@ class PostDetailViewModel @Inject constructor(
     private var commentsRequestVersion = 0
     private var requestedKey: String? = null
     private var relatedVersion = 0
+
+    /** 上一次读到哪儿：只存相对进度，正文增删章节后仍能落到合理位置。 */
+    suspend fun readingProgress(postId: String): Float? =
+        runCatching { preferences.readingProgress(postId, mutableState.value.currentUserId) }.getOrNull()
+
+    fun recordReadingProgress(postId: String, fraction: Float) {
+        viewModelScope.launch(HeikaCoroutineGuard) {
+            runCatching { preferences.saveReadingProgress(postId, mutableState.value.currentUserId, fraction) }
+        }
+    }
 
     init {
         // 管理员可以在任意作品上执行删除；普通账号隐藏该入口。

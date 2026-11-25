@@ -65,6 +65,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import kotlinx.coroutines.launch
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.heika.nativeapp.ui.HeikaReadingType
+import com.heika.nativeapp.ui.heikaReadingPalette
+import com.heika.nativeapp.ui.markdownHeadings
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -191,6 +197,50 @@ fun PostDetailScreen(
     var commentDeleteConfirm by remember { mutableStateOf<NativeComment?>(null) }
     var postDeleteConfirm by remember { mutableStateOf(false) }
     var expandedReplyThreads by remember { mutableStateOf(setOf<String>()) }
+    // 阅读系统 2.0：评论/目录改为独立面板，正文里不再常驻评论列表。
+    val reading = heikaReadingPalette()
+    var commentsOpen by remember { mutableStateOf(false) }
+    var commentFocusOnOpen by remember { mutableStateOf(false) }
+    var tocOpen by remember { mutableStateOf(false) }
+    val headingOffsets = remember { androidx.compose.runtime.mutableStateMapOf<Int, Float>() }
+    val headings = remember(state.post?.body, post?.body) { markdownHeadings((state.post ?: post)?.body.orEmpty()) }
+    val commentTotal = state.comments.size
+    val listState = rememberLazyListState()
+    var articleHeight by remember { mutableFloatStateOf(0f) }
+    val readable = headings.size >= 3
+    val scrolled by remember { derivedStateOf {
+        val info = listState.layoutInfo
+        val first = info.visibleItemsInfo.firstOrNull() ?: return@derivedStateOf 0f
+        if (first.index == 0) (-first.offset).toFloat() else articleHeight
+    } }
+    val progress by remember { derivedStateOf {
+        if (articleHeight <= 0f) 0f else ((scrolled + listState.layoutInfo.viewportEndOffset) / articleHeight).coerceIn(0f, 1f)
+    } }
+    val currentHeading by remember { derivedStateOf {
+        headingOffsets.entries.filter { it.value <= scrolled + 140f }.maxByOrNull { it.value }?.key ?: -1
+    } }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // 阅读位置恢复：只对长文生效，且只在首次测量完成后执行一次。
+    var restored by remember(state.post?.cloudId, post?.cloudId) { mutableStateOf(false) }
+    LaunchedEffect(articleHeight, state.post?.cloudId, post?.cloudId) {
+        val id = state.post?.cloudId ?: post?.cloudId
+        if (!restored && readable && articleHeight > 1200f && !id.isNullOrBlank()) {
+            restored = true
+            val saved = viewModel.readingProgress(id)
+            if (saved != null && saved > 0.05f) listState.scrollToItem(0, (articleHeight * saved).toInt())
+        }
+    }
+    // 进度写盘做节流：只在停手 1.2s 后写一次，且变化超过 2%。
+    var lastSaved by remember(state.post?.cloudId, post?.cloudId) { mutableFloatStateOf(-1f) }
+    LaunchedEffect(progress, readable) {
+        val id = state.post?.cloudId ?: post?.cloudId ?: return@LaunchedEffect
+        if (!readable || progress <= 0.02f) return@LaunchedEffect
+        if (lastSaved > 0f && kotlin.math.abs(progress - lastSaved) < 0.02f) return@LaunchedEffect
+        delay(1200)
+        lastSaved = progress
+        viewModel.recordReadingProgress(id, progress)
+    }
     LaunchedEffect(state.commentSubmitted) {
         if (state.commentSubmitted > 0) {
             replyTo?.let { targetId ->
@@ -227,15 +277,18 @@ fun PostDetailScreen(
         } else {
             Box(Modifier.weight(1f).fillMaxWidth()) {
             val item = visiblePost
-            val listState = rememberLazyListState()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().hazeSource(dockHaze),
-                contentPadding = PaddingValues(top = 62.dp, bottom = 124.dp),
+                // 底部留出操作栏高度 + 安全区，正文最后一行不会被底栏压住。
+                contentPadding = PaddingValues(top = 64.dp, bottom = 128.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
             ) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(
+                        Modifier.onGloballyPositioned { articleHeight = it.size.height.toFloat() },
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
                         // 无封面时不生成虚假的图片区，标题自然上移；正文里的真实图片仍照常展示。
                         if (item.images.size > 1) {
                             val pagerState = rememberPagerState(pageCount = { item.images.size })
@@ -362,42 +415,70 @@ fun PostDetailScreen(
                             }
                         }
                         Column(Modifier.fillMaxWidth().detailContentReveal(sharedElementsEnabled, delayMillis = 170), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(Modifier.fillMaxWidth().clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            HeikaAvatar(item.authorAvatar, item.author, 38.dp, contentDescription = "${item.author}头像")
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        // 作者区：横向紧凑排列，头像 36dp，第二行放时间与阅读数，
+                        // 关注按钮收窄但保留 44dp 热区，不再占掉一整行高度。
+                        Row(
+                            Modifier.fillMaxWidth().clickable(enabled = item.authorId != null) { item.authorId?.let(onAuthor) }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            HeikaAvatar(item.authorAvatar, item.author, 36.dp, contentDescription = "${item.author}头像")
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                     Text(
                                         item.author,
                                         (if (sharedElementsEnabled) with(sharedTransitionScope) {
                                             Modifier.heikaSharedPostMeta(sharedTransitionScope, animatedVisibilityScope, item.sharedAuthorKey())
                                         } else Modifier).weight(1f, fill = false),
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        fontSize = 13.sp,
+                                        color = reading.title,
+                                        fontSize = 13.5.sp,
                                         fontWeight = FontWeight.Medium,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    item.authorBadges.take(3).forEach { badge ->
-                                        val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(MaterialTheme.colorScheme.primary)
-                                        Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(14.dp))
+                                    item.authorBadges.take(4).forEach { badge ->
+                                        val badgeTint = runCatching { Color(android.graphics.Color.parseColor(badge.color)) }.getOrDefault(reading.accent)
+                                        Icon(HeikaIcons.Shield, contentDescription = "${badge.label}认证", tint = badgeTint, modifier = Modifier.size(13.dp))
                                     }
                                 }
-                                Text(item.date, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 10.sp)
+                                Text(
+                                    "${item.date} · ${item.viewCount} 阅读",
+                                    color = reading.muted,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
-                            if (item.authorId != null) androidx.compose.material3.OutlinedButton(onClick = viewModel::toggleFollow, enabled = !state.followSending, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                                if (state.followSending) CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 1.7.dp)
-                                else Text(if (state.following) "已关注" else "关注", fontSize = 11.sp)
+                            if (item.authorId != null) {
+                                val followShape = RoundedCornerShape(999.dp)
+                                Box(
+                                    Modifier.height(32.dp)
+                                        .clip(followShape)
+                                        .border(.8.dp, if (state.following) reading.line else reading.accent.copy(alpha = .55f), followShape)
+                                        .clickable(enabled = !state.followSending, onClick = viewModel::toggleFollow)
+                                        .padding(horizontal = 14.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (state.followSending) CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 1.7.dp, color = reading.accent)
+                                    else Text(
+                                        if (state.following) "已关注" else "关注",
+                                        color = if (state.following) reading.muted else reading.accent,
+                                        fontSize = 12.sp,
+                                    )
+                                }
                             }
                         }
-                        val modeScale = when (readingMode) { "focus" -> 1.14f; "night" -> 1.07f; else -> 1f }
-                        val bodyFont = 14.sp * bodyTextScale * modeScale
-                        val bodyLine = bodyFont * when (readingMode) { "focus" -> 1.75f; "night" -> 1.8f; else -> 1.72f }
+                        // 正文：16sp 起跳，行高 1.75；阅读模式只放大字号，不改颜色层级。
+                        val modeScale = when (readingMode) { "focus" -> 1.1f; "night" -> 1.04f; else -> 1f }
+                        val bodyFont = HeikaReadingType.body * bodyTextScale * modeScale
                         SelectionContainer {
                             HeikaMarkdown(
                                 source = item.body,
                                 baseSize = bodyFont,
-                                textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                palette = reading,
                                 onLinkClick = { linkWarning = it },
+                                onHeadingPositioned = { ordinal, y -> headingOffsets[ordinal] = y },
                             )
                         }
                         if (item.channel == "ai") {
@@ -482,185 +563,134 @@ fun PostDetailScreen(
                                 if (nextKey != null) ChapterNavButton("下一章", nextKey, Modifier.weight(1f), onOpenChapter)
                             }
                         }
+                        // 文章末尾：全文完 → 话题 → 所属合集 → 参与讨论 → 相关推荐。
+                        // 评论列表已经搬到独立面板，这里只留一个轻量入口。
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 24.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(Modifier.weight(1f).height(1.dp).background(reading.line))
+                            Text("全文完", color = reading.muted, fontSize = 11.sp)
+                            Box(Modifier.weight(1f).height(1.dp).background(reading.line))
+                        }
+                        item.tags.takeIf { it.isNotEmpty() }?.let { tags ->
+                            Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                tags.distinct().take(6).forEach { topic ->
+                                    Text(
+                                        "#$topic",
+                                        Modifier.clip(RoundedCornerShape(999.dp))
+                                            .border(.8.dp, reading.line, RoundedCornerShape(999.dp))
+                                            .clickable { onOpenTopic(topic) }
+                                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                                        color = reading.secondary,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                        }
+                        if (state.seriesId != null && state.seriesTitle != null) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 18.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(reading.field)
+                                    .clickable { state.seriesId?.let(onOpenCollection) }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(HeikaIcons.List, contentDescription = null, tint = reading.accent, modifier = Modifier.size(18.dp))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text("所属合集", color = reading.muted, fontSize = 10.sp)
+                                    Text(
+                                        state.seriesTitle.orEmpty(),
+                                        color = reading.title,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (state.chapterCount > 0) Text(
+                                        "共 ${state.chapterCount} 章 · 当前第 ${state.chapterIndex} 章",
+                                        color = reading.muted,
+                                        fontSize = 10.5.sp,
+                                    )
+                                }
+                                Text("查看合集", color = reading.accent, fontSize = 11.sp)
+                                Icon(HeikaIcons.Forward, contentDescription = null, tint = reading.accent, modifier = Modifier.size(12.dp))
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 18.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(reading.field)
+                                .clickable { commentsOpen = true }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(9.dp),
+                        ) {
+                            Icon(HeikaIcons.Comment, contentDescription = null, tint = reading.accent, modifier = Modifier.size(17.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    if (state.comments.isNotEmpty() || commentTotal > 0) "参与讨论 · ${if (commentTotal > 0) commentTotal else state.comments.size} 条" else "参与讨论",
+                                    color = reading.title,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text("在底部评论面板里查看与回复", color = reading.muted, fontSize = 11.sp)
+                            }
+                            Icon(HeikaIcons.Forward, contentDescription = null, tint = reading.muted, modifier = Modifier.size(14.dp))
+                        }
+                        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
+                        state.notice?.takeIf { it.contains("登录") }?.let { message ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(message, Modifier.weight(1f), color = reading.muted, fontSize = 11.sp)
+                                if (message.contains("登录")) TextButton(onClick = onLogin) { Text("登录") }
+                            }
+                        }
                         RelatedBlocks(
                             related = state.related,
                             onOpenPost = onOpenPostById,
                             onOpenSeries = onOpenCollection,
                             onOpenTopic = onOpenTopic,
                         )
-                        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Icon(HeikaIcons.Comment, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
-                            Text("评论 ${state.comments.size}", color = MaterialTheme.colorScheme.onBackground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.weight(1f))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                listOf("hot" to "热度", "new" to "最新").forEach { (sort, label) ->
-                                    val selected = state.commentSort == sort
-                                    Text(label, Modifier.clickable {
-                                        if (!selected) {
-                                            viewModel.setCommentSort(sort)
-                                            HeikaNoticeBus.showSelection("评论已按${label}排序")
-                                        }
-                                    }.padding(horizontal = 8.dp, vertical = 8.dp),
-                                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 11.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                                }
                             }
-                        }
-                        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp) }
-                        state.notice?.takeIf { it.contains("登录") }?.let { message ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(message, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                                if (message.contains("登录")) TextButton(onClick = onLogin) { Text("登录") }
-                            }
-                        }
-                        }
-                        }
-                    }
-                }
-                if (state.commentsLoading && state.comments.isEmpty()) item(key = "comments-loading") {
-                    Text("正在加载评论…", Modifier.fillMaxWidth().padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                }
-                state.commentsError?.let { error -> item(key = "comments-error") {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(error, Modifier.weight(1f), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                        TextButton(onClick = viewModel::retryComments) { Text("重试") }
-                    }
-                } }
-                val roots = state.comments.filter { it.parentId == null || state.comments.none { parent -> parent.id == it.parentId } }
-                val commentsById = state.comments.associateBy { it.id }
-                val repliesByParent = state.comments.mapNotNull { comment -> comment.parentId?.let { it to comment } }.groupBy({ it.first }, { it.second })
-                items(roots, key = { it.id }) { comment ->
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp)) {
-                        CommentRow(comment, onReply = { replyTo = comment.id }, onLike = { viewModel.toggleCommentLike(comment.id) }, onMore = { commentMenu = comment }, likeBusy = comment.id in state.commentLikesSending, replyEnabled = !state.sending)
-                        val replies = buildList {
-                            val visited = mutableSetOf<String>()
-                            fun appendChildren(parentId: String, depth: Int) {
-                                if (depth > 8) return
-                                repliesByParent[parentId].orEmpty().forEach { child ->
-                                    if (visited.add(child.id)) {
-                                        add(child to depth)
-                                        appendChildren(child.id, depth + 1)
-                                    }
-                                }
-                            }
-                            appendChildren(comment.id, 1)
-                        }
-                        if (replies.isNotEmpty()) {
-                            TextButton(onClick = { expandedReplyThreads = if (comment.id in expandedReplyThreads) expandedReplyThreads - comment.id else expandedReplyThreads + comment.id }, modifier = Modifier.padding(start = 42.dp)) {
-                                Text(if (comment.id in expandedReplyThreads) "收起回复" else "展开 ${replies.size} 条回复", fontSize = 11.sp)
-                            }
-                            if (comment.id in expandedReplyThreads) Column(Modifier.padding(start = 40.dp)) {
-                                replies.forEach { (reply, depth) ->
-                                    val targetName = reply.parentId?.let { commentsById[it]?.author }
-                                    CommentRow(reply, onReply = { replyTo = reply.id }, onLike = { viewModel.toggleCommentLike(reply.id) }, onMore = { commentMenu = reply }, likeBusy = reply.id in state.commentLikesSending, reply = true, replyTargetName = targetName, replyEnabled = !state.sending, modifier = Modifier.padding(start = (depth.coerceAtMost(2) * 10).dp))
-                                }
-                            }
-                        }
-                        androidx.compose.material3.HorizontalDivider(Modifier.padding(top = 7.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .36f), thickness = .5.dp)
-                    }
-                }
-                if (state.commentsHasMore) item {
-                    Text(
-                        if (state.loadingMoreComments) "正在加载…" else "加载更多评论",
-                        Modifier.fillMaxWidth().padding(horizontal = 18.dp).clickable(enabled = !state.loadingMoreComments) { viewModel.loadMoreComments() }.padding(12.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 12.sp,
-                    )
-                }
-                if (state.comments.isEmpty() && !state.loading && !state.commentsLoading && state.commentsError == null) item { Text("暂无评论", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp)) }
-            }
-            // 双悬浮操作栏：左侧评论入口，右侧点赞 / 收藏 / 分享。
-            // 两个模块共用同一个 HazeState，真实模糊背后的正文，而不是叠一层灰黑实心。
-            // 尺寸规范：两模块休息态高度 54dp、间距 8dp、左右边距 12dp、底部安全区 + 12dp，
-            // 右下角统一胶囊圆角，图标 22dp，热区不小于 44dp，基线对齐。
-            Row(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                HeikaGlassSurface(
-                    hazeState = dockHaze,
-                    modifier = Modifier.weight(1f).heightIn(min = 54.dp),
-                    shape = RoundedCornerShape(27.dp),
-                    contentPadding = PaddingValues(4.dp),
-                    drawTopHighlight = false,
-                    tintAlpha = .74f,
-                    blurRadius = 24.dp,
-                ) {
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        if (replyTo != null) Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("回复 ${state.comments.firstOrNull { it.id == replyTo }?.author ?: "评论"}", Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp)
-                            Text("取消", Modifier.clickable(enabled = !state.sending) { replyTo = null }.padding(horizontal = 6.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                        }
-                        Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            BasicTextField(
-                                value = draft,
-                                onValueChange = { draft = it.take(1000) },
-                                modifier = Modifier.weight(1f).focusRequester(commentFocusRequester).heightIn(min = 34.dp, max = 92.dp).padding(vertical = 6.dp),
-                                enabled = !state.sending,
-                                maxLines = 4,
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp),
-                                decorationBox = { inner -> Box { if (draft.isEmpty()) Text("说说你的想法…", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp); inner() } },
-                            )
-                            IconButton(
-                                enabled = !state.sending,
-                                onClick = { if (draft.isBlank()) { commentFocusRequester.requestFocus(); keyboardController?.show() } else viewModel.comment(draft, replyTo) },
-                                modifier = Modifier.size(44.dp),
-                            ) {
-                                if (state.sending) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                else Icon(
-                                    if (draft.isBlank()) HeikaIcons.Comment else HeikaIcons.Send,
-                                    if (draft.isBlank()) "评论" else "发送评论",
-                                    tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-                HeikaGlassSurface(
-                    hazeState = dockHaze,
-                    modifier = Modifier.heightIn(min = 54.dp),
-                    shape = RoundedCornerShape(27.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                    drawTopHighlight = false,
-                    tintAlpha = .74f,
-                    blurRadius = 24.dp,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        InteractionIconButton(selected = state.liked, sending = state.likeSending, outline = HeikaIcons.LikeOutline, filled = HeikaIcons.LikeFilled, description = "点赞", onClick = viewModel::toggleLike)
-                        Text("${state.likeCount ?: state.post?.likeCount ?: 0}", Modifier.padding(start = 0.dp), color = if (state.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                        InteractionIconButton(selected = state.saved, sending = state.saveSending, outline = HeikaIcons.SaveOutline, filled = HeikaIcons.SaveFilled, description = "收藏", onClick = viewModel::toggleSaved)
-                        if (item.status == "published") IconButton(onClick = { shareOpen = true }, modifier = Modifier.size(44.dp)) {
-                            Icon(HeikaIcons.Share, contentDescription = "分享内容", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
             }
+            // 底部操作栏常驻：黑色微模糊、图标与热区统一，不再随滚动隐藏。
+            ReadingDock(
+                commentCount = if (commentTotal > 0) commentTotal else state.comments.size,
+                liked = state.liked,
+                likeCount = state.likeCount ?: state.post?.likeCount ?: 0,
+                saved = state.saved,
+                likeSending = state.likeSending,
+                saveSending = state.saveSending,
+                onComment = { commentsOpen = true; commentFocusOnOpen = false },
+                onInput = { commentFocusOnOpen = true; commentsOpen = true },
+                onLike = viewModel::toggleLike,
+                onSave = viewModel::toggleSaved,
+                onShare = { if (item.status == "published") shareOpen = true },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
             }
         }
     }
-    // 详情页顶栏不再写死纯黑：浅色主题下那块黑条会把浅色页面劈成两半。
-    // 改成跟随主题的背景色渐变，顶部实、下沿淡出，既压得住封面亮部，
-    // 也不会在浅色模式下突然出现一条黑边。
-    val headerFade = MaterialTheme.colorScheme.background
+    // 顶栏：实心底色 + 轻微模糊。以前是从上往下淡出的渐变，模糊层会一直
+    // 延伸到封面和正文顶部，正文滚到下面时还会透色；现在只保留一条实心条。
     Box(
         Modifier
             .align(Alignment.TopCenter)
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    0f to headerFade.copy(alpha = .96f),
-                    .62f to headerFade.copy(alpha = .88f),
-                    1f to headerFade.copy(alpha = 0f),
-                ),
-            ),
+            .background(reading.page.copy(alpha = .97f))
+            .zIndex(2f),
     ) {
         BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, modifier = Modifier.zIndex(1f), trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (headings.size >= 3) androidx.compose.material3.IconButton(onClick = { tocOpen = true }) {
+                Icon(HeikaIcons.List, contentDescription = "文章目录", tint = reading.title, modifier = Modifier.size(19.dp))
+            }
             Box {
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
                 BackHandler(enabled = moreOpen) { moreOpen = false }
@@ -743,7 +773,62 @@ fun PostDetailScreen(
                     }
                 }
             }
+            }
         })
+        // 阅读进度：1.5dp 品牌色细线，只在长文显示；评论面板/目录打开时不受影响。
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.5.dp)
+                .background(if (readable) reading.progressTrack else Color.Transparent),
+        ) {
+            if (readable) Box(
+                Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(1.5.dp).background(reading.accent),
+            )
+        }
+    }
+    if (tocOpen) {
+        BackHandler { tocOpen = false }
+        ReadingTocSheet(
+            headings = headings,
+            currentOrdinal = currentHeading,
+            onSelect = { heading ->
+                tocOpen = false
+                val target = headingOffsets[heading.ordinal] ?: 0f
+                val headerPx = with(androidx.compose.ui.platform.LocalDensity.current) { 78.dp.toPx() }
+                scope.launch { listState.scrollToItem(0, (target - headerPx).toInt().coerceAtLeast(0)) }
+            },
+            onClose = { tocOpen = false },
+        )
+    }
+    if (commentsOpen) {
+        BackHandler { commentsOpen = false }
+        CommentSheet(
+            visible = commentsOpen,
+            comments = state.comments,
+            total = commentTotal,
+            sort = state.commentSort,
+            loading = state.commentsLoading,
+            loadingMore = state.loadingMoreComments,
+            hasMore = state.commentsHasMore,
+            error = state.commentsError,
+            sending = state.sending,
+            draft = draft,
+            replyToName = replyTo?.let { id -> state.comments.firstOrNull { it.id == id }?.author ?: "评论" },
+            likeBusyIds = state.commentLikesSending,
+            currentUserId = state.currentUserId,
+            authorId = state.post?.authorId ?: post?.authorId,
+            onDraftChange = { draft = it },
+            onCancelReply = { replyTo = null },
+            onSend = { viewModel.comment(draft, replyTo) },
+            onClose = { commentsOpen = false; commentFocusOnOpen = false },
+            onSort = { if (it != state.commentSort) viewModel.setCommentSort(it) },
+            onLoadMore = { viewModel.loadMoreComments() },
+            onRetry = { viewModel.retryComments() },
+            onLike = { viewModel.toggleCommentLike(it) },
+            onMore = { commentMenu = it },
+            onReply = { replyTo = it.id; commentFocusOnOpen = true },
+            focusInput = commentFocusOnOpen,
+            onFocusHandled = { commentFocusOnOpen = false },
+        )
     }
     if (shareOpen) {
         val sharePost = state.post ?: visiblePost
