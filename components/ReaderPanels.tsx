@@ -156,7 +156,6 @@ export function useReadingMemo({
 
   useEffect(() => {
     if (!postId || !source) return;
-    let timer = 0;
     const restore = () => {
       if (restoredFor.current === postId) return;
       const article = document.getElementById("detail-article");
@@ -199,7 +198,6 @@ export function useReadingMemo({
     return () => {
       window.clearTimeout(early);
       window.clearTimeout(late);
-      window.clearTimeout(timer);
     };
   }, [postId, source, mode, accountId]);
 
