@@ -5166,7 +5166,14 @@ export default function Community({
         setPendingInvitation(null);
       }}
     />;
-  if (!state.onboardingDone)
+  // 深链（后台、我的、合集、装扮、分享合集等）本身就是明确的功能入口，
+  // 新设备上不该先被兴趣引导拦一道；只有真正落到首页时才需要选方向。
+  const deepLink = (() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return ["admin", "mine", "series", "collection", "room", "chain", "decor", "post", "p"].some((key) => params.has(key));
+  })();
+  if (!state.onboardingDone && !deepLink)
     return (
       <main className="heika-onboarding">
         <header className="heika-onboarding-top">

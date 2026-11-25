@@ -30,3 +30,6 @@ android-native/.kotlin/
 
 # 本地验收截图与临时脚本，不进仓库
 shots-tmp/
+
+# 本地验收脚本，不入库
+qa-*.mjs
