@@ -358,8 +358,10 @@ export default function SeriesCoverEditor({ seriesId }: { seriesId: string }) {
                         className={`sce-template${templateId === item.id ? " is-active" : ""}`}
                         onClick={() => { setTemplateId(item.id); mark(); }}
                       >
-                        <span className={`sce-swatch sw-${item.category}`} aria-hidden="true" />
-                        <span>{item.name}</span>
+                        <span className="sce-thumb" aria-hidden="true">
+                          <img src={`/api/v1/cover-templates/${item.id}/preview`} alt="" width={300} height={400} loading="lazy" decoding="async" />
+                        </span>
+                        <span className="sce-thumb-label">{item.name}</span>
                       </button>
                     ))}
                   </div>
@@ -436,13 +438,15 @@ export default function SeriesCoverEditor({ seriesId }: { seriesId: string }) {
                       className={`sce-template${templateId === item.id ? " is-active" : ""}`}
                       onClick={() => { setTemplateId(item.id); mark(); }}
                     >
-                      <span className="sce-swatch sw-magazine" aria-hidden="true" />
-                      <span>{item.name}</span>
+                      <span className="sce-thumb" aria-hidden="true">
+                        <img src={`/api/v1/cover-templates/${item.id}/preview`} alt="" width={300} height={400} loading="lazy" decoding="async" />
+                      </span>
+                      <span className="sce-thumb-label">{item.name}</span>
                     </button>
                   ))}
                   <button type="button" className={`sce-template${!isMagazine ? " is-active" : ""}`} onClick={() => { setTemplateId(info.recommendedTemplateId || info.templates[0]?.id || ""); mark(); }}>
-                    <span className="sce-swatch sw-minimal" aria-hidden="true" />
-                    <span>直接使用图片</span>
+                    <span className="sce-thumb sce-thumb-plain" aria-hidden="true" />
+                    <span className="sce-thumb-label">直接使用图片</span>
                   </button>
                 </div>
               </div>
