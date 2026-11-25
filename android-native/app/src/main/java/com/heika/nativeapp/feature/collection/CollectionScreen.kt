@@ -87,6 +87,10 @@ fun CollectionScreen(
     onOpenChapter: (HeikaChapter) -> Unit,
     onAuthor: (String) -> Unit,
     onShare: (HeikaCollection) -> Unit,
+    // 封面编辑器只存在于网页端（APP 不重复实现），这里只负责跳进容器。
+    onOpenCover: () -> Unit = {},
+    // 网页保存封面后回来的刷新信号：变化即强制重拉，封面立即换成新的。
+    refreshKey: Long = 0L,
     viewModel: CollectionViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -101,6 +105,9 @@ fun CollectionScreen(
     var selectedWorks by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(seriesId) { seriesId?.let(viewModel::load) }
+    LaunchedEffect(refreshKey) {
+        if (refreshKey > 0L) seriesId?.let { viewModel.load(it, force = true) }
+    }
     LaunchedEffect(collection?.id) { if (collection == null) manageMode = false }
     LaunchedEffect(state.notice) {
         val message = state.notice ?: return@LaunchedEffect
@@ -128,6 +135,10 @@ fun CollectionScreen(
                                     DropdownMenuItem(
                                         text = { Text(if (manageMode) "返回阅读页" else "管理合集", fontSize = 12.sp) },
                                         onClick = { moreOpen = false; manageMode = !manageMode },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("封面设置", fontSize = 12.sp) },
+                                        onClick = { moreOpen = false; onOpenCover() },
                                     )
                                     DropdownMenuItem(
                                         text = { Text("删除合集", fontSize = 12.sp, color = MaterialTheme.colorScheme.error) },

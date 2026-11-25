@@ -245,6 +245,8 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onSearch = { openDestination(HeikaDestination.Search) },
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onPost = openPost,
+                        onOpenPostById = { key -> nav.navigate("post/${Uri.encode(key)}") },
+                        onOpenSeries = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         onPreviewActive = {},
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
@@ -391,12 +393,22 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                     route = "collection/{seriesId}",
                     arguments = listOf(navArgument("seriesId") { type = NavType.StringType }),
                 ) { entry ->
+                    val seriesId = entry.arguments?.getString("seriesId").orEmpty()
+                    // 封面保存后网页会回调 cover-updated：只打标记不重复弹栈，
+                    // 页面回来后按这个时间戳强制重拉一次，封面立即换成新的。
+                    val coverTick by entry.savedStateHandle.getStateFlow("coverUpdated", 0L).collectAsState()
                     CollectionScreen(
                         seriesId = entry.arguments?.getString("seriesId"),
                         onBack = { nav.popBackStack() },
                         onOpenChapter = { chapter -> nav.navigate("post/${Uri.encode(chapter.id)}") },
                         onAuthor = { id -> openDestination(HeikaDestination.UserProfile(id)) },
                         onShare = { collection -> shareNativeCollection(context, collection) },
+                        onOpenCover = {
+                            if (seriesId.isNotBlank()) {
+                                nav.navigate("webpage?path=" + Uri.encode("/series/$seriesId/cover?app=1&requireAuth=1"))
+                            }
+                        },
+                        refreshKey = coverTick,
                     )
                 }
                 composable(
@@ -522,6 +534,39 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                                 "decor-updated", "decor-applied" -> decorViewModel.syncFromWeb()
                                 "close" -> nav.popBackStack()
                                 "open-native" -> Unit
+                            }
+                        },
+                    )
+                }
+                // 通用网页页：只给「明确的一个网页子路由」用（当前是合集封面编辑器）。
+                // 页面自带完整顶栏，原生不再叠一层返回键；关闭与保存由桥接事件回传。
+                composable(
+                    route = "webpage?path={path}",
+                    arguments = listOf(
+                        navArgument("path") { type = NavType.StringType; defaultValue = "/?app=1" },
+                    ),
+                ) { entry ->
+                    val webViewModel: WebContainerViewModel = hiltViewModel()
+                    val webSession by webViewModel.session.collectAsState()
+                    val path = entry.arguments?.getString("path").orEmpty().ifBlank { "/?app=1" }
+                    NativeWebScreen(
+                        title = "封面设置",
+                        path = path,
+                        sessionJson = webSession,
+                        showHeader = false,
+                        onBack = { nav.popBackStack() },
+                        onEvent = { type, _ ->
+                            when (type) {
+                                // 保存成功：给上一页打刷新标记后返回，原生封面立即更新。
+                                // 网页自己也会 history.back()，这里只负责原生这一侧的收口。
+                                "cover-updated" -> {
+                                    nav.previousBackStackEntry?.savedStateHandle
+                                        ?.set("coverUpdated", System.currentTimeMillis())
+                                    if (nav.currentBackStackEntry?.destination?.route?.startsWith("webpage") == true) {
+                                        nav.popBackStack()
+                                    }
+                                }
+                                "close" -> nav.popBackStack()
                             }
                         },
                     )

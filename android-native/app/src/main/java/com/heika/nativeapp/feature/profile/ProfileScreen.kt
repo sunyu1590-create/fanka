@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -241,7 +242,6 @@ fun ProfileScreen(
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2), state = gridState,
                 modifier = Modifier.fillMaxSize()
-                    .graphicsLayer { translationY = coverPull }
                     .nestedScroll(pullConnection)
                     .pointerInput(selected) {
                     var dragDistance = 0f
@@ -265,7 +265,14 @@ fun ProfileScreen(
                         Box(Modifier.fillMaxWidth()) {
                             // 通栏封面 280dp（对齐网页端 260–320 区间）：零圆角、横向铺满，
                             // 顶部压在悬浮顶栏后方，底部渐变到页面背景，头像跨在封面下缘。
-                            Box(Modifier.fillMaxWidth().height(280.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                            // 下拉时容器自己向下长高（不再整体位移列表），图片被 clipToBounds 裁在容器内：
+                            // 既不会横向溢出到屏幕外，也不会缩放后盖住头像与正文。
+                            Box(
+                                Modifier.fillMaxWidth()
+                                    .height(280.dp + with(density) { coverPull.toDp() })
+                                    .clipToBounds()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                            ) {
                                 if (profile.cover != null) {
                                     val coverMeta = profile.coverMeta
                                     val focusX = (coverMeta?.focusX ?: 50f) / 100f
@@ -276,13 +283,11 @@ fun ProfileScreen(
                                         contentDescription = "${profile.nickname}的封面",
                                         imageLoader = LocalHeikaImageLoader.current,
                                         modifier = Modifier.fillMaxSize().graphicsLayer {
-                                            // 下拉放大：列表整体下移了 coverPull，图片先用 -coverPull 抵消，
-                                            // 再按 (高度 + 位移)/高度 纵向放大，顶边定在原地、底边向下延伸，
-                                            // 于是拉出来的那段始终被图片填满，不会露出页面底色。
-                                            val stretch = 1f + coverPull / size.height.coerceAtLeast(1f)
-                                            scaleX = coverZoom * stretch
-                                            scaleY = coverZoom * stretch
-                                            transformOrigin = TransformOrigin(focusX, 0f)
+                                            // 只做等比缩放，不拉伸：宽高比始终不变；
+                                            // 超出部分由外层 clipToBounds 裁掉，不会突破父容器。
+                                            scaleX = coverZoom
+                                            scaleY = coverZoom
+                                            transformOrigin = TransformOrigin(focusX, focusY)
                                         },
                                         contentScale = ContentScale.Crop,
                                         alignment = androidx.compose.ui.BiasAlignment(focusX * 2f - 1f, focusY * 2f - 1f),

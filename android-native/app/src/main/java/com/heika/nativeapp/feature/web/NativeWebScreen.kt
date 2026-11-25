@@ -324,6 +324,23 @@ private class Bridge(
         if (type.isBlank()) return
         onEvent(type, payload)
     }
+
+    /**
+     * 合集封面保存成功后的回执。
+     *
+     * 网页侧按 `HeikaNative.coverUpdated?.(seriesId)` 调用，
+     * 这里转成统一事件，原生列表据此立即重拉封面，不必等用户手动刷新。
+     */
+    @JavascriptInterface
+    fun coverUpdated(seriesId: String) {
+        onEvent("cover-updated", JSONObject().put("seriesId", seriesId))
+    }
+
+    /** 网页主动关闭容器的统一出口。 */
+    @JavascriptInterface
+    fun close() {
+        onEvent("close", JSONObject())
+    }
 }
 
 private fun Context.findActivity(): Activity? {

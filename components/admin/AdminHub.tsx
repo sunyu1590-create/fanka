@@ -33,6 +33,8 @@ const DESCRIPTIONS: Record<string, string> = {
   "ai-settings": "模型与密钥配置",
   audit: "管理员操作历史",
   "app-download": "网页与 APP 版本信息",
+  "home-banners": "首页图片与视频轮播、尺寸与运营数据",
+  "cover-templates": "官方封面模板与历史补齐",
 };
 
 /** 一级导航的二级入口页：Apple Settings 式分组，一屏内完成选择。 */

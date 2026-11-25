@@ -118,10 +118,13 @@ test("发布分类只在提交时触发，服务端用 routeConfirmed 去重", a
 test("APP 个人中心按网页版式：通栏封面、跨封面头像与下划线标签", async () => {
   const profile = await read(`${native}/feature/profile/ProfileScreen.kt`);
   // 方案 A：封面 260–320dp 区间（网页端移动视口同区间），零圆角、横向铺满。
-  const cover = profile.match(/height\((\d+)\.dp\)\.background\(MaterialTheme\.colorScheme\.surfaceVariant\)/);
+  // 静止态固定 280dp；下拉时按 coverPull 向下长高（height(280.dp + ...)），两种写法都接受。
+  const cover = profile.match(/height\((\d+)\.dp \+ with\(density\)/) ||
+    profile.match(/height\((\d+)\.dp\)\.background\(MaterialTheme\.colorScheme\.surfaceVariant\)/);
   assert.ok(cover, "封面高度需直接写在通栏 Box 上");
   const coverHeight = Number(cover[1]);
   assert.ok(coverHeight >= 260 && coverHeight <= 320, `封面高度 ${coverHeight}dp 超出 260–320dp 区间`);
+  assert.match(profile, /clipToBounds\(\)/, "封面必须裁切在自身容器内，缩放后不允许溢出父容器");
   assert.doesNotMatch(profile, /RoundedCornerShape[^\n]*cover/i, "封面不允许圆角");
   // 顶栏实心占位：品牌栏抬高层级并用主题背景，列表正常落到屏幕底边（不再 offset 挖坑）
   assert.match(profile, /zIndex\(2f\)/);

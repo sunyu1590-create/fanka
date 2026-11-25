@@ -1,6 +1,7 @@
 "use client";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import AppLoginGate from "./AppLoginGate";
+import HomeBannerCarousel from "./HomeBannerCarousel";
 import { flushSync } from "react-dom";
 import {
   Home,
@@ -5475,6 +5476,11 @@ export default function Community({
               <span>{opened.length >= dailyAllowance ? "本周期额度已用完，已解锁卡片仍可查看" : `还可翻开 ${dailyAllowance - opened.length} 张`}{cycleLabel ? ` · ${cycleLabel}` : ""}</span>
             </div>
           )}
+          {/* 首页推荐位：额度下方、卡池上方。无有效内容时组件自身返回 null，不留占位。 */}
+          <HomeBannerCarousel
+            onOpenPost={(cloudId) => void openSearchPost(cloudId, null)}
+            onOpenSeries={(seriesId) => openCollection(seriesId)}
+          />
           {state.homeMode === "waterfall" ? (
             <>
               <div className="candidate-feed waterfall-card-feed">

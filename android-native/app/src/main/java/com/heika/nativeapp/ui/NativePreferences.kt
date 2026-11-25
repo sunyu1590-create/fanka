@@ -31,6 +31,7 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val skippedUpdateCodeKey = intPreferencesKey("skipped_update_code")
     private val decorKey = stringPreferencesKey("decor_config")
     private val decorDraftKey = stringPreferencesKey("decor_working_draft")
+    private val homeBannersKey = stringPreferencesKey("home_banners_payload")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
@@ -117,6 +118,14 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     suspend fun skippedUpdateCode(): Int = dataStore.data.map { it[skippedUpdateCodeKey] ?: 0 }.first()
     suspend fun markUpdateSkipped(code: Int) {
         dataStore.edit { it[skippedUpdateCodeKey] = code }
+    }
+
+
+    /** 首页推荐位的最近一次有效配置：网络异常时用它兜底，避免首页出现空洞。 */
+    val homeBanners: Flow<String?> = dataStore.data.map { it[homeBannersKey] }
+
+    suspend fun saveHomeBanners(payload: String) {
+        dataStore.edit { it[homeBannersKey] = payload }
     }
 
 }

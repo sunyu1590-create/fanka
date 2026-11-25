@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDownUp, BookOpen, Bookmark, Check, ChevronDown, ChevronUp, Layers, ListOrdered, Loader2, Pencil, Plus, Share2, ShieldCheck, Trash2, X } from "lucide-react";
+import { ArrowDownUp, Image, BookOpen, Bookmark, Check, ChevronDown, ChevronUp, Layers, ListOrdered, Loader2, Pencil, Plus, Share2, ShieldCheck, Trash2, X } from "lucide-react";
 import { cloudRequest, publicRequest } from "@/lib/cloud";
 import { confirmInApp } from "@/lib/in-app-dialog";
 
@@ -194,6 +194,7 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
           <label><span>合集名称</span><input value={form.title} maxLength={48} onChange={(event) => setForm({ ...form, title: event.target.value })}/></label>
           <label><span>简介</span><textarea value={form.description} maxLength={240} rows={3} onChange={(event) => setForm({ ...form, description: event.target.value })}/></label>
           <label><span>封面地址</span><input value={form.coverUrl} placeholder="https://…（可选）" onChange={(event) => setForm({ ...form, coverUrl: event.target.value })}/></label>
+          <div className="collection-cover-entry"><a className="collection-ghost" href={`/series/${series.id}/cover`}><Image size={15} />打开封面编辑器</a><small>支持自动生成、官方模板、上传图片与作品图片</small></div>
           <div className="collection-edit-row">
             <label><span>类型</span><select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value })}><option value="serial">连载</option><option value="tutorial">教程</option><option value="resource">资源</option></select></label>
             <label><span>状态</span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="ongoing">连载中</option><option value="completed">已完结</option></select></label>
@@ -318,6 +319,7 @@ export default function CollectionView({ id, accountId, ownPosts = [], onBack, o
       </button>
       <button type="button" className="collection-ghost" onClick={() => void share()}><Share2 size={15} />分享</button>
       {series.isOwner && <button type="button" className="collection-ghost collection-manage-entry" onClick={() => setMode("manage")}><Pencil size={15} />管理</button>}
+      {series.isOwner && <a className="collection-ghost" href={`/series/${series.id}/cover`}><Image size={15} />封面</a>}
     </div>
 
     {series.following && <label className="collection-notify">

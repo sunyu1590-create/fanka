@@ -28,6 +28,7 @@ export const ADMIN_HUB_GROUPS: Record<Exclude<AdminTab, "overview">, Array<{ tit
   ],
   manage: [
     { title: "内容分发", items: ["distribution"] },
+    { title: "运营位", items: ["home-banners", "cover-templates"] },
     { title: "运营", items: ["cost"] },
     { title: "社区治理", items: ["reports", "messages", "appeals", "comments", "keywords"] },
     { title: "用户与运营", items: ["users", "membership", "community-access", "topic-events", "official-notices", "exploration-ad"] },
@@ -71,6 +72,8 @@ export const ADMIN_TITLES: Record<string, string> = {
   audit: "操作记录",
   "app-download": "版本发布",
   distribution: "内容分发",
+  "home-banners": "首页推荐位",
+  "cover-templates": "合集封面",
 };
 
 export const ADMIN_HUB_DESC: Record<Exclude<AdminTab, "overview">, string> = {

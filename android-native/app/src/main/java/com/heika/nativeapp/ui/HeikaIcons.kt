@@ -55,6 +55,8 @@ object HeikaIconRes {
     val BusinessUser = R.drawable.ic_lucide_user_round_cog
     val Video = R.drawable.ic_lucide_video
     val Play = R.drawable.ic_lucide_play
+    val VolumeOff = R.drawable.ic_lucide_volume_off
+    val VolumeOn = R.drawable.ic_lucide_volume_2
     val Medal = R.drawable.ic_lucide_medal
     val Magic = R.drawable.ic_lucide_palette
     val Globe = R.drawable.ic_lucide_globe
@@ -191,4 +193,6 @@ object HeikaIcons {
     val SmartToy: ImageVector @Composable get() = icon(HeikaIconRes.Robot)
     val ArrowBack: ImageVector @Composable get() = icon(HeikaIconRes.Back)
     val OpenInNew: ImageVector @Composable get() = icon(HeikaIconRes.OpenExternal)
+    val VolumeOff: ImageVector @Composable get() = icon(HeikaIconRes.VolumeOff)
+    val VolumeOn: ImageVector @Composable get() = icon(HeikaIconRes.VolumeOn)
 }

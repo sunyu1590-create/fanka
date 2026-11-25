@@ -1,0 +1,150 @@
+/* 首页推荐位：沉浸式单媒体轮播（方案 A） */
+
+.hb-carousel {
+  position: relative;
+  width: 100%;
+  margin: 0 0 14px;
+}
+
+.hb-frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface, rgba(127, 127, 127, 0.08));
+  isolation: isolate;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hb-frame.is-link { cursor: pointer; }
+.hb-frame.is-link:focus-visible { outline: 2px solid var(--accent, #1f4ef5); outline-offset: 3px; }
+
+.hb-slide {
+  position: absolute;
+  inset: 0;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.hb-slide > img,
+.hb-slide > video,
+.hb-slide .hb-poster,
+.hb-slide .hb-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+}
+
+.hb-slide .hb-video { transition: opacity 320ms ease; }
+.hb-slide .hb-poster { transition: opacity 320ms ease; }
+
+.hb-fallback {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 140% at 18% 0%, rgba(31, 78, 245, 0.16), transparent 62%),
+    linear-gradient(120deg, rgba(127, 127, 127, 0.14), rgba(127, 127, 127, 0.04));
+}
+
+.hb-mute {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 0.6px solid rgba(255, 255, 255, 0.28);
+  background: rgba(18, 18, 20, 0.42);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.hb-mute:hover { background: rgba(18, 18, 20, 0.6); }
+.hb-mute:active { transform: scale(0.94); }
+
+.hb-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+
+.hb-progress i {
+  display: block;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.92);
+  transition: width 220ms linear;
+}
+
+.hb-play {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: rgba(18, 18, 20, 0.46);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.hb-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 0 2px;
+}
+
+.hb-dots button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted, rgba(127, 127, 127, 0.36));
+  cursor: pointer;
+  transition: width 240ms cubic-bezier(0.22, 0.61, 0.36, 1), background 240ms ease;
+}
+
+.hb-dots button.is-active {
+  width: 18px;
+  background: var(--ink, rgba(20, 20, 20, 0.82));
+}
+
+.hb-dots button:focus-visible { outline: 2px solid var(--accent, #1f4ef5); outline-offset: 3px; }
+
+/* 亮色模式：指示器与按钮在浅底上依然清晰 */
+:root[data-theme="light"] .hb-dots button { background: rgba(20, 20, 20, 0.22); }
+:root[data-theme="light"] .hb-dots button.is-active { background: rgba(20, 20, 20, 0.82); }
+
+@media (max-width: 767px) {
+  .hb-carousel { margin-bottom: 12px; }
+  .hb-mute { width: 26px; height: 26px; right: 8px; bottom: 8px; }
+  .hb-dots { padding-top: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hb-slide { transition: none !important; }
+  .hb-progress i { transition: none !important; }
+}

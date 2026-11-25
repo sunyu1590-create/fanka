@@ -1450,6 +1450,41 @@ class HeikaRepository @Inject constructor(
         relatedFrom(payload)
     }
 
+    /**
+     * 首页推荐位：配置、有效内容与目标校验结果由服务端一次给出。
+     * 匿名可读，失败返回 null 由调用方决定是否使用本地缓存。
+     */
+    suspend fun homeBanners(): HeikaBannerFeed? = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = request("/api/v1/home-banners?platform=app", includeSession = false) as? JSONObject
+                ?: return@runCatching null
+            HeikaBannerFeed.from(payload)
+        }.getOrNull()
+    }
+
+    /**
+     * 首页推荐位事件上报（曝光 / 点击 / 视频起播与完播）。
+     *
+     * 失败一律静默：埋点永远不该影响用户浏览，服务端也有 30 秒去重窗口。
+     */
+    suspend fun trackBannerEvent(
+        bannerId: String,
+        event: String,
+        session: String,
+        durationMs: Long? = null,
+    ) = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = JSONObject()
+                .put("banner_id", bannerId)
+                .put("event", event)
+                .put("platform", "app")
+                .put("session", session)
+            if (durationMs != null) payload.put("duration_ms", durationMs)
+            request("/api/v1/home-banners/events", method = "POST", body = payload.toString())
+        }
+        Unit
+    }
+
     /** 榜单快照读取：服务端已做缓存与降级，这里只取当前快照。 */
     suspend fun rankings(keys: String = "global,ai,series,rising,long"): Map<String, List<HeikaRankItem>> =
         withContext(Dispatchers.IO) {

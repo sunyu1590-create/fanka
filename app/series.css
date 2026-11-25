@@ -572,3 +572,53 @@
   .series-side-rank-row small { font-size: 9px; color: var(--muted); }
   .series-side-rank > p { margin: 10px 2px 0; font-size: 9px; line-height: 14px; color: var(--muted); }
 }
+
+/* ---------- 封面统一：卡片等高、标题固定两行、封面淡入 ---------- */
+
+/* 标题区固定两行高度：长短标题不会把卡片撑成不同高度，底部因此天然对齐。 */
+.ai-series-card > strong,
+.series-shelf-card > strong,
+.series-grid-copy > strong,
+.series-hero-copy > strong { min-height: 2.8em; }
+
+.ai-series-card > strong { min-height: 2.8em; }
+
+/* 辅助信息统一占位，避免有/无收藏数时错位 */
+.ai-series-card > small,
+.series-shelf-card > small { min-height: 1.2em; }
+
+/* 封面加载失败时隐藏破图，由容器的文字兜底层接管，不留裂图 */
+.series-grid-cover img[data-failed],
+.series-shelf-cover img[data-failed],
+.ai-series-cover img[data-failed],
+.book-cover img[data-failed],
+.search-series-cover img[data-failed],
+.related-series-cover img[data-failed] { display: none; }
+
+/* 合集封面编辑器入口 */
+.collection-cover-entry { display: flex; flex-direction: column; gap: 5px; }
+.collection-cover-entry small { color: var(--muted); font-size: 11px; line-height: 1.6; }
+
+/* 无封面时的本地文字封面：三档色调即可，不做复杂装饰 */
+.series-cover-art {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  color: #f4f1ea;
+  background: linear-gradient(158deg, #2a2c31, #14151a 64%, #23262b);
+}
+.series-cover-art em { font-style: normal; font-size: 10px; letter-spacing: 0.18em; opacity: 0.7; }
+.series-cover-art strong { font-size: 15px; font-weight: 620; line-height: 1.32; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.series-cover-art i { font-style: normal; font-size: 10px; opacity: 0.6; }
+.series-cover-art.tone-1 { background: linear-gradient(158deg, #23303a, #101820 64%, #1d2a33); }
+.series-cover-art.tone-2 { background: linear-gradient(158deg, #33291f, #17120e 64%, #2a2118); }
+.series-cover-art.tone-3 { background: linear-gradient(158deg, #2b2233, #150f1a 64%, #241b2b); }
+.series-cover-art.tone-4 { background: linear-gradient(158deg, #1f3329, #0f1712 64%, #1a2a21); }
+
+@media (prefers-reduced-motion: reduce) {
+  .series-grid-cover img, .series-shelf-cover img, .ai-series-cover img,
+  .book-cover img, .search-series-cover img, .related-series-cover img { transition: none; }
+}

@@ -209,14 +209,25 @@ private fun HotRankRow(item: HeikaRankItem, onClick: () -> Unit) {
 
 @Composable
 private fun AiSeriesCard(card: HeikaSeriesCard, onClick: () -> Unit) {
-    Column(Modifier.width(104.dp).clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(.75f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+    // 统一 3:4 封面 + 统一卡宽 + 标题固定两行高度：
+    // 同一行里每张卡的正文起点、统计行位置完全对齐，横向滑动时不会参差。
+    Column(
+        Modifier.width(AiSeriesCardWidth).clickable(onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(AiSeriesCoverRatio)
+                .clip(RoundedCornerShape(9.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
             val cover = card.coverUrl
             if (cover != null) {
                 val context = LocalContext.current
                 var failed by remember(card.id) { mutableStateOf(false) }
                 if (!failed) {
-                    val request = remember(context, cover) { ImageRequest.Builder(context).data(cover).crossfade(true).build() }
+                    val request = remember(context, cover) {
+                        ImageRequest.Builder(context).data(cover).crossfade(true).build()
+                    }
                     AsyncImage(
                         model = request,
                         contentDescription = "${card.title}封面",
@@ -231,8 +242,23 @@ private fun AiSeriesCard(card: HeikaSeriesCard, onClick: () -> Unit) {
                 CoverText(card)
             }
         }
-        Text(card.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("${card.chapters} 篇 · ${card.followCount} 收藏", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            card.title,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            lineHeight = 15.sp,
+            minLines = 2,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            "${card.chapters} 篇 · ${card.followCount} 收藏",
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f),
+            fontSize = 8.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -248,36 +274,86 @@ private fun CoverText(card: HeikaSeriesCard) {
             ),
         ),
     ) {
-        Column(Modifier.fillMaxSize().padding(7.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Text(card.kindLabel, color = MaterialTheme.colorScheme.primary, fontSize = 7.sp, letterSpacing = 1.sp)
-            Text(card.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, lineHeight = 11.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(
+                card.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 12.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
 
 @Composable
 private fun AiPickCard(post: HeikaRelatedPost, onClick: () -> Unit) {
+    // 紧凑横向图文卡：定宽定高，左图右文，滑动时高度一致、不会跳动。
     Row(
-        Modifier.width(232.dp).clip(RoundedCornerShape(HeikaRadii.chip))
+        Modifier.width(AiPickCardWidth).height(AiPickCardHeight)
+            .clip(RoundedCornerShape(HeikaRadii.chip))
             .background(MaterialTheme.colorScheme.surface)
             .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .3f), RoundedCornerShape(HeikaRadii.chip))
             .clickable(onClick = onClick)
-            .padding(9.dp),
+            .padding(7.dp),
         horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(44.dp).height(44.dp).clip(RoundedCornerShape(7.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+        Box(
+            Modifier.width(58.dp).height(64.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
             val cover = post.cover
             if (cover != null) {
                 val context = LocalContext.current
-                val request = remember(context, cover) { ImageRequest.Builder(context).data(cover).crossfade(true).build() }
-                AsyncImage(model = request, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                var failed by remember(post.id) { mutableStateOf(false) }
+                if (!failed) {
+                    val request = remember(context, cover) {
+                        ImageRequest.Builder(context).data(cover).crossfade(true).build()
+                    }
+                    AsyncImage(
+                        model = request,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        onError = { failed = true },
+                    )
+                } else {
+                    Icon(
+                        HeikaIcons.Sparkles,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = .7f),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             } else {
-                Icon(HeikaIcons.Sparkles, contentDescription = null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .7f), modifier = Modifier.size(16.dp).align(Alignment.Center))
+                Icon(
+                    HeikaIcons.Sparkles,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = .7f),
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(post.title, color = MaterialTheme.colorScheme.onBackground, fontSize = 10.5.sp, fontWeight = FontWeight.Medium, maxLines = 2, lineHeight = 13.sp, overflow = TextOverflow.Ellipsis)
+        Column(
+            Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                post.title,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 13.5.sp,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 buildString {
                     append(post.tag ?: "AI 资源")
@@ -291,3 +367,11 @@ private fun AiPickCard(post: HeikaRelatedPost, onClick: () -> Unit) {
         }
     }
 }
+
+/** 合集卡统一尺寸：3:4 封面，宽度固定，横向滑动时每张卡等宽等高。 */
+private val AiSeriesCardWidth = 118.dp
+private const val AiSeriesCoverRatio = 0.75f
+
+/** 推荐卡统一尺寸：紧凑横向图文卡。 */
+private val AiPickCardWidth = 210.dp
+private val AiPickCardHeight = 78.dp

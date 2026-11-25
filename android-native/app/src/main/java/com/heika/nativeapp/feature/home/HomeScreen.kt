@@ -124,9 +124,13 @@ fun HomeScreen(
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     sharedElementsEnabled: Boolean = false,
+    onOpenPostById: (String) -> Unit = {},
+    onOpenSeries: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
+    bannerViewModel: HomeBannerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val bannerState by bannerViewModel.state.collectAsStateWithLifecycle()
     var preview by remember { mutableStateOf<DailyCardPreview?>(null) }
     // 收起动画期间提前恢复原卡片可见性，避免「预览已淡出、原卡片未恢复」的黑闪空档。
     var dismissingPreviewId by remember { mutableStateOf<Int?>(null) }
@@ -211,6 +215,23 @@ fun HomeScreen(
                                 Text("正在恢复本次卡片", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                             }
                         }
+                    }
+                }
+                // 首页推荐位：位置固定在「翻卡额度」与卡池之间，无内容时整块不渲染。
+                val bannerFeed = bannerState.feed
+                if (bannerFeed != null && bannerFeed.settings.enabled && bannerFeed.items.isNotEmpty()) {
+                    item(
+                        key = "home-banner",
+                        span = { GridItemSpan(maxLineSpan) },
+                        contentType = "home-banner",
+                    ) {
+                        HomeBannerPager(
+                            feed = bannerFeed,
+                            onOpenPost = onOpenPostById,
+                            onOpenSeries = onOpenSeries,
+                            onTrack = { id, event -> bannerViewModel.track(id, event) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
                 itemsIndexed(
