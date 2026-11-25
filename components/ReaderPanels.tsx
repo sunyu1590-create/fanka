@@ -1,0 +1,512 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronUp, Heart, ListTree, MessageSquare, MoreHorizontal, X } from "lucide-react";
+import { markdownOutline, type OutlineItem } from "./MarkdownContent";
+
+type ReaderComment = {
+  id: number;
+  cloudId?: string;
+  authorId?: string;
+  name?: string;
+  avatar?: string;
+  post: number;
+  body: string;
+  parent?: number;
+  replyToName?: string;
+  time: number;
+  likes: number;
+  liked?: boolean;
+};
+
+export function relativeTime(time: number) {
+  const diff = Date.now() - time;
+  if (diff < 60_000) return "刚刚";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  return new Date(time).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+/**
+ * 阅读进度：按正文真实滚动量计算，评论区、目录、分享面板的滚动都不参与。
+ * 短文章（无可用标题结构）由调用方决定不渲染。
+ */
+export function useReadingProgress(mode: "page" | "overlay") {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const article = document.getElementById("detail-article");
+      if (!article) return;
+      const rect = article.getBoundingClientRect();
+      const height = rect.height || 1;
+      const top = mode === "page" ? 64 : (document.getElementById("detail-scroll")?.getBoundingClientRect().top ?? 54);
+      const passed = top - rect.top;
+      setProgress(Math.min(1, Math.max(0, passed / Math.max(1, height - 120))));
+    };
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(measure); };
+    const scroller = mode === "overlay" ? document.getElementById("detail-scroll") : null;
+    scroller?.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    schedule();
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      scroller?.removeEventListener("scroll", schedule);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [mode]);
+  return progress;
+}
+
+/** 当前所在章节：取「已经滚过顶栏」的最后一个标题，评论和目录滚动不参与。 */
+export function useActiveHeading(outline: OutlineItem[], mode: "page" | "overlay") {
+  const [activeId, setActiveId] = useState("");
+  useEffect(() => {
+    if (outline.length === 0) { setActiveId(""); return; }
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const threshold = mode === "page" ? 140 : 120;
+      let current = outline[0]?.id ?? "";
+      for (const item of outline) {
+        if (item.level > 3) continue;
+        const node = document.getElementById(item.id);
+        if (!node) continue;
+        if (node.getBoundingClientRect().top <= threshold) current = item.id;
+        else break;
+      }
+      setActiveId(current);
+    };
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(measure); };
+    const scroller = mode === "overlay" ? document.getElementById("detail-scroll") : null;
+    scroller?.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("scroll", schedule, { passive: true });
+    schedule();
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      scroller?.removeEventListener("scroll", schedule);
+      window.removeEventListener("scroll", schedule);
+    };
+  }, [outline, mode]);
+  return activeId;
+}
+
+/**
+ * 阅读系统 2.0 的详情页外壳状态：目录大纲、进度、当前章节与三个面板开关。
+ * 一次成组返回，调用方只需在组件顶层调用一次，避免面板开关触发正文重挂。
+ */
+export function useReaderShell(source: string | null | undefined, mode: "page" | "overlay") {
+  const outline = useMemo(() => (source ? markdownOutline(source) : []), [source]);
+  const progress = useReadingProgress(mode);
+  const activeHeading = useActiveHeading(outline, mode);
+  const [commentPanelOpen, setCommentPanelOpen] = useState(false);
+  const [commentPanelFocus, setCommentPanelFocus] = useState(0);
+  const [tocOpen, setTocOpen] = useState(false);
+  return {
+    outline, progress, activeHeading,
+    commentPanelOpen, setCommentPanelOpen,
+    commentPanelFocus, setCommentPanelFocus,
+    tocOpen, setTocOpen,
+  };
+}
+
+/**
+ * 作者区右侧的关注按钮：真实读写 creator_follows，乐观更新失败即回滚。
+ * 按钮本体 32px 视觉，外层保留 44px 热区；未登录或看自己时不渲染。
+ */
+export function AuthorFollowButton({ creatorId, accountId, onNotice }: {
+  creatorId?: string | null;
+  accountId?: string | null;
+  onNotice?: (message: string) => void;
+}) {
+  const [following, setFollowing] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!creatorId || !accountId || creatorId === accountId) { setReady(false); return; }
+    let alive = true;
+    setReady(false);
+    fetch(`/api/v1/creator-follows?creator=${encodeURIComponent(creatorId)}`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => { if (alive && result?.data) { setFollowing(Boolean(result.data.following)); setReady(true); } })
+      .catch(() => { /* 读取失败就不显示关注态，不影响阅读 */ });
+    return () => { alive = false; };
+  }, [creatorId, accountId]);
+
+  if (!creatorId || !accountId || creatorId === accountId || !ready) return null;
+  const toggle = () => {
+    if (busy) return;
+    const next = !following;
+    setBusy(true);
+    setFollowing(next);
+    fetch("/api/v1/creator-follows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creatorId }),
+    }).then(async (response) => {
+      const result = response.ok ? await response.json() : null;
+      if (!result?.data) throw new Error("follow failed");
+      setFollowing(Boolean(result.data.following));
+      onNotice?.(result.data.following ? "已关注这位创作者" : "已取消关注");
+    }).catch(() => {
+      setFollowing(!next);
+      onNotice?.("关注未同步，请稍后再试");
+    }).finally(() => setBusy(false));
+  };
+
+  return (
+    <button
+      type="button"
+      className={`reader-author-follow${following ? " is-following" : ""}`}
+      aria-pressed={following}
+      aria-label={following ? "取消关注作者" : "关注作者"}
+      disabled={busy}
+      onClick={toggle}
+    >
+      {following ? "已关注" : "关注"}
+    </button>
+  );
+}
+
+export function ReaderProgress({ progress }: { progress: number }) {
+  return (
+    <div className="reader-progress" aria-hidden="true">
+      <i style={{ width: `${Math.round(progress * 100)}%` }} />
+    </div>
+  );
+}
+
+/** 移动端目录面板：实心底色，当前章节用品牌色标记。 */
+export function ReaderTocSheet({ outline, activeId, onJump, onClose }: {
+  outline: OutlineItem[];
+  activeId: string;
+  onJump: (item: OutlineItem) => void;
+  onClose: () => void;
+}) {
+  const visible = outline.filter((item) => item.level <= 3);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="reader-sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="reader-sheet" role="dialog" aria-modal="true" aria-label="文章目录">
+        <div className="reader-sheet-handle" aria-hidden="true" />
+        <header className="reader-sheet-head">
+          <ListTree size={16} />
+          <h2>目录</h2>
+          <small>{visible.length} 节</small>
+          <button type="button" className="reader-sheet-close" aria-label="关闭目录" onClick={onClose}><X size={17} /></button>
+        </header>
+        <div className="reader-toc-list">
+          {visible.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`${item.level >= 3 ? "is-sub" : ""}${item.id === activeId ? " is-active" : ""}`.trim()}
+              onClick={() => onJump(item)}
+            >
+              {item.text}
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * 桌面左侧轻量目录：固定悬浮，不参与正文布局，因此正文宽度和位置都不变。
+ * 窄屏（<1280）由 CSS 隐藏，改用顶栏的目录按钮打开上拉面板。
+ */
+export function ReaderTocAside({ outline, activeId, onJump }: {
+  outline: OutlineItem[];
+  activeId: string;
+  onJump: (item: OutlineItem) => void;
+}) {
+  const items = outline.filter((item) => item.level <= 3);
+  if (items.length < 3) return null;
+  return (
+    <nav className="reader-toc-aside" aria-label="文章目录">
+      <p>目录</p>
+      <div className="reader-toc-aside-list">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`${item.level >= 3 ? "is-sub" : ""}${item.id === activeId ? " is-active" : ""}`.trim()}
+            onClick={() => onJump(item)}
+          >
+            {item.text}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+/**
+ * 评论面板：桌面是右侧抽屉，移动端是底部上拉面板（同一份 DOM，靠断点切换形态）。
+ * 面板完全实心，正文不会透过来；关闭后保留已加载的评论与草稿（状态在父级）。
+ */
+export function CommentPanel({
+  open,
+  total,
+  sort,
+  comments,
+  loading,
+  error,
+  hasMore,
+  loadingMore,
+  accountId,
+  postAuthorId,
+  composer,
+  onClose,
+  onSort,
+  onLoadMore,
+  onRetry,
+  onLike,
+  onReply,
+  onDelete,
+  onReport,
+  onCopy,
+  onNotice,
+  focusToken,
+}: {
+  open: boolean;
+  total: number;
+  sort: "hot" | "new";
+  comments: ReaderComment[];
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+  loadingMore: boolean;
+  accountId: string | null;
+  postAuthorId?: string | null;
+  composer: ReactNode;
+  onClose: () => void;
+  onSort: (sort: "hot" | "new") => void;
+  onLoadMore: () => void;
+  onRetry: () => void;
+  onLike: (comment: ReaderComment) => void;
+  onReply: (comment: ReaderComment) => void;
+  onDelete: (comment: ReaderComment) => void;
+  onReport: (comment: ReaderComment) => void;
+  onCopy: (comment: ReaderComment) => void;
+  onNotice: (message: string) => void;
+  focusToken: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  // 拖动位移允许为负（向上拉），负值只用于判定，不真的把面板拉出屏幕。
+  const [dragging, setDragging] = useState(0);
+  const dragStart = useRef<number | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // 入场动画结束后停掉 animation，避免拖动改内联样式后动画重播造成跳动。
+  const [settled, setSettled] = useState(false);
+  const [expandedBodies, setExpandedBodies] = useState<Record<number, boolean>>({});
+  const [expandedThreads, setExpandedThreads] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    if (!open) { setDragging(0); setExpanded(false); setSettled(false); return; }
+    const settle = window.setTimeout(() => setSettled(true), 360);
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.clearTimeout(settle);
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [open, onClose]);
+
+  // 从底栏「说说你的想法」进来时，面板展开完成后再聚焦输入框。
+  useEffect(() => {
+    if (!open || !focusToken) return;
+    const timer = window.setTimeout(() => {
+      const field = panelRef.current?.querySelector("textarea");
+      field?.focus({ preventScroll: true });
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [open, focusToken]);
+
+  const roots = useMemo(() => {
+    const all = comments;
+    return all
+      .filter((c) => !c.parent)
+      .sort((a, b) => (sort === "new" ? b.time - a.time : b.likes - a.likes || b.time - a.time));
+  }, [comments, sort]);
+
+  const childrenOf = useCallback((id: number) => comments.filter((c) => c.parent === id).sort((a, b) => a.time - b.time), [comments]);
+
+  if (!open) return null;
+
+  const onPointerDown = (event: React.PointerEvent) => {
+    dragStart.current = event.clientY;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  };
+  const onPointerMove = (event: React.PointerEvent) => {
+    if (dragStart.current === null) return;
+    setDragging(event.clientY - dragStart.current);
+  };
+  const onPointerUp = () => {
+    if (dragStart.current === null) return;
+    const moved = dragging;
+    dragStart.current = null;
+    setDragging(0);
+    if (moved > 96) {
+      if (expanded) setExpanded(false);
+      else onClose();
+    } else if (moved < -48) {
+      setExpanded(true);
+    }
+  };
+
+  return (
+    <div className="comment-panel-layer">
+      <div className="comment-panel-scrim" role="presentation" onClick={onClose} />
+      <section
+        ref={panelRef}
+        className={`comment-panel${expanded ? " is-expanded" : ""}${dragging ? " is-dragging" : ""}${settled ? " is-settled" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="评论"
+        style={dragging ? { transform: `translateY(${Math.max(0, dragging)}px)` } : undefined}
+      >
+        <div
+          className="reader-sheet-handle"
+          role="separator"
+          aria-label="拖动调整评论面板高度"
+          style={{ cursor: "grab", touchAction: "none" }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        />
+        <header className="comment-panel-head">
+          <MessageSquare size={16} />
+          <h2>全部评论</h2>
+          <small>{total > 0 ? total : comments.length}</small>
+          <div className="comment-panel-tools">
+            <button type="button" aria-label={expanded ? "收起面板" : "展开到全屏"} onClick={() => setExpanded((value) => !value)}>
+              {expanded ? <ChevronDown size={17} /> : <ChevronUp size={17} />}
+            </button>
+            <button type="button" aria-label="关闭评论" onClick={onClose}><X size={18} /></button>
+          </div>
+        </header>
+        <div className="comment-sort-row" role="group" aria-label="评论排序">
+          <button type="button" className={sort === "hot" ? "selected" : ""} onClick={() => onSort("hot")}>热门</button>
+          <button type="button" className={sort === "new" ? "selected" : ""} onClick={() => onSort("new")}>最新</button>
+        </div>
+        <div className="comment-panel-body">
+          {loading && comments.length === 0 && (
+            <div className="comment-panel-skeleton" aria-label="正在加载评论" aria-busy="true">
+              {[0, 1, 2, 3].map((row) => (
+                <div className="comment-skeleton-row" key={row}>
+                  <span className="comment-skeleton-avatar" />
+                  <span className="comment-skeleton-lines"><i /><i /></span>
+                </div>
+              ))}
+            </div>
+          )}
+          {error && (
+            <p className="comments-loading">
+              {error}
+              <button type="button" className="comment-expand" onClick={onRetry}>重试</button>
+            </p>
+          )}
+          {!loading && !error && roots.length === 0 && <p className="comments-empty">还没有评论，来聊聊你的想法。</p>}
+          {roots.map((comment) => {
+            const replies = childrenOf(comment.id);
+            const long = comment.body.length > 280;
+            const shown = expandedBodies[comment.id] || !long ? comment.body : `${comment.body.slice(0, 280)}…`;
+            const threadOpen = Boolean(expandedThreads[comment.id]);
+            return (
+              <article className="comment" key={comment.id}>
+                <div className="comment-avatar" aria-hidden="true">
+                  <span>{(comment.name || "探").slice(0, 1)}</span>
+                  {comment.avatar && <img src={comment.avatar} alt="" loading="lazy" />}
+                </div>
+                <div className="comment-content">
+                  <div className="comment-heading">
+                    <strong>{comment.name || "探索者"}</strong>
+                    {postAuthorId && comment.authorId === postAuthorId && <span className="comment-author-badge">作者</span>}
+                  </div>
+                  <p className="comment-body">{shown}</p>
+                  {long && (
+                    <button type="button" className="comment-expand" onClick={() => setExpandedBodies((current) => ({ ...current, [comment.id]: !current[comment.id] }))}>
+                      {expandedBodies[comment.id] ? "收起" : "展开全文"}
+                    </button>
+                  )}
+                  <div className="comment-meta">
+                    <time dateTime={new Date(comment.time).toISOString()}>{relativeTime(comment.time)}</time>
+                    <button type="button" onClick={() => onReply(comment)}>回复</button>
+                    <details className="comment-actions-menu">
+                      <summary aria-label="评论操作"><MoreHorizontal size={15} /></summary>
+                      <div className="comment-actions-panel">
+                        <button type="button" onClick={() => onCopy(comment)}>复制</button>
+                        {accountId && comment.authorId === accountId && <button type="button" onClick={() => onDelete(comment)}>删除</button>}
+                        {accountId && comment.cloudId && comment.authorId !== accountId && <button type="button" onClick={() => onReport(comment)}>举报</button>}
+                      </div>
+                    </details>
+                  </div>
+                  {replies.length > 0 && (
+                    <div className="comment-replies">
+                      {(threadOpen ? replies : replies.slice(0, 2)).map((reply) => (
+                        <div className="comment-reply" key={reply.id}>
+                          <div className="comment-avatar small" aria-hidden="true">
+                            <span>{(reply.name || "探").slice(0, 1)}</span>
+                            {reply.avatar && <img src={reply.avatar} alt="" loading="lazy" />}
+                          </div>
+                          <div className="comment-reply-content">
+                            <div className="comment-reply-heading">
+                              <strong>{reply.name || "探索者"}</strong>
+                              <span>回复</span>
+                              <strong>{reply.replyToName || comment.name || "探索者"}</strong>
+                            </div>
+                            <p>{reply.body}</p>
+                            <div className="comment-meta">
+                              <time>{relativeTime(reply.time)}</time>
+                              <button type="button" onClick={() => onReply({ ...reply, parent: comment.id })}>回复</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {replies.length > 2 && (
+                        <button type="button" className="expand-replies" aria-expanded={threadOpen} onClick={() => setExpandedThreads((current) => ({ ...current, [comment.id]: !current[comment.id] }))}>
+                          {threadOpen ? "收起回复" : `展开 ${replies.length - 2} 条回复`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className={`comment-like${comment.liked ? " selected" : ""}`}
+                  aria-label={`${comment.liked ? "取消点赞" : "点赞评论"}，${comment.likes}`}
+                  aria-pressed={!!comment.liked}
+                  onClick={() => onLike(comment)}
+                >
+                  <Heart size={17} fill={comment.liked ? "currentColor" : "none"} />
+                  <span>{comment.likes}</span>
+                </button>
+              </article>
+            );
+          })}
+          {hasMore && (
+            <button type="button" className="comments-load-more" disabled={loadingMore} onClick={onLoadMore}>
+              {loadingMore ? "正在加载…" : "加载更多评论"}
+            </button>
+          )}
+        </div>
+        <div className="comment-panel-composer">{composer}</div>
+      </section>
+    </div>
+  );
+}

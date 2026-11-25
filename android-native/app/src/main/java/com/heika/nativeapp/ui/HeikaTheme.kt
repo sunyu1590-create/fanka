@@ -105,6 +105,22 @@ object HeikaPalette {
     val Line = DarkLine
 }
 
+/**
+ * 系统「减少动态效果」：把开发者选项 / 无障碍里的动画倍率读出来，
+ * 面板、进度线这类新增动效据此降级为瞬时切换，不影响共享元素迁移。
+ */
+@Composable
+fun rememberReduceMotion(): Boolean {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return androidx.compose.runtime.remember(context) {
+        android.provider.Settings.Global.getFloat(
+            context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
+}
+
 object HeikaMotion {
     const val quick = 150
     const val control = 220

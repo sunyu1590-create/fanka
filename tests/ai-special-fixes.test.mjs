@@ -77,9 +77,10 @@ test("网页 AI 分类中心与 APP 端同名同图标，并接入浏览器历�
   }
 });
 
-test("安卓 AI 入口随内容滚动，详情页顶栏纯黑且无图不占位", async () => {
+test("安卓 AI 入口随内容滚动，详情页顶栏实心且无图不占位", async () => {
   const discovery = await read(`${native}/feature/discovery/DiscoveryScreen.kt`);
   const detail = await read(`${native}/feature/detail/PostDetailScreen.kt`);
+  const chrome = await read(`${native}/feature/detail/ReadingChrome.kt`);
 
   // 探索 AI 资源是内容流首项，不再塞在折叠头部
   assert.match(discovery, /ai-resource-entry/);
@@ -87,14 +88,21 @@ test("安卓 AI 入口随内容滚动，详情页顶栏纯黑且无图不占位"
   // 顶部紧凑双行：分类行 + 固定搜索/筛选按钮
   assert.match(discovery, /contentDescription = "搜索"/);
   assert.match(discovery, /HeikaIcons\.Sparkles/);
-  // 详情顶栏主题自适应：渐变随深浅色走，浅色模式不再是纯黑条
-  assert.match(detail, /Brush\.verticalGradient/);
-  assert.match(detail, /headerFade/);
-  assert.doesNotMatch(detail, /HeikaGlassTopBar/);
+  // 阅读系统 2.0：顶栏改为实心纯色条，删掉会一路淡到封面和正文上的垂直渐变
+  assert.doesNotMatch(detail, /Brush\.verticalGradient/);
+  assert.doesNotMatch(detail, /headerFade/);
+  assert.match(chrome, /palette\.page\.copy\(alpha = \.97f\)/);
+  assert.match(detail, /ReadingTopBar\(/);
+  // 进度线挂在顶栏下方，只有长文显示
+  assert.match(chrome, /palette\.progressTrack/);
+  assert.match(chrome, /fillMaxWidth\(animated\)/);
+  // 底部操作栏常驻，不随滚动隐藏
+  assert.match(detail, /ReadingDock\(/);
+  assert.doesNotMatch(detail, /AnimatedVisibility\(visible = scrolled/);
+  // 评论面板与目录面板都是实心材质
+  assert.match(chrome, /palette\.panel/);
   // 无图不生成虚假封面
   assert.doesNotMatch(detail, /暂无图片/);
-  // 双悬浮栏统一 54dp 胶囊
-  assert.match(detail, /heightIn\(min = 54\.dp\)/);
 });
 
 test("AI 空间卡片首开详情不再被存在性守卫拦截", async () => {

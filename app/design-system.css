@@ -6756,9 +6756,10 @@ img, video, canvas, iframe { max-width:100%; }
   display: grid;
   place-items: end center;
   padding: 0;
-  background: rgba(9, 10, 13, .40);
-  -webkit-backdrop-filter: blur(6px) saturate(115%);
-  backdrop-filter: blur(6px) saturate(115%);
+  background: rgba(9, 10, 13, .52);
+  /* 分享面板要彻底实心：遮罩只做压暗，不再对整页做实时高斯模糊 */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   animation: heika-overlay-in 220ms ease both;
 }
 :root[data-theme="light"] .share-sheet-backdrop { background: rgba(30, 28, 22, .26); }
@@ -6773,7 +6774,8 @@ img, video, canvas, iframe { max-width:100%; }
   border-bottom: 0;
   animation: share-sheet-in 260ms cubic-bezier(.2, .8, .2, 1) both;
 }
-@keyframes share-sheet-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+/* 只动位移，不做整体透明度动画 */
+@keyframes share-sheet-in { from { transform: translateY(26px); } to { transform: translateY(0); } }
 .share-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .share-sheet-head h2 { margin: 0; color: var(--ink); font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
 .share-sheet-head p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }

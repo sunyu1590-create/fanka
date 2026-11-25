@@ -83,8 +83,36 @@ export function markdownToText(source: string) {
   return source.replace(/```[\s\S]*?```/g, " ").replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/^\s{0,3}#{1,6}\s+/gm, "").replace(/^\s*>\s?/gm, "").replace(/^\s*\|.*\|\s*$/gm, "").replace(/^\s*[-*+]\s+(\[[ xX]\]\s+)?/gm, "").replace(/^\s*\d+[.)]\s+/gm, "").replace(/[*_~`]/g, "").replace(/\s+/g, " ").trim();
 }
 
+export type OutlineItem = { id: string; text: string; level: number };
+
+/**
+ * 从 Markdown 源文提取标题，跳过围栏代码块。
+ * 与渲染器共用同一套 id 规则，保证「目录跳转」和「正文标题」是同一个锚点，
+ * 也保证重复标题（例如两节都叫「小结」）各自唯一。
+ */
+export function markdownOutline(source: string): OutlineItem[] {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  const used = new Map<string, number>();
+  const items: OutlineItem[] = [];
+  let fenced = false;
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (!heading) continue;
+    const text = markdownToText(heading[2]).replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    let base = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "section";
+    const seen = used.get(base) ?? 0;
+    used.set(base, seen + 1);
+    if (seen > 0) base = `${base}-${seen + 1}`;
+    items.push({ id: `sec-${base}`, text, level: heading[1].length });
+  }
+  return items;
+}
+
 function inline(text: string): ReactNode[] {
-  const pattern = /(!\[[^\]]*\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  const pattern = /(!\[[^\]]*\]\([^)]+\)|`[^`]+`|\$\$[^$]+\$\$|\$[^$\n]{1,200}\$|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
   const nodes: ReactNode[] = [];
   let cursor = 0;
   for (const match of text.matchAll(pattern)) {
@@ -95,6 +123,14 @@ function inline(text: string): ReactNode[] {
       const image = token.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       const src = image && safeHref(image[2]);
       nodes.push(src ? <img key={index} src={src} alt={image?.[1] || ""} loading="lazy" decoding="async"/> : image?.[1] || token);
+    }
+    else if (token.startsWith("$$")) {
+      const tex = token.slice(2, -2).trim();
+      nodes.push(looksLikeMath(tex) ? <InlineMath key={index} tex={tex} display /> : token);
+    }
+    else if (token.startsWith("$")) {
+      const tex = token.slice(1, -1).trim();
+      nodes.push(looksLikeMath(tex) ? <InlineMath key={index} tex={tex} /> : token);
     }
     else if (token.startsWith("`")) nodes.push(<code key={index}>{token.slice(1, -1)}</code>);
     else if (token.startsWith("**")) nodes.push(<strong key={index}>{token.slice(2, -2)}</strong>);
@@ -112,7 +148,7 @@ function inline(text: string): ReactNode[] {
 }
 
 function isBlockStart(line: string) {
-  return /^(#{1,6}\s|>\s?|[-*+]\s|\d+[.)]\s|```|\||\s*---+\s*$)/.test(line);
+  return /^(#{1,6}\s|>\s?|[-*+]\s|\d+[.)]\s|```|\|\s*|\$\$|\s*---+\s*$)/.test(line);
 }
 
 /* ---------- 代码块：语言标识 + 复制 ---------- */
@@ -184,6 +220,80 @@ function MermaidBlock({ code }: { code: string }) {
   </div>;
 }
 
+/* ---------- 数学公式：KaTeX 按需从 CDN 引入 ---------- */
+
+type KatexApi = {
+  renderToString: (tex: string, options?: Record<string, unknown>) => string;
+};
+
+let katexPromise: Promise<KatexApi | null> | null = null;
+
+async function loadKatex(): Promise<KatexApi | null> {
+  if (typeof window === "undefined") return null;
+  if (!katexPromise) {
+    katexPromise = (async () => {
+      try {
+        // 只有正文里真的出现公式才加载，首屏不带任何额外依赖。
+        if (!document.querySelector("link[data-heika-katex]")) {
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
+          link.dataset.heikaKatex = "true";
+          document.head.appendChild(link);
+        }
+        const dynamicImport = new Function("url", "return import(url)") as (url: string) => Promise<{ default?: KatexApi } & KatexApi>;
+        const loaded = await dynamicImport("https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.mjs");
+        return (loaded.default ?? loaded) as KatexApi;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return katexPromise;
+}
+
+/** 公式里必须出现的「数学信号」，避免把「$5 和 $10」这种价格误判成公式。 */
+function looksLikeMath(tex: string) {
+  return /[\\^_{}=+\-*/<>]|\\[a-zA-Z]+/.test(tex);
+}
+
+function InlineMath({ tex, display = false }: { tex: string; display?: boolean }) {
+  const [html, setHtml] = useState("");
+  useEffect(() => {
+    let alive = true;
+    void loadKatex().then((katex) => {
+      if (!alive || !katex) return;
+      try {
+        setHtml(katex.renderToString(tex, { displayMode: display, throwOnError: false, strict: false, trust: false }));
+      } catch { /* 渲染失败保留源码 */ }
+    });
+    return () => { alive = false; };
+  }, [tex, display]);
+  if (html) return <span className={display ? "md-math-inline is-display" : "md-math-inline"} dangerouslySetInnerHTML={{ __html: html }} />;
+  return <code className="md-math-inline is-source">{tex}</code>;
+}
+
+function MathBlock({ tex }: { tex: string }) {
+  const [html, setHtml] = useState("");
+  useEffect(() => {
+    let alive = true;
+    void loadKatex().then((katex) => {
+      if (!alive || !katex) return;
+      try {
+        setHtml(katex.renderToString(tex, { displayMode: true, throwOnError: false, strict: false, trust: false }));
+      } catch { /* 渲染失败保留源码 */ }
+    });
+    return () => { alive = false; };
+  }, [tex]);
+  return (
+    <div className="md-math-block">
+      {html
+        ? <div className="md-math-body" dangerouslySetInnerHTML={{ __html: html }} />
+        : <pre className="md-math-source"><code>{tex}</code></pre>}
+    </div>
+  );
+}
+
 /* ---------- 表格 ---------- */
 
 function splitRow(line: string) {
@@ -201,7 +311,12 @@ function alignments(line: string) {
 /* ---------- 正文 ---------- */
 
 export function MarkdownContent({ source, className }: { source: string; className?: string }) {
+  const outline = useMemo(() => markdownOutline(source), [source]);
+  const outlineRef = useRef(outline);
+  outlineRef.current = outline;
+  const headingCursor = useRef(0);
   const blocks = useMemo(() => {
+    headingCursor.current = 0;
     const lines = source.replace(/\r\n?/g, "\n").split("\n");
     const out: ReactNode[] = [];
     let index = 0;
@@ -226,7 +341,8 @@ export function MarkdownContent({ source, className }: { source: string; classNa
       if (heading) {
         const level = heading[1].length;
         const Tag = `h${level}` as ElementType;
-        out.push(<Tag key={`heading-${index}`}>{inline(heading[2])}</Tag>);
+        const anchor = outlineRef.current[headingCursor.current++] ?? null;
+        out.push(<Tag key={`heading-${index}`} id={anchor?.id}>{inline(heading[2])}</Tag>);
         index++;
         continue;
       }
@@ -282,6 +398,25 @@ export function MarkdownContent({ source, className }: { source: string; classNa
             {inline(item.text)}
           </li>)}
         </List>);
+        continue;
+      }
+
+      // 独立公式：$$ ... $$，可跨行；关闭 KaTeX 时退回可滚动的源码块。
+      if (/^\s*\$\$/.test(line)) {
+        const buffer: string[] = [];
+        const rest = line.trim().replace(/^\$\$/, "");
+        index++;
+        if (rest.includes("$$")) buffer.push(rest.replace(/\$\$.*$/, ""));
+        else {
+          if (rest) buffer.push(rest);
+          while (index < lines.length) {
+            const current = lines[index++];
+            if (current.includes("$$")) { buffer.push(current.replace(/\$\$.*$/, "")); break; }
+            buffer.push(current);
+          }
+        }
+        const tex = buffer.join("\n").trim();
+        if (tex) out.push(<MathBlock key={`math-${index}`} tex={tex} />);
         continue;
       }
 

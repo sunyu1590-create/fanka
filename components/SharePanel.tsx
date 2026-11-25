@@ -11,6 +11,10 @@ export type SharePayload = {
   blurb: string;
   url: string;
   text: string;
+  /** 作品封面缩略图，缺省时退化为品牌占位，不请求额外接口 */
+  cover?: string;
+  /** 作者昵称，用于预览行第二行 */
+  author?: string;
 };
 
 type Props = {
@@ -23,8 +27,8 @@ type Props = {
 };
 
 /**
- * 分享面板：统一尺寸的官方品牌图标 + 一致的圆角方形容器。
- * 背景是真实高斯模糊的固态玻璃，遮罩只压低干扰，不把整页变黑。
+ * 分享面板：拖动指示器 → 标题 → 关闭 → 作品预览 → 渠道 → 系统分享与复制。
+ * 面板本身完全实心（不叠 backdrop-filter、不做整体透明度动画），遮罩只压低干扰。
  */
 export default function SharePanel({ open, payload, clientId, surface = "web", onClose, onNotice }: Props) {
   const [copied, setCopied] = useState(false);
@@ -132,17 +136,24 @@ export default function SharePanel({ open, payload, clientId, surface = "web", o
         aria-modal="true"
         aria-labelledby="share-sheet-title"
       >
+        <span className="share-sheet-handle" aria-hidden="true" />
         <header className="share-sheet-head">
           <div>
-            <h2 id="share-sheet-title">分享这篇作品</h2>
+            <h2 id="share-sheet-title">分享作品</h2>
             <p>选择一个去处，文案与链接会一起带过去。</p>
           </div>
           <button ref={closeRef} type="button" className="share-sheet-close" aria-label="关闭分享面板" onClick={onClose}><X size={18} /></button>
         </header>
 
-        <div className="share-sheet-preview">
-          <strong>{payload.title}</strong>
-          <span>{payload.blurb}</span>
+        <div className="share-preview-row">
+          {payload.cover
+            ? <img className="share-preview-thumb" src={payload.cover} alt="" loading="lazy" />
+            : <span className="share-preview-thumb share-preview-thumb-empty" aria-hidden="true">黑</span>}
+          <span className="share-preview-copy">
+            <strong>{payload.title}</strong>
+            <span>{payload.author ? `${payload.author} · ` : ""}{payload.blurb}</span>
+            <small>黑卡 HEIKA · 内容社区</small>
+          </span>
         </div>
 
         <div className="share-sheet-grid" role="group" aria-label="分享平台">

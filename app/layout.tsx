@@ -19,6 +19,7 @@ import './drafts.css';
 import './series.css';
 import './home-banners.css';
 import './series-cover.css';
+import './reader.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',

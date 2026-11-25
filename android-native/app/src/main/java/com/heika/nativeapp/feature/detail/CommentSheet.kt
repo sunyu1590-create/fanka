@@ -60,6 +60,7 @@ import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaReadingPalette
 import com.heika.nativeapp.ui.LocalHeikaBodyTextScale
 import com.heika.nativeapp.ui.heikaReadingPalette
+import com.heika.nativeapp.ui.rememberReduceMotion
 
 /**
  * 评论面板（方案 A+C）：抖音式底部上拉 + 完整讨论能力。
@@ -109,9 +110,10 @@ fun CommentSheet(
     var fraction by remember { mutableFloatStateOf(0.7f) }
     var expanded by remember { mutableStateOf(false) }
     val targetFraction = if (expanded) 0.96f else 0.7f
+    val reduceMotion = rememberReduceMotion()
     val animatedFraction by animateFloatAsState(
         targetValue = targetFraction,
-        animationSpec = tween(300, easing = HeikaMotion.openEasing),
+        animationSpec = tween(if (reduceMotion) 0 else 300, easing = HeikaMotion.openEasing),
         label = "comment-sheet-fraction",
     )
 

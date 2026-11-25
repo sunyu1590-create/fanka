@@ -678,20 +678,16 @@ fun PostDetailScreen(
             }
         }
     }
-    // 顶栏：实心底色 + 轻微模糊。以前是从上往下淡出的渐变，模糊层会一直
-    // 延伸到封面和正文顶部，正文滚到下面时还会透色；现在只保留一条实心条。
-    Box(
-        Modifier
-            .align(Alignment.TopCenter)
-            .fillMaxWidth()
-            .background(reading.page.copy(alpha = .97f))
-            .zIndex(2f),
-    ) {
-        BackHeader(visiblePost?.let { if (it.channel == "ai") "AI · HEIKA" else "${it.tag} · HEIKA" } ?: "内容详情", onBack, centeredTitle = true, modifier = Modifier.zIndex(1f), trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-            if (headings.size >= 3) androidx.compose.material3.IconButton(onClick = { tocOpen = true }) {
-                Icon(HeikaIcons.List, contentDescription = "文章目录", tint = reading.title, modifier = Modifier.size(19.dp))
-            }
+    // 顶栏：实心页面色 + 1.5dp 进度线，不再用「从顶部往下淡出」的大渐变，
+    // 模糊层过去会一路盖到封面和正文顶部，滚动时正文还会透色。
+    ReadingTopBar(
+        title = visiblePost?.title ?: "内容详情",
+        progress = if (readable) progress else 0f,
+        showToc = headings.size >= 3,
+        onBack = onBack,
+        onToc = { tocOpen = true },
+        modifier = Modifier.align(Alignment.TopCenter),
+        trailing = {
             Box {
                 androidx.compose.material3.IconButton(onClick = { moreOpen = true }) { Icon(HeikaIcons.More, "更多操作", tint = MaterialTheme.colorScheme.onBackground) }
                 BackHandler(enabled = moreOpen) { moreOpen = false }
@@ -774,18 +770,8 @@ fun PostDetailScreen(
                     }
                 }
             }
-            }
-        })
-        // 阅读进度：1.5dp 品牌色细线，只在长文显示；评论面板/目录打开时不受影响。
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.5.dp)
-                .background(if (readable) reading.progressTrack else Color.Transparent),
-        ) {
-            if (readable) Box(
-                Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(1.5.dp).background(reading.accent),
-            )
-        }
-    }
+        },
+    )
     if (tocOpen) {
         BackHandler { tocOpen = false }
         ReadingTocSheet(
