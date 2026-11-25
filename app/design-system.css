@@ -6756,11 +6756,18 @@ img, video, canvas, iframe { max-width:100%; }
   display: grid;
   place-items: end center;
   padding: 0;
-  background: rgba(9, 10, 13, .52);
-  /* 分享面板要彻底实心：遮罩只做压暗，不再对整页做实时高斯模糊 */
+  background: rgba(9, 10, 13, .58);
+  /* 分享面板要彻底实心：遮罩只做压暗，不再对整页做实时高斯模糊。
+     heika-overlay-in 的终帧会写 backdrop-filter: blur(7px)，动画优先级高于普通声明，
+     所以这里换成只改透明度的动画，否则背景仍会被糊成一片。 */
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  animation: heika-overlay-in 220ms ease both;
+  animation: heika-dim-in 200ms ease both;
+}
+
+@keyframes heika-dim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 :root[data-theme="light"] .share-sheet-backdrop { background: rgba(30, 28, 22, .26); }
 .share-sheet {
