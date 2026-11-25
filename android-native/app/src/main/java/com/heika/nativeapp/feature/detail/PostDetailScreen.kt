@@ -220,6 +220,7 @@ fun PostDetailScreen(
         headingOffsets.entries.filter { it.value <= scrolled + 140f }.maxByOrNull { it.value }?.key ?: -1
     } }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val headerOffsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { 78.dp.toPx() }
 
     // 阅读位置恢复：只对长文生效，且只在首次测量完成后执行一次。
     var restored by remember(state.post?.cloudId, post?.cloudId) { mutableStateOf(false) }
@@ -793,8 +794,7 @@ fun PostDetailScreen(
             onSelect = { heading ->
                 tocOpen = false
                 val target = headingOffsets[heading.ordinal] ?: 0f
-                val headerPx = with(androidx.compose.ui.platform.LocalDensity.current) { 78.dp.toPx() }
-                scope.launch { listState.scrollToItem(0, (target - headerPx).toInt().coerceAtLeast(0)) }
+                scope.launch { listState.scrollToItem(0, (target - headerOffsetPx).toInt().coerceAtLeast(0)) }
             },
             onClose = { tocOpen = false },
         )
