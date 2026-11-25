@@ -231,7 +231,7 @@
 .sce-thumb { display: block; width: 100%; aspect-ratio: 3 / 4; background: var(--surface-2, rgba(120, 120, 130, 0.12)); }
 .sce-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .sce-thumb-plain { background: linear-gradient(150deg, #f2f0eb 0 48%, #17181c 48% 100%); }
-.sce-thumb-label { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 6px 8px; font-size: 11px; line-height: 1.35; }
+.sce-thumb-label { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 6px 8px; font-size: 11px; line-height: 1.35; min-height: 2.7em; }
 .sce-template span:last-child { white-space: normal; }
 .sce-template.is-active { border-color: var(--ink, #16171a); background: color-mix(in srgb, var(--ink, #16171a) 5%, transparent); }
 

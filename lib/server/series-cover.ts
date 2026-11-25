@@ -141,18 +141,21 @@ function fitTitle(
 ): { size: number; lines: string[] } {
   const length = [...title].length;
   const ladder = length <= 4 ? 108 : length <= 6 ? 92 : length <= 9 ? 78 : length <= 13 ? 62 : length <= 18 ? 52 : length <= 26 ? 44 : 38;
-  for (let size = ladder; size >= 26; size -= 2) {
-    const total = measure(title, size);
-    let lines: string[];
-    if (total <= maxWidth) {
-      lines = [title];
-    } else {
-      lines = wrapAll(title, maxWidth, size);
-      // 折行后尽量让各行等长：按「平均每行宽度」再折一次，
-      // 避免出现 5 字 + 3 字这种一头沉的断法。
-      const balanced = wrapAll(title, Math.min(maxWidth, Math.ceil(total / Math.max(lines.length, 1)) + size * 0.45), size);
-      if (balanced.length === lines.length && balanced.every((line) => [...line].length >= 3)) lines = balanced;
+  // 一行能放下就一行：中文折行很容易把「实战」「验收」这类两字词拆开，
+  // 读起来像排版错误。宁可整体缩一号，也不要把标题切成两截。
+  // 英文标题不适用：折行本身按词边界走，缩小反而让标题失去分量。
+  const hasCjk = /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(title);
+  if (hasCjk) {
+    const unitWidth = Math.max(measure(title, 1), 0.001);
+    const singleSize = Math.floor(maxWidth / unitWidth);
+    if (singleSize >= Math.round(ladder * 0.55)) {
+      const size = Math.min(ladder, singleSize);
+      if (size * 1.26 <= regionHeight) return { size, lines: [title] };
     }
+  }
+  // 一行放不下（或会缩得太小）：从最大字号开始折行，逐级收小直到行数与高度都成立。
+  for (let size = ladder; size >= 26; size -= 2) {
+    const lines = wrapAll(title, maxWidth, size);
     if (!lines.length) return { size, lines: [title] };
     if (lines.length > maxLines) continue;
     const orphan = lines.length > 1 && lines.some((line) => [...line].length < 3);
