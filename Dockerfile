@@ -20,6 +20,13 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# 合集封面由 sharp + librsvg 在服务端排版出图，中文字形必须来自系统字体。
+# 官方 slim 镜像不带任何 CJK 字体，缺失时所有中文都会渲染成方块，
+# 所以在运行镜像里显式安装 Noto Sans CJK（同时提供 Regular 与 Bold 两档字重）。
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends fonts-noto-cjk fontconfig \
+  && fc-cache -f \
+  && rm -rf /var/lib/apt/lists/*
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 COPY --from=builder /app/public ./public

@@ -7,6 +7,7 @@
  * 3. 同一合集在生成参数不变时结果稳定（种子由合集 id + 参数哈希得出）。
  * 4. 中文排版自行测量字宽并折行，不依赖 SVG 的自动换行。
  */
+import { execFileSync } from "node:child_process";
 import sharp from "sharp";
 
 export const COVER_WIDTH = 600;
@@ -494,7 +495,33 @@ export function coverSvg(spec: CoverSpec) {
 export type RenderOptions = { image?: Buffer | null };
 
 /** 渲染整张封面：底图 → 作品/上传图片 → 文字层。图片一律 cover 裁切，绝不拉伸。 */
+/**
+ * 中文字体自检：结果缓存一次，避免每张封面都起进程。
+ *
+ * 官方 node:slim 镜像不带 CJK 字体，缺字体时 librsvg 会把每个汉字画成方块，
+ * 而且出图仍然「成功」。这种封面一旦落库就再也退不回去，所以宁可明确失败，
+ * 让后台任务标记为「生成失败、可重试」，也不要静默产出一张全是豆腐块的图。
+ */
+let cjkFontReady: boolean | null = null;
+export function hasCjkFont(): boolean {
+  if (cjkFontReady !== null) return cjkFontReady;
+  try {
+    const family = execFileSync("fc-match", ["-f", "%{family}", "sans-serif:lang=zh-cn"], { timeout: 5000 })
+      .toString()
+      .trim();
+    cjkFontReady = /noto|han|hei|song|pingfang|wenquanyi|droid|source han|思源|黑体|宋体/i.test(family);
+    if (!cjkFontReady) console.warn("[series-cover] 未找到中文字体，fc-match 返回：", family);
+  } catch {
+    cjkFontReady = false;
+    console.warn("[series-cover] 无法执行 fc-match，界面将无法生成中文封面");
+  }
+  return cjkFontReady;
+}
+
 export async function renderCover(spec: CoverSpec, options: RenderOptions = {}): Promise<Buffer> {
+  if (!hasCjkFont()) {
+    throw new Error("封面渲染缺少中文字体，请检查运行镜像是否安装了 Noto Sans CJK");
+  }
   const base = await sharp(Buffer.from(coverSvg(spec))).png().toBuffer();
   const layers: Array<{ input: Buffer; left: number; top: number }> = [];
   if (options.image && options.image.length) {
