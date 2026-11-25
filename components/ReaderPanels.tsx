@@ -42,9 +42,13 @@ export function useReadingProgress(mode: "page" | "overlay") {
       if (!article) return;
       const rect = article.getBoundingClientRect();
       const height = rect.height || 1;
-      const top = mode === "page" ? 64 : (document.getElementById("detail-scroll")?.getBoundingClientRect().top ?? 54);
+      const scroller = mode === "overlay" ? document.getElementById("detail-scroll") : null;
+      const top = mode === "page" ? 64 : (scroller?.getBoundingClientRect().top ?? 54);
       const passed = top - rect.top;
-      setProgress(Math.min(1, Math.max(0, passed / Math.max(1, height - 120))));
+      // 用「可滚动距离」做分母：顶部 0、末尾 1，和底部位置无关。
+      const viewport = (scroller?.clientHeight ?? window.innerHeight) - (mode === "page" ? 64 : 0);
+      const span = height - viewport;
+      setProgress(span <= 40 ? 0 : Math.min(1, Math.max(0, passed / span)));
     };
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(measure); };
     // 详情浮层的正文滚在自己的容器里，scroll 事件不冒泡；用捕获阶段统一收口，

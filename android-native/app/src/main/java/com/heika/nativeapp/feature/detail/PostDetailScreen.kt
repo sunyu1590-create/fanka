@@ -213,8 +213,11 @@ fun PostDetailScreen(
         val first = info.visibleItemsInfo.firstOrNull() ?: return@derivedStateOf 0f
         if (first.index == 0) (-first.offset).toFloat() else articleHeight
     } }
+    // 进度按「已读过的可滚动距离」算：顶部 0、读到末尾 1，不会一进来就显示一半。
     val progress by remember { derivedStateOf {
-        if (articleHeight <= 0f) 0f else ((scrolled + listState.layoutInfo.viewportEndOffset) / articleHeight).coerceIn(0f, 1f)
+        val viewport = listState.layoutInfo.viewportEndOffset.toFloat()
+        val span = articleHeight - viewport
+        if (articleHeight <= 0f || span <= 0f) 0f else (scrolled / span).coerceIn(0f, 1f)
     } }
     val currentHeading by remember { derivedStateOf {
         headingOffsets.entries.filter { it.value <= scrolled + 140f }.maxByOrNull { it.value }?.key ?: -1

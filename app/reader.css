@@ -1429,3 +1429,11 @@
   line-height: 1.6;
   text-align: center;
 }
+
+/* ---------- 底栏留白 ---------- */
+
+/* 底栏是悬浮的（54px 高 + 12px 间距 + 安全区），正文区必须留够高度，
+   滚到最底部时最后一屏内容不会被底栏压住。桌面独立页没有底栏，不额外留白。 */
+.app:not(.is-detail-page) .detail-body {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
