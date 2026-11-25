@@ -549,7 +549,11 @@ function socketInodeMap() {
 function collectTcpSnapshot() {
   const inodes = socketInodeMap();
   const rows = [];
-  for (const [file, v6] of [[`${HOST_PROC}/net/tcp`, false], [`${HOST_PROC}/net/tcp6`, true]]) {
+  // /proc/net 是 /proc/self/net 的软链，读到的永远是「读者自己」的网络命名空间，
+  // 容器里直接读 /proc/net/tcp 只能看到容器内部连接。宿主机 PID 1 的系统命名空间
+  // 才是全机连接表，因此这里固定读 <host>/1/net/tcp。
+  const netRoot = HOST_PROC === "/host/proc" ? `${HOST_PROC}/1/net` : `${HOST_PROC}/net`;
+  for (const [file, v6] of [[`${netRoot}/tcp`, false], [`${netRoot}/tcp6`, true]]) {
     let text = "";
     try {
       text = fs.readFileSync(file, "utf8");
@@ -559,7 +563,8 @@ function collectTcpSnapshot() {
     for (const line of text.split("\n").slice(1)) {
       const fields = line.trim().split(/\s+/);
       if (fields.length < 10) continue;
-      const [local, remote, stateHex] = fields;
+      // 第一列是序号（如 "0:"），local / remote / state 依次在后三列。
+      const [, local, remote, stateHex] = fields;
       const state = TCP_STATES[stateHex];
       if (!state) continue;
       const [localHex, localPortHex] = local.split(":");

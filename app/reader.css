@@ -201,19 +201,20 @@
 
 .detail .markdown-content h1,
 .detail-page .markdown-content h1 {
-  font-size: 1.55em;
+  /* 章节标题跟随「标题字号」滑块；行高保持相对单位，缩放后不挤压正文。 */
+  font-size: calc(1.55em * var(--rd-title-scale, 1));
   color: var(--rd-heading);
 }
 
 .detail .markdown-content h2,
 .detail-page .markdown-content h2 {
-  font-size: 1.35em;
+  font-size: calc(1.35em * var(--rd-title-scale, 1));
   color: var(--rd-heading);
 }
 
 .detail .markdown-content h3,
 .detail-page .markdown-content h3 {
-  font-size: 1.16em;
+  font-size: calc(1.16em * var(--rd-title-scale, 1));
   color: var(--rd-heading-sub);
   font-weight: 600;
 }

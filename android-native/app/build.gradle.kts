@@ -26,7 +26,8 @@ android {
         applicationId = "com.heika.community"
         minSdk = 26
         targetSdk = 35
-        versionCode = 98
+        // 版本号保持不变，仅递增 build code，保证能在 98 之上直接覆盖安装。
+        versionCode = 99
         versionName = "2.30.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"https://moonclean.shop\"")

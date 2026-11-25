@@ -20,6 +20,7 @@ import time
 from datetime import datetime, timezone
 
 SOCKET_PATH = os.environ.get("HEIKA_OPS_SOCKET", "/run/heika-ops.sock")
+SOCKET_MODE = int(os.environ.get("HEIKA_OPS_SOCKET_MODE", "0o660"), 8)
 TOKEN_FILE = os.environ.get("HEIKA_OPS_TOKEN_FILE", "/etc/heika/ops-token")
 LOG_FILE = os.environ.get("HEIKA_OPS_LOG", "/var/log/heika-ops.log")
 ALLOWED_CONTAINERS = {"fanka", "fanka-ai-worker", "fanka-metrics", "caddy"}
@@ -128,7 +129,7 @@ def serve():
         os.unlink(SOCKET_PATH)
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(SOCKET_PATH)
-    os.chmod(SOCKET_PATH, 0o660)
+    os.chmod(SOCKET_PATH, SOCKET_MODE)
     server.listen(16)
     print(f"[ops-agent] listening on {SOCKET_PATH}", flush=True)
     while True:
