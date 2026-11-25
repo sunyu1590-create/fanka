@@ -43,6 +43,12 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(94, "2026.11.25", listOf(
+        "合集频道分区顺序对齐网页端：本周精选 → 近期热门 → 继续阅读 → 最近更新 → 为你推荐 → 全部合集，没有内容的分区继续自动隐藏。",
+        "修复新注册账号收藏合集失败的问题：服务端补齐账号档案触发器，收藏、阅读进度与提醒开关恢复正常。",
+        "搜索结果与合集目录不再出现 Markdown 图片语法和裸链接，摘要只保留正文文字。",
+        "搜索首页「热门作品」只展示作品，不再混入合集导致点击无反应。",
+    )),
     NativeRelease(93, "2026.11.25", listOf(
         "发现页顶部新增「合集」频道：分类、本周精选、继续阅读、近期热门、最近更新、为你推荐与全部合集，数量和真实数据一致，没有内容的分区自动隐藏。",
         "合集详情改成数字书籍目录：封面、作者、篇数、收藏与阅读进度，目录带已读标记，支持正序/倒序与按需展开。",
