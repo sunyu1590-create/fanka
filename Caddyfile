@@ -45,9 +45,14 @@ moonclean.shop {
 		reverse_proxy rest:3000
 	}
 
-	# 实时通道：SSE / WebSocket 长连接，必须原样透传 Upgrade 头。
+	# 实时通道：Supabase Realtime 是 multi-tenant 路由，靠 Host 头识别租户，
+	# 并把 WebSocket 端点固定在 /socket/websocket（不是 /websocket）。
+	# 少了这两点会一直 404「no route found for GET /websocket」。
 	handle_path /realtime/v1/* {
-		reverse_proxy realtime:4000
+		rewrite * /socket{uri}
+		reverse_proxy realtime:4000 {
+			header_up Host realtime-dev.supabase-realtime
+		}
 	}
 
 	reverse_proxy app:3000
