@@ -3,7 +3,8 @@ package com.heika.nativeapp.ui
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import androidx.media3.common.MediaItem
+import android.net.Uri
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
@@ -85,7 +86,9 @@ class HeikaBannerMediaCache @Inject constructor(
         val factory = dataSourceFactory() ?: return null
         val job = scope.launch(HeikaCoroutineGuard) {
             runCatching {
-                CacheWriter(factory.createDataSource(), MediaItem.fromUri(url), null).cache()
+                // CacheWriter 在 media3 1.4.x 接收 DataSpec：描述要抓取的区间与长度，
+                // 已缓存的部分会自动跳过，因此重复调用不会重复下载。
+                CacheWriter(factory.createDataSource(), DataSpec(Uri.parse(url)), null).cache()
             }
         }
         synchronized(lock) { preloadJobs[url] = job }
@@ -129,6 +132,7 @@ class HeikaBannerMediaCache @Inject constructor(
     }.getOrDefault(false)
 
     fun isMetered(): Boolean = runCatching {
-        ConnectivityManager.isActiveNetworkMetered(context)
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        manager.isActiveNetworkMetered
     }.getOrDefault(true)
 }
