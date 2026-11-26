@@ -222,6 +222,7 @@ declare
   v_media text[];
   v_scenarios text[];
   v_series uuid;
+  v_repairs text[] := '{}';
   v_applied boolean := false;
 begin
   select * into v_job from public.ai_revision_reviews where id = p_job_id for update;
@@ -295,39 +296,71 @@ begin
      or char_length(btrim(coalesce(v_payload->>'body', ''))) not between 1 and 5000 then
     raise exception '待应用内容无效';
   end if;
-  v_target_type := coalesce(v_payload->>'contentType', 'knowledge_article');
-  if v_target_type not in ('knowledge_article', 'agent', 'skill', 'prompt', 'ai_tool', 'tutorial') then
-    raise exception 'AI 内容类型无效';
+  -- 历史版本可能来自旧客户端：分类名、类型、标签可能已经失效或缺失。
+  -- 这些字段不是内容风险，逐项回退到线上版本，避免版本永远卡在待审核。
+  v_target_type := coalesce(nullif(v_payload->>'contentType', ''), v_post.content_type);
+  if v_target_type is null or v_target_type not in ('knowledge_article', 'agent', 'skill', 'prompt', 'ai_tool', 'tutorial') then
+    v_target_type := v_post.content_type;
+    v_repairs := v_repairs || 'contentType'::text;
   end if;
   v_target_data := coalesce(v_payload->'resourceData', '{}'::jsonb);
-  if jsonb_typeof(v_target_data) <> 'object' then raise exception 'AI 资源字段无效'; end if;
+  if jsonb_typeof(v_target_data) <> 'object' then
+    v_target_data := coalesce(v_post.resource_data, '{}'::jsonb);
+    v_repairs := v_repairs || 'resourceData'::text;
+  end if;
   select t.id into v_target_tag from public.interest_tags t
     where t.name = v_payload->>'tag' and t.channel = 'ai' and t.kind = 'category' and t.active and t.merged_into_id is null;
+  if v_target_tag is null then
+    v_target_tag := v_post.tag_id;
+    v_repairs := v_repairs || 'category'::text;
+  end if;
   if v_target_tag is null then raise exception 'AI 分类已失效'; end if;
-  if jsonb_typeof(v_payload->'mediaPaths') is distinct from 'array' then raise exception '媒体列表无效'; end if;
-  v_media := coalesce(array(select jsonb_array_elements_text(v_payload->'mediaPaths')), '{}');
-  if cardinality(v_media) > 9
-     or exists(select 1 from unnest(v_media) p where p !~ ('^' || v_revision.author_id::text || '/[^/]{1,280}$')) then
-    raise exception '媒体路径无效';
+
+  if v_payload ? 'mediaPaths' then
+    if jsonb_typeof(v_payload->'mediaPaths') is distinct from 'array' then
+      v_media := null; -- 保留线上媒体
+      v_repairs := v_repairs || 'media'::text;
+    else
+      v_media := coalesce(array(
+        select value from jsonb_array_elements_text(v_payload->'mediaPaths') value
+        where value ~ ('^' || v_revision.author_id::text || '/[^/]{1,255}$')
+        limit 9
+      ), '{}');
+      if cardinality(v_media) <> jsonb_array_length(v_payload->'mediaPaths') then
+        v_repairs := v_repairs || 'media'::text;
+      end if;
+    end if;
+  else
+    v_media := null;
   end if;
-  if jsonb_typeof(v_payload->'topics') is distinct from 'array' then raise exception '标签列表无效'; end if;
-  v_topic_names := coalesce(array(select jsonb_array_elements_text(v_payload->'topics')), '{}');
-  if cardinality(v_topic_names) > 5
-     or cardinality(v_topic_names) <> (select count(distinct value) from unnest(v_topic_names) value)
-     or exists(
-       select 1 from unnest(v_topic_names) n
-       left join public.interest_tags t on t.name = n and t.channel = 'ai' and t.kind = 'tag' and t.active and t.moderation_status = 'approved'
-       where t.id is null
-     ) then
-    raise exception 'AI 标签无效';
+
+  if jsonb_typeof(v_payload->'topics') is distinct from 'array' then
+    v_topic_names := '{}';
+  else
+    -- 已合并或停用的标签直接剔除；标签失效不应阻断版本发布。
+    v_topic_names := coalesce(array(
+      select distinct t.name from jsonb_array_elements_text(v_payload->'topics') value
+      join public.interest_tags t on t.name = value and t.channel = 'ai' and t.kind = 'tag'
+        and t.active and t.moderation_status = 'approved'
+      limit 5
+    ), '{}');
+    if cardinality(v_topic_names) <> jsonb_array_length(v_payload->'topics') then
+      v_repairs := v_repairs || 'topics'::text;
+    end if;
   end if;
+
   if jsonb_typeof(v_payload->'usageScenarios') = 'array' then
     v_scenarios := coalesce(array(select jsonb_array_elements_text(v_payload->'usageScenarios')), '{}');
   else
     v_scenarios := coalesce(v_post.usage_scenarios, '{}');
   end if;
   if jsonb_typeof(v_payload->'seriesId') = 'string' and (v_payload->>'seriesId') ~ '^[0-9a-f-]{36}$' then
-    v_series := (v_payload->>'seriesId')::uuid;
+    select s.id into v_series from public.post_series s
+      where s.id = (v_payload->>'seriesId')::uuid and s.creator_id = v_revision.author_id;
+    if v_series is null then
+      v_series := v_post.series_id;
+      v_repairs := v_repairs || 'series'::text;
+    end if;
   elsif v_payload ? 'seriesId' then
     v_series := null;
   else
@@ -349,10 +382,12 @@ begin
     updated_at = now()
   where id = v_job.post_id;
 
-  delete from public.post_media where post_id = v_job.post_id;
-  insert into public.post_media(post_id, storage_path, sort_order)
-    select v_job.post_id, value, (ordinality - 1)::integer
-    from unnest(v_media) with ordinality as paths(value, ordinality);
+  if v_media is not null then
+    delete from public.post_media where post_id = v_job.post_id;
+    insert into public.post_media(post_id, storage_path, sort_order)
+      select v_job.post_id, value, (ordinality - 1)::integer
+      from unnest(v_media) with ordinality as paths(value, ordinality);
+  end if;
 
   delete from public.post_topics where post_id = v_job.post_id;
   insert into public.post_topics(post_id, topic_id)
@@ -472,3 +507,56 @@ end
 $$;
 revoke all on function public.heika_admin_ai_review_stats(timestamptz) from public, anon;
 grant execute on function public.heika_admin_ai_review_stats(timestamptz) to authenticated;
+
+-- 兼容修复：旧的人工审核函数仍带 {1,280} 正则量词（超过引擎 255 上限），
+-- 只要版本包含图片就会抛 400 invalid regular expression，这也是历史上「管理员点通过没反应」的直接原因。
+-- 新链路已不再调用本函数，这里同步修正，避免其他入口或回滚时再次踩坑。
+create or replace function public.apply_ai_post_revision(p_post_id uuid, p_review_note text)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare revision public.post_revisions%rowtype; current_post public.posts%rowtype; target_tag_id bigint; target_type text; target_data jsonb; target_scenarios text[];
+  topic_names text[];
+begin
+  if not public.has_staff_permission('ai.review') then raise exception '需要 AI 内容审核权限'; end if;
+  select * into revision from public.post_revisions where post_id = p_post_id and status = 'pending' for update;
+  if not found then raise exception '待审核修改不存在'; end if;
+  select * into current_post from public.posts where id = p_post_id for update;
+  if not found or current_post.channel <> 'ai' or current_post.status <> 'published' or current_post.author_id <> revision.author_id then
+    raise exception 'AI 资源已不可用，无法应用修改';
+  end if;
+  if char_length(btrim(revision.payload->>'title')) not between 1 and 80 or char_length(btrim(revision.payload->>'body')) not between 1 and 5000 then
+    raise exception '待审核内容无效';
+  end if;
+  target_type := revision.payload->>'contentType';
+  if target_type not in ('knowledge_article','agent','skill','prompt','ai_tool','tutorial') then raise exception 'AI 内容类型无效'; end if;
+  if not exists(select 1 from public.ai_resource_types where resource_type = target_type and enabled) then raise exception 'AI 资源类型已停用'; end if;
+  target_data := coalesce(revision.payload->'resourceData','{}'::jsonb);
+  if jsonb_typeof(target_data) <> 'object' then raise exception 'AI 资源字段无效'; end if;
+  select id into target_tag_id from public.interest_tags where name = revision.payload->>'tag' and channel = 'ai' and kind = 'category' and active and merged_into_id is null;
+  if target_tag_id is null then raise exception 'AI 分类已失效'; end if;
+  if jsonb_typeof(revision.payload->'mediaPaths') is distinct from 'array' then raise exception '媒体列表无效'; end if;
+  if jsonb_array_length(revision.payload->'mediaPaths') > 9 or exists(select 1 from jsonb_array_elements_text(revision.payload->'mediaPaths') p where p !~ ('^' || revision.author_id::text || '/[^/]{1,255}$')) then raise exception '媒体路径无效'; end if;
+  if jsonb_typeof(revision.payload->'topics') is distinct from 'array' then raise exception '标签列表无效'; end if;
+  select coalesce(array_agg(value), '{}') into topic_names from jsonb_array_elements_text(revision.payload->'topics') as topics(value);
+  if cardinality(topic_names) > 5 or cardinality(topic_names) <> (select count(distinct value) from unnest(topic_names) value)
+    or exists(select 1 from unnest(topic_names) n left join public.interest_tags t on t.name = n and t.channel = 'ai' and t.kind = 'tag' and t.active and t.moderation_status = 'approved' where t.id is null) then raise exception 'AI 标签无效'; end if;
+  if jsonb_typeof(coalesce(revision.payload->'usageScenarios','[]'::jsonb)) <> 'array'
+    or jsonb_array_length(coalesce(revision.payload->'usageScenarios','[]'::jsonb)) > 6
+    or exists(select 1 from jsonb_array_elements_text(coalesce(revision.payload->'usageScenarios','[]'::jsonb)) as scenarios(value) where value not in ('learning','programming','writing','office','creation','life')) then raise exception 'AI 使用场景无效'; end if;
+  select coalesce(array_agg(distinct value), '{}') into target_scenarios from jsonb_array_elements_text(coalesce(revision.payload->'usageScenarios','[]'::jsonb)) as scenarios(value);
+  perform set_config('heika.apply_review_post_id', p_post_id::text, true);
+  update public.posts set title = btrim(revision.payload->>'title'), body = btrim(revision.payload->>'body'), tag_id = target_tag_id,
+    content_type = target_type, resource_data = target_data, usage_scenarios = target_scenarios, image_url = nullif(revision.payload->>'coverUrl',''),
+    moderation_review_note = p_review_note, moderation_reviewed_at = now(), moderation_reviewed_by = auth.uid(), updated_at = now()
+    where id = p_post_id;
+  delete from public.post_media where post_id = p_post_id;
+  insert into public.post_media(post_id, storage_path, sort_order)
+    select p_post_id, value, (ordinality - 1)::integer from jsonb_array_elements_text(revision.payload->'mediaPaths') with ordinality as paths(value, ordinality);
+  delete from public.post_topics where post_id = p_post_id;
+  insert into public.post_topics(post_id, topic_id)
+    select p_post_id, t.id from public.interest_tags t where t.name = any(topic_names) and t.channel = 'ai' and t.kind = 'tag' and t.active and t.moderation_status = 'approved';
+  update public.post_revisions set status = 'approved', review_note = p_review_note, reviewed_at = now(), reviewed_by = auth.uid(), updated_at = now() where id = revision.id;
+  return jsonb_build_object('id', p_post_id, 'status', 'published', 'revision_applied', true);
+end
+$$;
+revoke all on function public.apply_ai_post_revision(uuid, text) from public, anon;
+grant execute on function public.apply_ai_post_revision(uuid, text) to authenticated;

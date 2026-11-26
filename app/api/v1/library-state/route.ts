@@ -137,12 +137,12 @@ export async function GET(req: NextRequest) {
           .eq("user_id", user!.id),
         db.from("posts").select(libraryFields).eq("author_id", user!.id),
         db.from("post_revisions").select("post_id,payload,status,review_note").eq("author_id", user!.id),
-        db.from("ai_revision_reviews").select("post_id,status,reason,suggestions,attempts,updated_at,finished_at").eq("author_id", user!.id).order("created_at", { ascending: false }).limit(200),
+        db.from("ai_revision_reviews").select("post_id,status,reason,suggestions,attempts,updated_at,finished_at,error_message").eq("author_id", user!.id).order("created_at", { ascending: false }).limit(200),
         db.rpc("get_daily_flip_state"),
       ]);
     for (const r of [profile, details, prefs, bookmarks, interactions, interests, own, revisions, reviews, flipState])
       dbError(r.error);
-    type ReviewRow = { post_id: string; status: "queued" | "running" | "approved" | "rejected" | "error" | "superseded"; reason: string | null; suggestions: unknown; attempts: number; updated_at: string; finished_at: string | null };
+    type ReviewRow = { post_id: string; status: "queued" | "running" | "approved" | "rejected" | "error" | "superseded"; reason: string | null; suggestions: unknown; attempts: number; updated_at: string; finished_at: string | null; error_message: string | null };
     const reviewByPost = new Map<string, ReviewRow>();
     for (const row of (reviews.data || []) as ReviewRow[]) {
       if (!reviewByPost.has(row.post_id)) reviewByPost.set(row.post_id, row);
@@ -161,7 +161,7 @@ export async function GET(req: NextRequest) {
         if (!job) return undefined;
         return {
           status: job.status,
-          reason: job.reason,
+          reason: job.reason || (job.status === "error" ? "审核服务暂时异常，系统将自动重试；原有作品不受影响。" : null),
           suggestions: Array.isArray(job.suggestions) ? job.suggestions : [],
           attempts: job.attempts,
           updatedAt: job.finished_at || job.updated_at,

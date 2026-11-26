@@ -136,7 +136,7 @@ export default function AdminAiRevisionReviews() {
     <div className="cc-rev__stats" aria-label="版本审核统计">
       <div className="cc-rev__stat"><small>审核总量</small><b>{stats ? fmtNumber(stats.total) : "—"}</b><i>{range === "today" ? "今日" : range === "7d" ? "近 7 天" : range === "30d" ? "近 30 天" : "全部"}</i></div>
       <div className="cc-rev__stat" data-tone="ok"><small>自动通过</small><b>{stats ? fmtNumber(stats.approved) : "—"}</b><i>通过率 {passRate === null ? "—" : `${passRate}%`}</i></div>
-      <div className="cc-rev__stat" data-tone="bad"><small>自动驳回</small><b>{stats ? fmtNumber(stats.rejected) : "—"}</b><i>仅重大违规</i></div>
+      <div className="cc-rev__stat" data-tone="bad"><small>自动驳回</small><b>{stats ? fmtNumber(stats.rejected) : "—"}</b><i>驳回率 {passRate === null ? "—" : `${Math.round((100 - passRate) * 10) / 10}%`}</i></div>
       <div className="cc-rev__stat" data-tone="warn"><small>审核异常</small><b>{stats ? fmtNumber(stats.error) : "—"}</b><i>自动重试后仍失败</i></div>
       <div className="cc-rev__stat"><small>平均耗时</small><b>{stats ? fmtDuration(stats.avgElapsedMs) : "—"}</b><i>单次审核</i></div>
       <div className="cc-rev__stat"><small>Token 消耗</small><b>{stats ? fmtNumber(stats.tokens) : "—"}</b><i>区间累计</i></div>
