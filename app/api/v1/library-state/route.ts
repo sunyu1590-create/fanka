@@ -113,7 +113,7 @@ async function replaceTopics(db: SupabaseClient, postId: string, value: unknown)
 export async function GET(req: NextRequest) {
   return respond(async () => {
     const { db, user } = await context(req);
-    const [profile, details, prefs, bookmarks, interactions, interests, own, revisions, flipState] =
+    const [profile, details, prefs, bookmarks, interactions, interests, own, revisions, reviews, flipState] =
       await Promise.all([
         db
           .from("profiles")
@@ -137,10 +137,16 @@ export async function GET(req: NextRequest) {
           .eq("user_id", user!.id),
         db.from("posts").select(libraryFields).eq("author_id", user!.id),
         db.from("post_revisions").select("post_id,payload,status,review_note").eq("author_id", user!.id),
+        db.from("ai_revision_reviews").select("post_id,status,reason,suggestions,attempts,updated_at,finished_at").eq("author_id", user!.id).order("created_at", { ascending: false }).limit(200),
         db.rpc("get_daily_flip_state"),
       ]);
-    for (const r of [profile, details, prefs, bookmarks, interactions, interests, own, revisions, flipState])
+    for (const r of [profile, details, prefs, bookmarks, interactions, interests, own, revisions, reviews, flipState])
       dbError(r.error);
+    type ReviewRow = { post_id: string; status: "queued" | "running" | "approved" | "rejected" | "error" | "superseded"; reason: string | null; suggestions: unknown; attempts: number; updated_at: string; finished_at: string | null };
+    const reviewByPost = new Map<string, ReviewRow>();
+    for (const row of (reviews.data || []) as ReviewRow[]) {
+      if (!reviewByPost.has(row.post_id)) reviewByPost.set(row.post_id, row);
+    }
     const ownPosts = await presentMany(db, own.data as unknown as LibraryRow[]);
     const revisionRows = (revisions.data || []) as { post_id: string; payload: Record<string, unknown>; status: "pending" | "approved" | "rejected"; review_note: string | null }[];
     const revisionPaths = [...new Set(revisionRows.flatMap((revision) => Array.isArray(revision.payload.mediaPaths) ? revision.payload.mediaPaths.filter((path): path is string => typeof path === "string") : []))];
@@ -150,6 +156,17 @@ export async function GET(req: NextRequest) {
     const revisionsByPost = new Map(revisionRows.map((revision) => [revision.post_id, {
       status: revision.status,
       reviewNote: revision.review_note,
+      review: (() => {
+        const job = reviewByPost.get(revision.post_id);
+        if (!job) return undefined;
+        return {
+          status: job.status,
+          reason: job.reason,
+          suggestions: Array.isArray(job.suggestions) ? job.suggestions : [],
+          attempts: job.attempts,
+          updatedAt: job.finished_at || job.updated_at,
+        };
+      })(),
       payload: {
         ...revision.payload,
         images: [

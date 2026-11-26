@@ -6,8 +6,9 @@ import { cloudRequest } from "@/lib/cloud";
 import { MarkdownContent } from "./MarkdownContent";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";
+import AdminAiRevisionReviews from "./admin/AdminAiRevisionReviews";
 
-type Area = "review" | "resources" | "feedback" | "categories";
+type Area = "review" | "reviews" | "resources" | "feedback" | "categories";
 type Entry = { id: string; kind?: "new" | "revision"; title: string; body: string; author?: string; created_at?: string; status?: string; contentType?: string; usageScenarios?: string[]; resourceData?: Record<string, unknown>; images?: string[]; videos?: string[]; originalTitle?: string | null; featuredAt?: string | null; viewCount?: number; tag?: string; date?: string; channel?: "community" | "ai" };
 type ResourceType = { resource_type: string; label: string; description: string; enabled: boolean; sort_order: number; content_count?: number; published_count?: number };
 type Category = { id: number; name: string; channel: "community" | "ai"; parent_id: number | null; kind: "category" | "tag"; sort_order: number; description: string; is_featured: boolean; active: boolean; aliases: string[]; moderation_status: "pending" | "approved" | "rejected"; contentCount: number };
@@ -18,7 +19,8 @@ const typeFilters = [
   ["prompt", "Prompt"], ["ai_tool", "AI 工具"], ["tutorial", "案例实践"],
 ] as const;
 const areas: { id: Area; label: string; note: string }[] = [
-  { id: "review", label: "待审核", note: "新 AI 内容与编辑版本" },
+  { id: "review", label: "待审核", note: "首次发布的新内容" },
+  { id: "reviews", label: "版本审核", note: "AI 自动审核记录" },
   { id: "resources", label: "资源管理", note: "精选、下架和恢复" },
   { id: "feedback", label: "失效反馈", note: "链接、过时内容与安全风险" },
   { id: "categories", label: "分类与标签", note: "层级、排序、停用和治理" },
@@ -54,6 +56,7 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
   const load = useCallback(async (nextPage = 1, append = false) => {
     setBusy(true); setError("");
     try {
+      if (area === "reviews") return;
       if (area === "categories") {
         const [result, typeResult] = await Promise.all([
           cloudRequest("/api/v1/admin/categories") as Promise<{ items: Category[] }>,
@@ -164,6 +167,8 @@ export default function AdminAIWorkspace({ canManageCategories = true }: { canMa
     <div className="admin-ai-workspace-head"><div><h2>AI 专区工作台</h2><p>内容审核、资源维护、失效反馈与分类标签统一在此处理。</p></div><button className="soft-button" disabled={busy} onClick={() => void load(1)}><RefreshCw size={14}/>刷新</button></div>
     <div className="admin-ai-area-tabs" role="tablist" aria-label="AI 管理模块">{visibleAreas.map((item) => <button type="button" key={item.id} role="tab" aria-selected={area === item.id} className={area === item.id ? "selected" : ""} onClick={() => { setArea(item.id); setNotice(""); setError(""); }}><strong>{item.label}</strong><small>{item.note}</small><ChevronRight size={16}/></button>)}</div>
     {error && <p className="moderation-feedback error" role="alert">{error}</p>}{notice && <p className="moderation-feedback" role="status">{notice}</p>}
+
+    {area === "reviews" && <AdminAiRevisionReviews/>}
 
     {(area === "review" || area === "resources") && <>
       {area === "resources" && <div className="moderation-filters" role="group" aria-label="资源状态">{([ ["published", "已发布"], ["hidden", "已下架"] ] as const).map(([value, label]) => <button key={value} className={status === value ? "selected" : ""} onClick={() => setStatus(value)}>{label}</button>)}</div>}

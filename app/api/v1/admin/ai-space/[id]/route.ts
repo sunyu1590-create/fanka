@@ -30,17 +30,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const catalog = await db.from("ai_resource_types").select("resource_type,enabled").eq("resource_type", resourceType).maybeSingle();
       dbError(catalog.error);
       if (!catalog.data?.enabled) throw new ApiError(400, "资源类型不存在或已停用");
-      const pendingRevision = await db.from("post_revisions").select("id,payload").eq("post_id", id).eq("status", "pending").maybeSingle();
-      dbError(pendingRevision.error);
-      if (pendingRevision.data) {
-        const payload = { ...(pendingRevision.data.payload as Record<string, unknown>), contentType: resourceType, usageScenarios };
-        const updatedRevision = await db.from("post_revisions").update({ payload, updated_at: new Date().toISOString() })
-          .eq("id", pendingRevision.data.id).eq("status", "pending").select("id").maybeSingle();
-        dbError(updatedRevision.error);
-        if (!updatedRevision.data) throw new ApiError(409, "待审核修改状态已变化，请刷新后重试");
-        await recordModerationAudit(db, { actorId: user.id, action: "ai_resource_revision_classified", targetType: "post", targetId: id, reason: `资源类型：${resourceType}；使用场景：${usageScenarios.join(",") || "无"}` });
-        return { id, content_type: resourceType, usage_scenarios: usageScenarios, revision_updated: true };
-      }
       const updated = await db.from("posts").update({
         content_type: resourceType,
         usage_scenarios: usageScenarios,
@@ -52,20 +41,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (body.status !== "published" && body.status !== "hidden") throw new ApiError(400, "审核状态无效");
     const reviewNote = textField(body.review_note, "审核说明", 3, 500);
-    const revision = await db.from("post_revisions").select("id").eq("post_id", id).eq("status", "pending").maybeSingle();
-    dbError(revision.error);
-    if (revision.data) {
-      if (body.status === "published") {
-        const { data, error } = await db.rpc("apply_ai_post_revision", { p_post_id: id, p_review_note: reviewNote });
-        dbError(error);
-        await recordModerationAudit(db, { actorId: user.id, action: "ai_resource_revision_approved", targetType: "post", targetId: id, reason: reviewNote });
-        return data;
-      }
-      const rejected = await db.from("post_revisions").update({ status: "rejected", review_note: reviewNote, reviewed_by: user.id, reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", revision.data.id).eq("status", "pending").select("id,status").maybeSingle();
-      dbError(rejected.error);
-      if (!rejected.data) throw new ApiError(409, "待审核修改状态已变化，请刷新后重试");
-      await recordModerationAudit(db, { actorId: user.id, action: "ai_resource_revision_rejected", targetType: "post", targetId: id, reason: reviewNote });
-      return { id, status: "published", revision_status: "rejected" };
+    if (body.status === "published") {
+      // 版本更新已改为 AI 自动审核：管理员不再参与已发布作品的版本通过/驳回，
+      // 只保留对已发布违规作品的下架与恢复能力。
+      const revision = await db.from("post_revisions").select("id").eq("post_id", id).eq("status", "pending").maybeSingle();
+      dbError(revision.error);
+      if (revision.data) throw new ApiError(409, "该作品的版本更新由 AI 自动审核，无需人工通过；如需处置违规内容请使用下架");
     }
     const updated = await db.from("posts").update({ status: body.status, moderation_review_note: reviewNote, moderation_reviewed_by: user.id, moderation_reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id).in("status", body.status === "published" ? ["pending_review", "hidden"] : ["pending_review", "published"]).select("id,status").maybeSingle();
     dbError(updated.error);

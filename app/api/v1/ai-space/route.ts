@@ -206,13 +206,35 @@ export async function POST(req: NextRequest) {
         dbError(result.error); return (result.data || []).map((item) => item.storage_path);
       });
       const payload = { title, body: content, tag: categoryName, topics: topicNames, seriesId: seriesId === undefined ? (current.series_id ?? null) : seriesId, poll: null, mediaPaths: oldMedia, coverUrl: coverUrl || null, channel: "ai", contentType, resourceData, usageScenarios: finalScenarios };
-      const revision = await db.from("post_revisions").upsert({ post_id: current.id, author_id: user!.id, payload, status: "pending", review_note: null, reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString() }, { onConflict: "post_id" }).select("status,review_note").single();
+      const revision = await db.from("post_revisions").upsert({ post_id: current.id, author_id: user!.id, payload, status: "pending", review_note: null, reviewed_at: null, reviewed_by: null, updated_at: new Date().toISOString() }, { onConflict: "post_id" }).select("id,status,review_note").single();
       dbError(revision.error);
       if (!revision.data) throw new ApiError(500, "修改已提交但审核记录读取失败，请刷新后重试");
+      // 版本更新进入 AI 自动审核队列：不再产生人工待审核任务。
+      // 入队失败不撤销已经保存的修改——用户内容已落库，下一次读取会显示「审核异常/等待重试」。
+      const queued = await adminClient().rpc("enqueue_ai_revision_review", {
+        p_post_id: current.id, p_revision_id: revision.data.id, p_author_id: user!.id, p_payload: payload,
+      });
+      if (queued.error) console.error("AI revision review enqueue failed", queued.error.code || "database_error");
+      const job = (queued.data || {}) as { queued?: boolean; jobId?: string; status?: string; changedFields?: string[]; reason?: string };
       const postResult = await db.from("posts").select(libraryFields).eq("id", current.id).single();
       dbError(postResult.error);
       const post = (await presentMany(db, [postResult.data as unknown as LibraryRow]))[0];
-      return { ...post, pendingRevision: { status: revision.data.status, reviewNote: revision.data.review_note, payload } };
+      return {
+        ...post,
+        pendingRevision: {
+          status: revision.data.status,
+          reviewNote: revision.data.review_note,
+          payload,
+          review: {
+            status: queued.error ? "error" : job.status || (job.queued ? "queued" : "error"),
+            reason: queued.error ? "审核队列暂时不可用，系统将自动重试" : null,
+            suggestions: [],
+            attempts: 0,
+            jobId: job.jobId || null,
+            changedFields: job.changedFields || [],
+          },
+        },
+      };
     }
     if (current && current.status !== "draft" && current.status !== "pending_review") throw new ApiError(409, "此 AI 內容目前不可編輯");
     const values = { channel: "ai", content_type: contentType, resource_data: resourceData, usage_scenarios: finalScenarios, tag_id: category.data.id, title, body: content, image_url: coverUrl || null, status: action === "submit" ? "pending_review" : "draft", updated_at: new Date().toISOString(), ...(seriesId === undefined ? {} : { series_id: seriesId }) };

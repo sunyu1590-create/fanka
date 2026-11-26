@@ -1425,6 +1425,8 @@ html, body, .app, .page, .detail, .modal, .topic-detail-page, .moderation-page,
 .mine-work-actions { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
 .mine-work-actions > span { flex: 1; }
 .mine-work-actions button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 0 3px 6px; border: 0; background: transparent; color: var(--muted); font-size: 10px; }
+.mine-work-reason { margin: 6px 2px 0; font-size: 11px; line-height: 1.55; color: var(--muted); }
+.mine-work-reason::before { content: ""; display: inline-block; width: 3px; height: 3px; margin: 0 6px 2px 0; border-radius: 50%; background: currentColor; }
 .mine-work-actions button:active { color: var(--ink); }
 .mine-panel-heading { margin: 20px 0 13px; padding: 0; border: 0; }
 .mine-panel-heading h2 { font-size: 17px; }

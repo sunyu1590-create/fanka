@@ -55,6 +55,21 @@ import ProgressiveImage from "./ProgressiveImage";
 import PostAISummary from "./PostAISummary";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp, promptInApp } from "@/lib/in-app-dialog";
+/** 已发布作品的版本状态：AI 自动审核，不再出现「等待管理员审核」。 */
+function revisionStateText(post: Post) {
+  const revision = post.pendingRevision;
+  if (revision?.status === "pending") {
+    const review = revision.review?.status;
+    if (review === "error") return "修改审核异常 · 系统自动重试中 · 当前版本正常展示";
+    if (review === "queued" || review === "running") return "AI 正在检查您的更新内容 · 当前版本正常展示";
+    return "修改审核中 · 当前版本正常展示";
+  }
+  if (revision?.status === "rejected") return "本次更新未通过安全审核 · 当前版本正常展示";
+  if (post.status === "pending_review") return "首次发布审核中";
+  if (post.status === "hidden") return "审核未通过";
+  return "已发布";
+}
+
 const Messages = dynamic(() => import("./Messages"), {
   loading: () => <div className="empty">正在加载消息…</div>,
 });
@@ -3291,7 +3306,7 @@ export default function Community({
       setComposerError("");
       // 内容已提交：清掉本机草稿与本地缓存，避免下次进入又带出同一篇。
       await clearComposerDraftStorage(channel, ownerForDraft);
-      toast(composerRevisionMode ? "修改已提交审核，通过后将更新公开内容" : submittedForReview ? "已提交审核，可以留在这里或直接离开" : "发布成功");
+      toast(composerRevisionMode ? "修改已提交，AI 正在检查您的更新内容" : submittedForReview ? "已提交审核，可以留在这里或直接离开" : "发布成功");
     } catch (e) {
       setUploadingImages(false);
       setComposerCheckPhase("failed");
@@ -5961,7 +5976,12 @@ export default function Community({
                 {selectedSeriesId && <button type="button" className="series-filter-reset" onClick={() => setSelectedSeriesId("")}>查看全部作品</button>}
                 {visibleOwnWorks.length ? <div className="masonry mine-works-masonry">{visibleOwnWorks.map((post) => <article className="mine-work-card" key={post.id}>
                   {postCard(post, "discover", true)}
-                  <div className="mine-work-actions"><span>{post.pendingRevision?.status === "pending" ? "修改审核中 · 当前版本正常展示" : post.pendingRevision?.status === "rejected" ? "修改未通过 · 当前版本正常展示" : post.status === "pending_review" ? "审核中" : post.status === "hidden" ? "审核未通过" : "已发布"}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>{post.pendingRevision?.status === "pending" ? "编辑待审修改" : "编辑"}</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
+                  <div className="mine-work-actions"><span>{revisionStateText(post)}</span><button type="button" aria-label={`编辑${post.title || "未命名内容"}`} onClick={() => void openComposer(post)}><PenLine size={14}/><span>{post.pendingRevision?.status === "rejected" ? "重新修改" : post.pendingRevision?.status === "pending" ? "编辑提交内容" : "编辑"}</span></button><button type="button" aria-label={`删除${post.title || "未命名内容"}`} onClick={() => void deleteOwn(post)}><Trash2 size={14}/><span>删除</span></button></div>
+                  {post.pendingRevision && (post.pendingRevision.status === "rejected" || post.pendingRevision.review?.status === "error") ? <p className="mine-work-reason" role="status">
+                    {post.pendingRevision.status === "rejected"
+                      ? <>本次更新未通过安全审核：{post.pendingRevision.review?.reason || post.pendingRevision.reviewNote || "内容存在安全风险"} 修改成果已保留，可直接重新编辑提交。</>
+                      : <>审核服务暂时异常，系统将自动重试；原有作品不受影响。</>}
+                  </p> : null}
                 </article>)}</div> : <div className="empty">{selectedSeriesId ? "这个系列还没有内容，发布时可以从系列菜单加入。" : "你发布的内容会以瀑布流卡片显示在这里。"}</div>}
               </div>
             )}
