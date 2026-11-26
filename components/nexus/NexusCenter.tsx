@@ -110,6 +110,10 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [sheet, setSheet] = useState<"detail" | "events" | null>(null);
+  // 移动端底部面板高度（px）。null 表示使用样式表里的默认高度；
+  // 拖动把手时实时改写，松手后吸附到 45% / 72% / 92% 三档，拖到 30% 以下收起。
+  const [sheetPx, setSheetPx] = useState<number | null>(null);
+  const sheetDrag = useRef<{ startY: number; startHeight: number } | null>(null);
   const [bundle, setBundle] = useState<SceneBundle>({});
   const [selected, setSelected] = useState<{ type: "node" | "link"; id: string } | null>(null);
   const [sideTab, setSideTab] = useState<"detail" | "events">("events");
@@ -129,6 +133,33 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
   const loadedAt = useRef<Partial<Record<NexusSceneKey, number>>>({});
   const alertSignature = useRef("");
   const sideRef = useRef<HTMLElement | null>(null);
+
+  const stageHeight = () => sideRef.current?.parentElement?.getBoundingClientRect().height || window.innerHeight;
+
+  const onSheetPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const element = sideRef.current;
+    if (!element) return;
+    sheetDrag.current = { startY: event.clientY, startHeight: element.getBoundingClientRect().height };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onSheetPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = sheetDrag.current;
+    if (!drag) return;
+    const limit = stageHeight();
+    const next = Math.min(limit * 0.92, Math.max(96, drag.startHeight + (drag.startY - event.clientY)));
+    setSheetPx(next);
+  };
+  const onSheetPointerUp = () => {
+    const drag = sheetDrag.current;
+    sheetDrag.current = null;
+    const element = sideRef.current;
+    if (!drag || !element) return;
+    const limit = stageHeight();
+    const height = element.getBoundingClientRect().height;
+    if (height < limit * 0.3) { setSheet(null); setSheetPx(null); return; }
+    const snap = [0.45, 0.72, 0.92].map((ratio) => limit * ratio).reduce((near, value) => (Math.abs(value - height) < Math.abs(near - height) ? value : near));
+    setSheetPx(snap);
+  };
 
   const { snapshot, connection, error, lastAt } = useNexusStream(paused);
   const sceneMeta = SCENES.find((item) => item.key === scene) || SCENES[0];
@@ -440,6 +471,14 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
             />
           )}
 
+          <div className="nx-float" role="status" aria-label="实时关键指标">
+            <span><b>CPU</b>{fmtPct(snapshot.server.cpuPercent)}</span>
+            <span><b>MEM</b>{fmtPct(snapshot.server.memPercent)}</span>
+            <span><b>REQ</b>{snapshot.traffic.rps == null ? "—" : `${snapshot.traffic.rps}/s`}</span>
+            <span><b>AI</b>{fmtNum(snapshot.ai.queue)}</span>
+            {paused ? <span className="is-paused">已暂停</span> : null}
+          </div>
+
           <div className="nx-stage__head">
             <div>
               <span className="nx-stage__index">{String(SCENES.findIndex((item) => item.key === scene) + 1).padStart(2, "0")}</span>
@@ -490,8 +529,22 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
           </div>
         </main>
 
-        <aside className={`nx-side${sheet ? " is-open" : ""}`} ref={sideRef} aria-label="节点详情与实时事件">
-          <div className="nx-side__handle" onClick={() => setSheet(null)} aria-hidden="true"><i /></div>
+        <aside
+          className={`nx-side${sheet ? " is-open" : ""}`}
+          ref={sideRef}
+          style={sheetPx ? { height: `${Math.round(sheetPx)}px`, maxHeight: "none" } : undefined}
+          aria-label="节点详情与实时事件"
+        >
+          <div
+            className="nx-side__handle"
+            role="separator"
+            aria-label="拖动调整面板高度"
+            onPointerDown={onSheetPointerDown}
+            onPointerMove={onSheetPointerMove}
+            onPointerUp={onSheetPointerUp}
+            onPointerCancel={onSheetPointerUp}
+            onClick={() => { if (!sheetDrag.current && sheetPx == null) setSheet(null); }}
+          ><i /></div>
           <div className="nx-side__tabs" role="tablist">
             <button type="button" role="tab" aria-selected={sideTab === "detail"} className={sideTab === "detail" ? "is-active" : ""} onClick={() => setSideTab("detail")}>节点详情</button>
             <button type="button" role="tab" aria-selected={sideTab === "events"} className={sideTab === "events" ? "is-active" : ""} onClick={() => setSideTab("events")}>实时事件 <em>{eventCount}</em></button>

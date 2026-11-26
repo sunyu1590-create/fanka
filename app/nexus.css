@@ -361,6 +361,8 @@
   font-size: 11px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
 }
 
+.nx-float { display: none; }
+
 .nx-mobilebar { display: none; }
 .nx-immersivebar {
   position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30;
@@ -448,8 +450,25 @@
     box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.35);
   }
   .nx-side.is-open { transform: translateY(0); opacity: 1; pointer-events: auto; }
-  .nx-side__handle { display: flex; justify-content: center; padding: 7px 0 2px; }
+  .nx-side__handle {
+    display: flex; justify-content: center; padding: 9px 0 4px;
+    touch-action: none; cursor: grab;
+  }
+  .nx-side__handle:active { cursor: grabbing; }
   .nx-side__handle i { width: 34px; height: 3px; border-radius: 2px; background: var(--nx-line-strong); }
+  /* 悬浮关键指标：移动端不再挤压画布，直接叠在场景上方 */
+  .nx-float {
+    display: flex; flex-wrap: wrap; gap: 5px; position: absolute; top: 10px; right: 10px; z-index: 4;
+    max-width: calc(100% - 20px); pointer-events: none;
+  }
+  .nx-float span {
+    display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 8px; border-radius: 999px;
+    background: rgba(10, 15, 18, 0.62); border: 1px solid var(--nx-line); backdrop-filter: blur(10px);
+    font-size: 10px; color: var(--nx-ink); font-variant-numeric: tabular-nums;
+  }
+  .nx-float b { font-weight: 500; font-size: 8.5px; color: var(--nx-ink-3); letter-spacing: 0.04em; }
+  .nx-float span.is-paused { color: var(--nx-amber); border-color: rgba(224, 176, 90, 0.4); }
+  :root[data-theme="light"] .nx-float span { background: rgba(250, 251, 249, 0.82); }
   .nx-side__tabs { padding-top: 2px; }
   .nx-side__collapse { display: none; }
   .nx-timeline { padding: 0 10px; gap: 7px; }
