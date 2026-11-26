@@ -472,7 +472,7 @@
   .nx-float span.is-paused { color: var(--nx-amber); border-color: rgba(224, 176, 90, 0.4); }
   :root[data-theme="light"] .nx-float span { background: rgba(250, 251, 249, 0.82); }
   .nx-side__tabs { padding-top: 2px; }
-  .nx-side__collapse { display: none; }
+  .nx-side__tabs > button.nx-side__collapse { display: none; }
   .nx-timeline { padding: 0 10px; gap: 7px; }
   .nx-timeline__live { min-width: 0; }
   .nx-timeline__live small { display: none; }
