@@ -27,8 +27,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // 版本号保持不变，仅递增 build code，保证能在 98 之上直接覆盖安装。
-        versionCode = 100
-        versionName = "2.31.0"
+        versionCode = 101
+        versionName = "2.32.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"https://moonclean.shop\"")
         buildConfigField("String", "GITHUB_URL", "\"https://github.com/sunyu1590-create/fanka\"")
