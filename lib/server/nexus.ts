@@ -13,7 +13,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminClient } from "./admin-client";
-import { requestMetricsSnapshot } from "./request-metrics";
+import { GROUP_LABELS, requestMetricsSnapshot, type RequestEvent } from "./request-metrics";
 import type {
   NexusAiScene,
   NexusAlert,
@@ -460,22 +460,28 @@ function aiAggregate(rows: Array<Record<string, unknown>>) {
   };
 }
 
-function buildEvents(slow: SlowData): NexusEvent[] {
-  const requests = requestMetricsSnapshot().recent_events || [];
-  const events: NexusEvent[] = requests.map((event) => ({
+/** 入口请求事件 → 三维事件。分类标签来自采集层的 groupOf，不在前端猜测。 */
+function mapRequestEvents(requests: RequestEvent[]): NexusEvent[] {
+  return requests.map((event) => ({
     id: event.id,
     at: event.at,
     type: event.type,
     title: `${event.method} ${event.path}`,
-    detail: `HTTP ${event.status} · ${event.ms}ms · ${event.category}`,
-    source: event.category,
+    detail: `HTTP ${event.status} · ${event.ms}ms · ${GROUP_LABELS[event.group] || event.category}`,
+    source: GROUP_LABELS[event.group] || event.category,
     target: "app",
     result: event.status >= 500 ? "error" : event.status >= 400 ? "warn" : "ok",
     durationMs: event.ms,
     trace: event.id,
+    group: event.group,
     nodeId: event.category === "storage" ? "storage" : event.category === "auth" ? "auth" : event.category === "rest" ? "rest" : event.category === "download" ? "edge" : "app",
     linkId: event.category === "storage" ? "edge-storage" : event.category === "auth" ? "edge-auth" : event.category === "rest" ? "edge-rest" : "edge-app",
   }));
+}
+
+function buildEvents(slow: SlowData): NexusEvent[] {
+  const requests = requestMetricsSnapshot().recent_events || [];
+  const events: NexusEvent[] = mapRequestEvents(requests);
   for (const alert of slow.alerts.slice(0, 4)) {
     events.push({
       id: `alert-${alert.id}`,
@@ -511,6 +517,12 @@ function buildEvents(slow: SlowData): NexusEvent[] {
     });
   }
   return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 120);
+}
+
+/** 内部监控事件流：Nexus 自身轮询与健康检查，独立展示，不与业务访问混排。 */
+function buildInternalEvents(): NexusEvent[] {
+  const metrics = requestMetricsSnapshot();
+  return mapRequestEvents(metrics.recent_internal || []).slice(0, 60);
 }
 
 /** 核心快照：1 秒可调用，重查询全部有 5–30 秒缓存。 */
@@ -636,6 +648,16 @@ export async function buildNexusSnapshot(db: SupabaseClient): Promise<NexusSnaps
   partial.alerts = slow.alerts;
   partial.processes = slow.processes;
   partial.events = buildEvents(slow);
+  partial.eventsInternal = buildInternalEvents();
+  const m1Split = requestMetrics.m1;
+  partial.trafficSplit = {
+    windowSeconds: m1Split.window_seconds,
+    totalRps: m1Split.requests_per_second,
+    externalRps: m1Split.external_requests_per_second,
+    adminRps: m1Split.admin_requests_per_second,
+    internalRps: m1Split.internal_requests_per_second,
+    groups: m1Split.groups as Record<string, number>,
+  };
 
   const metricsCapturedAt = str(metric.captured_at) || null;
   const sources = {

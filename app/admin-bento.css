@@ -138,15 +138,17 @@
 .ab-pagehead { display: none; }
 
 /* ---------- 移动底栏 ---------- */
+/* 底栏只存在于窄视口。电脑端连布局盒都不生成：
+   之前这一条 display 写在文件后段，覆盖了 @media(min-width:1024px) 的 display:none，
+   导致桌面同时出现侧栏与底栏。 */
 .ab-bottomnav {
+  display: none;
   position: fixed;
   left: 12px;
   right: 12px;
   bottom: calc(10px + env(safe-area-inset-bottom));
   z-index: 40;
   height: 60px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
   border-radius: 21px;
   border: 1px solid var(--ab-glass-brd);
   background: var(--ab-glass);
@@ -604,14 +606,16 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
 }
 
 @media (min-width: 1024px) {
-  .admin-shell { margin: 0; padding-bottom: 30px; }
+  /* 桌面端只有侧栏，底栏不存在，因此不再保留 92px 的底部安全区。 */
+  .admin-shell { margin: 0; padding-bottom: 24px; }
   .ab-layout {
     display: grid;
     grid-template-columns: 216px minmax(0, 1fr);
-    gap: 26px;
+    gap: clamp(20px, 2vw, 30px);
     align-items: start;
-    padding: 18px 0 40px;
+    padding: 18px clamp(10px, 1.6vw, 26px) 32px;
   }
+  .ab-main { max-width: none; }
   .ab-sidebar {
     display: flex;
     flex-direction: column;
@@ -1119,17 +1123,20 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
    Control Center 3.0：八个模块、数据表格、状态与工具栏
    ========================================================================= */
 
-/* 移动端一级导航从 4 项扩到 9 项：横向滚动，不再压缩可点区域。 */
-.ab-bottomnav {
-  display: flex;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  padding: 0 6px;
-  gap: 2px;
+/* 移动端一级导航从 4 项扩到 9 项：横向滚动，不再压缩可点区域。
+   整套显示规则限定在 <1024px，避免再次与桌面侧栏并存。 */
+@media (max-width: 1023px) {
+  .ab-bottomnav {
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding: 0 6px;
+    gap: 2px;
+  }
+  .ab-bottomnav button { flex: 0 0 62px; min-width: 62px; }
 }
 .ab-bottomnav::-webkit-scrollbar { display: none; }
-.ab-bottomnav button { flex: 0 0 62px; min-width: 62px; }
 
 .cc-stack { display: flex; flex-direction: column; gap: 12px; }
 
@@ -1334,4 +1341,20 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
 .ab-banner-live__copy small {
   font-size: 10.5px; opacity: 0.8;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+
+/* 控制台是独立工作空间：桌面端不继承站点为左侧导航预留的宽度与位移。 */
+@media (min-width: 1200px) {
+  .app.app-admin-console {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding-bottom: 0;
+  }
+  .app.app-admin-console .admin-shell { min-height: 100dvh; }
+}
+
+@media (min-width: 1600px) {
+  .ab-layout { grid-template-columns: 236px minmax(0, 1fr); }
 }

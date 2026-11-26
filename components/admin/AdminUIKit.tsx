@@ -148,6 +148,19 @@ export function titleOf(section: string): string {
   return ADMIN_TITLES[section] || "控制中心";
 }
 
+/** 控制中心只在窄视口使用底部导航；电脑端不渲染它，避免与侧栏重复。 */
+function useNarrowViewport() {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setNarrow(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return narrow;
+}
+
 /** 顶部标题栏 + 桌面侧栏 + 移动底栏。所有二级页面共用同一导航来源。 */
 export function AdminShell({
   section,
@@ -173,7 +186,8 @@ export function AdminShell({
   const tab = tabOfSection(section);
   const isHub = section !== "overview" && Boolean(ADMIN_HUB_GROUPS[tab as Exclude<AdminTab, "overview">]) && section === tab;
   const isOverview = section === "overview";
-  const showBottomNav = isOverview || isHub;
+  const narrow = useNarrowViewport();
+  const showBottomNav = narrow && (isOverview || isHub);
   const title = titleOf(section);
 
   // 进入控制中心即启动全局实时通道，离开时停止；切换二级页面不会重建连接。

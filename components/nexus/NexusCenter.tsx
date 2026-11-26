@@ -62,6 +62,7 @@ const EVENT_FILTERS = [
   { key: "ai", label: "AI" },
   { key: "media", label: "媒体" },
   { key: "alert", label: "告警" },
+  { key: "internal", label: "内部监控" },
 ] as const;
 
 type SceneBundle = {
@@ -104,6 +105,8 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
   const [projection, setProjection] = useState<ProjectionMode>("perspective");
   const [labelMode, setLabelMode] = useState<"all" | "auto" | "none">("auto");
   const [force2D, setForce2D] = useState(false);
+  const [explode, setExplode] = useState(false);
+  const [sheetInset, setSheetInset] = useState(0);
   const [immersive, setImmersive] = useState(false);
   const [autoCruise, setAutoCruise] = useState(true);
   const [interruptOnAlert, setInterruptOnAlert] = useState(true);
@@ -163,6 +166,25 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
 
   const { snapshot, connection, error, lastAt } = useNexusStream(paused);
   const sceneMeta = SCENES.find((item) => item.key === scene) || SCENES[0];
+
+  // 移动端底部面板会压住画布下缘：把面板实际高度交给引擎，由引擎上移取景中心。
+  useEffect(() => {
+    const element = sideRef.current;
+    if (!element) return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const sync = () => {
+      if (!media.matches || !sheet) { setSheetInset(0); return; }
+      setSheetInset(Math.max(0, Math.round(element.getBoundingClientRect().height)));
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    media.addEventListener("change", sync);
+    return () => { observer.disconnect(); media.removeEventListener("change", sync); };
+  }, [sheet]);
+
+  // 只有服务器场景才有分解结构，切换场景时自动收起，避免其他场景误用。
+  useEffect(() => { if (scene !== "server") setExplode(false); }, [scene]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -363,14 +385,17 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
   }, [selected, snapshot, bundle]);
 
   const events = useMemo(() => {
-    const list = snapshot?.events || [];
+    // 「内部监控」是独立数据源：服务端把 Nexus 自身轮询与健康检查拆到 eventsInternal，
+    // 其余分类统一取业务流，两者不混排但都不删除。
+    const internal = eventFilter === "internal";
+    const list = (internal ? snapshot?.eventsInternal : snapshot?.events) || [];
     const keyword = eventSearch.trim().toLowerCase();
     return list.filter((event) => {
-      if (eventFilter !== "all" && event.type !== eventFilter) return false;
+      if (!internal && eventFilter !== "all" && event.type !== eventFilter) return false;
       if (!keyword) return true;
       return `${event.title} ${event.detail} ${event.source} ${event.target}`.toLowerCase().includes(keyword);
     }).slice(0, 60);
-  }, [snapshot?.events, eventFilter, eventSearch]);
+  }, [snapshot?.events, snapshot?.eventsInternal, eventFilter, eventSearch]);
   useEffect(() => { setEventCount(events.length); }, [events.length]);
 
   const sceneData = scene === "storage" ? bundle.storage : scene === "ai" ? bundle.ai : scene === "content" ? bundle.content : scene === "security" ? bundle.security : scene === "globe" ? bundle.globe : null;
@@ -468,6 +493,7 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
               theme={theme} quality={quality} projection={projection} labels={labelMode} paused={paused}
               historicalPoint={historicalPoint} markers={history?.markers || []} autoRotate={immersive && autoCruise && !paused}
               focusRequest={focusRequest} onPick={onPick} onNeedFallback={() => setForce2D(true)}
+              explode={explode} bottomInset={sheetInset}
             />
           )}
 
@@ -524,6 +550,9 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
                 <button key={item.key} type="button" className={projection === item.key ? "is-active" : ""} onClick={() => setProjection(item.key)}>{item.label}</button>
               ))}
               <button type="button" className={force2D ? "is-active" : ""} onClick={() => setForce2D((value) => !value)}>2D</button>
+              {scene === "server" ? (
+                <button type="button" className={explode ? "is-active" : ""} onClick={() => setExplode((value) => !value)} title="按结构顺序展开外壳与内部层">{explode ? "合拢" : "分解"}</button>
+              ) : null}
               <button type="button" onClick={() => setFocusRequest({ id: selected?.id || "app", seq: Date.now() })} aria-label="聚焦选中节点"><Crosshair size={13} /></button>
             </div>
           </div>
@@ -589,7 +618,12 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
                   </button>
                 )) : <div className="nx-empty"><Activity size={24} /><p>暂无符合条件的事件</p><small>事件来自真实入口请求、AI 审核、告警与媒体任务，不做模拟。</small></div>}
               </div>
-              <p className="nx-events__note">仅保留最近 60 条前端渲染；服务端事件缓冲上限 160 条，避免长时间运行堆积 DOM。</p>
+              <p className="nx-events__note">
+                {snapshot.trafficSplit ? (
+                  <>同一统计口径（近 {snapshot.trafficSplit.windowSeconds}s）：外部访问 {fmtNum(snapshot.trafficSplit.externalRps)}/s · 后台管理 {fmtNum(snapshot.trafficSplit.adminRps)}/s · 内部监控 {fmtNum(snapshot.trafficSplit.internalRps)}/s · 总负载 {fmtNum(snapshot.trafficSplit.totalRps)}/s。<br /></>
+                ) : null}
+                业务事件流默认不含 Nexus 自身轮询与健康检查，可在「内部监控」分类中查看；服务端缓冲 320 条，前端只渲染最近 60 条。
+              </p>
             </div>
           )}
         </aside>

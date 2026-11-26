@@ -173,8 +173,37 @@
 .nx-canvas__stats {
   position: absolute; right: 14px; bottom: 52px; z-index: 3; font-size: 9.5px; letter-spacing: 0.04em;
   color: var(--nx-ink-3); background: var(--nx-panel); border: 1px solid var(--nx-line);
-  padding: 3px 7px; border-radius: 5px; font-variant-numeric: tabular-nums; pointer-events: none;
+  padding: 3px 7px; border-radius: 5px; font-variant-numeric: tabular-nums; cursor: pointer;
+  font-family: inherit; transition: color 0.16s ease, border-color 0.16s ease;
 }
+.nx-canvas__stats:hover, .nx-canvas__stats.is-open { color: var(--nx-ink-1); border-color: var(--nx-line-strong, var(--nx-line)); }
+
+/* 渲染诊断面板：默认折叠，点击角标展开；纯客户端数据，不额外请求。 */
+.nx-diag {
+  position: absolute; right: 14px; bottom: 78px; z-index: 6; width: 258px; padding: 11px 12px 10px;
+  border-radius: 12px; border: 1px solid var(--nx-line); background: var(--nx-glass, var(--nx-panel));
+  backdrop-filter: blur(18px) saturate(1.1); -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 0.32); color: var(--nx-ink-2);
+}
+.nx-diag__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.nx-diag__head b { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--nx-ink-1); }
+.nx-diag__head span { font-size: 9.5px; color: var(--nx-cyan); letter-spacing: 0.06em; }
+.nx-diag__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; margin: 0 0 9px; }
+.nx-diag__grid > div { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.nx-diag__grid dt { font-size: 9.5px; color: var(--nx-ink-3); white-space: nowrap; }
+.nx-diag__grid dd { margin: 0; font-size: 10px; font-variant-numeric: tabular-nums; color: var(--nx-ink-1); }
+.nx-diag__grid dd.is-muted { font-size: 9px; color: var(--nx-ink-3); }
+.nx-diag__toggles { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.nx-diag__toggles button {
+  display: inline-flex; align-items: center; gap: 4px; height: 23px; padding: 0 8px;
+  border-radius: 6px; border: 1px solid var(--nx-line); background: transparent;
+  color: var(--nx-ink-3); font-size: 9.5px; font-family: inherit; cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.nx-diag__toggles button.is-on { color: var(--nx-ink-1); border-color: color-mix(in srgb, var(--nx-cyan) 42%, transparent); background: color-mix(in srgb, var(--nx-cyan) 10%, transparent); }
+.nx-diag__note { display: flex; gap: 5px; margin: 0; font-size: 9px; line-height: 1.5; color: var(--nx-ink-3); }
+.nx-diag__note + .nx-diag__note { margin-top: 4px; }
+.nx-diag__note svg { flex: none; margin-top: 1px; }
 .nx-canvas__hint {
   position: absolute; left: 50%; bottom: 48px; transform: translateX(-50%); z-index: 2;
   font-size: 10px; color: var(--nx-ink-3); letter-spacing: 0.04em; pointer-events: none;

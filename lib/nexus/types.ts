@@ -93,6 +93,8 @@ export type NexusEvent = {
   trace: string | null;
   nodeId: string | null;
   linkId: string | null;
+  /** 事件分类键（与 request-metrics 的 RequestGroup 对应），用于前端分类筛选。 */
+  group?: string;
 };
 
 export type NexusScore = {
@@ -218,6 +220,17 @@ export type NexusSnapshot = {
   alerts: NexusAlert[];
   processes: NexusProcess[];
   events: NexusEvent[];
+  /** Nexus 自身监控与健康检查请求，独立成流，默认不混入业务事件。 */
+  eventsInternal?: NexusEvent[];
+  /** 请求负载拆分：外部访问 / 后台管理 / 内部监控 / 总量，均为同一统计口径。 */
+  trafficSplit?: {
+    windowSeconds: number;
+    totalRps: number;
+    externalRps: number;
+    adminRps: number;
+    internalRps: number;
+    groups: Record<string, number>;
+  };
 };
 
 export type NexusHistoryPoint = {

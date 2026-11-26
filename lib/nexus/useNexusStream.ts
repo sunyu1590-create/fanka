@@ -145,7 +145,9 @@ export function useNexusStream(paused: boolean) {
       return () => { stopped = true; controller?.abort(); };
     }
 
-    void poll();
+    // 只开 SSE：服务端在握手阶段立即推送首帧完整快照。
+    // 之前的实现同时发起一次 /api/v1/admin/nexus 全量轮询，等于每次进入
+    // Nexus 都重复构建一次快照，属于监控自身放大请求，已移除。
     void connect();
 
     return () => {

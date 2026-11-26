@@ -52,6 +52,8 @@ function delta(snapshot: NexusSnapshot) {
     clients: snapshot.clients,
     alerts: snapshot.alerts,
     events: snapshot.events.slice(0, 24),
+    eventsInternal: (snapshot.eventsInternal || []).slice(0, 16),
+    trafficSplit: snapshot.trafficSplit,
   };
 }
 
