@@ -88,7 +88,11 @@ class HeikaBannerMediaCache @Inject constructor(
             runCatching {
                 // CacheWriter 在 media3 1.4.x 接收 DataSpec：描述要抓取的区间与长度，
                 // 已缓存的部分会自动跳过，因此重复调用不会重复下载。
-                CacheWriter(factory.createDataSource(), DataSpec(Uri.parse(url)), null).cache()
+                // 进度回调是必填参数，这里只关心“缓存完成”，不需要上报进度。
+                val listener = object : CacheWriter.ProgressListener {
+                    override fun onProgress(requestLength: Long, bytesCached: Long, newBytesCached: Long) = Unit
+                }
+                CacheWriter(factory.createDataSource(), DataSpec(Uri.parse(url)), listener).cache()
             }
         }
         synchronized(lock) { preloadJobs[url] = job }
