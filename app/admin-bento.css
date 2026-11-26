@@ -589,7 +589,7 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
 
 /* ---------- 桌面布局 ---------- */
 @media (min-width: 768px) {
-  .admin-shell { margin: -30px -24px 0; }
+  .admin-shell { margin: -30px -12px 0; }
   .ab-main { padding: 0 22px 30px; }
   .ab-bento { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 13px; }
   .ab-c2 { grid-column: span 2; }

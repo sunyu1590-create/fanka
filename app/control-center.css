@@ -435,6 +435,8 @@
 /* 模块头允许换行，避免运营范围切换器在窄屏挤出容器 */
 .admin-shell .cc2-mod__head { flex-wrap: wrap; row-gap: 6px; padding-top: 6px; padding-bottom: 6px; }
 .admin-shell .cc2-mod__head .cc2-tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+/* 窄屏（≤380px）指标标签一行放不下时换行，避免指标被横向裁掉看不见 */
+.admin-shell .cc2-mod__body .cc2-tabs { max-width: 100%; flex-wrap: wrap; }
 .admin-shell .cc2-mod__head .cc2-tabs::-webkit-scrollbar { display: none; }
 .admin-shell .cc2-switch[disabled] { opacity: 0.4; cursor: default; }
 .admin-shell .cc2-head .cc2-chip { cursor: default; }
