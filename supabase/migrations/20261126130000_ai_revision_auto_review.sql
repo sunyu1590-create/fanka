@@ -560,3 +560,32 @@ end
 $$;
 revoke all on function public.apply_ai_post_revision(uuid, text) from public, anon;
 grant execute on function public.apply_ai_post_revision(uuid, text) to authenticated;
+
+-- 管理概览的「待审」口径：AI 作品版本审核已自动化，在审中的版本不再是人工待办，
+-- 只有审核异常（error）才需要管理员介入。
+create or replace function public.get_admin_overview()
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare day_start timestamptz := date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'; result jsonb;
+begin
+  if not heika_private.has_staff_permission('content.read') then raise exception '没有管理概览权限'; end if;
+  select jsonb_build_object(
+    'usersToday',(select count(*) from public.profiles where created_at >= day_start),
+    'postsToday',(select count(*) from public.posts where created_at >= day_start),
+    'pending',(select count(*) from public.posts where status='pending_review')
+      + (select count(*) from public.post_revisions r join public.posts p on p.id = r.post_id where r.status='pending' and p.channel <> 'ai')
+      + (select count(*) from public.ai_revision_reviews where status='error'),
+    'pendingReports',(select count(*) from public.reports where status='open') + (select count(*) from public.dm_reports where status='open') + (select count(*) from public.moderation_appeals where status='open'),
+    'aiResources',(select count(*) from public.posts where channel='ai' and status='published'),
+    'views',(select coalesce(sum(view_count),0) from public.posts where status='published'),
+    'likes',(select coalesce(sum(like_count),0) from public.post_like_stats),
+    'saves',(select count(*) from public.bookmarks),
+    'comments',(select count(*) from public.comments where status='visible'),
+    'recent',coalesce((select jsonb_agg(jsonb_build_object('id',item.id,'action',item.action,'target_type',item.target_type,'target_id',item.target_id,'reason',item.reason,'created_at',item.created_at,'nickname',item.nickname) order by item.created_at desc)
+      from (select l.id,l.action,l.target_type,l.target_id,l.reason,l.created_at,p.nickname from public.moderation_audit_logs l left join public.profiles p on p.id=l.actor_id order by l.created_at desc limit 6) item),'[]'::jsonb),
+    'asOf',now()) into result;
+  return result;
+end
+$$;
+revoke all on function public.get_admin_overview() from public, anon;
+grant execute on function public.get_admin_overview() to authenticated;
+

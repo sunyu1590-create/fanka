@@ -100,13 +100,14 @@ export default function AdminAiRevisionReviews() {
 
   useEffect(() => { setLoading(true); setShowHistory(false); void load(1, false); }, [load]);
 
-  // 有任务在跑时 3 秒同步一次；空闲时降到 15 秒。页面隐藏时暂停，避免无意义请求。
+  // 有任务在跑时 2 秒同步一次（计时由本地 1 秒时钟推进，不额外请求）；空闲降到 15 秒。
+  // 页面隐藏时暂停，避免无意义请求。
   useEffect(() => {
     const hasActive = items.some((item) => item.status === "queued" || item.status === "running");
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible" || inFlight.current) return;
       void load(1, false);
-    }, hasActive ? 3000 : 15000);
+    }, hasActive ? 2000 : 15000);
     const onVisible = () => { if (document.visibilityState === "visible") void load(1, false); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
