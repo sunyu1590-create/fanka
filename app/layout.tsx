@@ -70,6 +70,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           if (meta) meta.setAttribute('content', resolved === 'light' ? '#F6F5F1' : '#101115');
           const font = localStorage.getItem('heika-font');
           if (font === 'oppo' || font === 'system') document.documentElement.dataset.font = font;
+          // Motion 2.0：首屏同步写入动效设置，避免设置晚一帧生效导致闪烁。
+          try {
+            const raw = localStorage.getItem('heika-motion-v2');
+            const saved = raw ? JSON.parse(raw) : {};
+            const mode = ['enhanced','standard','lite','reduce'].includes(saved.mode) ? saved.mode : 'standard';
+            const speed = ['fast','standard','calm'].includes(saved.speed) ? saved.speed : 'standard';
+            const scale = speed === 'fast' ? .78 : speed === 'calm' ? 1.28 : 1;
+            const root = document.documentElement;
+            root.dataset.motionMode = mode;
+            root.dataset.motionSpeed = speed;
+            root.dataset.motionGlass = saved.glass === false ? 'off' : 'on';
+            root.dataset.motionRefresh = saved.highRefresh === true ? 'high' : 'standard';
+            root.style.setProperty('--motion-scale', String(mode === 'reduce' ? Math.min(scale, .35) : mode === 'lite' ? Math.min(scale, .85) : scale));
+          } catch {}
         } catch {}`}</Script>
         {children}
         <NativeSessionBridge />

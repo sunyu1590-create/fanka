@@ -19,6 +19,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.heika.nativeapp.ui.DecorViewModel
 import com.heika.nativeapp.ui.HeikaImageCache
 import com.heika.nativeapp.ui.HeikaNativeApp
+import com.heika.nativeapp.ui.HeikaMotionSettings
+import com.heika.nativeapp.ui.LocalHeikaMotion
 import com.heika.nativeapp.ui.LocalDecor
 import com.heika.nativeapp.ui.HeikaTheme
 import com.heika.nativeapp.ui.NativePreferences
@@ -43,6 +45,7 @@ class MainActivity : ComponentActivity() {
             val bodyTextScale by preferences.bodyTextScale.collectAsState(initial = 1f)
             val titleTextScale by preferences.titleTextScale.collectAsState(initial = 1f)
             val loader by imageCache.loader.collectAsState()
+            val motionSettings by preferences.motionSettings.collectAsState(initial = HeikaMotionSettings())
             val systemDark = isSystemInDarkTheme()
             val lightSystemBars = theme == "light" || (theme == "system" && !systemDark)
             HeikaTheme(theme, fontChoice, bodyTextScale, titleTextScale) {
@@ -70,7 +73,7 @@ class MainActivity : ComponentActivity() {
                     lifecycleOwner.lifecycle.addObserver(observer)
                     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                 }
-                CompositionLocalProvider(LocalDecor provides decor) {
+                CompositionLocalProvider(LocalDecor provides decor, LocalHeikaMotion provides motionSettings) {
                     HeikaNativeApp(imageLoader = loader, pageTransition = pageTransition)
                 }
             }

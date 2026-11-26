@@ -144,6 +144,62 @@ object HeikaMotion {
     val openEasing = CubicBezierEasing(0.20f, 0.75f, 0.25f, 1f)
     val closeEasing = CubicBezierEasing(0.32f, 0.72f, 0.20f, 1f)
     val expandEasing = CubicBezierEasing(0.25f, 0.80f, 0.25f, 1f)
+
+    /**
+     * Motion 2.0：四档模式 + 三档速度，统一作用于所有动效时长。
+     * 保留上面的常量作为基准值（共享元素 morph 仍走 spatialEasing），
+     * 新增组件统一用 scaled(base) 取时长，避免各页面硬编码。
+     */
+    val modes = listOf("enhanced", "standard", "lite", "reduce")
+    val speeds = listOf("fast", "standard", "calm")
+    fun normalizeMode(value: String): String = value.takeIf { it in modes } ?: "standard"
+    fun normalizeSpeed(value: String): String = value.takeIf { it in speeds } ?: "standard"
+
+    /** 速度系数：与网页端保持一致。 */
+    fun speedScale(speed: String): Float = when (normalizeSpeed(speed)) {
+        "fast" -> 0.78f
+        "calm" -> 1.28f
+        else -> 1f
+    }
+
+    /**
+     * 模式上限：精简模式压到 0.85，减少动态效果压到接近瞬时（保留 60ms 状态反馈）。
+     * 共享元素连续开关在 reduce 模式下由调用方直接用 0ms，不在 base 上叠加。
+     */
+    fun modeScale(mode: String): Float = when (normalizeMode(mode)) {
+        "lite" -> 0.85f
+        "reduce" -> 0.12f
+        else -> 1f
+    }
+
+    fun scaled(base: Int, mode: String, speed: String): Int =
+        (base * speedScale(speed) * modeScale(mode)).coerceAtLeast(if (mode == "reduce") 0f else 60f).toInt()
+}
+
+/**
+ * Motion 2.0 全局设置：由 DataStore 提供，注入到 CompositionLocal。
+ * 与网页端 lib/motion.ts 的四档/三档完全对应，保证两端规范共享。
+ */
+data class HeikaMotionSettings(
+    val mode: String = "standard",
+    val speed: String = "standard",
+    val glass: Boolean = true,
+    val haptics: Boolean = true,
+)
+
+val LocalHeikaMotion = staticCompositionLocalOf { HeikaMotionSettings() }
+
+/** 当前 Composable 是否应降级装饰性动效：显式 reduce/lite 或系统减少动态效果。 */
+@Composable
+fun rememberMotionReduced(): Boolean {
+    val settings = LocalHeikaMotion.current
+    val systemReduce = rememberReduceMotion()
+    return settings.mode == "reduce" || systemReduce
+}
+
+/** 统一触觉反馈入口：只在用户开启时触发，避免普通操作频繁振动。 */
+fun performHeikaHaptic(haptics: androidx.compose.ui.hapticfeedback.HapticFeedback, enabled: Boolean) {
+    if (enabled) haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
 }
 
 val LocalHeikaDark = staticCompositionLocalOf { true }

@@ -17,7 +17,22 @@ export type ResolvedTheme = "dark" | "light";
 const STORAGE_KEY = "heika-theme";
 const SWITCH_CLASS = "theme-switching";
 /** 比过渡本身（260ms）略长，保证最后一帧也走完过渡再撤掉全局规则。 */
+/** 过渡窗口基准：实际时长会按动效设置里的速度档位缩放，reduce 模式直接取最小值。 */
 const SWITCH_WINDOW = 320;
+
+/** 读取当前主题过渡窗口（毫秒）。theme 与 motion 解耦：只在这里取一次设置值。 */
+function switchWindow(): number {
+  if (typeof window === "undefined") return SWITCH_WINDOW;
+  try {
+    const raw = window.localStorage.getItem("heika-motion-v2");
+    const saved = raw ? (JSON.parse(raw) as { mode?: string; speed?: string }) : {};
+    const scale = saved.speed === "fast" ? 0.78 : saved.speed === "calm" ? 1.28 : 1;
+    const modeCap = saved.mode === "reduce" ? 0.12 : saved.mode === "lite" ? 0.85 : 1;
+    return Math.max(40, Math.round(SWITCH_WINDOW * scale * modeCap));
+  } catch {
+    return SWITCH_WINDOW;
+  }
+}
 
 const THEME_COLOR: Record<ResolvedTheme, string> = {
   dark: "#101115",
@@ -78,7 +93,7 @@ export function applyThemeMode(mode: ThemeMode, options: { animate?: boolean } =
       // 切走窗口后必须清掉，否则会长期保留一份全局 transition，影响后续组件动画。
       root.classList.remove(SWITCH_CLASS);
       switchTimer = null;
-    }, SWITCH_WINDOW);
+    }, switchWindow());
   }
 
   root.dataset.theme = next;

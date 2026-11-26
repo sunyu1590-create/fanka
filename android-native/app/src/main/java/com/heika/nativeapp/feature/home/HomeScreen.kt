@@ -79,6 +79,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.heika.nativeapp.ui.performHeikaHaptic
+import com.heika.nativeapp.ui.LocalHeikaMotion
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -389,6 +391,7 @@ private fun FlipPreviewOverlay(
     val density = LocalDensity.current
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val hapticEnabled = LocalHeikaMotion.current.haptics
     val reduceMotion = remember(context) {
         runCatching {
             android.provider.Settings.Global.getFloat(
@@ -419,7 +422,7 @@ private fun FlipPreviewOverlay(
             revealing = true
             if (reduceMotion) flipProgress.snapTo(1f)
             else flipProgress.animateTo(1f, tween(680, easing = CubicBezierEasing(0.22f, 0.86f, 0.24f, 1f)))
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            performHeikaHaptic(haptic, hapticEnabled)
             revealing = false
             rarityPhase = true
             delay(900L)
@@ -530,7 +533,7 @@ private fun FlipPreviewOverlay(
                         onConfirm = {
                             if (!opening && !confirmSubmitted && !revealing && canConfirm) {
                                 confirmSubmitted = true
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                performHeikaHaptic(haptic, hapticEnabled)
                                 if (!reduceMotion) scope.launch(HeikaCoroutineGuard) {
                                     touchScale.snapTo(.985f)
                                     touchScale.animateTo(1f, tween(150, easing = FastOutSlowInEasing))

@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/version";
 
-export type SettingsDetail = "theme" | "font" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | "cache" | "feedback" | "announcement" | "certification";
+export type SettingsDetail = "theme" | "font" | "motion" | "discoverLayout" | "profileLayout" | "homeMode" | "reading" | "detailTransition" | "notifications" | "profile" | "interests" | "security" | "membership" | "progression" | "creator" | "cache" | "feedback" | "announcement" | "certification";
 type Row = { label: string; value?: string; icon: typeof Moon; action: () => void };
 type Group = { title?: string; rows: Row[] };
 type Props = {
@@ -17,6 +17,9 @@ type Props = {
   homeMode: "waterfall" | "blackcard";
   readingMode: "standard" | "focus" | "night";
   detailTransition: "image-zoom" | "blur-rise" | "ghost-handoff";
+  motionMode: string;
+  motionSpeed: string;
+  motionGlass: boolean;
   discoverLayout: "waterfall" | "single";
   profileLayout: "masonry" | "list";
   messagesEnabled: boolean;
@@ -33,6 +36,8 @@ type Props = {
   onBack: () => void;
 };
 
+const MOTION_MODE_LABEL: Record<string,string> = { enhanced: "增强", standard: "标准", lite: "精简", reduce: "减少动态效果" };
+const MOTION_SPEED_LABEL: Record<string,string> = { fast: "快速", standard: "标准", calm: "舒缓" };
 type CenterId = "appearance" | "notify" | "account" | "support" | "admin";
 type Center = { id: CenterId; title: string; icon: typeof Moon; groups: Group[] };
 
@@ -43,7 +48,7 @@ type Center = { id: CenterId; title: string; icon: typeof Moon; groups: Group[] 
  * 每组独立轻量容器 + 简短标题，组间留白，不再共用一个贯穿全页的大容器。
  * 当前值放右侧；文案只保留真实当前值与本地保存提示，不重复解释功能。
  */
-function SettingsHome({ theme, fontChoice, homeMode, readingMode, detailTransition, discoverLayout, profileLayout, messagesEnabled, accountId, isStaff, onOpenDetail, onOpenDecor, onOpenDrafts, onOpenAbout, onOpenContent, onOpenCreator, onOpenFeedbackAdmin, onOpenModeration, onBack }: Props) {
+function SettingsHome({ theme, fontChoice, homeMode, readingMode, detailTransition, motionMode, motionSpeed, motionGlass, discoverLayout, profileLayout, messagesEnabled, accountId, isStaff, onOpenDetail, onOpenDecor, onOpenDrafts, onOpenAbout, onOpenContent, onOpenCreator, onOpenFeedbackAdmin, onOpenModeration, onBack }: Props) {
   const [center, setCenter] = useState<CenterId | null>(null);
   const [query, setQuery] = useState("");
   const listScroll = useRef(0);
@@ -75,6 +80,9 @@ function SettingsHome({ theme, fontChoice, homeMode, readingMode, detailTransiti
           },
           {
             title: "动效", rows: [
+              { label: "动效模式", value: MOTION_MODE_LABEL[motionMode] || "标准", icon: Sparkles, action: () => onOpenDetail("motion") },
+              { label: "动画速度", value: MOTION_SPEED_LABEL[motionSpeed] || "标准", icon: Sparkles, action: () => onOpenDetail("motion") },
+              { label: "固态玻璃", value: motionGlass ? "已开启" : "已关闭", icon: Palette, action: () => onOpenDetail("motion") },
               { label: "详情过渡效果", value: ({ "image-zoom": "连续展开", "blur-rise": "柔和上浮", "ghost-handoff": "留影衔接" } as const)[detailTransition], icon: Sparkles, action: () => onOpenDetail("detailTransition") },
             ],
           },
@@ -138,7 +146,7 @@ function SettingsHome({ theme, fontChoice, homeMode, readingMode, detailTransiti
       ],
     });
     return list;
-  }, [theme, fontChoice, homeMode, discoverLayout, detailTransition, readingMode, profileLayout, messagesEnabled, isStaff, onOpenDetail, onOpenAbout, onOpenContent, onOpenCreator, onOpenFeedbackAdmin, onOpenModeration]);
+  }, [theme, fontChoice, homeMode, discoverLayout, detailTransition, motionMode, motionSpeed, motionGlass, readingMode, profileLayout, messagesEnabled, isStaff, onOpenDetail, onOpenDecor, onOpenDrafts, onOpenAbout, onOpenContent, onOpenCreator, onOpenFeedbackAdmin, onOpenModeration]);
 
   const results = useMemo(() => {
     const term = query.trim().toLowerCase();

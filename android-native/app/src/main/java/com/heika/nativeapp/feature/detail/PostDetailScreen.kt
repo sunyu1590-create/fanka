@@ -102,6 +102,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.heika.nativeapp.ui.performHeikaHaptic
+import com.heika.nativeapp.ui.LocalHeikaMotion
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -958,6 +960,7 @@ private fun InteractionIconButton(selected: Boolean, sending: Boolean, outline: 
     val scale by animateFloatAsState(if (pressed) .88f else 1f, tween(140), label = "${description}-press")
     val selectedScale = remember { Animatable(1f) }
     val haptics = LocalHapticFeedback.current
+    val hapticEnabled = LocalHeikaMotion.current.haptics
     LaunchedEffect(selected) {
         if (selected) {
             selectedScale.snapTo(1f)
@@ -966,7 +969,7 @@ private fun InteractionIconButton(selected: Boolean, sending: Boolean, outline: 
         } else selectedScale.snapTo(1f)
     }
     val tint by animateColorAsState(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, tween(180), label = "${description}-tint")
-    IconButton(onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }, enabled = !sending, interactionSource = source) {
+    IconButton(onClick = { performHeikaHaptic(haptics, hapticEnabled); onClick() }, enabled = !sending, interactionSource = source) {
         if (sending) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 1.8.dp)
         else Icon(if (selected) filled else outline, description, tint = tint, modifier = Modifier.size(22.dp).graphicsLayer { scaleX = scale * selectedScale.value; scaleY = scale * selectedScale.value })
     }
@@ -1143,6 +1146,7 @@ private fun RatingStar(
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(if (pressed) .88f else 1f, tween(HeikaMotion.quick), label = "rating-star-press-$score")
     val haptics = LocalHapticFeedback.current
+    val hapticEnabled = LocalHeikaMotion.current.haptics
     val tint by animateColorAsState(
         targetValue = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f),
         animationSpec = tween(190),
@@ -1157,7 +1161,7 @@ private fun RatingStar(
     Box(
         modifier = Modifier.size(40.dp)
             .selectable(selected = selected, interactionSource = interaction, indication = null, enabled = enabled, role = Role.RadioButton) {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                performHeikaHaptic(haptics, hapticEnabled)
                 onClick()
             },
         contentAlignment = Alignment.Center,

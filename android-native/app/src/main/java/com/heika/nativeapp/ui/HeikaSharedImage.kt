@@ -6,6 +6,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
@@ -38,13 +39,16 @@ fun Modifier.heikaSharedPostImage(
 ): Modifier {
     if (!enabled) return this
     val clip = remember(postKey, isDetail, sourceCornerRadius) { MorphingCardClip(isDetail, sourceCornerRadius) }
+    // Motion 2.0：共享元素时长跟随速度档位，但曲线与空间关系完全保留原有实现。
+    val motion = LocalHeikaMotion.current
+    val morphMs = HeikaMotion.scaled(HeikaMotion.morph, motion.mode, motion.speed)
     return with(sharedTransitionScope) {
         this@heikaSharedPostImage.sharedElement(
             sharedContentState = rememberSharedContentState("post-image-${postKey.lowercase()}"),
             animatedVisibilityScope = animatedVisibilityScope,
             boundsTransform = { initial, target ->
                 clip.record(initial, target)
-                tween(HeikaMotion.morph, easing = HeikaMotion.spatialEasing)
+                tween(morphMs, easing = HeikaMotion.spatialEasing)
             },
             clipInOverlayDuringTransition = clip,
         )
@@ -69,11 +73,13 @@ fun Modifier.heikaSharedPostMeta(
     enabled: Boolean = true,
 ): Modifier {
     if (!enabled) return this
+    val motion = LocalHeikaMotion.current
+    val morphMs = HeikaMotion.scaled(HeikaMotion.morph, motion.mode, motion.speed)
     return with(sharedTransitionScope) {
         this@heikaSharedPostMeta.sharedElement(
             sharedContentState = rememberSharedContentState(sharedKey),
             animatedVisibilityScope = animatedVisibilityScope,
-            boundsTransform = { _, _ -> tween(HeikaMotion.morph, easing = HeikaMotion.spatialEasing) },
+            boundsTransform = { _, _ -> tween(morphMs, easing = HeikaMotion.spatialEasing) },
             // 压在封面图之上，避免文字飞到一半被图片盖住。
             zIndexInOverlay = 0.5f,
         )

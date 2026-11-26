@@ -1,56 +1,184 @@
-/* HEIKA Motion System
+/* HEIKA Motion 2.0 — 网页端全局动效令牌与降级层
    ------------------------------------------------------------------
-   这一层只做三件事，不重写任何已确认的视觉：
-   1. 补齐 design-system.css 里缺少的时长 / 曲线档位，供新组件直接引用；
-   2. 主题切换的颜色过渡（只在切换瞬间生效，320ms 后自动移除）；
-   3. prefers-reduced-motion 的全局兜底（已有单独规则的组件仍然优先）。
-   禁止在这里引入 transform / opacity 的全局过渡，那会接管共享元素和页面转场。 */
+   本文件是动效参数的单一来源（由 lib/motion.ts 同步维护），只做四件事：
+   1. 统一时长 / 曲线 / 玻璃模糊令牌，消除各CSS文件里散落的冲突值；
+   2. 四档动效模式（增强/标准/精简/减少动态效果）通过 html[data-motion-mode] 生效；
+   3. 三档速度通过 --motion-scale 统一缩放；
+   4. 玻璃材质开关 / 减少动态效果 / 主题切换窗口。
+   禁止在这里给 * 全局加 transform / opacity 过渡——那会接管共享元素与翻卡。 */
 
 :root {
-  /* 时长：与 design-system.css 的 --motion-* 同一套语义，只补缺口。 */
-  --motion-tap: 120ms;
-  --motion-icon: 160ms;
-  --motion-tag: 180ms;
-  --motion-expand-sm: 210ms;
-  --motion-image: 210ms;
-  --motion-modal: 260ms;
-  --motion-shared-in: 360ms;
-  --motion-shared-out: 320ms;
-  --motion-theme: 260ms;
+  /* ---- 时长基准（JS DURATION 一一对应；速度由 --motion-scale 统一缩放）---- */
+  --motion-press: calc(100ms * var(--motion-scale));
+  --motion-icon: calc(150ms * var(--motion-scale));
+  --motion-toggle: calc(160ms * var(--motion-scale));
+  --motion-tag: calc(200ms * var(--motion-scale));
+  --motion-local: calc(210ms * var(--motion-scale));
+  --motion-menu: calc(300ms * var(--motion-scale));
+  --motion-theme: calc(320ms * var(--motion-scale));
+  --motion-card: calc(400ms * var(--motion-scale));
+  --motion-flip: calc(640ms * var(--motion-scale));
+  --motion-scale: 1;
 
-  /* 曲线：开启略快出、关闭略快进，展开中段最舒展。
-     数值来自实机观感调校，不是机械套用规范。 */
+  /* 兼容旧令牌：design-system.css 里已有大量组件引用下面这些名字。
+     在这里统一乘上 --motion-scale，速度档位才能真正作用到 CSS 动画，
+     而不是只影响 JS 动画。基准值与原先保持一致，不改变视觉节奏。 */
+  --motion-fast: calc(160ms * var(--motion-scale));
+  --motion-base: calc(300ms * var(--motion-scale));
+  --motion-page: calc(260ms * var(--motion-scale));
+  --motion-blur: calc(280ms * var(--motion-scale));
+  --motion-indicator: calc(240ms * var(--motion-scale));
+  --motion-switch: calc(200ms * var(--motion-scale));
+  --motion-expand: calc(420ms * var(--motion-scale));
+
+  /* ---- 非线性曲线：快速响应、平滑减速、自然停稳 ---- */
+  --ease-standard: cubic-bezier(.22, .72, .18, 1);
+  --ease-in-out: cubic-bezier(.42, 0, .58, 1);
   --ease-open: cubic-bezier(.20, .75, .25, 1);
   --ease-close: cubic-bezier(.32, .72, .20, 1);
   --ease-expand: cubic-bezier(.25, .80, .25, 1);
+  --ease-spatial: cubic-bezier(.22, .78, .18, 1);
+
+  /* ---- 固态玻璃：统一模糊档位（12–18px 参考区间），禁止各页自定 ---- */
+  --glass-blur-nav: 16px;
+  --glass-blur-sheet: 14px;
+  --glass-blur-chip: 12px;
+  --glass-saturate: 130%;
+  --glass-bg-dark: rgba(28, 32, 38, .64);
+  --glass-bg-light: rgba(248, 247, 243, .72);
 }
 
-/* 主题切换：applyThemeMode() 在切换前挂上 .theme-switching，
-   320ms 后移除。只过渡颜色类属性，不碰 transform / opacity / filter，
-   避免把正在播放的共享元素或页面转场一起接管。
-   排除 img / video / canvas：图片内容不做颜色插值，否则会闪。 */
+/* 让已有组件里写死的时长也跟随速度档位：只缩放本系统定义的令牌，
+   不覆盖组件私有动画（翻卡连续转场保留自己的精确节奏）。 */
+html[data-motion-speed="fast"] { --motion-scale: .78; }
+html[data-motion-speed="standard"] { --motion-scale: 1; }
+html[data-motion-speed="calm"] { --motion-scale: 1.28; }
+
+/* ---- 精简模式：关掉装饰性循环动画，保留状态反馈 ---- */
+html[data-motion-mode="lite"] .decor-ambient,
+html[data-motion-mode="lite"] .ambient-pulse,
+html[data-motion-mode="lite"] [class*="shimmer"],
+html[data-motion-mode="lite"] [class*="sparkle-loop"] {
+  animation: none !important;
+}
+html[data-motion-mode="lite"] *,
+html[data-motion-mode="lite"] *::before,
+html[data-motion-mode="lite"] *::after {
+  animation-iteration-count: 1 !important;
+}
+
+/* ---- 减少动态效果：去除大幅位移/缩放/3D/视差，只保留透明度与颜色反馈 ---- */
+html[data-motion-mode="reduce"] *,
+html[data-motion-mode="reduce"] *::before,
+html[data-motion-mode="reduce"] *::after {
+  animation-duration: .01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}
+html[data-motion-mode="reduce"] [class*="parallax"],
+html[data-motion-mode="reduce"] [class*="flip-inner"],
+html[data-motion-mode="reduce"] [class*="candidate-card"] { transform: none !important; }
+
+/* ---- 悬浮顶栏/底栏：design-system.css 里用 .95/.96 的近不透明背景 + blur，
+   既压暗背景又让模糊几乎不可见。Motion 2.0 改成「适度透明 + 稳定模糊 + 色彩透出」。
+   只覆盖这一个文件的两处规则，不触碰卡片、正文等其它材质。 ---- */
+:root[data-theme="dark"] .topline {
+  background: var(--glass-bg-dark) !important;
+  backdrop-filter: blur(var(--glass-blur-nav)) saturate(var(--glass-saturate)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-nav)) saturate(var(--glass-saturate)) !important;
+}
+:root[data-theme="dark"] .bottom-nav:not(.floating-glass) {
+  background: var(--glass-bg-dark) !important;
+  backdrop-filter: blur(var(--glass-blur-nav)) saturate(var(--glass-saturate)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur-nav)) saturate(var(--glass-saturate)) !important;
+}
+:root[data-theme="light"] .topline,
+:root[data-theme="light"] .bottom-nav:not(.floating-glass) {
+  background: var(--glass-bg-light) !important;
+}
+
+/* ---- 玻璃开关：关闭时用轻量不透明替代材质，保证可读，不让背景消失 ---- */
+html[data-motion-glass="off"] .glass,
+html[data-motion-glass="off"] .topline,
+html[data-motion-glass="off"] .bottom-nav,
+html[data-motion-glass="off"] .detail-header,
+html[data-motion-glass="off"] .detail-bar {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--glass-solid, #16191d) !important;
+}
+
+/* 短时出现/高频组件：优先缓存模糊或轻量半透明，避免大量独立实时模糊层。 */
+.choice-select,
+.modal,
+.share-panel,
+.more-menu {
+  backdrop-filter: blur(var(--glass-blur-sheet)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-sheet)) saturate(var(--glass-saturate));
+}
+
+/* ---- 高频按钮：透明度 + 轻微缩放反馈，绝不触发高斯模糊 ----
+   桌面 hover / 键盘 focus / 按压共用一组参数；文字输入控件不参与缩放。 ---- */
+:where(button, .soft-button, .primary-button, .load-button, .icon-button):not(:disabled) {
+  transition: transform var(--motion-press) var(--ease-standard),
+              opacity var(--motion-press) var(--ease-standard),
+              background-color var(--motion-press) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) {
+  :where(button, .soft-button, .primary-button, .icon-button):not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+}
+:where(button, .soft-button, .primary-button, .load-button, .icon-button):not(:disabled):active {
+  transform: scale(.97);
+  opacity: .82;
+}
+/* 骨架屏与加载按钮不能跟着缩放，否则列表布局会跳 */
+.skeleton, [class*="skeleton"], .feed-sentinel button { transform: none !important; }
+
+/* ---- 骨架屏统一节奏：低频、低成本渐变流光，不使用高斯模糊，不闪烁 ---- */
+:root {
+  --skeleton-duration: 1.4s;
+  --skeleton-ease: ease-in-out;
+}
+@keyframes heika-skeleton-flow { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.comments-loading i,
+.message-loading-placeholder i,
+.search-skeleton-list i,
+.editorial-skeleton div,
+.editorial-skeleton i {
+  animation-duration: var(--skeleton-duration) !important;
+  animation-timing-function: var(--skeleton-ease) !important;
+}
+/* 减少动态效果：骨架只保留静态占位，不播放流光。 */
+html[data-motion-mode="reduce"] .comments-loading i,
+html[data-motion-mode="reduce"] .message-loading-placeholder i,
+html[data-motion-mode="reduce"] [class*="skeleton"] i {
+  animation: none !important;
+  background: var(--surface) !important;
+}
+
+/* 主题切换：只过渡颜色类属性，图片/视频/画布不参与插值，避免反色与闪白。 */
 html.theme-switching,
 html.theme-switching body,
 html.theme-switching body *:not(img):not(video):not(canvas):not(svg *) {
   transition-property: background-color, color, border-color, fill, stroke, box-shadow;
   transition-duration: var(--motion-theme);
-  transition-timing-function: var(--ease);
+  transition-timing-function: var(--ease-standard);
   transition-delay: 0ms;
 }
 
-/* 减少动态效果：兜底关闭尚未单独适配的动画，保留最终状态。
-   已有 `animation: none !important` 的组件规则优先级更高，不会被覆盖。 */
+/* 系统无障碍兜底：显式 reduce 模式已在上面覆盖，这里处理未设置过的情况。 */
 @media (prefers-reduced-motion: reduce) {
-  html,
-  html body,
-  html body *,
-  html body *::before,
-  html body *::after {
+  html:not([data-motion-mode="enhanced"]) *,
+  html:not([data-motion-mode="enhanced"]) *::before,
+  html:not([data-motion-mode="enhanced"]) *::after {
     animation-duration: .01ms !important;
-    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
-    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 }

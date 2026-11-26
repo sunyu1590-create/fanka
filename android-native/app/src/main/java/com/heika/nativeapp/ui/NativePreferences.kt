@@ -27,6 +27,11 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val feedLayoutKey = stringPreferencesKey("feed_layout")
     private val readingModeKey = stringPreferencesKey("reading_mode")
     private val pageTransitionKey = stringPreferencesKey("page_transition")
+    // Motion 2.0：四档模式 / 三档速度 / 玻璃材质 / 触觉反馈，与网页端 heika-motion-v2 对应。
+    private val motionModeKey = stringPreferencesKey("motion_mode")
+    private val motionSpeedKey = stringPreferencesKey("motion_speed")
+    private val motionGlassKey = booleanPreferencesKey("motion_glass")
+    private val motionHapticsKey = booleanPreferencesKey("motion_haptics")
     private val fontChoiceKey = stringPreferencesKey("font_choice")
     private val bodyTextSizeKey = stringPreferencesKey("body_text_size")
     private val titleTextSizeKey = stringPreferencesKey("title_text_size")
@@ -51,6 +56,14 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     val readingMode: Flow<String> = dataStore.data.map { it[readingModeKey] ?: "standard" }
     val pageTransition: Flow<String> = dataStore.data.map { value ->
         HeikaPageTransitions.normalize(value[pageTransitionKey].orEmpty())
+    }
+    val motionSettings: Flow<HeikaMotionSettings> = dataStore.data.map { value ->
+        HeikaMotionSettings(
+            mode = HeikaMotion.normalizeMode(value[motionModeKey].orEmpty()),
+            speed = HeikaMotion.normalizeSpeed(value[motionSpeedKey].orEmpty()),
+            glass = value[motionGlassKey] ?: true,
+            haptics = value[motionHapticsKey] ?: true,
+        )
     }
     /** Only fonts present in the APK may appear as choices. */
     val fontChoice: Flow<String> = dataStore.data.map { value ->
@@ -95,6 +108,13 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     suspend fun setFeedLayout(value: String) { dataStore.edit { it[feedLayoutKey] = if (value == "single") "single" else "waterfall" } }
     suspend fun setReadingMode(value: String) { dataStore.edit { it[readingModeKey] = value.takeIf { it in setOf("standard", "focus", "night") } ?: "standard" } }
     suspend fun setPageTransition(value: String) { dataStore.edit { it[pageTransitionKey] = HeikaPageTransitions.normalize(value) } }
+    suspend fun setMotionMode(value: String) { dataStore.edit { it[motionModeKey] = HeikaMotion.normalizeMode(value) } }
+    suspend fun setMotionSpeed(value: String) { dataStore.edit { it[motionSpeedKey] = HeikaMotion.normalizeSpeed(value) } }
+    suspend fun setMotionGlass(value: Boolean) { dataStore.edit { it[motionGlassKey] = value } }
+    suspend fun setMotionHaptics(value: Boolean) { dataStore.edit { it[motionHapticsKey] = value } }
+    suspend fun resetMotionSettings() { dataStore.edit { prefs ->
+        prefs.remove(motionModeKey); prefs.remove(motionSpeedKey); prefs.remove(motionGlassKey); prefs.remove(motionHapticsKey)
+    } }
     suspend fun setFontChoice(value: String) { dataStore.edit { it[fontChoiceKey] = HeikaFontCatalog.normalize(value) } }
     suspend fun setBodyTextScale(value: Float) { dataStore.edit { it[bodyTextScaleKey] = value.coerceIn(0.85f, 1.35f) } }
     suspend fun setTitleTextScale(value: Float) { dataStore.edit { it[titleTextScaleKey] = value.coerceIn(0.85f, 1.3f) } }

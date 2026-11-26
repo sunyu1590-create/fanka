@@ -36,6 +36,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.heika.nativeapp.ui.performHeikaHaptic
+import com.heika.nativeapp.ui.LocalHeikaMotion
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -244,11 +246,12 @@ private fun DockAction(
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) .9f else 1f, tween(120), label = "dock-$label")
     val haptics = LocalHapticFeedback.current
+    val hapticEnabled = LocalHeikaMotion.current.haptics
     Row(
         Modifier.height(42.dp)
             .clip(RoundedCornerShape(21.dp))
             .clickable(enabled = !sending, interactionSource = source, indication = null) {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                performHeikaHaptic(haptics, hapticEnabled)
                 onClick()
             }
             .padding(horizontal = if (count != null) 8.dp else 10.dp),

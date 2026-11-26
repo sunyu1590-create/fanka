@@ -1,6 +1,7 @@
 package com.heika.nativeapp.feature.settings
 
 import com.heika.nativeapp.ui.HeikaCoroutineGuard
+import com.heika.nativeapp.ui.HeikaMotionSettings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.heika.nativeapp.auth.AuthRepository
@@ -27,6 +28,7 @@ class SettingsViewModel @Inject constructor(
     val feedLayout = preferences.feedLayout.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "waterfall")
     val readingMode = preferences.readingMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "standard")
     val pageTransition = preferences.pageTransition.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "shared")
+    val motionSettings = preferences.motionSettings.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HeikaMotionSettings())
     val fontChoice = preferences.fontChoice.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "oppo_sans")
     val bodyTextScale = preferences.bodyTextScale.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1f)
     val titleTextScale = preferences.titleTextScale.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1f)
@@ -220,6 +222,16 @@ class SettingsViewModel @Inject constructor(
     }
     fun clearRecoveryCodes() { mutableRecoveryCodes.value = emptyList() }
     fun setPageTransition(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setPageTransition(value) }
+
+    fun setMotionMode(value: String) { viewModelScope.launch(HeikaCoroutineGuard) { preferences.setMotionMode(value) } }
+
+    fun setMotionSpeed(value: String) { viewModelScope.launch(HeikaCoroutineGuard) { preferences.setMotionSpeed(value) } }
+
+    fun setMotionGlass(value: Boolean) { viewModelScope.launch(HeikaCoroutineGuard) { preferences.setMotionGlass(value) } }
+
+    fun setMotionHaptics(value: Boolean) { viewModelScope.launch(HeikaCoroutineGuard) { preferences.setMotionHaptics(value) } }
+
+    fun resetMotionSettings() { viewModelScope.launch(HeikaCoroutineGuard) { preferences.resetMotionSettings() } }
     fun setFontChoice(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setFontChoice(value) }
     fun setFeedLayout(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setFeedLayout(value) }
     fun setReadingMode(value: String) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setReadingMode(value) }

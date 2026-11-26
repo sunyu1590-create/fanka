@@ -260,6 +260,7 @@ fun SettingsDetailScreen(
     val layout by viewModel.feedLayout.collectAsStateWithLifecycle()
     val reading by viewModel.readingMode.collectAsStateWithLifecycle()
     val pageTransition by viewModel.pageTransition.collectAsStateWithLifecycle()
+    val motionSettings by viewModel.motionSettings.collectAsStateWithLifecycle()
     val fontChoice by viewModel.fontChoice.collectAsStateWithLifecycle()
     val bodyTextScale by viewModel.bodyTextScale.collectAsStateWithLifecycle()
     val titleTextScale by viewModel.titleTextScale.collectAsStateWithLifecycle()
@@ -298,6 +299,7 @@ fun SettingsDetailScreen(
     LaunchedEffect(recoveryCodes) { if (recoveryCodes.isNotEmpty()) recoveryCodesOpen = true }
     val title = SettingGroups.flatMap { it.second }.firstOrNull { it.key == section }?.title ?: when (section) {
         "transition" -> "页面切换动画"
+        "motion" -> "动效与材质"
         "font" -> "字体"
         "text-size" -> "阅读与字号"
         "body-size" -> "正文大小"
@@ -356,6 +358,8 @@ fun SettingsDetailScreen(
                         SettingsDivider()
                         SettingsRow("页面切换动画", transitionLabel(pageTransition), HeikaIconRes.Album) { onSection("transition") }
                         SettingsDivider()
+                        SettingsRow("动效与材质", motionModeLabel(motionSettings.mode), HeikaIconRes.Magic) { onSection("motion") }
+                        SettingsDivider()
                         SettingsRow("字体", if (fontChoice == "oppo_sans") "OPPO Sans 4.0" else "系统默认", HeikaIconRes.Font) { onSection("font") }
                     }
                 }
@@ -378,6 +382,22 @@ fun SettingsDetailScreen(
                             }
                         }
                     }
+                }
+                "motion" -> {
+                    item { SettingsGroupTitle("动效模式") }
+                    item { ChoiceList(SettingIconKey.TRANSITION, listOf("enhanced" to "增强", "standard" to "标准", "lite" to "精简", "reduce" to "减少动态效果"), motionSettings.mode, viewModel::setMotionMode) }
+                    item { SettingsGroupTitle("动画速度") }
+                    item { ChoiceList(SettingIconKey.TRANSITION, listOf("fast" to "快速", "standard" to "标准", "calm" to "舒缓"), motionSettings.speed, viewModel::setMotionSpeed) }
+                    item { SettingsGroupTitle("材质与反馈") }
+                    item {
+                        SettingsGroup {
+                            SettingsToggleRow("固态玻璃效果", "关闭后使用轻量替代材质", motionSettings.glass, viewModel::setMotionGlass)
+                            SettingsDivider()
+                            SettingsToggleRow("触觉反馈", "仅用于翻卡与关键确认", motionSettings.haptics, viewModel::setMotionHaptics)
+                        }
+                    }
+                    item { SettingsHint("减少动态效果会停用大幅位移、3D 翻转与视差；连续开关动画在标准/增强模式下完整保留。") }
+                    item { androidx.compose.material3.TextButton(onClick = viewModel::resetMotionSettings) { androidx.compose.material3.Text("恢复默认设置") } }
                 }
                 "transition" -> {
                     item { SettingsGroupTitle("选择页面切换方式") }
@@ -639,6 +659,20 @@ private fun SettingsHint(text: String, isError: Boolean = false) {
 }
 
 @Composable
+private fun SettingsToggleRow(label: String, hint: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(hint, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.5.sp)
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@Composable
 private fun ChoiceList(iconKey: SettingIconKey, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     SettingsGroup {
         options.forEachIndexed { index, (value, title) ->
@@ -668,6 +702,7 @@ private fun transitionLabel(value: String) = when (value) {
 private fun themeLabel(value: String) = when (value) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" }
 private fun layoutLabel(value: String) = if (value == "single") "单列列表" else "双列瀑布流"
 private fun readingLabel(value: String) = when (value) { "focus" -> "专注"; "night" -> "夜读"; else -> "标准" }
+private fun motionModeLabel(value: String) = when (value) { "enhanced" -> "增强"; "lite" -> "精简"; "reduce" -> "减少动态效果"; else -> "标准" }
 private fun textSizeLabel(value: Float) = "${(value * 100).toInt()}%"
 
 /** 无级字号：滑块即时生效，预览跟随，恢复默认不离开当前页。 */

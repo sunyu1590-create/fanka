@@ -161,3 +161,15 @@
 @media (prefers-reduced-motion: reduce) {
   .settings-home-page .settings-list button { transition: none; }
 }
+
+/* HEIKA Motion 2.0 — 动效与材质设置页 */
+.motion-settings { display: grid; gap: 26px; }
+.motion-group h3 { font-size: 13px; letter-spacing: .06em; color: var(--muted, #8a8a8a); margin: 0 0 12px; font-weight: 650; }
+.motion-group .preference-options { gap: 9px; }
+.motion-group .preference-option { min-height: 62px; }
+.motion-group .settings-list { border: 1px solid var(--line, rgba(128,128,128,.2)); border-radius: var(--radius-group, 12px); overflow: hidden; }
+.motion-group .settings-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 12px 15px; border: 0; border-bottom: 1px solid var(--line, rgba(128,128,128,.16)); background: transparent; color: var(--ink); font-size: 13px; text-align: left; transition: background-color var(--motion-press) var(--ease-standard); }
+.motion-group .settings-row:last-child { border-bottom: 0; }
+.motion-group .settings-row:active { background: rgba(128,128,128,.12); }
+.motion-group .settings-row-value { color: var(--muted, #8a8a8a); font-size: 12px; }
+.motion-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-top: 6px; }

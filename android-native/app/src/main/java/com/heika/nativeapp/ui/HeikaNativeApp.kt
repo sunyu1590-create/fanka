@@ -102,6 +102,10 @@ import dev.chrisbanes.haze.rememberHazeState
 fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") {
     CompositionLocalProvider(LocalHeikaImageLoader provides imageLoader) {
         val context = LocalContext.current
+        // Motion 2.0：减少动态效果模式下把连续开关降级为中速叠化，
+        // 标准/增强/精简模式完整保留现有共享元素动画（不修改其参数与曲线）。
+        val motionSettings = LocalHeikaMotion.current
+        val sharedEnabled = pageTransition == "shared" && motionSettings.mode != "reduce"
         val networkRegionNoticeViewModel: NetworkRegionNoticeViewModel = hiltViewModel()
         val networkRegionWarning by networkRegionNoticeViewModel.warning.collectAsState()
         val appUpdateViewModel: AppUpdateViewModel = hiltViewModel()
@@ -185,7 +189,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                             fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
-                        } else if (pageTransition == "shared" && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
+                        } else if (sharedEnabled && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
                             // 目标页背景先落位，剩下的连续感交给共享元素；快速淡入避免和飞行抢注意力。
                             fadeIn(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
@@ -200,7 +204,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                             fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
-                        } else if (pageTransition == "shared" && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
+                        } else if (sharedEnabled && initialState.destination.route.orEmpty() in sharedCardSourceRoutes && targetState.destination.route == postDetailRoute) {
                             // 源页只做淡出，连"轻微后退"的缩放也去掉：连贯感交给共享元素，
                             // 背景层任何位移都会和飞行的封面打架，看起来像两套动画。
                             fadeOut(tween(HeikaMotion.spatial, easing = HeikaMotion.standard))
@@ -216,7 +220,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                             fadeIn(tween(HeikaMotion.transition, easing = HeikaMotion.standard))
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
-                        } else if (pageTransition == "shared" && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
+                        } else if (sharedEnabled && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
                             fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
                             "crossfade" -> fadeIn(tween(HeikaMotion.control, easing = HeikaMotion.standard))
@@ -230,7 +234,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                             fadeOut(tween(HeikaMotion.control, easing = HeikaMotion.standard))
                         } else if (initialState.destination.route.orEmpty() in mainTabRoutes && targetState.destination.route.orEmpty() in mainTabRoutes) {
                             fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
-                        } else if (pageTransition == "shared" && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
+                        } else if (sharedEnabled && initialState.destination.route == postDetailRoute && targetState.destination.route.orEmpty() in sharedCardSourceRoutes) {
                             fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
                         } else when (pageTransition) {
                             "crossfade" -> fadeOut(tween(HeikaMotion.quick, easing = HeikaMotion.standard))
@@ -250,7 +254,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onPreviewActive = {},
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
+                        sharedElementsEnabled = sharedEnabled && !mainTabSwitchActive,
                     )
                 }
                 composable("discovery") {
@@ -266,7 +270,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         hazeState = hazeState,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
+                        sharedElementsEnabled = sharedEnabled && !mainTabSwitchActive,
                     )
                 }
                 composable("messages") {
@@ -309,7 +313,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared" && !mainTabSwitchActive,
+                        sharedElementsEnabled = sharedEnabled && !mainTabSwitchActive,
                         viewModel = profileViewModel,
                     )
                 }
@@ -321,7 +325,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onSeries = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = sharedEnabled,
                     )
                 }
                 composable("mall") {
@@ -347,7 +351,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onPost = openPost,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = sharedEnabled,
                     )
                 }
                 composable(
@@ -362,7 +366,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onPost = openPost,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = sharedEnabled,
                     )
                 }
                 composable(
@@ -379,7 +383,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onShare = { post -> shareNativePost(context, post) },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = sharedEnabled,
                         onOpenCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         onOpenChapter = { key -> nav.navigate("post/${Uri.encode(key)}") },
                         onOpenPostById = { id -> nav.navigate("post/${Uri.encode(id)}") },
@@ -427,7 +431,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onCollection = { id -> nav.navigate("collection/${Uri.encode(id)}") },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = sharedEnabled,
                     )
                 }
                 composable(
@@ -673,7 +677,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onBack = { nav.popBackStack() },
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = sharedEnabled,
                         onPost = { record ->
                             val post = record.post
                             if (post != null) openPost(post)
@@ -693,7 +697,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onPost = openPost,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = this,
-                        sharedElementsEnabled = pageTransition == "shared",
+                        sharedElementsEnabled = sharedEnabled,
                     )
                 }
                 navigation(startDestination = "exploration/chains", route = "exploration/chains-graph") {

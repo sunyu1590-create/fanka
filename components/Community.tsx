@@ -124,6 +124,8 @@ import { publishTaskManager, PUBLISH_SETTLED, type PublishTask } from "@/lib/pub
 import { PublishFloatingWindow } from "./PublishFloatingWindow";
 import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOptions } from "./NoticeBanner";
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
+import MotionSettings from "./MotionSettings";
+import { applyMotionSettings, readMotionSettings, motionDuration, prefersReducedMotion, type MotionSettings as MotionSettingsValue } from "@/lib/motion";
 import DecorCenter from "./DecorCenter";
 import DraftBox from "./DraftBox";
 import ProfileHeader from "./ProfileHeader";
@@ -483,6 +485,7 @@ export default function Community({
   const [discoverSearchOpen, setDiscoverSearchOpen] = useState(false);
   const [detailTransition, setDetailTransition] = useState<"image-zoom" | "blur-rise" | "ghost-handoff">("blur-rise");
   const [detailTransitionLoaded, setDetailTransitionLoaded] = useState(false);
+  const [motionSettings, setMotionSettings] = useState<MotionSettingsValue>(readMotionSettings);
   const [profileLayout, setProfileLayout] = useState<"masonry" | "list">("masonry");
   const [profileLayoutLoaded, setProfileLayoutLoaded] = useState(false);
   const [fontChoice, setFontChoice] = useState<"oppo" | "system">("oppo");
@@ -493,6 +496,7 @@ export default function Community({
     const saved = localStorage.getItem("heika-theme");
     if (saved === "dark" || saved === "light" || saved === "system") setTheme(saved);
     setThemeReady(true);
+    setMotionSettings(readMotionSettings());
     const savedFont = localStorage.getItem("heika-font");
     if (savedFont === "oppo" || savedFont === "system") setFontChoice(savedFont);
     setFontReady(true);
@@ -2331,7 +2335,7 @@ export default function Community({
     const opening = viewerPhase === "opening",
       rect = viewerRect,
       stage = viewerStageRef.current,
-      reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      reduced = prefersReducedMotion(readMotionSettings());
     let animation: Animation | undefined;
     const finish = () => {
       if (opening) setViewerPhase(null);
@@ -2387,7 +2391,7 @@ export default function Community({
             { transform: first, borderRadius: "7px", opacity: 1 },
           ],
       {
-        duration: 380,
+        duration: motionDuration("card", readMotionSettings()),
         easing: "cubic-bezier(.22,.72,.18,1)",
         fill: "forwards",
       },
@@ -5759,6 +5763,9 @@ export default function Community({
           homeMode={state.homeMode}
           readingMode={state.readingMode}
           detailTransition={detailTransition}
+          motionMode={motionSettings.mode}
+          motionSpeed={motionSettings.speed}
+          motionGlass={motionSettings.glass}
           discoverLayout={state.discoverLayout}
           profileLayout={profileLayout}
           messagesEnabled={state.notifications.messages}
@@ -5782,7 +5789,7 @@ export default function Community({
       {tab === "settings" && settingsDetail !== null && (
         <section key={settingsDetail} className={`page settings-page settings-detail-page${settingsDetail === "membership" ? " membership-settings-page" : ""}`}>
           <button className="back settings-back" onClick={closeSettingsDetail}><ArrowLeft size={18} /> {settingsReturnTab === "mine" ? "我的" : "设置"}</button>
-          {settingsDetail !== "membership" && <><h1>{({theme:"主题外观",font:"字体设置",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理",announcement:"公告管理",certification:"兑换认证码"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : settingsDetail === "certification" ? "查看已获得的认证标识，兑换管理员发放的认证码。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
+          {settingsDetail !== "membership" && <><h1>{({theme:"主题外观",font:"字体设置",discoverLayout:"发现页布局",profileLayout:"他人主页布局",homeMode:"首页浏览方式",reading:"阅读模式",detailTransition:"详情过渡效果",motion:"动效与材质",notifications:"通知与提醒",profile:"个人资料",interests:"兴趣与话题",security:"隐私与安全",membership:"会员中心",progression:"等级与奖励",creator:"创作者中心",cache:"缓存管理",feedback:"意见反馈",feedbackAdmin:"反馈管理",announcement:"公告管理",certification:"兑换认证码"})[settingsDetail]}</h1><p className="lead">{settingsDetail === "profile" ? "完善公开资料，让其他探索者更好地认识你。" : settingsDetail === "interests" ? "选择感兴趣的方向，帮助黑卡整理每日探索内容。" : settingsDetail === "security" ? "管理笔记可见范围、私聊接收范围、黑名单和账号安全。" : settingsDetail === "progression" ? "翻开卡片、认真评分，积累经验解锁探索者等级奖励。" : settingsDetail === "certification" ? "查看已获得的认证标识，兑换管理员发放的认证码。" : "预览效果并选择偏好，设置会自动保存。"}</p></>}
           {settingsDetail === "progression" && (() => {
             const progress = experienceProgress(experienceSummary.total);
             return <div className="experience-page-content">
@@ -5859,6 +5866,7 @@ export default function Community({
               </button>)}
             </div>
           )}
+          {settingsDetail === "motion" && <MotionSettings settings={motionSettings} onChange={setMotionSettings} onNotice={toast} />}
           {settingsDetail === "notifications" && <NotificationSettings
             accountId={accountId}
             messagesEnabled={state.notifications.messages}
