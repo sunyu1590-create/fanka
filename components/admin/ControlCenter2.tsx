@@ -90,6 +90,13 @@ type TcpSummary = {
   totals: { total: number; by_state: Array<{ state: string; count: number }> };
 };
 
+const QUICK_GROUPS: Array<{ label: string; keys: string[] }> = [
+  { label: "模块总览", keys: ["monitor", "network", "access", "server", "media", "ai", "business", "logs"] },
+  { label: "监控与安全", keys: ["system-monitor", "process", "tcp", "ips", "traffic", "ip-rules", "account-limits", "alerts", "alert-rules"] },
+  { label: "资源与服务", keys: ["services", "deployments", "emergency", "storage", "trash", "media-service", "tasks"] },
+  { label: "内容与用户", keys: ["ai-review", "review-stats", "review-policy", "ai-usage", "users", "reports", "messages", "access-logs", "audit"] },
+];
+
 const DEFAULT_LAYOUT: ConsoleLayout = {
   order: ["resource", "todo", "ops", "services", "quick", "ai", "activity"],
   hidden: [],
@@ -367,7 +374,9 @@ export default function ControlCenter2({
           const Icon = meta.icon;
           if (key === "resource") {
             return (
-              <Module key={key} id={key} title={meta.title} icon={<Icon size={14} />} span={2}>
+              <Module key={key} id={key} title={meta.title} icon={<Icon size={14} />} span={2}
+                headRight={<button type="button" className="cc2-link" onClick={() => onNavigate("system-monitor")}>全局监控<ChevronRight size={12} /></button>}
+              >
                 <ResourcePanel
                   series={series.data} seriesPending={seriesPending} seriesError={series.error}
                   metric={metric} setMetric={setMetric} range={range} setRange={setRange}
@@ -584,9 +593,8 @@ function ResourcePanel({
         emptyText={chartNote}
       />
 
-      <div className="cc2-mod__foot" style={{ padding: 0, borderTop: 0 }}>
-        <span>{series ? `${series.label} · ${series.range.label} · ${series.points.length} 个采样点` : "等待采样"}</span>
-        <button type="button" className="cc2-link" onClick={() => onNavigate("system-monitor")}>全局监控<ChevronRight size={12} /></button>
+      <div className="cc2-note">
+        {series ? `${series.label} · ${series.range.label} · ${series.points.length} 个真实采样点` : "等待采样"}
       </div>
     </>
   );
@@ -796,18 +804,15 @@ function OpsPanel({
         <div className="cc2-col"><dt>错误率</dt><dd>{s.visits.errorRate == null ? "—" : `${(s.visits.errorRate * 100).toFixed(1)}%`}</dd></div>
       </dl>
 
-      <dl className="cc2-cols">
-        <div className="cc2-col"><dt>已发布作品</dt><dd>{fmtNum(s.content.published)}</dd></div>
-        <div className="cc2-col"><dt>精选（{data.range.label}）</dt><dd>{fmtNum(s.content.featured)}</dd></div>
-        <div className="cc2-col"><dt>AI 资源 · 累计</dt><dd>{fmtNum(s.content.ai)}</dd></div>
-        <div className="cc2-col"><dt>合集 · 累计</dt><dd>{fmtNum(s.content.series)}</dd></div>
-      </dl>
-
-      <dl className="cc2-cols">
-        <div className="cc2-col"><dt>阅读 · 累计</dt><dd>{fmtNum(s.engagement.views)}</dd></div>
-        <div className="cc2-col"><dt>点赞 · 累计</dt><dd>{fmtNum(s.engagement.likes)}</dd></div>
-        <div className="cc2-col"><dt>收藏（{data.range.label}）</dt><dd>{fmtNum(s.engagement.saves)}</dd></div>
-        <div className="cc2-col"><dt>评论（{data.range.label}）</dt><dd>{fmtNum(s.engagement.comments)}</dd></div>
+      <dl className="cc2-cols cc2-cols--8">
+        <div className="cc2-col"><dt>发布</dt><dd>{fmtNum(s.content.published)}</dd></div>
+        <div className="cc2-col"><dt>精选</dt><dd>{fmtNum(s.content.featured)}</dd></div>
+        <div className="cc2-col"><dt>AI 资源</dt><dd>{fmtNum(s.content.ai)}</dd></div>
+        <div className="cc2-col"><dt>合集</dt><dd>{fmtNum(s.content.series)}</dd></div>
+        <div className="cc2-col"><dt>阅读</dt><dd>{fmtNum(s.engagement.views)}</dd></div>
+        <div className="cc2-col"><dt>点赞</dt><dd>{fmtNum(s.engagement.likes)}</dd></div>
+        <div className="cc2-col"><dt>收藏</dt><dd>{fmtNum(s.engagement.saves)}</dd></div>
+        <div className="cc2-col"><dt>评论</dt><dd>{fmtNum(s.engagement.comments)}</dd></div>
       </dl>
 
       <div className="cc2-cols" style={{ gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
@@ -874,7 +879,9 @@ function ServicePanel({
     },
     {
       key: "media", label: "媒体服务", icon: HardDrive,
-      metric: media ? `24h 成功 ${fmtNum(media.ready)} · 失败 ${fmtNum(media.failed)} · 成功率 ${fmtPct(media.final_success_rate)}` : "等待统计",
+      metric: media
+        ? `24h 成功 ${fmtNum(media.ready)} · 失败 ${fmtNum(media.failed)} · 成功率 ${fmtPct(media.final_success_rate)} · 进行中 ${fmtNum(live.snapshot?.counts.uploadActive)}`
+        : "等待统计",
       ...(media && (media.failed || 0) > 0 ? { state: "warn" as StatusTone, stateText: "有失败任务" } : statusOf(storageService)), section: "media-service",
     },
     {
@@ -884,7 +891,9 @@ function ServicePanel({
     },
     {
       key: "storage", label: "存储服务", icon: HardDrive,
-      metric: storage ? `${fmtNum(storageFiles)} 个对象 · ${fmtBytes(storageBytes)}` : "等待统计",
+      metric: storage
+        ? `${fmtNum(storageFiles)} 个对象 · ${fmtBytes(storageBytes)} · 磁盘 ${percent(live.snapshot?.server?.disk_percent)}`
+        : "等待统计",
       ...statusOf(storageService), section: "storage",
     },
     {
@@ -992,6 +1001,7 @@ function ConsoleEditor({
   const [width, setWidth] = useState<Record<string, 1 | 2>>(layout.width);
   const [quick, setQuick] = useState<string[]>(layout.quick);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [quickDrag, setQuickDrag] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1011,6 +1021,16 @@ function ConsoleEditor({
   const moveTo = (from: number, to: number) => {
     if (from === to) return;
     setOrder((current) => {
+      const copy = [...current];
+      const [item] = copy.splice(from, 1);
+      copy.splice(to, 0, item);
+      return copy;
+    });
+  };
+
+  const moveQuick = (from: number, to: number) => {
+    if (from === to) return;
+    setQuick((current) => {
       const copy = [...current];
       const [item] = copy.splice(from, 1);
       copy.splice(to, 0, item);
@@ -1088,12 +1108,39 @@ function ConsoleEditor({
         </div>
 
         <div className="cc2-drawer__group">
-          <span className="cc2-drawer__label">快捷入口（{quick.length}/8）</span>
+          <span className="cc2-drawer__label">快捷入口（{quick.length}/8 · 已选可拖动排序）</span>
           <div className="cc2-chips">
-            {Object.entries(QUICK_LIBRARY).map(([key, entry]) => (
-              <button key={key} type="button" className="cc2-chip" data-on={quick.includes(key) ? "1" : "0"} onClick={() => toggleQuick(key)}>{entry.label}</button>
+            {quick.map((key, index) => (
+              <button
+                key={key}
+                type="button"
+                className="cc2-chip"
+                data-on="1"
+                draggable
+                title="拖动排序，点击移除"
+                onDragStart={() => setQuickDrag(index)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => { if (quickDrag != null) moveQuick(quickDrag, index); setQuickDrag(null); }}
+                onDragEnd={() => setQuickDrag(null)}
+                onClick={() => toggleQuick(key)}
+              >
+                {QUICK_LIBRARY[key]?.label || key} ×
+              </button>
             ))}
+            {!quick.length ? <span className="cc2-note">尚未选择快捷入口，添加后显示在首页。</span> : null}
           </div>
+          {QUICK_GROUPS.map((group) => (
+            <div key={group.label} className="cc2-chips" style={{ alignItems: "center" }}>
+              <span className="cc2-drawer__label" style={{ width: 76, flex: "none" }}>{group.label}</span>
+              {group.keys.map((key) => {
+                const entry = QUICK_LIBRARY[key];
+                if (!entry) return null;
+                return (
+                  <button key={key} type="button" className="cc2-chip" data-on={quick.includes(key) ? "1" : "0"} onClick={() => toggleQuick(key)}>{entry.label}</button>
+                );
+              })}
+            </div>
+          ))}
           <p className="cc2-note">只影响首页展示，不会删除功能或改变权限；完整入口始终保留在侧栏。</p>
         </div>
 

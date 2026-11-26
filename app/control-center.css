@@ -440,7 +440,7 @@
 .admin-shell .cc2-head .cc2-chip { cursor: default; }
 
 /* 待办卡片与同排运营卡片等高：空态垂直居中，避免右侧长卡片造成大片空洞 */
-.admin-shell .cc2-mod[data-module="todo"] { display: flex; flex-direction: column; min-height: 336px; }
+.admin-shell .cc2-mod[data-module="todo"] { display: flex; flex-direction: column; min-height: 348px; }
 .admin-shell .cc2-mod[data-module="todo"] .cc2-mod__body { flex: 1; display: flex; padding: 0; }
 .admin-shell .cc2-mod[data-module="todo"] .cc2-todo { flex: 1; display: flex; flex-direction: column; }
 .admin-shell .cc2-mod[data-module="todo"] .cc2-todo__empty { flex: 1; align-items: center; justify-content: center; }
@@ -450,3 +450,9 @@
 .admin-shell .cc2-col { padding: 7px 10px; }
 .admin-shell .cc2-kpi b { font-size: 26px; }
 .admin-shell .cc2-cols { border-radius: 8px; }
+
+/* 内容与互动合并为 8 列一行，移动端回落到 2 列，降低运营卡片总高度 */
+.admin-shell .cc2-cols--8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+@media (max-width: 720px) {
+  .admin-shell .cc2-cols--8 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
