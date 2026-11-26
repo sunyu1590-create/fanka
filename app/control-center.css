@@ -542,3 +542,5 @@
   .admin-shell .cc-rev__time { display: none; }
   .admin-shell .cc-rev__diff, .admin-shell .cc-rev__facts { grid-template-columns: 1fr; }
 }
+.admin-shell .cc-rev__bar-right .soft-button { white-space: nowrap; flex: none; }
+.admin-shell .cc-rev__bar-right select { flex: none; }
