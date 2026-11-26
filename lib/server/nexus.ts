@@ -12,6 +12,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { adminClient } from "./admin-client";
 import { requestMetricsSnapshot } from "./request-metrics";
 import type {
   NexusAiScene,
@@ -60,6 +61,22 @@ function cached<T>(key: string, ttl: number, loader: () => Promise<T | null>): P
     });
   store[key] = { at: current?.at || 0, value: current?.value ?? null, inflight };
   return inflight;
+}
+
+/**
+ * Nexus 的读取客户端。
+ *
+ * 路由层已经用「用户令牌」完成权限校验（requirePermission），此处再取数据库时需要用
+ * service_role：可观测性聚合要跨 system_metrics / ip_access_stats / storage RPC 等
+ * 仅服务端可见的数据，用用户令牌会被 RLS 拦成空集合，界面就会谎报“未接入”。
+ * 只读、不写，且返回值经过白名单字段裁剪后再下发给前端。
+ */
+function readClient(db: SupabaseClient): SupabaseClient {
+  try {
+    return adminClient();
+  } catch {
+    return db;
+  }
 }
 
 const num = (value: unknown): number | null => {
@@ -319,7 +336,6 @@ function buildNodes(slow: SlowData, snapshot: Partial<NexusSnapshot>, agent: Age
     staleSeconds: options.staleSeconds ?? null,
   });
 
-  const uptime = num(agent?.host?.uptime_seconds) ?? null;
   const webProbe = (slow.latestMetric?.services as { web_api?: { ok?: boolean; latency_ms?: number } } | undefined)?.web_api;
   const appStatus = processStatus(byKey.get("app"));
   const aiUsageCount = slow.aiUsage.filter((row) => Date.now() - Date.parse(str(row.created_at)) < 60_000).length;
@@ -499,6 +515,7 @@ function buildEvents(slow: SlowData): NexusEvent[] {
 
 /** 核心快照：1 秒可调用，重查询全部有 5–30 秒缓存。 */
 export async function buildNexusSnapshot(db: SupabaseClient): Promise<NexusSnapshot> {
+  db = readClient(db);
   const [agent, slow, dbStats] = await Promise.all([
     cached<AgentLive>("agent", 850, fetchAgent),
     loadSlow(db),
@@ -648,6 +665,7 @@ export async function buildNexusSnapshot(db: SupabaseClient): Promise<NexusSnaps
 
 /** 场景二：全球网络态势。地理字段来自 ip_access_stats.country；为空时明确未接入。 */
 export async function loadGlobeScene(db: SupabaseClient): Promise<NexusGlobeScene> {
+  db = readClient(db);
   const today = dayKey();
   const [{ data: rows }, { data: tcp }, agent] = await Promise.all([
     db.from("ip_access_stats").select("ip,country,requests,bytes_out,status_4xx,last_seen,client").eq("day", today).order("requests", { ascending: false }).limit(300),
@@ -687,6 +705,7 @@ export async function loadGlobeScene(db: SupabaseClient): Promise<NexusGlobeScen
 
 /** 场景四：资源数据城市。全部来自 heika_storage_summary / heika_storage_page。 */
 export async function loadStorageScene(db: SupabaseClient): Promise<NexusStorageScene> {
+  db = readClient(db);
   return (await cached<NexusStorageScene>("storageScene", 30_000, async () => {
     const [{ data: summary, error }, { data: page }, { data: health }] = await Promise.all([
       db.rpc("heika_storage_summary"),
@@ -729,6 +748,7 @@ export async function loadStorageScene(db: SupabaseClient): Promise<NexusStorage
 
 /** 场景六：内容知识宇宙。只取真实作品、合集、标签与互动统计。 */
 export async function loadContentScene(db: SupabaseClient): Promise<NexusContentScene> {
+  db = readClient(db);
   return (await cached<NexusContentScene>("contentScene", 30_000, async () => {
     const { data: posts } = await db.from("posts")
       .select("id,title,channel,tag_id,series_id,view_count,created_at")
@@ -778,6 +798,7 @@ export async function loadContentScene(db: SupabaseClient): Promise<NexusContent
 
 /** 场景五：AI 智能中枢。审核状态严格沿用当前自动审核链路。 */
 export async function loadAiScene(db: SupabaseClient): Promise<NexusAiScene> {
+  db = readClient(db);
   return (await cached<NexusAiScene>("aiScene", 10_000, async () => {
     const since1h = new Date(Date.now() - 3600_000).toISOString();
     const [{ data: usage }, { data: revisions }, { data: batches }] = await Promise.all([
@@ -814,6 +835,7 @@ export async function loadAiScene(db: SupabaseClient): Promise<NexusAiScene> {
 
 /** 场景七：安全防御空间。 */
 export async function loadSecurityScene(db: SupabaseClient): Promise<NexusSecurityScene> {
+  db = readClient(db);
   return (await cached<NexusSecurityScene>("securityScene", 10_000, async () => {
     const today = dayKey();
     const [rules, ips, alerts, agent] = await Promise.all([
@@ -855,6 +877,7 @@ export async function loadSecurityScene(db: SupabaseClient): Promise<NexusSecuri
 
 /** 场景八：时空回溯。历史快照 + 真实事件标记。 */
 export async function loadHistory(db: SupabaseClient, from: string, to: string, bucketSeconds: number): Promise<NexusHistoryResponse> {
+  db = readClient(db);
   const bucket = Math.max(30, Math.min(3600, Math.round(bucketSeconds || 60)));
   const [{ data: points, error }, alerts, deployments, revisions, failedUploads] = await Promise.all([
     db.rpc("heika_nexus_history", { p_from: from, p_to: to, p_bucket_seconds: bucket }),
@@ -905,6 +928,7 @@ export async function loadHistory(db: SupabaseClient, from: string, to: string, 
 
 /** 场景四下钻：真实文件列表（复用现有存储分页函数）。 */
 export async function loadStorageFiles(db: SupabaseClient, bucket: string | null, kind: string | null, offset: number) {
+  db = readClient(db);
   const { data, error } = await db.rpc("heika_storage_page", {
     p_bucket: bucket || null,
     p_kind: kind && ["image", "video", "audio", "attachment", "apk", "other"].includes(kind) ? kind : null,
