@@ -17,6 +17,14 @@ export type BannerSettings = {
   allowUnmute: boolean;
   dataSaverFallback: boolean;
   videoMaxMs: number;
+  videoPlayMode: "full" | "timed";
+  videoLoop: boolean;
+  preloadMode: "off" | "next" | "adjacent";
+  showText: boolean;
+  cacheTtlHours: number;
+  videoMaxMb: number;
+  videoMaxCount: number;
+  videoMaxWidth: number;
   sizeMode: "ratio" | "fixed";
   coverRatio: string;
   heights: { app: number; mobile: number; tablet: number; desktop: number };
@@ -40,15 +48,23 @@ export type PublicBanner = {
   height: number | null;
   videoDurationMs: number | null;
   displayMs: number | null;
-  targetType: "none" | "post" | "series";
+  targetType: "none" | "post" | "series" | "external";
   targetId: string | null;
+  targetUrl: string | null;
   targetValid: boolean;
   focus: "center" | "top" | "bottom";
   alt: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  showText: boolean;
+  fitMode: "cover" | "contain" | null;
+  posterFit: "cover" | "contain";
+  updatedAt: string;
 };
 
 const SETTINGS_FIELDS =
-  "enabled,autoplay,image_duration_ms,transition_ms,video_autoplay,video_muted,allow_unmute,data_saver_fallback,video_max_ms,size_mode,cover_ratio,app_height,mobile_height,tablet_height,desktop_height,unified_size,fit_mode,focus,radius,show_indicator,invalid_target_policy,version,updated_at";
+  "enabled,autoplay,image_duration_ms,transition_ms,video_autoplay,video_muted,allow_unmute,data_saver_fallback,video_max_ms,video_play_mode,video_loop,preload_mode,show_text,cache_ttl_hours,video_max_mb,video_max_count,video_max_width,size_mode,cover_ratio,app_height,mobile_height,tablet_height,desktop_height,unified_size,fit_mode,focus,radius,show_indicator,invalid_target_policy,version,updated_at";
 
 export function mapSettings(row: Record<string, unknown> | null): BannerSettings {
   const source = row || {};
@@ -66,6 +82,14 @@ export function mapSettings(row: Record<string, unknown> | null): BannerSettings
     allowUnmute: source.allow_unmute !== false,
     dataSaverFallback: source.data_saver_fallback !== false,
     videoMaxMs: num(source.video_max_ms, 30000),
+    videoPlayMode: source.video_play_mode === "timed" ? "timed" : "full",
+    videoLoop: source.video_loop === true,
+    preloadMode: source.preload_mode === "off" ? "off" : source.preload_mode === "adjacent" ? "adjacent" : "next",
+    showText: source.show_text !== false,
+    cacheTtlHours: num(source.cache_ttl_hours, 72),
+    videoMaxMb: num(source.video_max_mb, 20),
+    videoMaxCount: num(source.video_max_count, 6),
+    videoMaxWidth: num(source.video_max_width, 1920),
     sizeMode: source.size_mode === "fixed" ? "fixed" : "ratio",
     coverRatio: String(source.cover_ratio || "3:1"),
     heights: {
@@ -102,16 +126,24 @@ type BannerRow = {
   height: number | null;
   video_duration_ms: number | null;
   display_ms: number | null;
-  target_type: "none" | "post" | "series";
+  target_type: "none" | "post" | "series" | "external";
   target_id: string | null;
+  external_url: string | null;
   focus: "center" | "top" | "bottom";
   platforms: string[];
   starts_at: string | null;
   ends_at: string | null;
+  title: string;
+  subtitle: string;
+  description: string;
+  show_text: boolean;
+  fit_mode: "cover" | "contain" | null;
+  poster_fit: "cover" | "contain";
+  updated_at: string;
 };
 
 const BANNER_PUBLIC_FIELDS =
-  "id,alt,media_type,image_path,video_path,poster_path,width,height,video_duration_ms,display_ms,target_type,target_id,focus,platforms,starts_at,ends_at";
+  "id,alt,media_type,image_path,video_path,poster_path,width,height,video_duration_ms,display_ms,target_type,target_id,external_url,focus,platforms,starts_at,ends_at,title,subtitle,description,show_text,fit_mode,poster_fit,updated_at";
 
 function withinWindow(row: BannerRow, now: number) {
   if (row.starts_at && Date.parse(row.starts_at) > now) return false;
@@ -124,6 +156,28 @@ export function publicUrlFor(admin: SupabaseClient, path: string | null | undefi
   if (/^https?:\/\//i.test(path)) return path;
   const { data } = admin.storage.from("home-banners").getPublicUrl(path);
   return data.publicUrl;
+}
+
+/**
+ * 媒体资源版本化：把条目更新时间拼进查询串，内容变化时 URL 跟着变，
+ * 未变化时保持同一 URL 让浏览器/客户端直接命中已有缓存。
+ */
+export function versionedUrl(url: string | null, updatedAt: string | null | undefined) {
+  if (!url) return null;
+  const stamp = updatedAt ? Date.parse(updatedAt) : NaN;
+  if (!Number.isFinite(stamp)) return url;
+  const token = Math.floor(stamp / 1000).toString(36);
+  return `${url}${url.includes("?") ? "&" : "?"}v=${token}`;
+}
+
+/** 稳定指纹：只依赖条目身份 + 更新时间 + 全局版本，用于客户端判断"是否需要重新下载"。 */
+function revisionOf(settings: BannerSettings, rows: BannerRow[]) {
+  const source = `${settings.version}|${rows.map((row) => `${row.id.slice(0, 8)}.${Math.floor(Date.parse(row.updated_at) / 1000) || 0}`).join(",")}`;
+  let hash = 5381;
+  for (let index = 0; index < source.length; index += 1) {
+    hash = ((hash << 5) + hash + source.charCodeAt(index)) | 0;
+  }
+  return `${settings.version}-${rows.length}-${(hash >>> 0).toString(36)}`;
 }
 
 /**
@@ -167,18 +221,21 @@ export async function loadBannerPayload(db: SupabaseClient, admin: SupabaseClien
   const { validPosts, validSeries } = await validateTargets(db, rows);
   const items: PublicBanner[] = [];
   for (const row of rows) {
+    const externalValid = row.target_type === "external" && isSafeExternalUrl(row.external_url);
     const targetValid = row.target_type === "none"
       ? true
-      : row.target_type === "post"
-        ? Boolean(row.target_id && validPosts.has(row.target_id))
-        : Boolean(row.target_id && validSeries.has(row.target_id));
+      : row.target_type === "external"
+        ? externalValid
+        : row.target_type === "post"
+          ? Boolean(row.target_id && validPosts.has(row.target_id))
+          : Boolean(row.target_id && validSeries.has(row.target_id));
     if (!targetValid && settings.invalidTargetPolicy === "filter") continue;
     items.push({
       id: row.id,
       mediaType: row.media_type,
-      imageUrl: publicUrlFor(admin, row.image_path),
-      videoUrl: publicUrlFor(admin, row.video_path),
-      posterUrl: publicUrlFor(admin, row.poster_path || row.image_path),
+      imageUrl: versionedUrl(publicUrlFor(admin, row.image_path), row.updated_at),
+      videoUrl: versionedUrl(publicUrlFor(admin, row.video_path), row.updated_at),
+      posterUrl: versionedUrl(publicUrlFor(admin, row.poster_path || row.image_path), row.updated_at),
       width: row.width,
       height: row.height,
       videoDurationMs: row.video_duration_ms,
@@ -186,14 +243,31 @@ export async function loadBannerPayload(db: SupabaseClient, admin: SupabaseClien
       // 目标失效时降级为「仅媒体」，不给用户一个会 404 的点击。
       targetType: targetValid ? row.target_type : "none",
       targetId: targetValid ? row.target_id : null,
+      targetUrl: targetValid && row.target_type === "external" ? row.external_url : null,
       targetValid,
       focus: row.focus,
       alt: row.alt,
+      title: String(row.title || "").slice(0, 40),
+      subtitle: String(row.subtitle || "").slice(0, 60),
+      description: String(row.description || "").slice(0, 160),
+      showText: row.show_text !== false,
+      fitMode: row.fit_mode === "cover" || row.fit_mode === "contain" ? row.fit_mode : null,
+      posterFit: row.poster_fit === "contain" ? "contain" : "cover",
+      updatedAt: row.updated_at,
     });
   }
 
-  const version = `${settings.version}-${items.length}-${items.map((item) => item.id.slice(0, 8)).join("")}`;
-  return { settings, items, version };
+  const revision = revisionOf(settings, rows);
+  return {
+    settings,
+    items,
+    version: revision,
+    revision,
+    count: items.length,
+    // 离线可展示窗口：由服务端下发有效期，客户端不再各自硬编码。
+    ttlSeconds: Math.round(settings.cacheTtlHours * 3600),
+    updatedAt: items.reduce((latest, item) => (Date.parse(item.updatedAt) > Date.parse(latest) ? item.updatedAt : latest), settings.updatedAt || ""),
+  };
 }
 
 /** 服务端渲染用：把封面路径换成可对外访问的地址，并附带目标标题便于审计。 */
@@ -201,6 +275,27 @@ export async function loadBannerAdminRows(db: SupabaseClient) {
   const { data, error } = await db.from("home_banners").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: false });
   if (error) throw new ApiError(500, error.message);
   return data || [];
+}
+
+/**
+ * 视频条数上限：规格要求「限制视频数量」，否则首页会变成多个大文件抢占带宽。
+ * 只统计真正会对外展示的视频（已发布 + 启用），草稿与停用项不计入。
+ */
+export async function assertVideoQuota(
+  db: SupabaseClient,
+  options: { addingVideo: boolean; live: boolean; excludeId?: string },
+) {
+  if (!options.addingVideo || !options.live) return;
+  const settings = await loadSettings(db);
+  let query = db.from("home_banners")
+    .select("id", { count: "exact", head: true })
+    .eq("media_type", "video").eq("enabled", true).eq("status", "published");
+  if (options.excludeId) query = query.neq("id", options.excludeId);
+  const { count, error } = await query;
+  if (error) return;
+  if ((count || 0) >= settings.videoMaxCount) {
+    throw new ApiError(400, `视频轮播最多 ${settings.videoMaxCount} 条，请先停用或删除一条再发布`);
+  }
 }
 
 // ---------- 管理端入参校验（放这里而不是 route 文件：route 只允许导出 HTTP 方法） ----------
@@ -230,6 +325,39 @@ function sanitizeWindow(value: unknown, label: string) {
   return new Date(time).toISOString();
 }
 
+/**
+ * 外链白名单：只允许 https 绝对地址或站内相对路径。
+ * 明确拒绝 javascript:/data:/vbscript:、协议相对地址（//evil.com）与带控制字符的串。
+ */
+export function isSafeExternalUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const url = value.trim();
+  if (!url || url.length > 500) return false;
+  if (/[\u0000-\u001f\u007f\s]/.test(url)) return false;
+  if (url.startsWith("//")) return false;
+  if (/^(?:javascript|data|vbscript|file):/i.test(url)) return false;
+  if (url.startsWith("/")) return !url.startsWith("//");
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeExternalUrl(value: unknown) {
+  const url = String(value ?? "").trim();
+  if (!isSafeExternalUrl(url)) throw new ApiError(400, "外链需为 https 地址或以 / 开头的站内路径");
+  return url;
+}
+
+/** 纯文本字段：去掉换行、控制字符与首尾空白，按码点截断避免把 emoji 切成半个。 */
+function sanitizeText(value: unknown, limit: number) {
+  const raw = String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const chars = [...raw];
+  return chars.length > limit ? chars.slice(0, limit).join("") : raw;
+}
+
 const isValidUuid = (value: unknown): value is string =>
   typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -243,6 +371,15 @@ export function sanitizeBannerBody(body: Record<string, unknown>, options: { par
     out.name = name;
   }
   if (!options.partial || has("alt")) out.alt = String(body.alt ?? "").trim().slice(0, 120);
+  // 文字层：只接受纯文本，去掉控制字符，长度与数据库约束保持一致。
+  if (!options.partial || has("title")) out.title = sanitizeText(body.title, 40);
+  if (!options.partial || has("subtitle")) out.subtitle = sanitizeText(body.subtitle, 60);
+  if (!options.partial || has("description")) out.description = sanitizeText(body.description, 160);
+  if (!options.partial || has("show_text")) out.show_text = body.show_text !== false;
+  if (!options.partial || has("fit_mode")) {
+    out.fit_mode = body.fit_mode === "cover" || body.fit_mode === "contain" ? body.fit_mode : null;
+  }
+  if (!options.partial || has("poster_fit")) out.poster_fit = body.poster_fit === "contain" ? "contain" : "cover";
   if (!options.partial || has("media_type")) out.media_type = body.media_type === "video" ? "video" : "image";
   if (!options.partial || has("image_path")) out.image_path = sanitizeMediaPath(body.image_path, "图片");
   if (!options.partial || has("video_path")) out.video_path = sanitizeMediaPath(body.video_path, "视频");
@@ -260,10 +397,18 @@ export function sanitizeBannerBody(body: Record<string, unknown>, options: { par
     else out.display_ms = Math.round(display);
   }
   if (!options.partial || has("target_type")) {
-    const targetType = body.target_type === "post" || body.target_type === "series" ? body.target_type : "none";
+    const targetType = body.target_type === "post" || body.target_type === "series" || body.target_type === "external"
+      ? body.target_type
+      : "none";
     out.target_type = targetType;
-    if (targetType === "none") out.target_id = null;
-    else {
+    if (targetType === "none") {
+      out.target_id = null;
+      out.external_url = null;
+    } else if (targetType === "external") {
+      out.target_id = null;
+      out.external_url = sanitizeExternalUrl(body.external_url);
+    } else {
+      out.external_url = null;
       if (!isValidUuid(body.target_id)) throw new ApiError(400, "跳转目标无效");
       out.target_id = body.target_id;
     }

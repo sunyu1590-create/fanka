@@ -6,7 +6,7 @@ import { loadSettings, mapSettings } from "@/lib/server/home-banners";
 export const dynamic = "force-dynamic";
 
 const SETTINGS_FIELDS =
-  "enabled,autoplay,image_duration_ms,transition_ms,video_autoplay,video_muted,allow_unmute,data_saver_fallback,video_max_ms,size_mode,cover_ratio,app_height,mobile_height,tablet_height,desktop_height,unified_size,fit_mode,focus,radius,show_indicator,invalid_target_policy,version,updated_at";
+  "enabled,autoplay,image_duration_ms,transition_ms,video_autoplay,video_muted,allow_unmute,data_saver_fallback,video_max_ms,video_play_mode,video_loop,preload_mode,show_text,cache_ttl_hours,video_max_mb,video_max_count,video_max_width,size_mode,cover_ratio,app_height,mobile_height,tablet_height,desktop_height,unified_size,fit_mode,focus,radius,show_indicator,invalid_target_policy,version,updated_at";
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,6 +54,14 @@ export async function PUT(req: NextRequest) {
       allow_unmute: bool(body.allow_unmute, current.allowUnmute),
       data_saver_fallback: bool(body.data_saver_fallback, current.dataSaverFallback),
       video_max_ms: int(body.video_max_ms, 3000, 120000, current.videoMaxMs, "视频最长播放时长"),
+      video_play_mode: body.video_play_mode === "timed" ? "timed" : body.video_play_mode === "full" ? "full" : current.videoPlayMode,
+      video_loop: bool(body.video_loop, current.videoLoop),
+      preload_mode: body.preload_mode === "off" ? "off" : body.preload_mode === "adjacent" ? "adjacent" : body.preload_mode === "next" ? "next" : current.preloadMode,
+      show_text: bool(body.show_text, current.showText),
+      cache_ttl_hours: int(body.cache_ttl_hours, 1, 720, current.cacheTtlHours, "缓存有效期"),
+      video_max_mb: int(body.video_max_mb, 5, 200, current.videoMaxMb, "视频体积上限"),
+      video_max_count: int(body.video_max_count, 1, 12, current.videoMaxCount, "视频数量上限"),
+      video_max_width: int(body.video_max_width, 640, 3840, current.videoMaxWidth, "视频最大宽度"),
       size_mode: body.size_mode === "fixed" ? "fixed" : body.size_mode === "ratio" ? "ratio" : current.sizeMode,
       cover_ratio: ratio === "custom" ? customRatio || "3:1" : ratio,
       app_height: int(body.app_height, 80, 280, current.heights.app, "APP 高度"),

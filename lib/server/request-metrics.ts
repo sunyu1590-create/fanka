@@ -34,7 +34,70 @@ function percentile(sorted: number[], p: number) {
   return sorted[index];
 }
 
-export function recordRequest(durationMs: number, status: number, path = "") {
+export type RequestEvent = {
+  id: string;
+  at: string;
+  type: "request" | "security";
+  method: string;
+  path: string;
+  status: number;
+  ms: number;
+  category: string;
+};
+
+type SecondBucket = { t: number; requests: number; errors: number; ms: number; by_category: Record<string, number> };
+
+type StreamStore = { seconds: Map<number, SecondBucket>; events: RequestEvent[]; seq: number };
+
+const streamHolder = globalThis as unknown as { __heikaRequestStream?: StreamStore };
+if (!streamHolder.__heikaRequestStream) streamHolder.__heikaRequestStream = { seconds: new Map(), events: [], seq: 0 };
+const stream = streamHolder.__heikaRequestStream!;
+
+function categoryOf(path: string) {
+  if (path.startsWith("/api/v1/admin/nexus")) return "nexus";
+  if (path.startsWith("/api/")) return "api";
+  if (path.startsWith("/rest/v1/")) return "rest";
+  if (path.startsWith("/storage/v1/")) return "storage";
+  if (path.startsWith("/auth/v1/")) return "auth";
+  if (path.startsWith("/realtime/v1/")) return "realtime";
+  if (path.startsWith("/dl/")) return "download";
+  if (path.startsWith("/_next/") || path.startsWith("/assets/") || path.startsWith("/icons/") || path === "/favicon.ico") return "static";
+  return "page";
+}
+
+function noteStream(durationMs: number, status: number, path: string, method: string) {
+  const clean = path.split("?")[0].slice(0, 180);
+  const category = categoryOf(clean);
+  const second = Math.floor(Date.now() / 1000);
+  const bucket = stream.seconds.get(second) || { t: second, requests: 0, errors: 0, ms: 0, by_category: {} };
+  bucket.requests += 1;
+  bucket.ms += durationMs;
+  if (status >= 400) bucket.errors += 1;
+  bucket.by_category[category] = (bucket.by_category[category] || 0) + 1;
+  stream.seconds.set(second, bucket);
+  const cutoff = second - 120;
+  for (const key of stream.seconds.keys()) if (key < cutoff) stream.seconds.delete(key);
+
+  // 事件流只保留可确认的入口请求，不拼装跨服务调用链。
+  // 静态资源、SSE 自身、内部探活不进入事件列表，避免刷屏。
+  if (clean.startsWith("/_next/") || clean.startsWith("/assets/") || clean.startsWith("/icons/") || clean === "/favicon.ico") return;
+  if (clean.startsWith("/api/v1/admin/nexus/stream") || clean.startsWith("/api/v1/internal/")) return;
+  stream.seq += 1;
+  stream.events.push({
+    id: `req-${Date.now().toString(36)}-${stream.seq.toString(36)}`,
+    at: new Date().toISOString(),
+    type: status === 401 || status === 403 || status === 429 ? "security" : "request",
+    method: method.slice(0, 8),
+    path: clean,
+    status,
+    ms: Math.round(durationMs),
+    category,
+  });
+  if (stream.events.length > 160) stream.events.splice(0, stream.events.length - 160);
+}
+
+export function recordRequest(durationMs: number, status: number, path = "", method = "GET") {
+  noteStream(durationMs, status, path, method);
   for (const window of Object.values(windows)) {
     window.requests += 1;
     if (status >= 500) window.errors5xx += 1;
@@ -71,5 +134,14 @@ export function requestMetricsSnapshot() {
       recent_5xx: window.lastErrors.slice(-5),
     };
   };
-  return { m1: summarize(windows.m1), m5: summarize(windows.m5), m15: summarize(windows.m15), collected_at: new Date().toISOString() };
+  const seconds = [...stream.seconds.values()].sort((a, b) => a.t - b.t).slice(-90);
+  const recentEvents = stream.events.slice(-80).reverse();
+  return {
+    m1: summarize(windows.m1),
+    m5: summarize(windows.m5),
+    m15: summarize(windows.m15),
+    seconds,
+    recent_events: recentEvents,
+    collected_at: new Date().toISOString(),
+  };
 }

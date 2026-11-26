@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 class SettingsViewModel @Inject constructor(
     private val preferences: NativePreferences,
     private val imageCache: HeikaImageCache,
+    private val bannerMediaCache: com.heika.nativeapp.ui.HeikaBannerMediaCache,
     private val auth: AuthRepository,
     private val repository: HeikaRepository,
 ) : ViewModel() {
@@ -37,6 +38,10 @@ class SettingsViewModel @Inject constructor(
     private val mutableNotificationError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     val notificationError = mutableNotificationError.asStateFlow()
     private val mutableCacheClearing = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val mutableBannerCacheBytes = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val bannerCacheBytes = mutableBannerCacheBytes.asStateFlow()
+    private val mutableBannerCacheClearing = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val bannerCacheClearing = mutableBannerCacheClearing.asStateFlow()
     val cacheClearing = mutableCacheClearing.asStateFlow()
     private val mutableCacheBytes = kotlinx.coroutines.flow.MutableStateFlow(0L)
     val cacheBytes = mutableCacheBytes.asStateFlow()
@@ -222,7 +227,26 @@ class SettingsViewModel @Inject constructor(
     fun setTitleTextScale(value: Float) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setTitleTextScale(value) }
     fun setReadingProgressVisible(value: Boolean) = viewModelScope.launch(HeikaCoroutineGuard) { preferences.setReadingProgressVisible(value) }
     fun setCacheCapacity(value: Int) = viewModelScope.launch(HeikaCoroutineGuard) { imageCache.resize(value) }
-    fun refreshCacheUsage() = viewModelScope.launch(HeikaCoroutineGuard) { mutableCacheBytes.value = imageCache.sizeBytes() }
+    fun refreshCacheUsage() = viewModelScope.launch(HeikaCoroutineGuard) {
+        mutableCacheBytes.value = imageCache.sizeBytes()
+        mutableBannerCacheBytes.value = bannerMediaCache.sizeBytes()
+    }
+
+    /** 只清轮播视频缓存：不动图片缓存、不动账号与草稿。 */
+    fun clearBannerCache() = viewModelScope.launch(HeikaCoroutineGuard) {
+        if (mutableBannerCacheClearing.value) return@launch
+        mutableBannerCacheClearing.value = true
+        try {
+            bannerMediaCache.cancelAllPreloads()
+            bannerMediaCache.clear()
+            mutableBannerCacheBytes.value = bannerMediaCache.sizeBytes()
+            mutableMessage.value = "已清理轮播视频缓存"
+        } catch (error: Exception) {
+            mutableMessage.value = error.message ?: "轮播缓存清理失败"
+        } finally {
+            mutableBannerCacheClearing.value = false
+        }
+    }
     fun clearImageCache() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (mutableCacheClearing.value) return@launch
         mutableCacheClearing.value = true

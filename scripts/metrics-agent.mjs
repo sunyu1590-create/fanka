@@ -12,6 +12,7 @@
  */
 
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -25,6 +26,11 @@ const ALERT_RETENTION_DAYS = 30;
 const HOST_PROC = fs.existsSync("/host/proc/stat") ? "/host/proc" : "/proc";
 const HOST_SCOPE = HOST_PROC === "/host/proc" ? "host" : "container";
 const CADDY_LOG = process.env.CADDY_LOG_PATH || "/var/log/caddy/access.log";
+// 1 秒实时通道只供同 docker 网络的 app 读取，不发布宿主端口。
+// 令牌复用 AI_TASK_WORKER_TOKEN（已在 app 与 agent 间共享），避免新增第二份密钥。
+const LIVE_PORT = Number(process.env.METRICS_LIVE_PORT || 3100);
+const LIVE_TOKEN = process.env.METRICS_AGENT_TOKEN || WORKER_TOKEN || "";
+const LIVE_BUCKETS = 120;
 
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   console.error("[metrics-agent] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 缺失，退出");
@@ -158,6 +164,240 @@ function readNetRates() {
   } catch {
     return {};
   }
+}
+
+// ---------- 1 秒实时采样（Nexus 三维态势专用） ----------
+
+// 与 15 秒落库采样分开维护差分，互不影响。
+let livePrevCpu = null;
+let livePrevNet = null;
+let livePrevNetAt = 0;
+let liveDiskCache = { at: 0, value: {} };
+let liveTcpCache = { at: 0, value: null };
+let liveProcesses = [];
+
+function liveCpuPercent() {
+  const current = readProcStat();
+  if (!current) return null;
+  if (!livePrevCpu) { livePrevCpu = current; return null; }
+  const totalDelta = current.total - livePrevCpu.total;
+  const idleDelta = current.idle - livePrevCpu.idle;
+  livePrevCpu = current;
+  if (totalDelta <= 0) return null;
+  return Number((((totalDelta - idleDelta) / totalDelta) * 100).toFixed(1));
+}
+
+function liveDisk() {
+  if (Date.now() - liveDiskCache.at < 5000) return liveDiskCache.value;
+  liveDiskCache = { at: Date.now(), value: readDisk() };
+  return liveDiskCache.value;
+}
+
+function liveNet() {
+  try {
+    const lines = fs.readFileSync(`${HOST_PROC}/net/dev`, "utf8").split("\n").slice(2);
+    let rx = 0;
+    let tx = 0;
+    for (const line of lines) {
+      const [iface, rest] = line.trim().split(":");
+      if (!rest || iface === "lo") continue;
+      const fields = rest.trim().split(/\s+/).map(Number);
+      rx += fields[0] || 0;
+      tx += fields[8] || 0;
+    }
+    const now = Date.now();
+    let rxRate = null;
+    let txRate = null;
+    if (livePrevNet && now > livePrevNetAt) {
+      const seconds = (now - livePrevNetAt) / 1000;
+      rxRate = Math.max(0, Math.round((rx - livePrevNet.rx) / seconds));
+      txRate = Math.max(0, Math.round((tx - livePrevNet.tx) / seconds));
+    }
+    livePrevNet = { rx, tx };
+    livePrevNetAt = now;
+    return { net_rx_rate: rxRate, net_tx_rate: txRate };
+  } catch {
+    return { net_rx_rate: null, net_tx_rate: null };
+  }
+}
+
+/** 只统计 ESTABLISHED（状态 01），不读取地址与进程归属，避免实时接口携带敏感明细。 */
+function liveTcpTotal() {
+  if (Date.now() - liveTcpCache.at < 1000) return liveTcpCache.value;
+  let total = 0;
+  for (const file of ["tcp", "tcp6"]) {
+    try {
+      const lines = fs.readFileSync(`${HOST_PROC}/net/${file}`, "utf8").split("\n").slice(1);
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const state = line.trim().split(/\s+/)[3];
+        if (state === "01") total += 1;
+      }
+    } catch {
+      /* 单协议栈不可读时保留另一部分 */
+    }
+  }
+  liveTcpCache = { at: Date.now(), value: total };
+  return total;
+}
+
+// 每秒桶：只保留 120 秒，按分类/客户端/状态聚合，不存 URL 参数与 Cookie。
+const liveBuckets = new Map();
+
+function categoryOf(path) {
+  if (path.startsWith("/api/v1/admin/nexus")) return "nexus";
+  if (path.startsWith("/api/")) return "api";
+  if (path.startsWith("/rest/v1/")) return "rest";
+  if (path.startsWith("/storage/v1/")) return "storage";
+  if (path.startsWith("/auth/v1/")) return "auth";
+  if (path.startsWith("/realtime/v1/")) return "realtime";
+  if (path.startsWith("/dl/")) return "download";
+  if (path.startsWith("/_next/") || path.startsWith("/assets/") || path.startsWith("/icons/") || path === "/favicon.ico") return "static";
+  return "page";
+}
+
+function clientOf(ua) {
+  if (/heika|okhttp|nativeapp/i.test(ua)) return "app";
+  if (/mozilla|safari|chrome|firefox|edg\//i.test(ua)) return "web";
+  return "other";
+}
+
+function noteLiveRequest({ status, bytes, path, ms, userAgent }) {
+  const second = Math.floor(Date.now() / 1000);
+  const bucket = liveBuckets.get(second) || {
+    t: second, requests: 0, bytes: 0, errors4xx: 0, errors5xx: 0, msSum: 0,
+    by_category: {}, by_client: {}, by_status: {}, bytes_by_category: {},
+  };
+  const category = categoryOf(path);
+  const client = clientOf(userAgent);
+  bucket.requests += 1;
+  bucket.bytes += bytes;
+  bucket.msSum += ms;
+  bucket.by_category[category] = (bucket.by_category[category] || 0) + 1;
+  bucket.by_client[client] = (bucket.by_client[client] || 0) + 1;
+  bucket.bytes_by_category[category] = (bucket.bytes_by_category[category] || 0) + bytes;
+  const classKey = `${Math.floor(status / 100)}xx`;
+  bucket.by_status[classKey] = (bucket.by_status[classKey] || 0) + 1;
+  if (status >= 500) bucket.errors5xx += 1;
+  else if (status >= 400) bucket.errors4xx += 1;
+  liveBuckets.set(second, bucket);
+  const cutoff = second - LIVE_BUCKETS;
+  for (const key of liveBuckets.keys()) if (key < cutoff) liveBuckets.delete(key);
+}
+
+function liveEdgeWindow() {
+  const now = Math.floor(Date.now() / 1000);
+  const points = [...liveBuckets.values()].sort((a, b) => a.t - b.t);
+  const totals = {
+    requests: 0, bytes: 0, errors4xx: 0, errors5xx: 0, msSum: 0,
+    by_category: {}, by_client: {}, by_status: {}, bytes_by_category: {},
+  };
+  for (const point of points) {
+    totals.requests += point.requests;
+    totals.bytes += point.bytes;
+    totals.errors4xx += point.errors4xx;
+    totals.errors5xx += point.errors5xx;
+    totals.msSum += point.msSum;
+    for (const [key, value] of Object.entries(point.by_category)) totals.by_category[key] = (totals.by_category[key] || 0) + value;
+    for (const [key, value] of Object.entries(point.by_client)) totals.by_client[key] = (totals.by_client[key] || 0) + value;
+    for (const [key, value] of Object.entries(point.by_status)) totals.by_status[key] = (totals.by_status[key] || 0) + value;
+    for (const [key, value] of Object.entries(point.bytes_by_category || {})) totals.bytes_by_category[key] = (totals.bytes_by_category[key] || 0) + value;
+  }
+  const span = Math.max(1, now - (points[0]?.t || now) + 1);
+  return {
+    window_seconds: Math.min(60, span),
+    points: points.filter((point) => point.t > now - 60).map((point) => ({
+      t: point.t, requests: point.requests, bytes: point.bytes,
+      errors4xx: point.errors4xx, errors5xx: point.errors5xx,
+    })),
+    requests: totals.requests,
+    bytes: totals.bytes,
+    rps: Number((totals.requests / Math.max(1, Math.min(60, span))).toFixed(2)),
+    bytes_per_second: Math.round(totals.bytes / Math.max(1, Math.min(60, span))),
+    avg_ms: totals.requests ? Math.round(totals.msSum / totals.requests) : null,
+    success_rate: totals.requests ? Number((((totals.requests - totals.errors4xx - totals.errors5xx) / totals.requests) * 100).toFixed(2)) : null,
+    by_category: totals.by_category,
+    bytes_by_category: totals.bytes_by_category,
+    by_client: totals.by_client,
+    by_status: totals.by_status,
+    last_at: points.length ? new Date(points[points.length - 1].t * 1000).toISOString() : null,
+  };
+}
+
+function liveSnapshot() {
+  const mem = readMemInfo();
+  const net = liveNet();
+  return {
+    ok: true,
+    source: HOST_SCOPE,
+    captured_at: new Date().toISOString(),
+    host: {
+      cpu_percent: liveCpuPercent(),
+      ...readLoad(),
+      ...mem,
+      ...liveDisk(),
+      ...net,
+      tcp_total: liveTcpTotal(),
+      uptime_seconds: Math.round(os.uptime()),
+    },
+    edge: liveEdgeWindow(),
+    processes: liveProcesses,
+  };
+}
+
+let liveTimer = null;
+let liveBusy = false;
+let liveLatest = null;
+
+function runLiveTick() {
+  try {
+    // 日志解析本身是增量读取，1 秒一次几乎没有额外成本，
+    // 但能把边缘请求还原到秒级，供粒子密度与事件流使用。
+    ingestAccessLog();
+    liveTcpTotal();
+    liveLatest = liveSnapshot();
+  } catch (error) {
+    console.error("[metrics-agent] 实时采样异常：", error instanceof Error ? error.message : error);
+  }
+}
+
+function startLiveSampler() {
+  if (liveTimer) return;
+  runLiveTick();
+  liveTimer = setInterval(() => {
+    if (liveBusy) return;
+    liveBusy = true;
+    try { runLiveTick(); } finally { liveBusy = false; }
+  }, 1000);
+}
+
+function startLiveServer() {
+  if (!LIVE_TOKEN) {
+    console.warn("[metrics-agent] 未配置实时通道令牌，1 秒实时接口不启动");
+    return;
+  }
+  const server = http.createServer((req, res) => {
+    if (req.headers["x-metrics-token"] !== LIVE_TOKEN) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "forbidden" }));
+      return;
+    }
+    if (req.url?.split("?")[0] !== "/live") {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    try {
+      const body = JSON.stringify(liveLatest || liveSnapshot());
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(body);
+    } catch (error) {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : "sample failed" }));
+    }
+  });
+  server.on("error", (error) => console.error("[metrics-agent] 实时接口异常：", error.message));
+  server.listen(LIVE_PORT, "0.0.0.0", () => console.log(`[metrics-agent] 实时接口监听 ${LIVE_PORT}`));
 }
 
 // ---------- 探活与业务指标 ----------
@@ -309,6 +549,18 @@ function collectProcesses() {
 async function flushProcesses() {
   const snapshot = collectProcesses();
   if (!snapshot) return;
+  liveProcesses = snapshot.groups.map((group) => ({
+    service_key: group.key,
+    label: group.label,
+    scope: snapshot.scope,
+    status: "running",
+    pid: group.mainPid,
+    process_count: group.count,
+    cpu_percent: Number(group.cpu.toFixed(1)),
+    mem_bytes: Math.round(group.mem),
+    started_at: group.startedAt,
+    captured_at: snapshot.captured_at,
+  }));
   const rows = snapshot.groups.map((group) => ({
     service_key: group.key,
     label: group.label,
@@ -419,6 +671,8 @@ function ingestAccessLog() {
     const ms = Math.round(Number(entry?.duration || 0) * 1000);
     const userAgent = String(entry?.request?.headers?.["User-Agent"]?.[0] || "").slice(0, 300);
     const path = uri.split("?")[0].slice(0, 240);
+    // Nexus 的秒级粒子与事件流依赖这里；只保留分类与状态，不落原始 URL 参数。
+    noteLiveRequest({ status, bytes, path, ms, userAgent });
 
     if (ip) {
       const key = `${day}|${ip}`;
@@ -822,10 +1076,31 @@ async function cleanup() {
 
 // ---------- 主循环 ----------
 
+async function collectQueueStats() {
+  const [batches, reviews, media] = await Promise.all([
+    rest("ai_task_batches?select=id&status=in.(queued,running,paused)&limit=1000").catch(() => null),
+    rest("ai_revision_reviews?select=id&status=in.(queued,running)&limit=1000").catch(() => null),
+    rest("upload_tasks?select=id&status=in.(uploading,queued,verifying,preparing,compressing,retrying)&limit=1000").catch(() => null),
+  ]);
+  if (!Array.isArray(batches) && !Array.isArray(reviews) && !Array.isArray(media)) {
+    return { ai_queue: null, media_active: null };
+  }
+  return {
+    // 只统计能确认的积压：AI 批次 + 自动审核任务。
+    ai_queue: Array.isArray(batches) && Array.isArray(reviews) ? batches.length + reviews.length : null,
+    media_active: Array.isArray(media) ? media.length : null,
+  };
+}
+
 let tick = 0;
 
 async function sample() {
   tick += 1;
+  const queue = tick % 2 === 1 ? await collectQueueStats() : {};
+  const services = {
+    web_api: await probeApp("/api/v1/internal/health", WORKER_TOKEN),
+    app_root: await probeApp("/api/v1/app-version", null),
+  };
   const metrics = {
     captured_at: new Date().toISOString(),
     cpu_percent: cpuPercent(),
@@ -835,18 +1110,17 @@ async function sample() {
     ...readNetRates(),
     ...(await collectApiMetrics()),
     ...(tick % 3 === 1 ? await collectUploadStats() : {}),
+    ...queue,
+    tcp_total: liveTcpTotal(),
+    services,
     container_info: { collector: "fanka-metrics", pid: process.pid, node: process.version },
   };
+  lastTcpTotal = metrics.tcp_total;
   try {
     await rest("system_metrics", { method: "POST", body: JSON.stringify(metrics) });
   } catch (error) {
     console.error("[metrics-agent] 写入 system_metrics 失败：", error instanceof Error ? error.message : error);
   }
-
-  const services = {
-    web_api: await probeApp("/api/v1/internal/health", WORKER_TOKEN),
-    app_root: await probeApp("/api/v1/app-version", null),
-  };
   // 进程与流量：真实宿主机进程表 + 边缘访问日志增量，1 秒界面刷新读的是这里写入的数据。
   await flushProcesses().catch((error) => console.error("[metrics-agent] 进程采集异常：", error instanceof Error ? error.message : error));
   try {
@@ -883,6 +1157,8 @@ async function sample() {
 
 console.log("[metrics-agent] 启动，采集间隔", SAMPLE_INTERVAL_MS, "ms");
 await sample();
+startLiveSampler();
+startLiveServer();
 setInterval(() => {
   sample().catch((error) => console.error("[metrics-agent] 采样异常：", error instanceof Error ? error.message : error));
 }, SAMPLE_INTERVAL_MS);

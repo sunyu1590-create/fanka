@@ -5,7 +5,7 @@ import type { Metadata } from "sharp";
 import { adminClient } from "@/lib/server/admin-client";
 import { ApiError } from "@/lib/server/api";
 import { requireAdmin } from "@/lib/server/require-admin";
-import { publicUrlFor } from "@/lib/server/home-banners";
+import { publicUrlFor, loadSettings } from "@/lib/server/home-banners";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ const VIDEO_TYPES: Record<string, { ext: string; magic: (bytes: Uint8Array) => b
 };
 
 const IMAGE_LIMIT = 8 * 1024 * 1024;
-const VIDEO_LIMIT = 20 * 1024 * 1024;
+const VIDEO_LIMIT = 200 * 1024 * 1024;
 
 /**
  * 轮播媒体上传。
@@ -32,7 +32,10 @@ const VIDEO_LIMIT = 20 * 1024 * 1024;
  */
 export async function POST(req: NextRequest) {
   try {
-    const { user } = await requireAdmin(req);
+    const { db, user } = await requireAdmin(req);
+    // 视频体积/分辨率上限由后台配置决定，不在代码里写死，管理员可随带宽策略调整。
+    const settings = await loadSettings(db);
+    const videoLimitBytes = Math.min(VIDEO_LIMIT, settings.videoMaxMb * 1024 * 1024);
     const form = await req.formData() as unknown as { get: (name: string) => unknown };
     const file = form.get("file");
     if (!(file instanceof File)) throw new ApiError(400, "请选择要上传的文件");
@@ -79,7 +82,9 @@ export async function POST(req: NextRequest) {
       storedAs = "image";
     } else if (kind === "video") {
       const spec = VIDEO_TYPES[file.type] || VIDEO_TYPES["video/mp4"];
-      if (file.size < 1 || file.size > VIDEO_LIMIT) throw new ApiError(413, "视频不能超过 20 MB");
+      if (file.size < 1 || file.size > videoLimitBytes) {
+        throw new ApiError(413, `视频不能超过 ${settings.videoMaxMb} MB（可在全局设置中调整上限）`);
+      }
       const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
       if (!spec.magic(head)) throw new ApiError(400, "视频仅支持 H.264 编码的 MP4");
       buffer = Buffer.from(await file.arrayBuffer());
@@ -93,6 +98,11 @@ export async function POST(req: NextRequest) {
       height = Number.isFinite(reportedHeight) && reportedHeight > 0 ? Math.round(reportedHeight) : null;
       if (durationMs && durationMs > 120000) throw new ApiError(400, "视频时长请控制在 2 分钟以内");
       if (width && height && (width < 320 || height < 80)) throw new ApiError(400, "视频分辨率过低");
+      if (width && width > settings.videoMaxWidth) throw new ApiError(400, `视频宽度请压缩到 ${settings.videoMaxWidth}px 以内`);
+      // 码率上限 8 Mbps：首页是首屏资源，过高的码率会让弱网用户长时间卡在封面。
+      if (durationMs && file.size * 8 / durationMs > 8000) {
+        throw new ApiError(400, "视频码率过高（超过 8 Mbps），请压缩后再上传");
+      }
       storedAs = "video";
     } else {
       throw new ApiError(400, "未知的上传类型");

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, jsonBody, uuid } from "@/lib/server/api";
 import { requireAdmin } from "@/lib/server/require-admin";
-import { sanitizeBannerBody } from "@/lib/server/home-banners";
+import { sanitizeBannerBody, assertVideoQuota } from "@/lib/server/home-banners";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const merged = { ...current, ...values } as Record<string, unknown>;
     if (merged.media_type === "image" && !merged.image_path) throw new ApiError(400, "图片推荐位缺少图片资源");
     if (merged.media_type === "video" && !merged.video_path) throw new ApiError(400, "视频推荐位缺少视频资源");
+    await assertVideoQuota(db, {
+      addingVideo: merged.media_type === "video",
+      live: merged.status === "published" && merged.enabled !== false,
+      excludeId: bannerId,
+    });
 
     const { data, error } = await db.from("home_banners").update({ ...values, updated_by: user.id, updated_at: new Date().toISOString() })
       .eq("id", bannerId).select("*").single();

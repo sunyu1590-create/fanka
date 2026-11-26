@@ -4,6 +4,9 @@ services:
     container_name: fanka
     restart: unless-stopped
     env_file: .env
+    environment:
+      # HEIKA Nexus 读取 1 秒实时指标；只在 docker 内部网络访问，不发布宿主端口。
+      METRICS_AGENT_URL: http://metrics-agent:3100
     expose:
       - "3000"
     volumes:
@@ -39,6 +42,8 @@ services:
       - /proc:/host/proc:ro
       - caddy_logs:/var/log/caddy:ro
     command: ["node", "scripts/metrics-agent.mjs"]
+    expose:
+      - "3100"
     depends_on:
       - app
     networks:

@@ -270,6 +270,8 @@ fun SettingsDetailScreen(
     val notificationsLoading by viewModel.notificationsLoading.collectAsStateWithLifecycle()
     val cacheBytes by viewModel.cacheBytes.collectAsStateWithLifecycle()
     val cacheClearing by viewModel.cacheClearing.collectAsStateWithLifecycle()
+    val bannerCacheBytes by viewModel.bannerCacheBytes.collectAsStateWithLifecycle()
+    val bannerCacheClearing by viewModel.bannerCacheClearing.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val bookmarksVisible by viewModel.bookmarksVisible.collectAsStateWithLifecycle()
     val privacyLoading by viewModel.privacyLoading.collectAsStateWithLifecycle()
@@ -477,6 +479,16 @@ fun SettingsDetailScreen(
                                 HeikaIconRes.Storage,
                                 enabled = !cacheClearing,
                                 onClick = { if (!cacheClearing) viewModel.clearImageCache() },
+                            )
+                            SettingsDivider()
+                            SettingsRow("首页视频缓存", formatBytes(bannerCacheBytes), HeikaIconRes.Storage)
+                            SettingsDivider()
+                            SettingsRow(
+                                if (bannerCacheClearing) "正在清理…" else "清理首页视频缓存",
+                                "只清理轮播视频的本地片段，下次播放会按需重新缓存",
+                                HeikaIconRes.Storage,
+                                enabled = !bannerCacheClearing,
+                                onClick = { if (!bannerCacheClearing) viewModel.clearBannerCache() },
                             )
                         }
                     }

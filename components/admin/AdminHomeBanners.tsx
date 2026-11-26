@@ -5,7 +5,8 @@ import {
   ArrowDown, ArrowUp, Image as ImageIcon, Plus, RefreshCw,
   Trash2, Upload, Video, X,
 } from "lucide-react";
-import { cloudFetch, cloudRequest } from "@/lib/cloud";
+import { cloudRequest } from "@/lib/cloud";
+import { browserDb } from "@/lib/browser-db";
 import { userMessage } from "@/lib/user-message";
 import { confirmInApp } from "@/lib/in-app-dialog";
 import { Collapse, Empty, Group, Segmented, fmtNum, fmtPct } from "./AdminUIKit";
@@ -20,6 +21,8 @@ import { Collapse, Empty, Group, Segmented, fmtNum, fmtPct } from "./AdminUIKit"
 type Settings = {
   enabled: boolean; autoplay: boolean; imageDurationMs: number; transitionMs: number;
   videoAutoplay: boolean; videoMuted: boolean; allowUnmute: boolean; dataSaverFallback: boolean; videoMaxMs: number;
+  videoPlayMode: "full" | "timed"; videoLoop: boolean; preloadMode: "off" | "next" | "adjacent";
+  showText: boolean; cacheTtlHours: number; videoMaxMb: number; videoMaxCount: number; videoMaxWidth: number;
   sizeMode: "ratio" | "fixed"; coverRatio: string;
   heights: { app: number; mobile: number; tablet: number; desktop: number };
   unifiedSize: boolean; fitMode: "cover" | "contain"; focus: "center" | "top" | "bottom";
@@ -32,9 +35,11 @@ type Banner = {
   image_path: string | null; video_path: string | null; poster_path: string | null;
   image_url: string | null; video_url: string | null; poster_url: string | null;
   width: number | null; height: number | null; video_duration_ms: number | null; display_ms: number | null;
-  target_type: "none" | "post" | "series"; target_id: string | null;
+  target_type: "none" | "post" | "series" | "external"; target_id: string | null; external_url: string | null;
   target_title: string | null; target_available: boolean;
   focus: "center" | "top" | "bottom"; sort_order: number; platforms: string[];
+  title: string; subtitle: string; description: string; show_text: boolean;
+  fit_mode: "cover" | "contain" | null; poster_fit: "cover" | "contain";
   enabled: boolean; status: "draft" | "published"; starts_at: string | null; ends_at: string | null;
   created_at: string; updated_at: string;
 };
@@ -57,6 +62,7 @@ const emptyDraft = (): Partial<Banner> => ({
   name: "", alt: "", media_type: "image", target_type: "none", target_id: null,
   focus: "center", platforms: ["app", "web"], enabled: true, status: "draft",
   display_ms: null, starts_at: null, ends_at: null, sort_order: 0,
+  title: "", subtitle: "", description: "", show_text: true, fit_mode: null, poster_fit: "cover",
 });
 
 export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: number }) {
@@ -72,6 +78,8 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
   const [device, setDevice] = useState<PreviewDevice>("mobile");
   const [statDays, setStatDays] = useState(7);
   const [uploading, setUploading] = useState<"image" | "video" | "poster" | null>(null);
+  // 真实上传进度：XHR 的 upload.onprogress 提供已传字节与速率，不用假进度条。
+  const [uploadInfo, setUploadInfo] = useState<{ kind: string; percent: number; rate: number; loaded: number; total: number } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -114,6 +122,9 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
         enabled: next.enabled, autoplay: next.autoplay, image_duration_ms: next.imageDurationMs,
         transition_ms: next.transitionMs, video_autoplay: next.videoAutoplay, video_muted: next.videoMuted,
         allow_unmute: next.allowUnmute, data_saver_fallback: next.dataSaverFallback, video_max_ms: next.videoMaxMs,
+        video_play_mode: next.videoPlayMode, video_loop: next.videoLoop, preload_mode: next.preloadMode,
+        show_text: next.showText, cache_ttl_hours: next.cacheTtlHours, video_max_mb: next.videoMaxMb,
+        video_max_count: next.videoMaxCount, video_max_width: next.videoMaxWidth,
         size_mode: next.sizeMode, cover_ratio: next.coverRatio, app_height: next.heights.app,
         mobile_height: next.heights.mobile, tablet_height: next.heights.tablet, desktop_height: next.heights.desktop,
         unified_size: next.unifiedSize, fit_mode: next.fitMode, focus: next.focus, radius: next.radius,
@@ -131,6 +142,42 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
     }
   };
 
+  type UploadResult = { path: string; url: string; width: number | null; height: number | null; duration_ms: number | null; media_type: "image" | "video" };
+
+  const uploadWithProgress = (form: FormData, kind: string) => new Promise<UploadResult>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/v1/admin/home-banners/upload");
+    xhr.responseType = "json";
+    xhr.timeout = 10 * 60 * 1000;
+    const startedAt = Date.now();
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const elapsed = Math.max(1, Date.now() - startedAt) / 1000;
+      setUploadInfo({
+        kind,
+        percent: Math.min(100, Math.round((event.loaded / event.total) * 100)),
+        rate: event.loaded / elapsed,
+        loaded: event.loaded,
+        total: event.total,
+      });
+    };
+    xhr.onload = () => {
+      const result = (xhr.response || {}) as { data?: UploadResult; error?: string };
+      if (xhr.status >= 200 && xhr.status < 300 && result.data) resolve(result.data);
+      else reject(new Error(result.error || `上传失败（HTTP ${xhr.status}）`));
+    };
+    xhr.onerror = () => reject(new Error("网络中断，上传未完成"));
+    xhr.ontimeout = () => reject(new Error("上传超时，请检查网络后重试"));
+    xhr.onabort = () => reject(new Error("上传已取消"));
+    void browserDb()
+      .then((db) => db.auth.getSession())
+      .then(({ data }) => {
+        if (data.session) xhr.setRequestHeader("Authorization", `Bearer ${data.session.access_token}`);
+        xhr.send(form);
+      })
+      .catch(() => reject(new Error("登录状态已失效，请重新登录")));
+  });
+
   const uploadFile = async (file: File, kind: "image" | "video" | "poster") => {
     setUploading(kind);
     setError("");
@@ -144,10 +191,7 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
         form.append("width", String(meta.width));
         form.append("height", String(meta.height));
       }
-      const response = await cloudFetch("/api/v1/admin/home-banners/upload", { method: "POST", body: form });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "上传失败");
-      const data = result.data as { path: string; url: string; width: number | null; height: number | null; duration_ms: number | null; media_type: "image" | "video" };
+      const data = await uploadWithProgress(form, kind);
       setDraft((current) => {
         if (!current) return current;
         if (kind === "poster") return { ...current, poster_path: data.path, poster_url: data.url };
@@ -164,11 +208,8 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
             const posterForm = new FormData();
             posterForm.append("file", poster, "poster.jpg");
             posterForm.append("kind", "poster");
-            const posterResponse = await cloudFetch("/api/v1/admin/home-banners/upload", { method: "POST", body: posterForm });
-            const posterResult = await posterResponse.json();
-            if (posterResponse.ok) {
-              setDraft((current) => current ? { ...current, poster_path: posterResult.data.path, poster_url: posterResult.data.url } : current);
-            }
+            const posterResult = await uploadWithProgress(posterForm, "poster");
+            setDraft((current) => current ? { ...current, poster_path: posterResult.path, poster_url: posterResult.url } : current);
           }
         } catch { /* 抽帧失败不阻塞视频上传 */ }
       }
@@ -176,6 +217,7 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
       setError(userMessage(err, "上传失败"));
     } finally {
       setUploading(null);
+      setUploadInfo(null);
     }
   };
 
@@ -197,6 +239,13 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
         display_ms: draft.display_ms ?? null,
         target_type: draft.target_type,
         target_id: draft.target_id ?? null,
+        external_url: draft.external_url ?? null,
+        title: draft.title ?? "",
+        subtitle: draft.subtitle ?? "",
+        description: draft.description ?? "",
+        show_text: draft.show_text !== false,
+        fit_mode: draft.fit_mode ?? null,
+        poster_fit: draft.poster_fit === "contain" ? "contain" : "cover",
         focus: draft.focus,
         platforms: draft.platforms,
         enabled: draft.enabled,
@@ -344,6 +393,57 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
             </div>
 
             <div>
+              <p className="ab-label" style={{ marginBottom: 6 }}>视频切换时机</p>
+              <Segmented value={settings.videoPlayMode} ariaLabel="视频切换时机" onChange={(value) => void saveSettings({ videoPlayMode: value })}
+                options={[{ value: "full" as const, label: "完整播放后切换" }, { value: "timed" as const, label: "到达设定时长切换" }]} />
+              <p className="ab-label" style={{ marginTop: 6 }}>完整播放更重内容表达；设定时长能保证整轮时长可控，长视频不会被截断在关键帧之外。</p>
+            </div>
+
+            <div className="ab-kv-grid">
+              <label className="ab-field">
+                <span>视频循环播放</span>
+                <button type="button" className={`ab-switch${settings.videoLoop ? " is-on" : ""}`} aria-pressed={settings.videoLoop}
+                  onClick={() => void saveSettings({ videoLoop: !settings.videoLoop })}><i /></button>
+              </label>
+              <label className="ab-field">
+                <span>文字层总开关</span>
+                <button type="button" className={`ab-switch${settings.showText ? " is-on" : ""}`} aria-pressed={settings.showText}
+                  onClick={() => void saveSettings({ showText: !settings.showText })}><i /></button>
+              </label>
+              <label className="ab-field">
+                <span>预加载策略</span>
+                <select value={settings.preloadMode} onChange={(event) => void saveSettings({ preloadMode: event.target.value as Settings["preloadMode"] })}>
+                  <option value="off">不预加载（最省流量）</option>
+                  <option value="next">只预加载下一条</option>
+                  <option value="adjacent">预加载相邻两条</option>
+                </select>
+              </label>
+              <label className="ab-field">
+                <span>离线缓存有效期（小时）</span>
+                <input type="number" min={1} max={720} step={1} defaultValue={settings.cacheTtlHours}
+                  onBlur={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && Math.round(value) !== settings.cacheTtlHours) void saveSettings({ cacheTtlHours: Math.round(value) }); }} />
+              </label>
+            </div>
+
+            <div className="ab-kv-grid">
+              <label className="ab-field">
+                <span>视频体积上限（MB）</span>
+                <input type="number" min={5} max={200} step={1} defaultValue={settings.videoMaxMb}
+                  onBlur={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && Math.round(value) !== settings.videoMaxMb) void saveSettings({ videoMaxMb: Math.round(value) }); }} />
+              </label>
+              <label className="ab-field">
+                <span>视频条数上限</span>
+                <input type="number" min={1} max={12} step={1} defaultValue={settings.videoMaxCount}
+                  onBlur={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && Math.round(value) !== settings.videoMaxCount) void saveSettings({ videoMaxCount: Math.round(value) }); }} />
+              </label>
+              <label className="ab-field">
+                <span>视频最大宽度（px）</span>
+                <input type="number" min={640} max={3840} step={40} defaultValue={settings.videoMaxWidth}
+                  onBlur={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && Math.round(value) !== settings.videoMaxWidth) void saveSettings({ videoMaxWidth: Math.round(value) }); }} />
+              </label>
+            </div>
+
+            <div>
               <p className="ab-label" style={{ marginBottom: 6 }}>尺寸模式</p>
               <Segmented value={settings.sizeMode} ariaLabel="尺寸模式" onChange={(value) => void saveSettings({ sizeMode: value })}
                 options={[{ value: "ratio" as const, label: "固定宽高比" }, { value: "fixed" as const, label: "自定义高度" }]} />
@@ -437,7 +537,11 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
                   {banner.media_type === "video" ? `视频 · ${Math.round((banner.video_duration_ms || 0) / 1000)}s` : "图片"}
                   {" · "}{banner.platforms.map((platform) => platform === "app" ? "APP" : "网页").join("/")}
                   {" · "}{banner.status === "published" ? "已发布" : "草稿"}
-                  {banner.target_type === "none" ? " · 不跳转" : ` · ${banner.target_type === "post" ? "作品" : "合集"}：${banner.target_title || "目标已失效"}`}
+                  {banner.target_type === "none"
+                    ? " · 不跳转"
+                    : banner.target_type === "external"
+                      ? ` · 外链：${banner.external_url || "未填写"}`
+                      : ` · ${banner.target_type === "post" ? "作品" : "合集"}：${banner.target_title || "目标已失效"}`}
                 </small>
                 {!banner.target_available ? <em className="ab-banner-warn">跳转目标已失效，将按配置降级</em> : null}
               </div>
@@ -476,6 +580,43 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
             </label>
           </div>
 
+          <div className="ab-kv-grid">
+            <label className="ab-field">
+              <span>标题（最多 40 字）</span>
+              <input value={draft.title || ""} maxLength={40} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="留空则不展示文字" />
+            </label>
+            <label className="ab-field">
+              <span>副标题（最多 60 字）</span>
+              <input value={draft.subtitle || ""} maxLength={60} onChange={(event) => setDraft({ ...draft, subtitle: event.target.value })} placeholder="可选" />
+            </label>
+            <label className="ab-field">
+              <span>描述（最多 160 字）</span>
+              <input value={draft.description || ""} maxLength={160} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="可选，移动端最多显示两行" />
+            </label>
+            <label className="ab-field">
+              <span>本条展示文字</span>
+              <button type="button" className={`ab-switch${draft.show_text !== false ? " is-on" : ""}`} aria-pressed={draft.show_text !== false}
+                onClick={() => setDraft({ ...draft, show_text: draft.show_text === false })}><i /></button>
+            </label>
+            <label className="ab-field">
+              <span>媒体填充</span>
+              <select value={draft.fit_mode || ""} onChange={(event) => setDraft({ ...draft, fit_mode: event.target.value === "cover" || event.target.value === "contain" ? event.target.value : null })}>
+                <option value="">跟随全局（{settings?.fitMode === "contain" ? "contain 完整显示" : "cover 填满裁切"}）</option>
+                <option value="cover">cover · 填满裁切</option>
+                <option value="contain">contain · 完整显示</option>
+              </select>
+            </label>
+            {draft.media_type === "video" ? (
+              <label className="ab-field">
+                <span>封面填充</span>
+                <select value={draft.poster_fit || "cover"} onChange={(event) => setDraft({ ...draft, poster_fit: event.target.value === "contain" ? "contain" : "cover" })}>
+                  <option value="cover">cover · 铺满</option>
+                  <option value="contain">contain · 完整显示</option>
+                </select>
+              </label>
+            ) : null}
+          </div>
+
           <div className="ab-banner-media">
             <div>
               <p className="ab-label">媒体类型</p>
@@ -483,7 +624,9 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
                 options={[{ value: "image" as const, label: "图片" }, { value: "video" as const, label: "视频" }]} />
             </div>
             <label className="ab-upload-btn">
-              <Upload size={14} /> {uploading ? "上传中…" : draft.media_type === "video" ? "上传视频（MP4）" : "上传图片"}
+              <Upload size={14} /> {uploading === (draft.media_type === "video" ? "video" : "image")
+                ? `上传中 ${uploadInfo?.percent ?? 0}%`
+                : draft.media_type === "video" ? "上传视频（MP4）" : "上传图片"}
               <input type="file" hidden accept={draft.media_type === "video" ? "video/mp4" : "image/jpeg,image/png,image/webp"}
                 onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file, draft.media_type === "video" ? "video" : "image"); event.currentTarget.value = ""; }} />
             </label>
@@ -496,6 +639,12 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
             ) : null}
           </div>
 
+          {uploadInfo ? (
+            <p className="ab-label" role="status">
+              上传中 {uploadInfo.percent}% · {formatRate(uploadInfo.rate)} · {formatBytes(uploadInfo.loaded)} / {formatBytes(uploadInfo.total)}
+            </p>
+          ) : null}
+
           {(draft.poster_url || draft.image_url || draft.video_url) ? (
             <div className="ab-banner-preview-mini">
               {draft.media_type === "video" && draft.video_url ? <video src={draft.video_url} poster={draft.poster_url || undefined} muted playsInline preload="metadata" /> : null}
@@ -504,16 +653,57 @@ export default function AdminHomeBanners({ refreshKey = 0 }: { refreshKey?: numb
             </div>
           ) : null}
 
+          {settings ? (
+            <div className="ab-banner-live">
+              <p className="ab-label">实时预览（按当前全局配置渲染）</p>
+              <div className="ab-banner-live__frame"
+                style={{
+                  height: settings.sizeMode === "fixed" ? settings.heights.mobile : Math.round(360 / ratioOf(settings.coverRatio)),
+                  borderRadius: settings.radius,
+                }}>
+                {draft.media_type === "video" && draft.poster_url ? (
+                  <img src={draft.poster_url} alt="" style={{ objectFit: draft.poster_fit || "cover" }} />
+                ) : draft.image_url ? (
+                  <img src={draft.image_url} alt="" style={{ objectFit: draft.fit_mode || settings.fitMode }} />
+                ) : null}
+                {draft.media_type === "video" && draft.video_url ? (
+                  <video src={draft.video_url} poster={draft.poster_url || undefined} muted playsInline loop preload="metadata" />
+                ) : null}
+                {!draft.image_url && !draft.poster_url && !draft.video_url ? <span className="ab-label">上传媒体后在此预览</span> : null}
+                {settings.showText && draft.show_text !== false && (draft.title || draft.subtitle || draft.description) ? (
+                  <div className="ab-banner-live__copy">
+                    {draft.title ? <strong>{draft.title}</strong> : null}
+                    {draft.subtitle ? <span>{draft.subtitle}</span> : null}
+                    {draft.description ? <small>{draft.description}</small> : null}
+                  </div>
+                ) : null}
+              </div>
+              <p className="ab-label">
+                {settings.sizeMode === "fixed" ? `手机高度 ${settings.heights.mobile}px` : `宽高比 ${settings.coverRatio}`}
+                {" · "}
+                {settings.showText ? "文字层开启" : "文字层关闭"}
+                {draft.media_type === "video" && draft.video_duration_ms ? ` · 视频 ${Math.round(draft.video_duration_ms / 1000)}s` : ""}
+              </p>
+            </div>
+          ) : null}
+
           <div className="ab-kv-grid">
             <label className="ab-field">
               <span>跳转类型</span>
-              <select value={draft.target_type || "none"} onChange={(event) => setDraft({ ...draft, target_type: event.target.value as Banner["target_type"], target_id: null })}>
+              <select value={draft.target_type || "none"} onChange={(event) => setDraft({ ...draft, target_type: event.target.value as Banner["target_type"], target_id: null, external_url: null })}>
                 <option value="none">不跳转，仅展示</option>
                 <option value="post">作品详情</option>
                 <option value="series">合集详情</option>
+                <option value="external">站内路径 / 外链</option>
               </select>
             </label>
-            {draft.target_type !== "none" ? (
+            {draft.target_type === "external" ? (
+              <label className="ab-field">
+                <span>跳转地址（https 或站内 / 路径）</span>
+                <input value={draft.external_url || ""} maxLength={500} placeholder="https://example.com/activity 或 /membership"
+                  onChange={(event) => setDraft({ ...draft, external_url: event.target.value })} />
+              </label>
+            ) : draft.target_type !== "none" ? (
               <div className="ab-field">
                 <span>关联目标</span>
                 <TargetPicker type={draft.target_type === "series" ? "series" : "post"} value={draft.target_id || null} title={draft.target_title || null} onChange={(target) => setDraft({ ...draft, target_id: target?.id || null, target_title: target?.title || null })} />
@@ -651,6 +841,19 @@ function StatCell({ label, value, hint }: { label: string; value: string; hint?:
       {hint ? <small>{hint}</small> : null}
     </div>
   );
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function formatRate(bytesPerSecond: number) {
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return "0 KB/s";
+  if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(0)} KB/s`;
+  return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`;
 }
 
 function ratioOf(ratio: string) {

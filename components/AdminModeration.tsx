@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import dynamic from "next/dynamic";
 import { BadgeCheck, Check, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, Palette, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
@@ -27,7 +28,13 @@ import AdminReviewCenter from "./admin/AdminReviewCenter";
 import AdminHub from "./admin/AdminHub";
 import AdminHomeBanners from "./admin/AdminHomeBanners";
 import AdminCoverTemplates from "./admin/AdminCoverTemplates";
+
 import { AdminBatchTasks, AdminClassifyRecords } from "./admin/AdminBatchPages";
+// 三维引擎单独成包：只有真正进入 Nexus 时才下载 Three.js，管理后台其余页面不受影响。
+const NexusCenter = dynamic(() => import("./nexus/NexusCenter"), {
+  ssr: false,
+  loading: () => <p className="ab-empty-line">正在加载 HEIKA Nexus…</p>,
+});
 import AdminNetwork from "./AdminNetwork";
 import AdminAccess from "./AdminAccess";
 import AdminServer from "./AdminServer";
@@ -55,7 +62,7 @@ type TopicEventAdmin = { id: string; topic_id: number; title: string; descriptio
 type Queue = { items: Report[]; total: number };
 type Submissions = { items: Submission[]; total: number };
 type Props = { onBack: () => void; role?: "admin" | "content_manager" | "reviewer" };
-type AdminSection = "overview" | "review" | "monitor" | "network" | "access" | "server" | "media" | "ai" | "business" | "logs" | "tcp" | "ips" | "ip-rules" | "account-limits" | "services" | "deployments" | "emergency" | "review-stats" | "review-policy" | "trash" | "traffic" | "alert-rules" | "manage" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-batch" | "ai-classify" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "media-service" | "storage" | "alerts" | "system-monitor" | "distribution" | "tasks" | "process" | "cost" | "home-banners" | "cover-templates";
+type AdminSection = "overview" | "review" | "monitor" | "network" | "access" | "server" | "media" | "ai" | "business" | "logs" | "tcp" | "ips" | "ip-rules" | "account-limits" | "services" | "deployments" | "emergency" | "review-stats" | "review-policy" | "trash" | "traffic" | "alert-rules" | "manage" | "reports" | "messages" | "content" | "comments" | "keywords" | "audit" | "users" | "topic-events" | "ai-settings" | "ai-space" | "ai-resource-center" | "ai-review" | "ai-batch" | "ai-classify" | "ai-usage" | "appeals" | "exploration-ad" | "app-download" | "membership" | "community-access" | "official-notices" | "decor-review" | "media-service" | "storage" | "alerts" | "system-monitor" | "distribution" | "tasks" | "process" | "cost" | "home-banners" | "cover-templates" | "nexus";
 type ExplorationAdSettings = { enabled: boolean; kind: "text" | "image"; title: string; body: string; image_url: string | null; post_id: string | null; post_client_id: number | null; post_status?: string | null };
 type ExplorationAdCandidate = { id: string; client_id: number; title: string; author: string; image_url: string | null };
 type AppDownloadSettings = { enabled: boolean; download_url: string | null; updated_at?: string };
@@ -375,6 +382,16 @@ export default function AdminModeration({ onBack, role = "admin" }: Props) {
     reports: pendingReportTotal + pendingMessageReports,
     alerts: 0,
   };
+
+  if (section === "nexus") {
+    return (
+      <NexusCenter
+        role={role}
+        onExit={() => navigateAdminSection("overview")}
+        onNavigate={(next) => navigateAdminSection(next)}
+      />
+    );
+  }
 
   return (
     <AdminShell

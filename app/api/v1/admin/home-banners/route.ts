@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError, jsonBody } from "@/lib/server/api";
 import { requireAdmin } from "@/lib/server/require-admin";
-import { publicUrlFor, sanitizeBannerBody } from "@/lib/server/home-banners";
+import { publicUrlFor, sanitizeBannerBody, assertVideoQuota } from "@/lib/server/home-banners";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +57,10 @@ export async function POST(req: NextRequest) {
     const values = sanitizeBannerBody(body);
     if (values.media_type === "image" && !values.image_path) throw new ApiError(400, "请先上传轮播图片");
     if (values.media_type === "video" && !values.video_path) throw new ApiError(400, "请先上传轮播视频");
+    await assertVideoQuota(db, {
+      addingVideo: values.media_type === "video",
+      live: values.status === "published" && values.enabled !== false,
+    });
     const { data: maxRow } = await db.from("home_banners").select("sort_order").order("sort_order", { ascending: false }).limit(1).maybeSingle();
     const { data, error } = await db.from("home_banners").insert({
       ...values,

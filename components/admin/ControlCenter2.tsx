@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, AlertTriangle, BarChart3, Bell, ChevronDown, ChevronRight, ChevronUp,
   Cpu, Flag, Gauge, GitBranch, Globe, GripVertical, HardDrive, LayoutGrid, ListChecks, Loader2, Network,
-  Power, RotateCcw, ScrollText, Server, Settings2, ShieldCheck, Sparkles, Trash2, UserX, Users, X,
+  Orbit, Power, RotateCcw, ScrollText, Server, Settings2, ShieldCheck, Sparkles, Trash2, UserX, Users, X,
 } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { useRealtime } from "@/lib/admin-live";
@@ -359,6 +359,9 @@ export default function ControlCenter2({
         </div>
         <div className="cc2-head__actions">
           {!prefsReady ? <span className="cc2-head__date">读取布局…</span> : null}
+          <button type="button" className="cc2-btn cc2-btn--nexus" onClick={() => onNavigate("nexus")} title="进入三维数字孪生控制中心">
+            <Orbit size={14} aria-hidden="true" />HEIKA Nexus
+          </button>
           <button type="button" className="cc2-btn" onClick={() => setEditing(true)}>
             <Settings2 size={14} aria-hidden="true" />编辑控制台
           </button>

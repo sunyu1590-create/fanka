@@ -27,8 +27,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // 版本号保持不变，仅递增 build code，保证能在 98 之上直接覆盖安装。
-        versionCode = 99
-        versionName = "2.30.1"
+        versionCode = 100
+        versionName = "2.31.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"https://moonclean.shop\"")
         buildConfigField("String", "GITHUB_URL", "\"https://github.com/sunyu1590-create/fanka\"")
@@ -116,6 +116,9 @@ dependencies {
     // 首页推荐位的视频播放：只做静音自动播放与静音切换，不用默认控制栏。
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
+    // 轮播视频磁盘缓存：SimpleCache 需要 datasource 与 database 两个模块。
+    implementation("androidx.media3:media3-datasource:1.4.1")
+    implementation("androidx.media3:media3-database:1.4.1")
 
     implementation("io.coil-kt.coil3:coil-compose:3.2.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.2.0")

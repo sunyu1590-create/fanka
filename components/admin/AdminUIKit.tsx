@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
-import { Activity, ArrowLeft, ChevronRight, HardDrive, LayoutGrid, Network, RefreshCw, ScrollText, Server, Settings2, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { Activity, ArrowLeft, ChevronRight, HardDrive, LayoutGrid, Network, Orbit, RefreshCw, ScrollText, Server, Settings2, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { startRealtime, stopRealtime } from "@/lib/admin-live";
 import LiveIndicator, { LiveCount } from "./LiveIndicator";
 
@@ -198,6 +198,10 @@ export function AdminShell({
       <div className="ab-layout">
         <aside className="ab-sidebar" aria-label="控制中心导航">
           <div className="ab-side-brand"><i aria-hidden="true" />控制中心</div>
+          <button type="button" className="ab-side-nexus" onClick={() => onNavigate("nexus")} aria-label="进入 HEIKA Nexus 全域数字孪生控制中心">
+            <Orbit size={16} aria-hidden="true" />
+            <span><b>HEIKA Nexus</b><small>全域数字孪生</small></span>
+          </button>
           {ADMIN_NAV.map((item) => {
             const Icon = item.icon;
             return (
@@ -236,6 +240,9 @@ export function AdminShell({
             <button type="button" className="ab-iconbtn" aria-label="返回" onClick={goBack}><ArrowLeft size={19} /></button>
             <button type="button" className="ab-iconbtn" aria-label="刷新" onClick={onRefresh} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "ab-spin" : undefined} /></button>
             <span className="ab-topbar__title">{title}</span>
+            <button type="button" className="ab-nexus-btn" onClick={() => onNavigate("nexus")} aria-label="进入 HEIKA Nexus 全域数字孪生控制中心">
+              <Orbit size={14} aria-hidden="true" /><span>Nexus</span>
+            </button>
             <LiveIndicator />
             {isOverview ? (
               <button type="button" className="ab-iconbtn" aria-label="控制台设置" onClick={() => window.dispatchEvent(new Event("heika:console-settings"))}><Settings2 size={17} /></button>

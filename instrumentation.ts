@@ -25,10 +25,10 @@ export async function register() {
     };
 
     const originalEnd = responsePrototype.end;
-    responsePrototype.end = function patchedEnd(this: { req?: { __heikaStart?: number; url?: string }; statusCode?: number }, ...args: unknown[]) {
+    responsePrototype.end = function patchedEnd(this: { req?: { __heikaStart?: number; url?: string; method?: string }; statusCode?: number }, ...args: unknown[]) {
       const started = this.req?.__heikaStart;
       try {
-        recordRequest(started ? Date.now() - started : 0, this.statusCode || 0, String(this.req?.url || ""));
+        recordRequest(started ? Date.now() - started : 0, this.statusCode || 0, String(this.req?.url || ""), String(this.req?.method || "GET"));
       } catch {
         /* 指标失败不影响响应 */
       }

@@ -13,6 +13,11 @@ data class HeikaBannerSettings(
     val allowUnmute: Boolean,
     val dataSaverFallback: Boolean,
     val videoMaxMs: Int,
+    val videoPlayMode: String,
+    val videoLoop: Boolean,
+    val preloadMode: String,
+    val showText: Boolean,
+    val cacheTtlHours: Int,
     val sizeMode: String,
     val coverRatio: String,
     val appHeight: Int,
@@ -44,6 +49,11 @@ data class HeikaBannerSettings(
             allowUnmute = json.optBoolean("allowUnmute", true),
             dataSaverFallback = json.optBoolean("dataSaverFallback", true),
             videoMaxMs = json.optInt("videoMaxMs", 30000).coerceIn(3000, 120000),
+            videoPlayMode = json.optString("videoPlayMode", "full"),
+            videoLoop = json.optBoolean("videoLoop", false),
+            preloadMode = json.optString("preloadMode", "next"),
+            showText = json.optBoolean("showText", true),
+            cacheTtlHours = json.optInt("cacheTtlHours", 72).coerceIn(1, 720),
             sizeMode = json.optString("sizeMode", "ratio"),
             coverRatio = json.optString("coverRatio", "3:1"),
             appHeight = json.optJSONObject("heights")?.optInt("app", 120) ?: 120,
@@ -67,12 +77,24 @@ data class HeikaBanner(
     val displayMs: Int?,
     val targetType: String,
     val targetId: String?,
+    val externalUrl: String?,
     val targetValid: Boolean,
     val focus: String,
     val alt: String,
+    val title: String,
+    val subtitle: String,
+    val description: String,
+    val showText: Boolean,
+    val fitMode: String?,
+    val posterFit: String,
 ) {
     val isVideo: Boolean get() = mediaType == "video" && !videoUrl.isNullOrBlank()
-    val hasTarget: Boolean get() = targetValid && targetType != "none" && !targetId.isNullOrBlank()
+    val hasTarget: Boolean
+        get() = targetValid && when (targetType) {
+            "none" -> false
+            "external" -> !externalUrl.isNullOrBlank()
+            else -> !targetId.isNullOrBlank()
+        }
 
     companion object {
         private fun url(value: String?): String? {
@@ -91,9 +113,16 @@ data class HeikaBanner(
             displayMs = json.optInt("displayMs").takeIf { it > 0 },
             targetType = json.optString("targetType", "none"),
             targetId = json.optString("targetId").takeIf { it.isNotBlank() && it != "null" },
+            externalUrl = json.optString("targetUrl").takeIf { it.isNotBlank() && it != "null" },
             targetValid = json.optBoolean("targetValid", true),
             focus = json.optString("focus", "center"),
             alt = json.optString("alt"),
+            title = json.optString("title"),
+            subtitle = json.optString("subtitle"),
+            description = json.optString("description"),
+            showText = json.optBoolean("showText", true),
+            fitMode = json.optString("fitMode").takeIf { it == "cover" || it == "contain" },
+            posterFit = if (json.optString("posterFit") == "contain") "contain" else "cover",
         )
     }
 }
@@ -110,7 +139,8 @@ data class HeikaBannerFeed(
             val settings = json.optJSONObject("settings")?.let(HeikaBannerSettings::from) ?: HeikaBannerSettings(
                 enabled = false, autoplay = false, imageDurationMs = 5000, transitionMs = 450,
                 videoAutoplay = false, videoMuted = true, allowUnmute = false, dataSaverFallback = true,
-                videoMaxMs = 30000, sizeMode = "ratio", coverRatio = "3:1", appHeight = 120,
+                videoMaxMs = 30000, videoPlayMode = "full", videoLoop = false, preloadMode = "next",
+                showText = true, cacheTtlHours = 72, sizeMode = "ratio", coverRatio = "3:1", appHeight = 120,
                 radius = 12, fitMode = "cover", focus = "center", showIndicator = true, version = 0,
             )
             val items = json.optJSONArray("items").jsonObjects().map(HeikaBanner::from).filter { it.id.isNotBlank() }

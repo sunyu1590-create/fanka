@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -39,6 +40,8 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val decorKey = stringPreferencesKey("decor_config")
     private val decorDraftKey = stringPreferencesKey("decor_working_draft")
     private val homeBannersKey = stringPreferencesKey("home_banners_payload")
+    /** 轮播快照落盘时间：用于按服务端下发的 ttl 判断离线内容是否还有效。 */
+    private val homeBannersSavedAtKey = longPreferencesKey("home_banners_saved_at")
     /** 阅读进度：{ "postId": {"u": userId, "f": 0.42, "t": 时间戳} }，按用户隔离。 */
     private val readingProgressKey = stringPreferencesKey("reading_progress")
 
@@ -141,9 +144,13 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
 
     /** 首页推荐位的最近一次有效配置：网络异常时用它兜底，避免首页出现空洞。 */
     val homeBanners: Flow<String?> = dataStore.data.map { it[homeBannersKey] }
+    val homeBannersSavedAt: Flow<Long> = dataStore.data.map { it[homeBannersSavedAtKey] ?: 0L }
 
     suspend fun saveHomeBanners(payload: String) {
-        dataStore.edit { it[homeBannersKey] = payload }
+        dataStore.edit {
+            it[homeBannersKey] = payload
+            it[homeBannersSavedAtKey] = System.currentTimeMillis()
+        }
     }
 
     /**

@@ -19,6 +19,7 @@ import './decor-center.css';
 import './drafts.css';
 import './series.css';
 import './home-banners.css';
+import './nexus.css';
 import './series-cover.css';
 import './reader.css';
 

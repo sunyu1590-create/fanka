@@ -1294,3 +1294,44 @@ button.ab-item:active { transform: scale(0.99); background: var(--ab-surface-2);
 @media (max-width: 900px) {
   .ab-modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* 轮播后台：媒体实时预览（按全局尺寸与填充策略渲染） */
+.ab-banner-live { display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
+.ab-banner-live__frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ab-fill, rgba(127, 127, 127, 0.1));
+  isolation: isolate;
+}
+.ab-banner-live__frame > img,
+.ab-banner-live__frame > video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-position: center center;
+}
+.ab-banner-live__copy {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 22px 12px 10px;
+  color: #fff;
+  background: linear-gradient(to top, rgba(8, 10, 12, 0.74), rgba(8, 10, 12, 0.24) 55%, transparent);
+}
+.ab-banner-live__copy strong { font-size: 13px; font-weight: 600; }
+.ab-banner-live__copy span { font-size: 11px; opacity: 0.9; }
+.ab-banner-live__copy small {
+  font-size: 10.5px; opacity: 0.8;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}

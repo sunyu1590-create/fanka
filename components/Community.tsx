@@ -558,6 +558,8 @@ export default function Community({
   const [chatConversationOpen, setChatConversationOpen] = useState(false);
   const [storageKey, setStorageKey] = useState("heika-demo-v1");
   const [accountId, setAccountId] = useState<string | null>(null);
+  // 记录上一次已生效的账号：账号切换 / 退出时清理轮播位置与本地媒体，避免串号。
+  const bannerAccountRef = useRef<string | null | undefined>(undefined);
   const [ownBadges, setOwnBadges] = useState<ProfileBadge[]>([]);
   const [accountTimezone, setAccountTimezone] = useState<string | null>(null);
   const [accountReady, setAccountReady] = useState(false);
@@ -4794,6 +4796,11 @@ export default function Community({
           if (!isCurrent()) return;
           cloudHydrated.current = false;
           setPublicBookmarksLoaded(false);
+          const nextAccount = user?.id || "";
+          if (bannerAccountRef.current !== undefined && bannerAccountRef.current !== nextAccount) {
+            try { window.dispatchEvent(new Event("heika-clear-home-banners")); } catch { /* 清理失败不影响登录 */ }
+          }
+          bannerAccountRef.current = nextAccount;
           setAccountId(user?.id || null);
           setAccountReady(true);
           if (!user) {
@@ -5541,6 +5548,7 @@ export default function Community({
           )}
           {/* 首页推荐位：额度下方、卡池上方。无有效内容时组件自身返回 null，不留占位。 */}
           <HomeBannerCarousel
+            accountId={accountId || ""}
             onOpenPost={(cloudId) => void openSearchPost(cloudId, null)}
             onOpenSeries={(seriesId) => openCollection(seriesId)}
           />

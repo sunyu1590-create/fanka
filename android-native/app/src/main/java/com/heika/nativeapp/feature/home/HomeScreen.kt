@@ -44,6 +44,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -79,6 +80,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -148,6 +152,15 @@ fun HomeScreen(
         ),
         label = "flip-preview-backdrop-blur",
     )
+    // 回到前台时按需校验轮播配置，避免每次切换都打网络。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) bannerViewModel.refreshIfStale()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val gridState = rememberLazyGridState()
     val previewHaze = rememberHazeState()
     LaunchedEffect(preview?.id) {
@@ -229,6 +242,7 @@ fun HomeScreen(
                             feed = bannerFeed,
                             onOpenPost = onOpenPostById,
                             onOpenSeries = onOpenSeries,
+                            mediaCache = bannerViewModel.mediaCache,
                             onTrack = { id, event -> bannerViewModel.track(id, event) },
                             modifier = Modifier.fillMaxWidth(),
                         )
