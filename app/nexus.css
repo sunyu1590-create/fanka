@@ -457,9 +457,11 @@
   .nx-side__handle:active { cursor: grabbing; }
   .nx-side__handle i { width: 34px; height: 3px; border-radius: 2px; background: var(--nx-line-strong); }
   /* 悬浮关键指标：移动端不再挤压画布，直接叠在场景上方 */
+  /* 放在场景右下、视图按钮上方：顶部留给场景栏与标题，避免任何遮挡。 */
   .nx-float {
-    display: flex; flex-wrap: wrap; gap: 5px; position: absolute; top: 10px; right: 10px; z-index: 4;
-    max-width: calc(100% - 20px); pointer-events: none;
+    display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px;
+    position: absolute; left: 10px; right: 10px; bottom: 56px; z-index: 4;
+    pointer-events: none;
   }
   .nx-float span {
     display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 8px; border-radius: 999px;
