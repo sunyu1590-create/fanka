@@ -380,7 +380,7 @@ export default function ControlCenter2({
                 <ResourcePanel
                   series={series.data} seriesPending={seriesPending} seriesError={series.error}
                   metric={metric} setMetric={setMetric} range={range} setRange={setRange}
-                  tcp={tcp.data} ops={ops.data?.summary ?? null} onNavigate={onNavigate}
+                  tcp={tcp.data} ops={ops.data?.summary ?? null}
                 />
               </Module>
             );
@@ -514,11 +514,11 @@ function CriticalBanner({ onNavigate }: { onNavigate: (section: string) => void 
 /* ========================================================================== */
 
 function ResourcePanel({
-  series, seriesPending, seriesError, metric, setMetric, range, setRange, tcp, ops, onNavigate,
+  series, seriesPending, seriesError, metric, setMetric, range, setRange, tcp, ops,
 }: {
   series: SeriesResponse | null; seriesPending: boolean; seriesError: string;
   metric: MetricKey; setMetric: (value: MetricKey) => void; range: RangeKey; setRange: (value: RangeKey) => void;
-  tcp: TcpSummary | null; ops: OpsSummary | null; onNavigate: (section: string) => void;
+  tcp: TcpSummary | null; ops: OpsSummary | null;
 }) {
   const live = useRealtime();
   const server = live.snapshot?.server;
@@ -690,7 +690,7 @@ function TodoPanel({
   const hardError = live.status === "offline" && !live.snapshot;
 
   return (
-    <div className="cc2-todo">
+    <div className="cc2-todo" data-compact={open ? undefined : "1"}>
       {criticalCount > 0 && !open ? (
         <div className="cc2-todo__alert">
           <AlertTriangle size={14} aria-hidden="true" />

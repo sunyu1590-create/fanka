@@ -439,8 +439,11 @@
 .admin-shell .cc2-switch[disabled] { opacity: 0.4; cursor: default; }
 .admin-shell .cc2-head .cc2-chip { cursor: default; }
 
-/* 待办卡片与同排运营卡片等高：空态垂直居中，避免右侧长卡片造成大片空洞 */
+/* 待办卡片与同排运营卡片等高：展开时有内容撑起，空态/折叠时收成紧凑一条 */
 .admin-shell .cc2-mod[data-module="todo"] { display: flex; flex-direction: column; min-height: 348px; }
+.admin-shell .cc2-mod[data-module="todo"]:has(.cc2-todo[data-compact="1"]) { min-height: 0; align-self: start; }
+.admin-shell .cc2-mod[data-module="todo"] .cc2-todo[data-compact="1"] .cc2-todo__empty { flex: 0 0 auto; justify-content: flex-start; padding: 14px 16px; }
+.admin-shell .cc2-mod[data-module="todo"] .cc2-todo[data-compact="1"] .cc2-mod__foot { border-top: 1px solid var(--ab-line); }
 .admin-shell .cc2-mod[data-module="todo"] .cc2-mod__body { flex: 1; display: flex; padding: 0; }
 .admin-shell .cc2-mod[data-module="todo"] .cc2-todo { flex: 1; display: flex; flex-direction: column; }
 .admin-shell .cc2-mod[data-module="todo"] .cc2-todo__empty { flex: 1; align-items: center; justify-content: center; }
