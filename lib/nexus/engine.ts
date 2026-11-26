@@ -876,6 +876,9 @@ export class NexusEngine {
     // 否则内容星群/资源城市会出现十几条标签互相覆盖、挡住模型。
     const measured: Array<{ sprite: THREE.Sprite; label: LabelObject; x: number; y: number; w: number; h: number }> = [];
     for (const item of sprites) {
+      // 场景可以强制隐藏某个标签（例如服务器闭合状态的分层标签），
+      // 这里的尺寸计算不能把它重新打开。
+      if (item.sprite.userData.forcedHidden) { item.sprite.visible = false; continue; }
       item.sprite.getWorldPosition(world);
       const distance = camera.position.distanceTo(world);
       const projected = world.clone().project(camera);
@@ -916,6 +919,16 @@ export class NexusEngine {
     return typeof used === "number" && Number.isFinite(used) ? used : 0;
   }
 
+  /**
+   * 可见标签总数。诊断面板要的是“屏幕上真正看得见的标签”，
+   * 所以不能只数节点标签——服务器分层、资源分区、防御层、时间刻度这些都是场景自有标签。
+   */
+  private countVisibleLabels() {
+    if (!this.labelsEnabled || this.labelMode === "none") return 0;
+    if (this.sceneLabels) return this.sceneLabels.filter((item) => item.sprite.visible).length;
+    return this.built?.nodes.filter((node) => node.labelObject?.sprite.visible).length || 0;
+  }
+
   private collectStats(now: number, frameMs: number) {
     this.frameSamples.push(frameMs);
     if (this.frameSamples.length > 30) this.frameSamples.shift();
@@ -941,7 +954,7 @@ export class NexusEngine {
       dpr: this.renderer.getPixelRatio(),
       width: this.container.clientWidth,
       height: this.container.clientHeight,
-      labels: this.built?.nodes.filter((node) => node.labelObject?.sprite.visible).length || 0,
+      labels: this.countVisibleLabels(),
       particleCap: this.profile().particles,
       heapBytes: this.readHeapBytes(),
     });

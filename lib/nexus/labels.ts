@@ -40,6 +40,26 @@ export type LabelObject = {
 
 const FONT = '"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif';
 
+/** 画布里的字号（像素）。引擎按 TITLE_PX/画布高度 反推 sprite 世界尺寸，保证屏幕字号稳定。 */
+const TITLE_PX = 46;
+const SUB_PX = 34;
+const FOOT_PX = 30;
+const TEXT_LEFT = 40;
+const RIGHT_PAD = 26;
+const MAX_WIDTH = 640;
+const MIN_WIDTH = 160;
+
+/**
+ * 量文字宽度用独立画布，避免为了量尺寸反复改动正画布尺寸（改尺寸会重置绘图状态）。
+ */
+let measureCtx: CanvasRenderingContext2D | null = null;
+function measureText(text: string, font: string) {
+  if (!measureCtx) measureCtx = document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return text.length * TITLE_PX;
+  measureCtx.font = font;
+  return measureCtx.measureText(text).width;
+}
+
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -78,19 +98,35 @@ function drawLabel(input: DrawInput) {
   const { title, subtitle, footnote, level, tone, palette } = input;
   const dark = palette.mode === "dark";
   const canvas = document.createElement("canvas");
-  const width = 640;
+
+  // 三级信息密度：远=名称，中=名称+指标，近=名称+指标+类型。
+  // 没有副标题时不留空行，否则“进程层”这类只有标题的标签会撑出一个空白信息行。
+  const showSub = level !== "far" && Boolean(subtitle.trim());
+  const showFoot = level === "near" && showSub && Boolean(footnote.trim());
   // 画布高度紧贴内容：旧实现留了大片空白，导致“34px 高的标签”里实际文字只有 8px。
-  const height = level === "far" ? 92 : level === "mid" ? 150 : 206;
+  const height = showFoot ? 204 : showSub ? 148 : 96;
+
+  const titleFont = `600 ${TITLE_PX}px ${FONT}`;
+  const subFont = `400 ${SUB_PX}px ${FONT}`;
+  const footFont = `400 ${FOOT_PX}px ${FONT}`;
+
+  // 底框宽度按实际文字宽度算：旧实现固定 640 宽，短标题右侧会拖出一大片空玻璃，
+  // 三条并排就等于把模型整个盖住。
+  let contentWidth = measureText(title || "未命名节点", titleFont);
+  if (showSub) contentWidth = Math.max(contentWidth, measureText(subtitle, subFont));
+  if (showFoot) contentWidth = Math.max(contentWidth, measureText(footnote, footFont));
+  const width = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(TEXT_LEFT + contentWidth + RIGHT_PAD)));
+
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return { canvas, width, height, titlePx: 46 };
+  if (!ctx) return { canvas, width, height, titlePx: TITLE_PX };
 
   const bg = dark ? "rgba(11,16,19,0.74)" : "rgba(250,251,249,0.90)";
   const border = dark ? "rgba(190,214,222,0.16)" : "rgba(32,48,54,0.14)";
   const ink = dark ? "#eef4f6" : "#18222a";
-  const muted = dark ? "rgba(196,214,221,0.80)" : "rgba(52,68,74,0.78)";
-  const faint = dark ? "rgba(170,190,198,0.56)" : "rgba(70,86,92,0.55)";
+  const muted = dark ? "rgba(205,222,228,0.86)" : "rgba(52,68,74,0.82)";
+  const faint = dark ? "rgba(184,202,210,0.66)" : "rgba(70,86,92,0.62)";
 
   ctx.clearRect(0, 0, width, height);
   // 玻璃底：上亮下暗，模拟受光面，不做外发光。
@@ -111,38 +147,38 @@ function drawLabel(input: DrawInput) {
 
   // 左侧状态条：状态色的唯一载体。
   ctx.fillStyle = cssColor(tone, 0.9);
-  roundRect(ctx, 20, 20, 5, height - 40, 2.5);
+  roundRect(ctx, 19, 18, 5, height - 36, 2.5);
   ctx.fill();
 
-  const textLeft = 40;
-  const maxText = width - textLeft - 20;
+  const maxText = width - TEXT_LEFT - 14;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  ctx.fillStyle = ink;
-  // 远/中/近三级用同一字号，靠画布高度控制信息密度，视觉重量一致。
-  const titlePx = 46;
-  ctx.font = `600 ${titlePx}px ${FONT}`;
-  const primaryY = level === "far" ? height / 2 : 46;
-  ctx.fillText(ellipsis(ctx, title || "未命名节点", maxText), textLeft, primaryY);
 
-  if (level !== "far") {
+  ctx.fillStyle = ink;
+  // 三级用同一字号，靠画布高度控制信息密度，视觉重量一致。
+  ctx.font = titleFont;
+  const titleY = showSub ? 50 : height / 2;
+  ctx.fillText(ellipsis(ctx, title || "未命名节点", maxText), TEXT_LEFT, titleY);
+
+  if (showSub) {
+    // 副标题原来只有 29px（屏幕上 8.8px），等于读不出来；改成 34px，屏幕上约 10.4px。
     ctx.fillStyle = muted;
-    ctx.font = `400 29px ${FONT}`;
-    ctx.fillText(ellipsis(ctx, subtitle || "", maxText), textLeft, 98);
+    ctx.font = subFont;
+    ctx.fillText(ellipsis(ctx, subtitle, maxText), TEXT_LEFT, 104);
   }
-  if (level === "near") {
+  if (showFoot) {
     // 近景补一条极细分隔线，信息分层更清楚。
     ctx.strokeStyle = border;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(textLeft, 126);
-    ctx.lineTo(width - 24, 126);
+    ctx.moveTo(TEXT_LEFT, 134);
+    ctx.lineTo(width - 22, 134);
     ctx.stroke();
     ctx.fillStyle = faint;
-    ctx.font = `400 25px ${FONT}`;
-    ctx.fillText(ellipsis(ctx, footnote || "", maxText), textLeft, 164);
+    ctx.font = footFont;
+    ctx.fillText(ellipsis(ctx, footnote, maxText), TEXT_LEFT, 172);
   }
-  return { canvas, width, height, titlePx };
+  return { canvas, width, height, titlePx: TITLE_PX };
 }
 
 export function createLabel(
@@ -158,8 +194,9 @@ export function createLabel(
     footnote: opts.footnote || "",
     level: opts.level || "mid",
     tone: opts.tone,
-    aspect: 640 / 150,
-    titleRatio: 46 / 150,
+    // 仅作为初始值，build() 会按实际文字宽度覆盖；写在中档两行标签的典型比例上。
+    aspect: 300 / 148,
+    titleRatio: TITLE_PX / 148,
     setTitle(value) {
       if (state.title === value) return;
       state.title = value;
@@ -200,7 +237,7 @@ export function createLabel(
     },
   };
 
-  let aspect = 640 / 150;
+  let aspect = 300 / 148;
 
   const build = () => {
     const { canvas, width, height, titlePx } = drawLabel({

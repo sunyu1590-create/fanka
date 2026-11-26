@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, AlertTriangle, Box, BrainCircuit, Crosshair,
   ExternalLink, Globe2, History, Maximize2, Minimize2, Network, Orbit, PanelRightClose,
@@ -308,24 +308,10 @@ export default function NexusCenter({ onExit, onNavigate, role }: { onExit: () =
     return () => window.removeEventListener("heika:nexus-context", onContext);
   }, []);
 
-  const fetchSceneNow = useCallback(async (key: NexusSceneKey) => {
-    loadedAt.current[key] = 0;
-    setScene(key);
-  }, []);
-
   const runPlayback = () => {
     if (!history?.points.length) { setToast("该时间范围没有可回放的历史快照"); return; }
     if (cursor == null || cursor >= history.points.length - 1) setCursor(0);
     setPlaying((value) => !value);
-  };
-
-  const toggleFullscreen = async () => {
-    try {
-      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
-      else await document.exitFullscreen();
-    } catch {
-      setToast("浏览器拒绝进入全屏，请使用快捷键或检查权限");
-    }
   };
 
   const enterImmersive = async () => {

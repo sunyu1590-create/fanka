@@ -474,10 +474,12 @@ type TwinLayer = {
 function buildServer(snapshot: NexusSnapshot, palette: NexusPalette): BuiltScene {
   const kit = new ModelKit(palette);
   const root = new THREE.Group();
-  addPlatform(root, kit, palette, 5.6);
+  // 服务器本体只有 3 宽，地台不能喧宾夺主。
+  addPlatform(root, kit, palette, 3.7);
 
   const layers: TwinLayer[] = [];
   const layerLabels: THREE.Sprite[] = [];
+  const innerLabels: THREE.Sprite[] = [];
   const shell = new THREE.Group();
   root.add(shell);
 
@@ -501,17 +503,30 @@ function buildServer(snapshot: NexusSnapshot, palette: NexusPalette): BuiltScene
   topCover.add(createInstances(kit, kit.rounded(0.34, 0.008, 0.06, 0.003), kit.composite(), topVents));
   shell.add(topCover);
 
+  // 前板与侧板单独一份材质：分解时整体转半透明玻璃，内部五层才不被挡住。
+  // 用共享的 kit.graphite() 会把底座、顶盖一起变透明，所以这里各建一份。
+  const shellPanelMaterial = kit.graphite();
+  const shellPanelAccent = kit.composite();
+  const shellPanelTrim = kit.titaniumMatte();
+  const shellPanelGlass = kit.glass(0.16);
+  const shellPanelFinishes: Array<{ material: THREE.Material & { opacity: number; transparent: boolean; depthWrite: boolean }; base: number }> = [
+    { material: shellPanelMaterial, base: 1 },
+    { material: shellPanelAccent, base: 1 },
+    { material: shellPanelTrim, base: 1 },
+    { material: shellPanelGlass, base: 0.16 },
+  ];
+
   const panels: THREE.Group[] = [];
   for (const side of [-1, 1]) {
     const panel = new THREE.Group();
-    const body = new THREE.Mesh(kit.rounded(0.05, 2.4, 2.0, 0.014), kit.graphite());
+    const body = new THREE.Mesh(kit.rounded(0.05, 2.4, 2.0, 0.014), shellPanelMaterial);
     body.position.set(side * 1.5, 1.4, 0);
     panel.add(body);
-    const glass = new THREE.Mesh(kit.rounded(0.012, 1.9, 1.5, 0.004), kit.glass(0.16));
+    const glass = new THREE.Mesh(kit.rounded(0.012, 1.9, 1.5, 0.004), shellPanelGlass);
     glass.position.set(side * 1.53, 1.42, 0);
     panel.add(glass);
     for (const z of [-0.8, 0.8]) {
-      const rail = new THREE.Mesh(kit.rounded(0.03, 2.3, 0.05, 0.01), kit.titaniumMatte());
+      const rail = new THREE.Mesh(kit.rounded(0.03, 2.3, 0.05, 0.01), shellPanelTrim);
       rail.position.set(side * 1.48, 1.4, z);
       panel.add(rail);
     }
@@ -520,14 +535,14 @@ function buildServer(snapshot: NexusSnapshot, palette: NexusPalette): BuiltScene
   }
 
   const front = new THREE.Group();
-  const bezel = new THREE.Mesh(kit.rounded(2.86, 2.42, 0.08, 0.02), kit.graphiteDeep());
+  const bezel = new THREE.Mesh(kit.rounded(2.86, 2.42, 0.08, 0.02), shellPanelMaterial);
   bezel.position.set(0, 1.4, 1.02);
   front.add(bezel);
   const driveBezels: Array<{ p: [number, number, number] }> = [];
   for (let index = 0; index < 8; index += 1) {
     driveBezels.push({ p: [-1.2 + (index % 4) * 0.8, 1.9 - Math.floor(index / 4) * 0.36, 1.065] });
   }
-  front.add(createInstances(kit, kit.rounded(0.7, 0.28, 0.02, 0.006), kit.composite(), driveBezels));
+  front.add(createInstances(kit, kit.rounded(0.7, 0.28, 0.02, 0.006), shellPanelAccent, driveBezels));
   const frontLeds: Array<{ p: [number, number, number] }> = [];
   for (let index = 0; index < 8; index += 1) {
     frontLeds.push({ p: [-0.9 + (index % 4) * 0.8, 1.9 - Math.floor(index / 4) * 0.36, 1.08] });
@@ -658,7 +673,10 @@ function buildServer(snapshot: NexusSnapshot, palette: NexusPalette): BuiltScene
       }
       const label = createSpriteLabel("逻辑运行视图", "非物理硬件", palette, 0.6, tone);
       label.position.set(0, 1.0, 0);
+      label.userData.forcedHidden = true;
+      label.visible = false;
       group.add(label);
+      innerLabels.push(label);
     }
 
     shell.add(group);
@@ -679,6 +697,7 @@ function buildServer(snapshot: NexusSnapshot, palette: NexusPalette): BuiltScene
       ]);
       labelObject.setVisible(false);
       layerLabel.visible = false;
+      layerLabel.userData.forcedHidden = true;
     }
     layerLabels.push(layerLabel);
     layers.push({ id: spec.id, label: spec.label, group, baseY: spec.y, spread: spec.spread, materials, leds, plate });
@@ -700,18 +719,36 @@ function buildServer(snapshot: NexusSnapshot, palette: NexusPalette): BuiltScene
       layer.group.position.z = 0;
     });
     // 闭合时标签完全隐藏，避免内部标签漂浮在机箱外面。
+    for (const label of innerLabels) {
+      label.userData.forcedHidden = !exploded;
+      label.visible = exploded;
+    }
     layerLabels.forEach((label, index) => {
       const object = label.userData.label as LabelObject | undefined;
       if (object) object.setVisible(exploded);
+      label.userData.forcedHidden = !exploded;
       label.visible = exploded;
-      label.position.x = 1.9 + index * 0.16;
+      label.position.x = 2.02 + index * 0.16;
     });
+    // 标牌挂在机箱顶部，分解后顶部盖板抬到 1.6，标牌留在原处会悬在层与层之间；
+    // visible 会被标签尺寸计算重新打开，所以同时写入 forcedHidden。
     badge.visible = !exploded;
+    badge.userData.forcedHidden = exploded;
     topCover.position.y = exploded ? 1.6 : 0;
     panels.forEach((panel, index) => {
-      panel.position.x = exploded ? (index === 0 ? -1.15 : 1.15) : 0;
+      // 侧板/前板原来外移 1.15/1.45，展开后会横在镜头与层板之间，
+      // 把 CPU、内存层挡掉一半；收到刚好让开层板的位置，保持“壳体包裹”的关系。
+      panel.position.x = exploded ? (index === 0 ? -0.75 : 0.75) : 0;
+      panel.position.y = exploded ? 0.28 : 0;
     });
-    front.position.z = exploded ? 1.45 : 0;
+    // 前面板整块撤掉：爆炸图要看的是五层结构，任何挡在正面的实体板都会破坏可读性；
+    // 侧板只做半透明外移，仍保留“壳体包裹”的关系。
+    front.visible = !exploded;
+    for (const finish of shellPanelFinishes) {
+      finish.material.transparent = exploded || finish.base < 1;
+      finish.material.opacity = exploded ? Math.min(finish.base, 0.12) : finish.base;
+      finish.material.depthWrite = exploded ? false : finish.base >= 1;
+    }
   };
   applyExplode(false);
 
