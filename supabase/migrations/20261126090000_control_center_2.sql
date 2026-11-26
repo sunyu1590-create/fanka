@@ -18,6 +18,22 @@ grant all on public.admin_console_prefs to service_role;
 comment on table public.admin_console_prefs is '控制中心 2.0 首页布局偏好，仅 service_role 可读写；接口层按登录账号隔离。';
 
 -- ---------------------------------------------------------------------------
+-- 1.1) 账号在线状态：由 API 鉴权入口节流写入，仅 service_role 可读写
+-- ---------------------------------------------------------------------------
+create table if not exists public.user_presence (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  last_seen timestamptz not null default now()
+);
+
+create index if not exists user_presence_last_seen_idx on public.user_presence (last_seen desc);
+
+alter table public.user_presence enable row level security;
+revoke all on public.user_presence from anon, authenticated;
+grant all on public.user_presence to service_role;
+
+comment on table public.user_presence is '账号最近一次通过鉴权访问 API 的时间，用于计算真实在线/活跃用户；不记录 IP 与路径。';
+
+-- ---------------------------------------------------------------------------
 -- 2) 运营聚合：一次查询返回指定时间范围的用户/访问/内容/互动/会员数据
 --    口径说明：
 --    - 用户 active = 区间内带登录态访问去重账号；online = 最近 5 分钟带登录态访问
@@ -60,14 +76,24 @@ begin
     'users', jsonb_build_object(
       'total', (select count(*) from public.profiles),
       'new', (select count(*) from public.profiles where created_at >= p_from and created_at < p_to),
+      -- 活跃：区间内出现在线记录，或有发布/评论/收藏行为（按账号去重）
       'active', (
-        select count(distinct account_id) from public.http_access_logs
-         where ts >= p_from and ts < p_to and account_id is not null
+        select count(*) from (
+          select user_id from public.user_presence
+           where last_seen >= p_from and last_seen < p_to
+          union
+          select author_id from public.posts
+           where created_at >= p_from and created_at < p_to and author_id is not null
+          union
+          select author_id from public.comments
+           where created_at >= p_from and created_at < p_to and author_id is not null
+          union
+          select user_id from public.bookmarks
+           where created_at >= p_from and created_at < p_to and user_id is not null
+        ) active_accounts
       ),
-      'online', (
-        select count(distinct account_id) from public.http_access_logs
-         where ts >= now() - interval '5 minutes' and account_id is not null
-      )
+      -- 在线：最近 5 分钟有鉴权请求的账号
+      'online', (select count(*) from public.user_presence where last_seen >= now() - interval '5 minutes')
     ),
     'visits', jsonb_build_object(
       'pv', coalesce(req_total, 0),
@@ -133,8 +159,8 @@ begin
       'retentionDays', 30,
       'viewsCumulative', true,
       'likesCumulative', true,
-      'activeDefinition', '区间内带登录态访问去重账号',
-      'onlineDefinition', '最近 5 分钟带登录态访问去重账号',
+      'activeDefinition', '区间内有在线记录或发布/评论/收藏行为的去重账号',
+      'onlineDefinition', '最近 5 分钟有鉴权请求的去重账号',
       'uvDefinition', '登录账号或客户端 IP 去重'
     )
   ) into result;

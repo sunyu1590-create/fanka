@@ -438,3 +438,15 @@
 .admin-shell .cc2-mod__head .cc2-tabs::-webkit-scrollbar { display: none; }
 .admin-shell .cc2-switch[disabled] { opacity: 0.4; cursor: default; }
 .admin-shell .cc2-head .cc2-chip { cursor: default; }
+
+/* 待办卡片与同排运营卡片等高：空态垂直居中，避免右侧长卡片造成大片空洞 */
+.admin-shell .cc2-mod[data-module="todo"] { display: flex; flex-direction: column; min-height: 336px; }
+.admin-shell .cc2-mod[data-module="todo"] .cc2-mod__body { flex: 1; display: flex; padding: 0; }
+.admin-shell .cc2-mod[data-module="todo"] .cc2-todo { flex: 1; display: flex; flex-direction: column; }
+.admin-shell .cc2-mod[data-module="todo"] .cc2-todo__empty { flex: 1; align-items: center; justify-content: center; }
+.admin-shell .cc2-mod[data-module="todo"] .cc2-todo__row:first-child { border-top: 1px solid var(--ab-line); }
+
+/* 运营卡片压缩：控制总高度，减少与待办的高度差 */
+.admin-shell .cc2-col { padding: 7px 10px; }
+.admin-shell .cc2-kpi b { font-size: 26px; }
+.admin-shell .cc2-cols { border-radius: 8px; }

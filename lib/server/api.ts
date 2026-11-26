@@ -20,6 +20,9 @@ export async function context(req:NextRequest,required=true){
     await requireAbility(data.user.id,'login');
     if(req.method==='GET')await requireAbility(data.user.id,'browse');
   }
+  // 在线状态：鉴权通过后异步记录，60 秒节流，失败不影响业务。
+  const {touchPresence}=await import('./presence');
+  touchPresence(data.user.id);
   return {db,user:data.user}}
 export async function jsonBody(req:NextRequest){try{return await req.json() as Record<string,unknown>}catch{throw new ApiError(400,'请求内容不是有效 JSON')}}
 export function textField(value:unknown,name:string,min:number,max:number){if(typeof value!=='string'||value.trim().length<min||value.trim().length>max)throw new ApiError(400,`${name}长度须为 ${min}-${max}`);return value.trim()}

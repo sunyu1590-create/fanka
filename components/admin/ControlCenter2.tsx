@@ -271,7 +271,7 @@ export default function ControlCenter2({
   const storage = useJson<StorageResponse>("/api/v1/admin/storage", 300_000);
   const overview = useJson<OverviewResponse>("/api/v1/admin/overview", 60_000);
   const dm = useJson<Array<{ status: string }>>("/api/v1/admin/message-reports", 60_000);
-  const tcp = useJson<TcpSummary>("/api/v1/admin/network/tcp?summary=1", 15_000);
+  const tcp = useJson<TcpSummary>("/api/v1/admin/network/tcp?summary=1", 5_000);
 
   /* ---- 布局偏好：本地缓存优先，服务端覆盖 ---- */
   useEffect(() => {
@@ -549,15 +549,16 @@ function ResourcePanel({
         </div>
       </div>
 
+      {/* 内存/磁盘用量已在环形下方标注，这里改列负载、网络与请求指标，避免同一数字出现两次。 */}
       <div className="cc2-metrics">
-        <Metric label="内存" value={memPair} />
-        <Metric label="磁盘" value={diskPair} />
+        <Metric label="负载" value={server?.load1 != null ? server.load1.toFixed(2) : "—"} hint="1 分钟平均" />
         <Metric label="API 延迟" value={latency != null ? `${Math.round(latency)} ms` : "—"} hint={p95 != null ? `P95 ${Math.round(p95)} ms` : undefined} />
         <Metric label="错误率" value={errorRate != null ? `${(Number(errorRate) * 100).toFixed(1)}%` : "—"} tone={errorRate != null && errorRate > 0.02 ? "warn" : undefined} />
         <Metric label="TCP 连接" value={tcpTotal != null ? fmtNum(tcpTotal) : "—"} hint={tcp?.available === false ? "采集器未上报" : tcp?.stale ? "快照已过期" : tcp?.captured_at ? `采集 ${fmtTime(tcp.captured_at)}` : undefined} />
         <Metric label="在线用户" value={online != null ? fmtNum(online) : "—"} hint="5 分钟内活跃登录" />
-        <Metric label="实时速率" value={server?.net_rx_rate != null ? `↓ ${fmtBytes(server.net_rx_rate)}/s` : "—"} hint={server?.net_tx_rate != null ? `↑ ${fmtBytes(server.net_tx_rate)}/s` : undefined} />
-        <Metric label="今日流量" value={traffic ? `↑ ${fmtBytes(traffic.uploadBytes)}` : "—"} hint={traffic ? `↓ ${fmtBytes(traffic.downloadBytes)} · ${fmtNum(traffic.downloadRequests)} 次下载` : undefined} />
+        <Metric label="入站速率" value={server?.net_rx_rate != null ? `${fmtBytes(server.net_rx_rate)}/s` : "—"} hint={server?.net_tx_rate != null ? `出站 ${fmtBytes(server.net_tx_rate)}/s` : undefined} />
+        <Metric label="今日上传" value={traffic ? fmtBytes(traffic.uploadBytes) : "—"} hint={traffic ? `${fmtNum(traffic.uploadFiles)} 个文件` : undefined} />
+        <Metric label="今日下载" value={traffic ? fmtBytes(traffic.downloadBytes) : "—"} hint={traffic ? `${fmtNum(traffic.downloadRequests)} 次请求` : undefined} />
       </div>
 
       <div className="cc2-chartbar">
@@ -771,7 +772,7 @@ function OpsPanel({
   const tierText = s.membership.byTier.map((item) => `${tierLabel(item.tier)} ${item.count}`).join(" · ");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, opacity: pending ? 0.55 : 1, transition: "opacity .15s ease" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, opacity: pending ? 0.55 : 1, transition: "opacity .15s ease" }}>
       {customBar}
       <div className="cc2-ops__top">
         <div className="cc2-kpi">
@@ -816,8 +817,8 @@ function OpsPanel({
       </div>
 
       <p className="cc2-note">
-        阅读/点赞为作品累计口径，无法按时间段拆分；收藏/评论按创建时间落在区间内统计。独立 IP 不等同于真实用户数。
-        {s.meta?.logSince ? ` 访问日志自 ${new Date(s.meta.logSince).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} 起可用。` : ""}
+        阅读/点赞为累计口径，收藏/评论按区间统计；独立 IP 不等于真实用户数。
+        {s.meta?.logSince ? ` 访问日志自 ${new Date(s.meta.logSince).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} 起。` : ""}
       </p>
     </div>
   );
@@ -864,7 +865,7 @@ function ServicePanel({
     {
       key: "api", label: "业务 API", icon: Activity,
       metric: `5 分钟 ${fmtNum(live.snapshot?.live.requests)} 次 · 延迟 ${live.snapshot?.live.avg_ms != null ? `${Math.round(live.snapshot.live.avg_ms)} ms` : "—"}`,
-      ...statusOf(api), section: "services",
+      ...statusOf(api && api.status !== "unknown" ? api : web), section: "services",
     },
     {
       key: "db", label: "数据库", icon: HardDrive,
@@ -990,6 +991,7 @@ function ConsoleEditor({
   const [hidden, setHidden] = useState<ModuleKey[]>(layout.hidden);
   const [width, setWidth] = useState<Record<string, 1 | 2>>(layout.width);
   const [quick, setQuick] = useState<string[]>(layout.quick);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1002,6 +1004,16 @@ function ConsoleEditor({
       if (index < 0 || next < 0 || next >= current.length) return current;
       const copy = [...current];
       [copy[index], copy[next]] = [copy[next], copy[index]];
+      return copy;
+    });
+  };
+
+  const moveTo = (from: number, to: number) => {
+    if (from === to) return;
+    setOrder((current) => {
+      const copy = [...current];
+      const [item] = copy.splice(from, 1);
+      copy.splice(to, 0, item);
       return copy;
     });
   };
@@ -1038,12 +1050,21 @@ function ConsoleEditor({
         </div>
 
         <div className="cc2-drawer__group">
-          <span className="cc2-drawer__label">模块顺序与显示</span>
+          <span className="cc2-drawer__label">模块顺序与显示（可拖动排序）</span>
           {order.map((key, index) => {
             const meta = MODULE_META[key];
             const enabled = allowed.includes(key) && !hidden.includes(key);
             return (
-              <div key={key} className="cc2-row">
+              <div
+                key={key}
+                className="cc2-row"
+                draggable
+                onDragStart={() => setDragIndex(index)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => { if (dragIndex != null) moveTo(dragIndex, index); setDragIndex(null); }}
+                onDragEnd={() => setDragIndex(null)}
+                style={dragIndex === index ? { opacity: 0.5 } : undefined}
+              >
                 <GripVertical size={13} color="var(--ab-ink-3)" aria-hidden="true" />
                 <span className="cc2-row__name">{meta.title}</span>
                 <button type="button" className="cc2-row__mini" disabled={index === 0} onClick={() => move(key, -1)} aria-label={`上移 ${meta.title}`}><ChevronUp size={13} /></button>
@@ -1112,11 +1133,17 @@ function shortError(message: string) {
   return message.length > 60 ? `${message.slice(0, 60)}…` : message;
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  post_hide: "隐藏内容", post_publish: "发布内容", user_restrict: "限制账号",
+  report_resolve: "处理举报", report_dismiss: "驳回举报", "cost.update": "更新成本配置",
+  system_flags_update: "更新功能开关", service_restart: "重启服务",
+  approved: "审核通过", rejected: "审核驳回", submitted: "提交审核",
+  published: "发布", hidden: "隐藏", deleted: "删除", updated: "更新", created: "创建",
+  "ai_task_items.approved": "AI 条目通过", "ai_task_items.rejected": "AI 条目驳回",
+};
+
 function actionLabel(action: string) {
-  const map: Record<string, string> = {
-    post_hide: "隐藏内容", post_publish: "发布内容", user_restrict: "限制账号",
-    report_resolve: "处理举报", report_dismiss: "驳回举报", "cost.update": "更新成本配置",
-    system_flags_update: "更新功能开关", service_restart: "重启服务",
-  };
-  return map[action] || action;
+  if (ACTION_LABELS[action]) return ACTION_LABELS[action];
+  const tail = action.split(".").pop() || action;
+  return ACTION_LABELS[tail] || tail.replace(/[_-]/g, " ");
 }
