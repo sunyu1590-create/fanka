@@ -92,7 +92,13 @@ class HeikaBannerMediaCache @Inject constructor(
                 val listener = object : CacheWriter.ProgressListener {
                     override fun onProgress(requestLength: Long, bytesCached: Long, newBytesCached: Long) = Unit
                 }
-                CacheWriter(factory.createDataSource(), DataSpec(Uri.parse(url)), listener).cache()
+                // 1.4.x 的签名是 (CacheDataSource, DataSpec, byte[] 临时缓冲, ProgressListener)。
+                CacheWriter(
+                    factory.createDataSource() as CacheDataSource,
+                    DataSpec(Uri.parse(url)),
+                    ByteArray(CacheWriter.DEFAULT_BUFFER_SIZE_BYTES),
+                    listener,
+                ).cache()
             }
         }
         synchronized(lock) { preloadJobs[url] = job }
