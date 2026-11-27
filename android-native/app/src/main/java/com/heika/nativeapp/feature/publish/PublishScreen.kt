@@ -108,6 +108,10 @@ fun PublishScreen(
         state.error?.let { message -> HeikaNoticeBus.show(message, HeikaNoticeKind.ERROR) }
     }
     BackHandler(enabled = !state.loading && !state.publishing) { viewModel.saveDraft(onBack) }
+    // 创作与发布系统 2.0：发布选择弹窗中点了「返回主页」，任务已接管，立即导航离开。
+    LaunchedEffect(state.leaveAfterSubmit) {
+        if (state.leaveAfterSubmit) { viewModel.consumeLeaveAfterSubmit(); onBack() }
+    }
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
         scope.launch(HeikaCoroutineGuard) {
@@ -607,7 +611,7 @@ fun PublishScreen(
                     modifier = Modifier.padding(end = 8.dp),
                 ) { Text(if (aiBusy && aiMode == "markdown") "优化中…" else "Markdown 优化", fontSize = 11.sp) }
                 Button(
-                    onClick = viewModel::publish,
+                    onClick = viewModel::requestPublish,
                     enabled = !state.publishing && !state.saving && !state.attachmentBusy && state.categories.isNotEmpty(),
                     shape = RoundedCornerShape(999.dp),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
@@ -690,6 +694,21 @@ fun PublishScreen(
                 )
             }
         }
+    }
+    // 创作与发布系统 2.0：任务接管后立即弹出，明确「离开发布页」与「取消任务」不是一回事。
+    if (state.publishChoice) {
+        HeikaAlertDialog(
+            onDismissRequest = viewModel::dismissPublishChoice,
+            title = { Text("正在发布作品") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("你的作品正在上传和处理。你可以返回主页继续浏览，也可以留在当前页面查看发布进度。")
+                    Text("离开当前页面不会主动取消发布任务。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewModel.confirmPublish(leaveAfter = true) }) { Text("返回主页") } },
+            dismissButton = { TextButton(onClick = { viewModel.confirmPublish(leaveAfter = false) }) { Text("留在此页等待") } },
+        )
     }
     if (state.showLeaveDialog) {
         HeikaAlertDialog(

@@ -172,11 +172,11 @@ class PublishTaskManager {
     return this.tasks.get(taskKey) || null;
   }
 
-  async create(input: { title: string; coverUrl?: string | null; snapshot: PublishTask["snapshot"] }): Promise<PublishTask> {
+  async create(input: { title: string; coverUrl?: string | null; snapshot: PublishTask["snapshot"]; idempotencyKey?: string | null; contentHash?: string | null }): Promise<PublishTask> {
     await this.ensureLoaded();
     const now = Date.now();
     const task: PublishTask = {
-      taskKey: crypto.randomUUID(),
+      taskKey: input.idempotencyKey || crypto.randomUUID(),
       title: input.title.slice(0, 80),
       coverUrl: input.coverUrl ?? null,
       status: "draft_snapshot_saved",
@@ -276,6 +276,17 @@ class PublishTaskManager {
     });
   }
 
+  /** 创作内容快照指纹：用于服务端检测幂等键是否被复用到了不同内容。 */
+  private hashSnapshot(snapshot: NonNullable<PublishTask["snapshot"]>): string {
+    const core = `${snapshot.title}\u0000${snapshot.body}\u0000${snapshot.tag}\u0000${(snapshot.mediaPaths || []).join(",")}\u0000${(snapshot.attachments || []).map((item) => item.path).join(",")}`;
+    let hash = 2166136261;
+    for (let index = 0; index < core.length; index += 1) {
+      hash ^= core.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+  }
+
   private emit() {
     const list = this.list();
     const active = this.active();
@@ -294,6 +305,10 @@ class PublishTaskManager {
           media_paths: task.snapshot?.mediaPaths ?? [],
           status: task.status,
           client_type: "web",
+          // 创作与发布系统 2.0：发布任务 ID 与幂等请求 ID 分离之前，taskKey 即幂等键；
+          // 同一发布重试复用 taskKey，内容变化时由调用方生成新键。
+          idempotency_key: task.taskKey,
+          content_hash: task.snapshot ? this.hashSnapshot(task.snapshot) : null,
         });
       } else {
         await cloudRequest(`/api/v1/publish-tasks?task_key=${encodeURIComponent(task.taskKey)}`, {

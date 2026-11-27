@@ -9,7 +9,7 @@ const VALID_STATUSES = new Set([
   "published", "failed", "rejected", "cancelled",
 ]);
 
-const TASK_FIELDS = "id,task_key,post_id,title,status,media_paths,cover_path,error_message,client_type,created_at,updated_at,finished_at";
+const TASK_FIELDS = "id,task_key,post_id,title,status,media_paths,cover_path,error_message,client_type,idempotency_key,content_hash,created_at,updated_at,finished_at";
 
 /** 我的发布任务列表（任务中心）。 */
 export async function GET(req: NextRequest) {
@@ -39,11 +39,33 @@ export async function POST(req: NextRequest) {
     const mediaPaths = Array.isArray(body.media_paths) ? body.media_paths.filter((path: unknown): path is string => typeof path === "string").slice(0, 9) : [];
     const coverPath = typeof body.cover_path === "string" ? body.cover_path.slice(0, 300) : null;
     const clientType = typeof body.client_type === "string" ? body.client_type.slice(0, 32) : null;
+    const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key.slice(0, 120) : null;
+    const contentHash = typeof body.content_hash === "string" ? body.content_hash.slice(0, 64) : null;
+
+    // 幂等：同一个幂等键若已存在，内容指纹相同则直接返回原任务（不得重复创建作品），
+    // 内容指纹不同则拒绝复用——防止内容变化后错误沿用旧发布结果。
+    if (idempotencyKey) {
+      const { data: existing } = await db
+        .from("publish_tasks")
+        .select(TASK_FIELDS)
+        .eq("user_id", user!.id)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (existing) {
+        if (contentHash && existing.content_hash && existing.content_hash !== contentHash) {
+          throw new ApiError(409, "该发布请求的内容已发生变化，请使用新的发布请求");
+        }
+        return { task: existing, replay: true };
+      }
+    }
+
     const { data, error } = await db
       .from("publish_tasks")
       .upsert({
         user_id: user!.id, task_key: taskKey, title, status, media_paths: mediaPaths,
-        cover_path: coverPath, client_type: clientType, updated_at: new Date().toISOString(),
+        cover_path: coverPath, client_type: clientType,
+        idempotency_key: idempotencyKey, content_hash: contentHash,
+        updated_at: new Date().toISOString(),
       }, { onConflict: "user_id,task_key" })
       .select(TASK_FIELDS)
       .single();

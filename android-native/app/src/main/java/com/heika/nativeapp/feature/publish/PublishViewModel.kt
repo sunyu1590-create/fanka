@@ -62,10 +62,16 @@ data class PublishState(
     val attachmentQuota: Int? = null, val attachmentError: String? = null,
     val pendingDeletePaths: List<String> = emptyList(),
     val draftId: Int? = null, val draftCloudId: String? = null, val accountId: String? = null, val revisionMode: Boolean = false,
+    // 创作与发布系统 2.0：显式的编辑模式，禁止用「是否存在标题/草稿」等隐式条件推断。
+    val editorMode: String = "CREATE",
     val serverStatus: String = "draft",
     val loading: Boolean = true, val saving: Boolean = false, val publishing: Boolean = false,
     val routeReason: String = "", val routeChecking: Boolean = false, val routeKey: String = "", val routeSource: String = "",
     val error: String? = null, val notice: String? = null, val showLeaveDialog: Boolean = false,
+    // 创作与发布系统 2.0：任务接管后立即弹出的发布选择（返回主页 / 留在此页等待）。
+    val publishChoice: Boolean = false,
+    /** 用户选择了「返回主页」：任务在后台继续，Screen 观察此标志执行导航。 */
+    val leaveAfterSubmit: Boolean = false,
     val publishedPost: JSONObject? = null,
     // 发布页唯一新增的轻量选项：是否加入自己的某个合集（非必填）。
     val seriesId: String = "",
@@ -278,9 +284,14 @@ class PublishViewModel @Inject constructor(
         mutableState.value = PublishState(channel = target, accountId = accountId, loading = true)
         draftLoaded = false
         configureChannel(target)
-        resumeDraft()
+        // 切换频道属于当前创作的生命周期延续，不是新创作；保持空白状态即可。
     }
 
+    /**
+     * 创作与发布系统 2.0：普通发布入口（requestedId == null）永远是空白编辑器。
+     * 只有用户主动从草稿箱/作品编辑带入明确 draftId 时，才读取指定草稿。
+     * 绝不因为本机存在快照就自动填充——这是「每次进入都恢复上次草稿」的根因。
+     */
     fun resumeDraft(requestedId: Int? = null) = viewModelScope.launch(HeikaCoroutineGuard) {
         if (draftLoaded) return@launch
         draftLoaded = true
@@ -288,11 +299,15 @@ class PublishViewModel @Inject constructor(
             mutableState.update { it.copy(loading = false, error = "登录后可以发布内容") }
             return@launch
         }
-        mutableState.update { it.copy(accountId = session.userId) }
+        mutableState.update { it.copy(accountId = session.userId, editorMode = if (requestedId == null) "CREATE" else "DRAFT_EDIT") }
 
+        if (requestedId == null) {
+            // 新建创作：不读取任何本地快照、不请求云端草稿，保持当前 PublishState 的空白初值。
+            return@launch
+        }
         val local = runCatching { repository.localPublishSnapshot(session.userId, mutableState.value.channel) }.getOrNull()
-        val localMatchesRequested = requestedId != null && local?.optInt("draftId", -1) == requestedId
-        if (local != null && (requestedId == null || localMatchesRequested)) {
+        val localMatchesRequested = local?.optInt("draftId", -1) == requestedId
+        if (local != null && localMatchesRequested) {
             restoreLocalSnapshot(local)
         }
 
@@ -819,12 +834,46 @@ class PublishViewModel @Inject constructor(
         return repository.aiWorkbench(mode, current.title, current.body, current.category, prompt, messages)
     }
 
-    fun publish() = viewModelScope.launch(HeikaCoroutineGuard) {
+    /**
+     * 点击发布：只做必要的轻量本地校验，通过后立即弹出「返回主页 / 留在此页等待」选择。
+     * 不在此处等待媒体上传、内容检测或 AI 审核——任务接管后由 [doPublish] 后台执行。
+     */
+    fun requestPublish() = viewModelScope.launch(HeikaCoroutineGuard) {
+        val current = mutableState.value
+        if (current.publishing || current.saving || current.attachmentBusy) return@launch
+        val problem = when {
+            current.title.isBlank() -> "标题不能为空"
+            current.body.isBlank() -> "正文内容不能为空"
+            current.category.isBlank() -> "请选择内容分类"
+            current.images.any { it.error != null && it.localFilePath == null } -> "请移除无法读取的图片后重试"
+            else -> null
+        }
+        if (problem != null) { mutableState.update { it.copy(error = problem) }; return@launch }
+        // 先把本机草稿落盘，确保用户此刻选择「返回主页」也不丢失内容。
+        persistLocalSnapshot()
+        mutableState.update { it.copy(publishChoice = true, error = null) }
+    }
+
+    /** 关闭选择弹窗（用户改主意，不发布）。 */
+    fun dismissPublishChoice() = mutableState.update { it.copy(publishChoice = false) }
+
+    /**
+     * 用户在选择弹窗中确认。leaveAfter=true 表示「返回主页」，任务继续在后台执行，
+     * Screen 监听 leaveAfterSubmit 完成导航；false 表示「留在此页等待」进度视图。
+     */
+    fun confirmPublish(leaveAfter: Boolean) {
+        mutableState.update { it.copy(publishChoice = false, leaveAfterSubmit = leaveAfter) }
+        doPublish()
+    }
+
+    fun consumeLeaveAfterSubmit() = mutableState.update { it.copy(leaveAfterSubmit = false) }
+
+    private fun doPublish() = viewModelScope.launch(HeikaCoroutineGuard) {
         if (!publishMutex.tryLock()) return@launch
         try {
             val current = mutableState.value
             saveJob?.cancel()
-            if (current.publishing || current.saving) return@launch
+            if (current.publishing) return@launch
             if (current.pendingDeletePaths.isNotEmpty()) {
                 retryPendingDeletes()
                 if (mutableState.value.pendingDeletePaths.isNotEmpty()) {

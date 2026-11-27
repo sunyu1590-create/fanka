@@ -126,6 +126,7 @@ import NoticeBanner, { type NoticeBannerItem, type NoticeKind, type NoticeOption
 import SettingsHome, { type SettingsDetail } from "./SettingsHome";
 import MotionSettings from "./MotionSettings";
 import { applyMotionSettings, readMotionSettings, motionDuration, prefersReducedMotion, type MotionSettings as MotionSettingsValue } from "@/lib/motion";
+import { createEditorSession, type EditorSession } from "@/lib/editor-session";
 import DecorCenter from "./DecorCenter";
 import DraftBox from "./DraftBox";
 import ProfileHeader from "./ProfileHeader";
@@ -863,6 +864,8 @@ export default function Community({
     [composerOutcome, setComposerOutcome] = useState<{ kind: "published" | "pending_review"; title: string; cover: string | null; imageCount: number; clientId: number | null; cloudId: string | null; at: number } | null>(null),
     /** 从浮窗/任务中心返回创作时绑定的任务，用于避免重复提交。 */
     [resumeTaskKey, setResumeTaskKey] = useState<string | null>(null),
+    /** 创作与发布系统 2.0：任务接管后立即弹出的发布选择（返回主页 / 留在此页等待）。 */
+    [publishChoice, setPublishChoice] = useState<{ title: string } | null>(null),
     [composerError, setComposerError] = useState(""),
     [topicSummary, setTopicSummary] = useState<TopicSummary | null>(null),
     [topicPosts, setTopicPosts] = useState<Post[]>([]),
@@ -1122,6 +1125,8 @@ export default function Community({
   const draftSaveTimer = useRef<number | null>(null);
   const draftCloudQueue = useRef<Promise<void>>(Promise.resolve());
   const composerSession = useRef(0);
+  /** 创作与发布系统 2.0：显式编辑会话（模式 + 四类 ID），只用当前会话结果响应异步请求。 */
+  const editorSessionRef = useRef<EditorSession | null>(null);
   const localDraftIdRef = useRef<string | null>(null);
   const pendingAttachmentFiles = useRef(new Map<string, File>());
   const composerRouteSeq = useRef(0);
@@ -3103,6 +3108,7 @@ export default function Community({
     setComposerError("");
     setComposerOutcome(null);
     setResumeTaskKey(null);
+    setPublishChoice(null);
     setComposerCheckPhase("idle");
     composerSuggestionRef.current = null;
     setComposerSuggestion(null);
@@ -3465,8 +3471,17 @@ export default function Community({
 
   const openComposer = async (post?: Post, requestedChannel: "community" | "ai" = "community", localDraft?: LocalDraft) => {
     composerImages.forEach(image=>{if(image.url.startsWith("blob:"))URL.revokeObjectURL(image.url);});
-    composerSession.current += 1; setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false); setImageUploadProgress(null);
-    setComposerOutcome(null); setResumeTaskKey(null); setComposerError("");
+    composerSession.current += 1;
+    // 显式判断编辑模式：草稿箱带入 localDraft → DRAFT_EDIT；已发布作品 → POST_EDIT；其余 → CREATE。
+    const resolvedMode = post ? (post.status === "published" || post.pendingRevision ? "POST_EDIT" : "DRAFT_EDIT") : localDraft ? "DRAFT_EDIT" : "CREATE";
+    editorSessionRef.current = createEditorSession({
+      mode: resolvedMode,
+      draftId: localDraft?.id ?? (post?.status === "draft" ? String(post.id) : null),
+      postId: resolvedMode === "POST_EDIT" ? String(post?.id ?? "") : null,
+      accountId: accountId || null,
+    });
+    setComposerPanel(null); setComposerMediaId(null); setDraftSyncError(""); setDraftCloudSynced(false); setDraftSaving(false); setComposerMediaLoadFailed(false); setImageUploadProgress(null);
+    setComposerOutcome(null); setResumeTaskKey(null); setPublishChoice(null); setComposerError("");
     // 正常入口一律从空白开始；只有主动从草稿箱选择才会恢复内容。
     const initialPost = post;
     composerDraftRef.current = initialPost || null;
@@ -3747,8 +3762,40 @@ export default function Community({
     }
   };
   const handlePublishClick = () => {
-    // 一次点击完成「校验 → 分类 → 提交」，不再有二次确认与常驻重新判断。
+    // 创作与发布系统 2.0：轻量本地校验后立即弹「返回主页 / 留在此页等待」。
+    // 媒体上传、内容检测与 AI 审核全部交给后台发布任务，不阻塞用户离开。
+    if (publishInFlight.current || isPublishing) return;
+    if (!title.trim()) { setComposerValidation("title"); toast("请先填写标题"); document.querySelector<HTMLTextAreaElement>(".composer-title-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    if (!body.trim()) { setComposerValidation("body"); toast("请先填写正文"); document.querySelector<HTMLTextAreaElement>(".composer-body-field textarea")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    if (!writeTag.trim()) { toast("请选择内容分类"); return; }
+    if (!accountId) { void flushComposerDraft.current().catch(()=>{}); toast("请先在消息页面登录，当前输入会保留"); return; }
+    if (composerMediaLoadFailed) { toast("附件列表尚未恢复，请先重试读取附件"); return; }
+    if (composerImages.some(image=>!image.external&&!image.path&&!image.file)) { toast("有图片文件未恢复，请替换后再提交"); return; }
+    // 先把当前内容落盘，确保选择「返回主页」时不丢失任何已完成的创作。
+    void flushComposerDraft.current().catch(()=>{});
+    setComposerError("");
+    setPublishChoice({ title: title.trim() || "未命名作品" });
+  };
+
+  /** 用户在发布选择弹窗中确认：立即关闭弹窗并把任务交给后台执行。 */
+  const confirmPublishChoice = () => {
+    const choice = publishChoice;
+    setPublishChoice(null);
+    if (!choice) return;
+    // publish() 内部负责创建全局任务并异步执行；「返回主页」由调用方另行导航。
     void publish();
+  };
+
+  /** 「返回主页」：先启动后台任务，再立即关闭创作面板并切到首页，不等待上传/审核。 */
+  const publishAndLeave = () => {
+    const choice = publishChoice;
+    setPublishChoice(null);
+    if (!choice) return;
+    void publish();
+    resetComposer();
+    setModal(null);
+    setTab("home");
+    toast("作品正在后台发布，可到悬浮窗或「发布任务」查看进度");
   };
   const reorderComposerImages = (from: number, to: number) => {
     if (isPublishing || from === to || from < 0 || to < 0 || to >= composerImages.length) return;
@@ -7117,6 +7164,21 @@ export default function Community({
             </ComposerSheet>}
             {modal === "write" && composerMediaId && (() => { const index=composerImages.findIndex(image=>image.id===composerMediaId); const image=composerImages[index]; return image ? <ComposerSheet title="图片管理" full onClose={()=>setComposerMediaId(null)}><div className="composer-media-preview"><img src={image.url} alt={`第 ${index+1} 张图片预览`}/><div className="composer-media-actions"><button type="button" onClick={()=>setCoverIndex(index)}>{coverIndex===index ? "当前封面" : "设为封面"}</button><button type="button" disabled={index===0} onClick={()=>moveComposerImage(index,-1)}>前移</button><button type="button" disabled={index===composerImages.length-1} onClick={()=>moveComposerImage(index,1)}>后移</button><label>替换图片<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event=>{void replaceComposerImage(image.id,event.target.files?.[0]);event.currentTarget.value="";}}/></label><button type="button" disabled={draftSaving || uploadingImages} onClick={async()=>{await removeComposerImage(index);setComposerMediaId(null);}}>删除</button></div></div></ComposerSheet> : null; })()}
             {modal === "write" && markdownPreviousBody !== null && <div className="composer-markdown-applied" role="status"><span>已应用 Markdown 优化</span><button type="button" onClick={undoMarkdownOptimize}>撤回</button></div>}
+            {modal === "write" && publishChoice && <div className="composer-outcome" role="dialog" aria-modal="true" aria-label="发布选择">
+              <div className="composer-outcome-card">
+                <span className="composer-outcome-icon is-pending" aria-hidden="true">⌛</span>
+                <h2>正在发布作品</h2>
+                <p>你的作品正在上传和处理。你可以返回主页继续浏览，也可以留在当前页面查看发布进度。</p>
+                <div className="composer-outcome-summary">
+                  <div><strong>{publishChoice.title}</strong><small>任务已接管，离开本页不会取消发布</small></div>
+                </div>
+                <div className="composer-outcome-actions">
+                  <button type="button" className="primary-button" onClick={publishAndLeave}>返回主页</button>
+                  <button type="button" className="soft-button" onClick={confirmPublishChoice}>留在此页等待</button>
+                </div>
+                <p className="composer-outcome-hint">离开当前页面不会主动取消发布任务。</p>
+              </div>
+            </div>}
             {modal === "write" && composerOutcome && <div className="composer-outcome" role="dialog" aria-modal="true" aria-label="发布结果">
               <div className="composer-outcome-card">
                 <span className={`composer-outcome-icon is-${composerOutcome.kind}`} aria-hidden="true">{composerOutcome.kind === "published" ? "✓" : "⌛"}</span>
