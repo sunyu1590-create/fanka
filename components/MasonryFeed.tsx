@@ -60,7 +60,7 @@ export default function MasonryFeed<T>({ items, getKey, render, columns = 2, res
     if (!container) return;
     const measure = () => {
       const width = container.clientWidth;
-      const next = width >= 1024 ? Math.max(base, 4) : width >= 700 ? Math.max(base, 3) : base;
+      const next = width >= 1024 ? Math.max(base, 4) : width >= 768 ? Math.max(base, 3) : base;
       setColumnCount((current) => (current === next ? current : next));
     };
     measure();

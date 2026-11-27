@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Post } from "@/lib/content";
 import type { CardRarityTier } from "@/lib/progression";
+import ProgressiveImage from "./ProgressiveImage";
+import { feedImageSource } from "@/lib/feed-images";
 
 export type CardContentState = "loading" | "ready" | "error";
 
@@ -57,6 +59,7 @@ export default function CardBackFace({ post, state, rarityLabel, rarityTier, onR
     const body = bodyRef.current;
     const excerpt = excerptRef.current;
     if (!body || !excerpt) return;
+    const rafId = { current: 0 };
     const measure = () => {
       const style = window.getComputedStyle(excerpt);
       const bodyStyle = window.getComputedStyle(body);
@@ -73,10 +76,14 @@ export default function CardBackFace({ post, state, rarityLabel, rarityTier, onR
       const lines = Math.floor(available / lineHeight);
       setExcerptLines(Math.max(1, Math.min(8, lines)));
     };
-    measure();
-    const observer = new ResizeObserver(measure);
+    const scheduleMeasure = () => {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+      rafId.current = requestAnimationFrame(measure);
+    };
+    scheduleMeasure();
+    const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(body);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); if (rafId.current) cancelAnimationFrame(rafId.current); };
   }, [post?.id, post?.title, post?.body, imageState]);
 
   if (state !== "ready" || !post) {
@@ -120,15 +127,14 @@ export default function CardBackFace({ post, state, rarityLabel, rarityTier, onR
     <span className={`card-flip-face card-flip-back${hasImage ? " has-image" : " is-text"}`}>
       {hasImage && (
         <span className="card-back-media">
-          <img
-            key={image}
-            src={image}
+          <ProgressiveImage
+            src={image!}
+            lowSrc={feedImageSource(image)}
             alt=""
-            loading="lazy"
-            decoding="async"
-            data-state={imageState}
-            onLoad={() => setImageState("ready")}
-            onError={() => setImageState("failed")}
+            fallbackRatio={0.75}
+            priority={false}
+            onHighReady={() => setImageState("ready")}
+            onHighError={() => setImageState("failed")}
           />
           {imageState === "loading" && <span className="card-back-skeleton is-media" aria-hidden="true" />}
           <span className="card-back-scrim" aria-hidden="true" />

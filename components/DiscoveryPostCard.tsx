@@ -6,6 +6,7 @@ import { feedImageSource } from "@/lib/feed-images";
 import type { Post } from "@/lib/content";
 import { markdownToText } from "./MarkdownContent";
 import { ProfileBadgeMarks } from "./ProfileBadgeList";
+import ProgressiveImage from "./ProgressiveImage";
 
 type DiscoveryPostCardProps = {
   post: Post;
@@ -42,7 +43,7 @@ export default function DiscoveryPostCard({
     }
     return [0.78, 0.88, 1.02][seed % 3];
   })();
-  const source = feedImageSource(post.thumbnailImages?.[0] || post.image || post.images?.[0]);
+  const source = feedImageSource(post.thumbnailImages?.[0] || post.image || post.images?.[0], true);
   const retrySource = source
     ? source.startsWith("data:")
       ? source
@@ -71,15 +72,15 @@ export default function DiscoveryPostCard({
           onClick={openDetail}
         >
           {source && (
-            <img
+            <ProgressiveImage
               key={retryCount}
-              src={retrySource}
+              src={retrySource || source || ""}
+              lowSrc={feedImageSource(post.thumbnailImages?.[0] || post.image || post.images?.[0])}
               alt=""
-              loading="lazy"
-              decoding="async"
-              fetchPriority="low"
-              onLoad={() => setImageFailed(false)}
-              onError={() => setImageFailed(true)}
+              fallbackRatio={coverRatio}
+              priority={false}
+              onHighReady={() => setImageFailed(false)}
+              onHighError={() => setImageFailed(true)}
             />
           )}
           {!source && coverVideo && <video src={coverVideo} muted playsInline preload="metadata" aria-label="视频作品封面" />}

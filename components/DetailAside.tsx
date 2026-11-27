@@ -124,7 +124,10 @@ export default function DetailAside({ post, accountId, related, onOpenAuthor, on
     setActiveId(id);
   }, [pageMode]);
 
-  const relatedItems = useMemo(() => related.filter((item) => item.id !== post.id).slice(0, 3), [related, post.id]);
+  const relatedItems = useMemo(() => {
+    const max = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches ? 5 : 3;
+    return related.filter((item) => item.id !== post.id).slice(0, max);
+  }, [related, post.id]);
 
   return (
     <aside className="detail-aside" aria-label="作者、目录与相关内容">

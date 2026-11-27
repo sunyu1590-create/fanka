@@ -416,6 +416,15 @@
 .related-topics { display: flex; flex-wrap: wrap; gap: 6px; }
 .related-topics button { min-height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 10.5px; cursor: pointer; }
 
+@media (min-width: 1024px) {
+  .related-strip { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-columns: auto; overflow: visible; }
+  .related-card-cover { aspect-ratio: 16 / 9; }
+}
+
+@media (min-width: 1440px) {
+  .related-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 /* ---------- 宽屏 ---------- */
 @media (min-width: 760px) {
   .series-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 16px; }

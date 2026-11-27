@@ -1372,14 +1372,28 @@
   background: var(--rd-accent);
 }
 
-/* 空间足够宽才显示左侧目录（1800px 起，留出操作轨+间隙）；
+/* 空间足够宽才显示左侧目录（1280px 起，留出操作轨+间隙）；
    更窄的桌面用右栏里的目录块，手机用顶栏面板，都不会挤压正文。 */
-@media (min-width: 1800px) {
+@media (min-width: 1280px) {
   .reader-toc-aside { display: grid; }
 }
 
 /* 评论抽屉打开时优先保证正文与评论宽度，左侧目录自动折叠 */
 body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
+
+/* 桌面端评论面板：右侧抽屉，宽度随屏宽伸缩 */
+@media (min-width: 1024px) {
+  .comment-panel-layer { justify-content: flex-end; }
+  .comment-panel {
+    width: min(420px, 30vw);
+    height: 100dvh;
+    max-height: 100dvh;
+    margin-top: 0;
+    border-radius: 0;
+    box-shadow: -18px 0 48px rgba(0, 0, 0, .38);
+  }
+  .comment-panel.is-expanded { height: 100dvh; }
+}
 
 /* ---------- 数学公式 ---------- */
 

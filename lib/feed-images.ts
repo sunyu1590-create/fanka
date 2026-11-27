@@ -1,7 +1,8 @@
 const APP_ORIGIN = "https://heika.invalid";
 
-/** Select a small, feed-only image URL without changing detail-page sources. */
-export function feedImageSource(source?: string | null): string | undefined {
+/** Select a small, feed-only image URL without changing detail-page sources.
+ * Pass desktop=true for higher-quality thumbnails suitable for retina / wide screens. */
+export function feedImageSource(source?: string | null, desktop = false): string | undefined {
   if (!source) return undefined;
 
   let url: URL;
@@ -13,14 +14,14 @@ export function feedImageSource(source?: string | null): string | undefined {
 
   if (url.origin === APP_ORIGIN && url.pathname === "/api/v1/media" && url.searchParams.has("path")) {
     url.searchParams.set("redirect", "1");
-    url.searchParams.set("variant", "feed");
+    url.searchParams.set("variant", desktop ? "feed_hd" : "feed");
     return `${url.pathname}${url.search}`;
   }
 
   if (url.hostname === "images.unsplash.com") {
     url.searchParams.set("auto", "format");
-    url.searchParams.set("w", "640");
-    url.searchParams.set("q", "76");
+    url.searchParams.set("w", desktop ? "960" : "640");
+    url.searchParams.set("q", desktop ? "80" : "76");
     return url.href;
   }
 
