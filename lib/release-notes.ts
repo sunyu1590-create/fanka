@@ -7,6 +7,19 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.68.0",
+    date: "2026.11.27",
+    notes: [
+      { category: "体验优化", text: "网页端桌面体验专项重构：覆盖翻卡、图片加载、个人主页、文章详情、发布页面与公共组件六大模块，全面适配 1024px 以上桌面视口。" },
+      { category: "体验优化", text: "翻卡体验升级：CardFace 接入 ProgressiveImage 渐进式图片加载，card variant 去重定向，行数计算加入 rAF 批处理减少布局抖动。" },
+      { category: "体验优化", text: "图片加载统一优化：全站接入 ProgressiveImage 组件，Feed 缩略图桌面端提升至 w=960/q=80 高清规格，站内媒体使用 feed_hd 变体。" },
+      { category: "体验优化", text: "个人主页桌面适配：新增 1024px/1440px 响应式断点，内容区上限 1100px/1280px，Masonry 瀑布流支持 3-4 列布局。" },
+      { category: "体验优化", text: "文章详情桌面排版：EditorialArticle 三栏布局（64px+min(720px,1fr)+320px），DetailAside 侧栏扩展至 5 条推荐，阅读体验对齐杂志级排版。" },
+      { category: "体验优化", text: "发布页面桌面双栏：Modal 扩展至 960px/1080px，编辑区与 AI 工作台左右分栏，提升桌面端创作效率。" },
+      { category: "体验优化", text: "公共组件响应式增强：ReaderTocAside 在 1280px 以下降级为折叠按钮，MasonryFeed 新增 768px 三列中间档，RelatedContent 网格化布局，CommentPanel 宽度限制为 min(420px,30vw)。" },
+    ],
+  },
+  {
     version: "2.67.0",
     date: "2026.11.26",
     notes: [
