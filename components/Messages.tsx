@@ -12,8 +12,8 @@ import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelco
 import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
 import { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
-import { chatApi, QUICK_REACTIONS, SAFETY_NOTICE, type ChatSettings } from "@/lib/chat-api";
-import { ChatSettingsPanel, ChatSearchPanel, ChatMediaPanel, ChatRequestsPanel, ChatPrivacyPanel } from "./ChatPanels";
+import { chatApi, SAFETY_NOTICE, type ChatSettings } from "@/lib/chat-api";
+import { ChatSettingsPanel, ChatSearchPanel, ChatMediaPanel, ChatRequestsPanel, ChatPrivacyPanel, MessageActionSheet, ConversationActionSheet } from "./ChatPanels";
 type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null; badges?: ProfileBadge[] };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
 /** 撤回窗口（秒），与服务端 180 秒保持一致。 */
@@ -70,7 +70,6 @@ export default function Messages({
     [otp, setOtp] = useState(""),
     [recoveryCode, setRecoveryCode] = useState(""),
     [error, setError] = useState(""),
-    [confirmDelete, setConfirmDelete] = useState(false),
     [newRecoveryCodes, setNewRecoveryCodes] = useState<string[]>([]),
     [authMessage, setAuthMessage] = useState(""),
     [resendSeconds, setResendSeconds] = useState(0),
@@ -109,6 +108,8 @@ export default function Messages({
     onConversationChange?.(room !== null);
   }, [onConversationChange]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [actionRoom, setActionRoom] = useState<Room | null>(null);
+  const [actionRoomSettings, setActionRoomSettings] = useState<ChatSettings | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
@@ -673,6 +674,26 @@ export default function Messages({
       setPanel(null); updateActiveConversation(null); setMessages([]); void refresh();
     } catch (e) { setError(e instanceof Error ? e.message : "清空失败"); }
   };
+  // 收件箱会话行的「更多」：就地打开操作面板，不必先进入会话（进入会话会让用户以为只是跳转）。
+  const openRoomActions = (room: Room) => {
+    setActionRoom(room);
+    setActionRoomSettings(null);
+    void chatApi.settings(room.id).then(setActionRoomSettings).catch(() => {});
+  };
+  const patchRoomSettings = async (patch: Partial<ChatSettings>) => {
+    if (!actionRoom) return;
+    const prev = actionRoomSettings;
+    setActionRoomSettings((s) => (s ? { ...s, ...patch } : s));
+    try {
+      const next = await chatApi.updateSettings(actionRoom.id, patch);
+      setActionRoomSettings(next);
+      setActionRoom(null);
+      void refresh(); void refreshCounters();
+    } catch (e) {
+      setActionRoomSettings(prev);
+      setError(e instanceof Error ? e.message : "设置保存失败");
+    }
+  };
   const search = async () => {
     if (!db || !user) return;
     const { data, error } = await db
@@ -777,7 +798,7 @@ export default function Messages({
         <button type="button" onClick={() => setPanel("requests")}>
           <Users size={15} />消息请求{requestCount > 0 && <i className="chat-entry-badge">{requestCount > 99 ? "99+" : requestCount}</i>}
         </button>
-        <button type="button" onClick={() => setPanel("settings")} disabled={!rooms.length}>
+        <button type="button" onClick={() => setPanel("settings")}>
           <Bookmark size={15} />聊天设置
         </button>
       </div>}
@@ -839,7 +860,7 @@ export default function Messages({
               </button>
               <div className="conversation-row-actions">
                 <button type="button" className={`conversation-pin${pinnedRooms.includes(r.id) ? " is-pinned" : ""}`} aria-label={pinnedRooms.includes(r.id) ? "取消置顶会话" : "置顶会话"} aria-pressed={pinnedRooms.includes(r.id)} onClick={() => void togglePinnedRoom(r.id)}><Pin size={15}/></button>
-                <button type="button" className="conversation-pin" aria-label="会话设置（免打扰、标记未读、归档）" onClick={() => { const room = rooms.find((x) => x.id === r.id)!; updateActiveConversation(room); setMessages([]); void load(room).then(() => setPanel("settings")); }}><MoreHorizontal size={15}/></button>
+                <button type="button" className="conversation-pin" aria-label="会话操作（置顶、免打扰、标记未读、归档）" onClick={() => openRoomActions(r)}><MoreHorizontal size={15}/></button>
               </div>
             </div>
           );
@@ -893,72 +914,35 @@ export default function Messages({
           ...(settings?.bubble_color ? { ["--chat-bubble" as string]: settings.bubble_color } : {}),
           ...(settings?.font_scale ? { ["--chat-font-scale" as string]: settings.font_scale } : {}),
         } as React.CSSProperties}>
-          {selectedMessage && (
-            <div className="modal-backdrop">
-              <div className="modal">
-                <h2>消息操作</h2>
-                <div className="settings-list">
-                  <button
-                    onClick={() => {
-                      void navigator.clipboard.writeText(selectedMessage.body);
-                      setSelectedMessage(null);
-                    }}
-                  >
-                    复制文字
-                  </button>
-                  <button onClick={() => { setQuote(selectedMessage); setSelectedMessage(null); textareaRef.current?.focus(); }}>引用回复</button>
-                  <button onClick={() => { void doFavorite(selectedMessage); setSelectedMessage(null); }}>收藏消息</button>
-                  <button onClick={() => { void doForward(selectedMessage); setSelectedMessage(null); }}>转发消息</button>
-                  <button onClick={() => { setMultiMode(true); setMultiSelected([selectedMessage.id]); setSelectedMessage(null); }}>多选</button>
-                  <div className="chat-quick-reactions">
-                    {QUICK_REACTIONS.map((emoji) => (
-                      <button key={emoji} onClick={() => { void doReact(selectedMessage, emoji); setSelectedMessage(null); }} aria-label={`回应 ${emoji}`}>{emoji}</button>
-                    ))}
-                  </div>
-                  {selectedMessage.sender_id === user.id && (() => {
-                    const sentAt = new Date(selectedMessage.created_at).getTime();
-                    // 服务端窗口 180 秒，这里留 5 秒余量，避免"显示还剩 1 秒却失败"。
-                    const left = Math.max(0, sentAt + (RECALL_SECONDS - 5) * 1000 - now);
-                    if (left <= 0) {
-                      return <button disabled aria-disabled="true">已超过 3 分钟，无法撤回</button>;
-                    }
-                    const clock = `${String(Math.floor(left / 1000 / 60)).padStart(2, "0")}:${String(Math.floor((left / 1000) % 60)).padStart(2, "0")}`;
-                    return (
-                      <button
-                        className={confirmDelete ? "danger-button" : undefined}
-                        onClick={async () => {
-                          if (!confirmDelete) {
-                            setConfirmDelete(true);
-                            return;
-                          }
-                          const target = selectedMessage;
-                          setConfirmDelete(false);
-                          setSelectedMessage(null);
-                          await doRecall(target);
-                        }}
-                      >
-                        {confirmDelete ? "确认撤回（对话双方都看不到）" : `撤回消息 · ${clock}`}
-                      </button>
-                    );
-                  })()}
-                  {selectedMessage.sender_id === user.id && !selectedMessage.recalled && !selectedMessage.media_path && (() => {
-                    const left = new Date(selectedMessage.created_at).getTime() + (900 - 5) * 1000 - now;
-                    if (left <= 0) return <button disabled aria-disabled="true">已超过 15 分钟，无法编辑</button>;
-                    return <button onClick={() => { setEditing(selectedMessage); setDraft(selectedMessage.body); setSelectedMessage(null); textareaRef.current?.focus(); }}>编辑消息</button>;
-                  })()}
-                  <button
-                    onClick={() => {
-                      void report(selectedMessage);
-                      setSelectedMessage(null);
-                    }}
-                  >
-                    举报
-                  </button>
-                  <button onClick={() => { setConfirmDelete(false); setSelectedMessage(null); }}>取消</button>
-                </div>
-              </div>
-            </div>
-          )}
+          {selectedMessage && (() => {
+            const mine = selectedMessage.sender_id === user!.id;
+            const sentAt = new Date(selectedMessage.created_at).getTime();
+            // 服务端窗口 180 秒，前端留 5 秒余量，避免"显示还剩 1 秒却失败"。
+            const canRecall = mine && !selectedMessage.recalled && sentAt + (RECALL_SECONDS - 5) * 1000 > now;
+            const canEdit = mine && !selectedMessage.recalled && !selectedMessage.media_path && sentAt + (900 - 5) * 1000 > now;
+            return (
+              <MessageActionSheet
+                message={selectedMessage}
+                mine={mine}
+                canRecall={canRecall}
+                canEdit={canEdit}
+                onClose={() => setSelectedMessage(null)}
+                onReact={(emoji) => { void doReact(selectedMessage, emoji); setSelectedMessage(null); }}
+                onAction={(action) => {
+                  const target = selectedMessage;
+                  if (action === "copy") { void navigator.clipboard.writeText(target.body); setSelectedMessage(null); return; }
+                  if (action === "quote") { setQuote(target); setSelectedMessage(null); textareaRef.current?.focus(); return; }
+                  if (action === "favorite") { void doFavorite(target); setSelectedMessage(null); return; }
+                  if (action === "forward") { void doForward(target); setSelectedMessage(null); return; }
+                  if (action === "multi") { setMultiMode(true); setMultiSelected([target.id]); setSelectedMessage(null); return; }
+                  if (action === "edit") { setEditing(target); setDraft(target.body); setSelectedMessage(null); textareaRef.current?.focus(); return; }
+                  if (action === "recall") { setSelectedMessage(null); void doRecall(target); return; }
+                  void report(target);
+                  setSelectedMessage(null);
+                }}
+              />
+            );
+          })()}
           <header className="chat-topbar">
             <button
               className="chat-back"
@@ -1024,7 +1008,6 @@ export default function Messages({
                       pressTimer.current = setTimeout(() => {
                         pressTimer.current = null;
                         setSelectedMessage(m);
-                        setConfirmDelete(false);
                       }, 420);
                     }}
                     onPointerUp={() => {
@@ -1211,11 +1194,12 @@ export default function Messages({
         </div>
       )}
       {/* ---- Chat 2.0 功能面板 ---- */}
-      {panel === "settings" && active && (
-        <ChatSettingsPanel conversation={active.id} peer={names[peer] || { id: peer, nickname: "探索者", bio: "" }}
+      {panel === "settings" && (
+        <ChatSettingsPanel conversation={active?.id} peer={active ? (names[peer] || { id: peer, nickname: "探索者", bio: "" }) : undefined}
           onClose={() => setPanel(null)} onNotice={(m) => setError(m)}
           onOpenMedia={() => setPanel("media")} onOpenFavorites={() => setPanel("search")}
           onOpenSearch={() => setPanel("search")} onOpenPrivacy={() => setPanel("privacy")}
+          onOpenRequests={() => setPanel("requests")}
           onCleared={() => void clearChat()} />
       )}
       {panel === "search" && (
@@ -1236,6 +1220,16 @@ export default function Messages({
           onOpened={(id) => { setPanel(null); const room = rooms.find((r) => r.id === id); void refreshCounters(); void refresh(); if (room) { updateActiveConversation(room); void load(room); } }} />
       )}
       {panel === "privacy" && <ChatPrivacyPanel onClose={() => setPanel(null)} onNotice={(m) => setError(m)} />}
+      {actionRoom && (
+        <ConversationActionSheet
+          nickname={names[actionRoom.user_a === user!.id ? actionRoom.user_b : actionRoom.user_a]?.nickname || "会话"}
+          settings={actionRoomSettings}
+          onClose={() => setActionRoom(null)}
+          onPatch={(patch) => void patchRoomSettings(patch)}
+          onMarkUnread={() => { void chatApi.markUnread(actionRoom.id, true).then(() => { setActionRoom(null); void refreshCounters(); void refresh(); }); }}
+          onOpenSettings={() => { const room = actionRoom; setActionRoom(null); updateActiveConversation(room); setMessages([]); void load(room).then(() => setPanel("settings")); }}
+        />
+      )}
     </section>
   );
 }

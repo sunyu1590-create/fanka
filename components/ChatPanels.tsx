@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft, BellOff, Bookmark, Check, ChevronRight, FileText, Image as ImageIcon,
   Pin, Search, Shield, Trash2, X, Archive, MessageSquare, Users, Palette, MonitorSmartphone,
@@ -9,10 +10,18 @@ import type { NoticeOptions } from "./NoticeBanner";
 
 type Profile = { id: string; nickname: string; avatar_url?: string | null; bio?: string };
 
+/**
+ * 所有聊天二级页统一挂到 body 根节点。
+ * 会话窗口 .chat-screen 自带 position/z-index 层叠上下文，面板若留在页面树里
+ * 会被它整片盖住（表现为"点了没反应"），因此必须脱离父级层叠上下文渲染。
+ */
 function Panel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return (
-    <div className="chat-panel-backdrop" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="chat-panel">
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
+  return createPortal(
+    <div className="chat-panel-backdrop" role="dialog" aria-modal="true" aria-label={title} onClick={onClose}>
+      <div className="chat-panel" onClick={(e) => e.stopPropagation()}>
         <header className="chat-panel-head">
           <button type="button" className="chat-panel-back" onClick={onClose} aria-label="返回"><ArrowLeft size={20} /></button>
           <h2>{title}</h2>
@@ -20,7 +29,8 @@ function Panel({ title, onClose, children }: { title: string; onClose: () => voi
         </header>
         <div className="chat-panel-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -53,26 +63,31 @@ export function ChatSettingsPanel({
   onOpenFavorites,
   onOpenSearch,
   onOpenPrivacy,
+  onOpenRequests,
   onCleared,
 }: {
-  conversation: string;
-  peer: Profile;
+  /** 缺省表示从收件箱进入，只展示全局项（会话级设置需要具体会话）。 */
+  conversation?: string;
+  peer?: Profile;
   onClose: () => void;
   onNotice?: (m: string, o?: NoticeOptions) => void;
   onOpenMedia: () => void;
   onOpenFavorites: () => void;
   onOpenSearch: () => void;
   onOpenPrivacy: () => void;
+  onOpenRequests?: () => void;
   onCleared: () => void;
 }) {
   const [settings, setSettings] = useState<ChatSettings | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   useEffect(() => {
+    if (!conversation) { setSettings(null); return; }
     let alive = true;
     void chatApi.settings(conversation).then((s) => { if (alive) setSettings(s); }).catch(() => {});
     return () => { alive = false; };
   }, [conversation]);
   const update = async (patch: Partial<ChatSettings>) => {
+    if (!conversation) return;
     setSettings((s) => (s ? { ...s, ...patch } : s));
     try {
       const next = await chatApi.updateSettings(conversation, patch);
@@ -82,11 +97,27 @@ export function ChatSettingsPanel({
     }
   };
 
+  // 收件箱入口：没有具体会话时只给全局项，避免出现"点了没反应"的空面板。
+  if (!conversation) {
+    return (
+      <Panel title="聊天设置" onClose={onClose}>
+        <section className="chat-settings-group">
+          <h3>消息与隐私</h3>
+          {onOpenRequests && <button type="button" className="chat-setting-link" onClick={onOpenRequests}><Users size={16} />陌生人消息请求<ChevronRight size={16} /></button>}
+          <button type="button" className="chat-setting-link" onClick={onOpenSearch}><Search size={16} />查找聊天记录<ChevronRight size={16} /></button>
+          <button type="button" className="chat-setting-link" onClick={onOpenFavorites}><Bookmark size={16} />收藏的消息<ChevronRight size={16} /></button>
+          <button type="button" className="chat-setting-link" onClick={onOpenPrivacy}><Shield size={16} />隐私与已读设置<ChevronRight size={16} /></button>
+        </section>
+        <p className="chat-panel-hint">置顶、免打扰、归档、聊天主题与字号属于单个会话：进入会话后点右上角 ⋯ 设置。</p>
+      </Panel>
+    );
+  }
+
   return (
     <Panel title="聊天设置" onClose={onClose}>
       <div className="chat-settings-peer">
-        <span className="conversation-avatar">{(peer.nickname || "探").slice(0, 1)}{peer.avatar_url && <img src={peer.avatar_url} alt="" />}</span>
-        <strong>{peer.nickname || "探索者"}</strong>
+        <span className="conversation-avatar">{(peer?.nickname || "探").slice(0, 1)}{peer?.avatar_url && <img src={peer.avatar_url} alt="" />}</span>
+        <strong>{peer?.nickname || "探索者"}</strong>
       </div>
       <section className="chat-settings-group">
         <h3>会话管理</h3>
@@ -318,44 +349,91 @@ export function ChatPrivacyPanel({ onClose, onNotice }: { onClose: () => void; o
   );
 }
 
-/** 消息操作面板：引用/复制/编辑/撤回/收藏/转发/表情回应/多选/举报。 */
-export function MessageActionPanel({
+/** 消息操作面板：表情横排 + 两列动作网格，整体控制在约 300px，不产生滚动。 */
+export function MessageActionSheet({
   message,
   mine,
   canRecall,
-  reactions,
+  canEdit,
   onClose,
   onAction,
   onReact,
 }: {
-  message: ChatMessage;
+  message: { body: string; recalled?: boolean | null };
   mine: boolean;
   canRecall: boolean;
-  reactions: Array<{ emoji: string; mine: boolean; count: number }>;
+  canEdit: boolean;
   onClose: () => void;
   onAction: (action: "copy" | "quote" | "edit" | "recall" | "favorite" | "forward" | "multi" | "report") => void;
   onReact: (emoji: string) => void;
 }) {
-  return (
-    <div className="chat-panel-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+  const [confirmRecall, setConfirmRecall] = useState(false);
+  const expired = mine && !canRecall && !canEdit;
+  return createPortal(
+    <div className="chat-panel-backdrop chat-sheet-backdrop" role="dialog" aria-modal="true" aria-label="消息操作" onClick={onClose}>
       <div className="chat-action-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="chat-react-row">
+        <p className="msg-action-preview">{message.recalled ? "撤回了一条消息" : (message.body || "（非文字消息）")}</p>
+        <div className="msg-react-row">
           {QUICK_REACTIONS.map((emoji) => (
             <button type="button" key={emoji} onClick={() => onReact(emoji)} aria-label={`回应 ${emoji}`}>{emoji}</button>
           ))}
         </div>
-        <div className="chat-action-options">
-          <button type="button" onClick={() => onAction("copy")}>复制</button>
+        <div className="msg-action-grid">
+          <button type="button" onClick={() => onAction("copy")}>复制文字</button>
           <button type="button" onClick={() => onAction("quote")}>引用回复</button>
-          <button type="button" onClick={() => onAction("favorite")}>收藏</button>
-          <button type="button" onClick={() => onAction("forward")}>转发</button>
+          <button type="button" onClick={() => onAction("favorite")}>收藏消息</button>
+          <button type="button" onClick={() => onAction("forward")}>转发消息</button>
           <button type="button" onClick={() => onAction("multi")}>多选</button>
-          {mine && canRecall && <button type="button" onClick={() => onAction("edit")}>编辑</button>}
-          {mine && canRecall && <button type="button" className="danger" onClick={() => onAction("recall")}>撤回</button>}
+          {canEdit && <button type="button" onClick={() => onAction("edit")}>编辑消息</button>}
+          {canRecall && (confirmRecall
+            ? <button type="button" className="danger" onClick={() => onAction("recall")}>确认撤回</button>
+            : <button type="button" className="danger" onClick={() => setConfirmRecall(true)}>撤回消息</button>)}
           <button type="button" className="danger" onClick={() => onAction("report")}>举报</button>
-          <button type="button" onClick={onClose}>取消</button>
         </div>
+        {confirmRecall && <p className="msg-action-hint">撤回后对话双方都看不到这条消息，且无法恢复。</p>}
+        {expired && <p className="msg-action-hint">已超过 3 分钟撤回 / 15 分钟编辑时限</p>}
+        <button type="button" className="chat-action-cancel" onClick={onClose}>取消</button>
       </div>
-    </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** 会话更多操作：不进入会话也能置顶/免打扰/标记未读/归档。 */
+export function ConversationActionSheet({
+  nickname,
+  settings,
+  onClose,
+  onPatch,
+  onMarkUnread,
+  onOpenSettings,
+}: {
+  nickname: string;
+  settings: ChatSettings | null;
+  onClose: () => void;
+  onPatch: (patch: Partial<ChatSettings>) => void;
+  onMarkUnread: () => void;
+  onOpenSettings: () => void;
+}) {
+  const row = (label: string, onClick: () => void, active = false) => (
+    <button type="button" className={`chat-action-row${active ? " is-on" : ""}`} onClick={onClick}>
+      <span>{label}</span>{active && <Check size={15} />}
+    </button>
+  );
+  return createPortal(
+    <div className="chat-panel-backdrop chat-sheet-backdrop" role="dialog" aria-modal="true" aria-label="会话操作" onClick={onClose}>
+      <div className="chat-action-sheet" onClick={(e) => e.stopPropagation()}>
+        <p className="msg-action-preview">{nickname}</p>
+        <div className="chat-action-list">
+          {row(settings?.pinned ? "取消置顶" : "置顶聊天", () => onPatch({ pinned: !settings?.pinned }), Boolean(settings?.pinned))}
+          {row(settings?.muted ? "关闭免打扰" : "消息免打扰", () => onPatch({ muted: !settings?.muted }), Boolean(settings?.muted))}
+          {row("标记为未读", onMarkUnread)}
+          {row(settings?.archived ? "取消归档" : "归档会话", () => onPatch({ archived: !settings?.archived }), Boolean(settings?.archived))}
+          <button type="button" className="chat-action-row" onClick={onOpenSettings}><span>聊天设置</span><ChevronRight size={15} /></button>
+        </div>
+        <button type="button" className="chat-action-cancel" onClick={onClose}>取消</button>
+      </div>
+    </div>,
+    document.body,
   );
 }

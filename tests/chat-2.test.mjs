@@ -13,6 +13,7 @@ const route = read("app/api/v1/messages/route.ts");
 const chatApi = read("lib/chat-api.ts");
 const messagesUi = read("components/Messages.tsx");
 const panels = read("components/ChatPanels.tsx");
+const chatCss = read("app/chat2.css");
 const androidVm = read("android-native/app/src/main/java/com/heika/nativeapp/feature/messages/MessagesViewModel.kt");
 
 test("database schema adds all Chat 2.0 message fields", () => {
@@ -76,4 +77,27 @@ test("privacy rules: personal settings never leak to peer, archived hidden from 
   assert.match(migration, /pinned bool|pinned boolean/);
   assert.match(migration, /manual_unread/);
   assert.match(route, /settingsByRoom\.get\(row\.id\)\?\.archived/);
+});
+
+// 回归：/api/v1/messages 只认 Bearer 令牌，客户端漏带会全量 401，
+// 而 UI 普遍 .catch() 兜底，表现为"按钮点了没反应"，静态断言必须守住这一点。
+test("chat client always attaches the session bearer token", () => {
+  assert.match(chatApi, /Authorization: `Bearer \$\{data\.session\.access_token\}`/);
+  assert.match(chatApi, /await db\.auth\.getSession\(\)/);
+});
+
+// 回归：聊天面板若留在页面树里会被 .chat-screen 的层叠上下文整片盖住。
+test("chat panels render through a portal so the chat window cannot cover them", () => {
+  assert.match(panels, /createPortal/);
+  assert.match(panels, /document\.body/);
+  // 必须高于 .chat-screen(60/80) 与 .bottom-nav(200)。
+  assert.match(chatCss, /\.chat-panel-backdrop\{[^}]*z-index:400/);
+});
+
+// 回归：消息操作面板曾被 .settings-list button 的 54px 整行规则命中，被撑成超长列表。
+test("message action sheet uses its own compact grid instead of settings-list", () => {
+  assert.match(panels, /msg-action-grid/);
+  assert.match(panels, /msg-react-row/);
+  const sheet = panels.slice(panels.indexOf("MessageActionSheet"));
+  assert.doesNotMatch(sheet.slice(0, 2000), /settings-list/);
 });

@@ -3,6 +3,8 @@
  * All chat actions go through /api/v1/messages so web and native share one protocol.
  */
 
+import { browserDb } from "./browser-db";
+
 export type ChatSettings = {
   pinned: boolean;
   pinned_at: string | null;
@@ -45,9 +47,18 @@ export const CHAT_THEMES: Array<{ id: string; name: string; swatch: string; bubb
 ];
 
 async function request<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  // /api/v1/messages 只认 Bearer 令牌（lib/server/api.ts context），不会读 cookie。
+  // 这里必须显式带上会话令牌，否则所有聊天写入都会 401，表现为"点了没反应"。
+  const db = await browserDb();
+  const { data } = await db.auth.getSession();
+  if (!data.session) throw new Error("请先登录");
   const response = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${data.session.access_token}`,
+      ...(init?.headers || {}),
+    },
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.error || "请求失败，请稍后重试");
