@@ -48,7 +48,7 @@ function arg(body: Record<string, unknown>, key: string): unknown {
  */
 export async function GET(req: NextRequest) {
   return respond(async () => {
-    const { user } = await context(req);
+    const { db: userDb, user } = await context(req);
     const me = user!.id;
     const db = adminClient();
     const p = req.nextUrl.searchParams;
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
       if (q.length < 1 || q.length > 60) throw new ApiError(400, "搜索关键词须为 1-60 字");
       const before = p.get("before");
       const room = p.get("conversation");
-      const { data, error } = await db.rpc("dm_search", {
+      const { data, error } = await userDb.rpc("dm_search", {
         q,
         room: room ? uuid(room, "会话") : null,
         before: before || null,
@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
       await membership(db, id, me);
       const kind = p.get("kind") || "all";
       const before = p.get("before");
-      const { data, error } = await db.rpc("dm_media_library", {
+      const { data, error } = await userDb.rpc("dm_media_library", {
         room: id, kind, before: before || null, lim: 30,
       });
       if (error) throw new ApiError(503, "资源库加载失败");
@@ -285,7 +285,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   return respond(async () => {
     await requireFeature("dm");
-    const { user } = await context(req);
+    const { db: userDb, user } = await context(req);
     await requireAbility(user!.id, "dm");
     const me = user!.id;
     const body = await jsonBody(req);
@@ -316,13 +316,13 @@ export async function POST(req: NextRequest) {
       const content = typeof body.content === "string" ? body.content.trim() : "";
       if (!content || content.length > 2000) throw new ApiError(400, "消息内容须为 1-2000 字");
       const nonce = typeof body.nonce === "string" && /^[0-9a-f-]{36}$/i.test(body.nonce) ? body.nonce : crypto.randomUUID();
-      const { data: row, error } = await db.rpc("dm_send_v2", {
+      const { data: row, error } = await userDb.rpc("dm_send_v2", {
         room: conversation!.id, content, nonce: crypto.randomUUID(), reply: null,
         kind: "text", meta: {},
       });
       if (error) throw new ApiError(400, error.message || "消息发送失败");
       // nonce 仅为客户端幂等提示，正式消息 id 由服务端确定；回传 nonce 供客户端替换乐观气泡。
-      await db.rpc("dm_mark_read_v2", { room: conversation!.id, last_message: null });
+      await userDb.rpc("dm_mark_read_v2", { room: conversation!.id, last_message: null });
       return { ...row, client_nonce: nonce };
     }
 
@@ -334,12 +334,12 @@ export async function POST(req: NextRequest) {
       const nonce = uuid(body.nonce ?? crypto.randomUUID(), "客户端消息标识");
       const reply = body.reply ? uuid(body.reply, "引用消息") : null;
       const meta = body.meta && typeof body.meta === "object" ? body.meta : {};
-      const { data: row, error } = await db.rpc("dm_send_v2", {
+      const { data: row, error } = await userDb.rpc("dm_send_v2", {
         room: conversation!.id, content: content || (kind === "text" ? "" : " "),
         nonce, reply, kind, meta,
       });
       if (error) throw new ApiError(400, error.message || "消息发送失败");
-      await db.rpc("dm_mark_read_v2", { room: conversation!.id, last_message: null });
+      await userDb.rpc("dm_mark_read_v2", { room: conversation!.id, last_message: null });
       return row;
     }
 
@@ -348,7 +348,7 @@ export async function POST(req: NextRequest) {
       const messageId = uuid(body.message, "消息");
       const content = typeof body.content === "string" ? body.content.trim() : "";
       const expectVersion = typeof body.version === "number" ? body.version : null;
-      const { data, error } = await db.rpc("dm_edit_v2", { message_id: messageId, content, expect_version: expectVersion });
+      const { data, error } = await userDb.rpc("dm_edit_v2", { message_id: messageId, content, expect_version: expectVersion });
       if (error) throw new ApiError(400, error.message || "编辑失败");
       return data;
     }
@@ -362,7 +362,7 @@ export async function POST(req: NextRequest) {
       if (message.sender_id !== me) throw new ApiError(403, "只能撤回自己发送的消息");
       const age = Date.now() - new Date(message.created_at as string).getTime();
       if (age > RECALL_WINDOW_MS + RECALL_GRACE_MS) throw new ApiError(403, "超过 3 分钟，这条消息已经无法撤回");
-      const { data, error } = await db.rpc("dm_recall_v2", { message_id: messageId });
+      const { data, error } = await userDb.rpc("dm_recall_v2", { message_id: messageId });
       if (error) throw new ApiError(400, error.message || "撤回失败");
       return { recalled: messageId, deleted: messageId, window_seconds: RECALL_WINDOW_MS / 1000, ...(data ?? {}) };
     }
@@ -371,7 +371,7 @@ export async function POST(req: NextRequest) {
     if (action === "react") {
       const messageId = uuid(body.message, "消息");
       const emoji = String(body.emoji ?? "");
-      const { data, error } = await db.rpc("dm_react", { message_id: messageId, emoji });
+      const { data, error } = await userDb.rpc("dm_react", { message_id: messageId, emoji });
       if (error) throw new ApiError(400, error.message || "回应失败");
       return data;
     }
@@ -379,7 +379,7 @@ export async function POST(req: NextRequest) {
     // ---- 收藏 ----
     if (action === "favorite") {
       const messageId = uuid(body.message, "消息");
-      const { data, error } = await db.rpc("dm_favorite_toggle", { message_id: messageId });
+      const { data, error } = await userDb.rpc("dm_favorite_toggle", { message_id: messageId });
       if (error) throw new ApiError(400, error.message || "收藏失败");
       return data;
     }
@@ -388,7 +388,7 @@ export async function POST(req: NextRequest) {
     if (action === "forward") {
       const source = uuid(body.message, "原消息");
       const nonce = uuid(body.nonce ?? crypto.randomUUID(), "客户端消息标识");
-      const { data, error } = await db.rpc("dm_forward", {
+      const { data, error } = await userDb.rpc("dm_forward", {
         source_message: source, to_room: conversation!.id, nonce,
       });
       if (error) throw new ApiError(400, error.message || "转发失败");
@@ -397,7 +397,7 @@ export async function POST(req: NextRequest) {
 
     // ---- 会话设置（置顶/免打扰/归档/标记未读/主题）----
     if (action === "settings") {
-      const { data, error } = await db.rpc("dm_settings_upsert", {
+      const { data, error } = await userDb.rpc("dm_settings_upsert", {
         room: conversation!.id,
         p_pinned: typeof body.pinned === "boolean" ? body.pinned : null,
         p_muted: typeof body.muted === "boolean" ? body.muted : null,
@@ -415,7 +415,7 @@ export async function POST(req: NextRequest) {
 
     // ---- 标记未读（个人状态，独立于真实游标）----
     if (action === "mark_unread") {
-      const { data, error } = await db.rpc("dm_settings_upsert", {
+      const { data, error } = await userDb.rpc("dm_settings_upsert", {
         room: conversation!.id, p_manual_unread: body.unread !== false,
       });
       if (error) throw new ApiError(400, error.message || "标记失败");
@@ -425,7 +425,7 @@ export async function POST(req: NextRequest) {
     // ---- 标记已读（真实游标，单调推进）----
     if (action === "read") {
       const lastMessage = body.last_message ? uuid(body.last_message, "消息") : null;
-      const { error } = await db.rpc("dm_mark_read_v2", { room: conversation!.id, last_message: lastMessage });
+      const { error } = await userDb.rpc("dm_mark_read_v2", { room: conversation!.id, last_message: lastMessage });
       if (error) throw new ApiError(400, error.message || "标记已读失败");
       await db.from("dm_conversation_settings").update({ manual_unread: false })
         .eq("user_id", me).eq("conversation_id", conversation!.id);
@@ -436,7 +436,7 @@ export async function POST(req: NextRequest) {
     if (action === "request_send") {
       const recipient = uuid(body.peer, "用户");
       const content = typeof body.content === "string" ? body.content.trim() : "";
-      const { data, error } = await db.rpc("dm_request_send", {
+      const { data, error } = await userDb.rpc("dm_request_send", {
         recipient, content, image_path: typeof body.image_path === "string" ? body.image_path : null,
       });
       if (error) throw new ApiError(400, error.message || "请求发送失败");
@@ -444,14 +444,14 @@ export async function POST(req: NextRequest) {
     }
     if (action === "request_accept") {
       const requestId = uuid(body.request, "消息请求");
-      const { data, error } = await db.rpc("dm_accept_request", { request_id: requestId });
+      const { data, error } = await userDb.rpc("dm_accept_request", { request_id: requestId });
       if (error) throw new ApiError(400, error.message || "接受失败");
       return { conversation_id: data };
     }
     if (action === "request_update") {
       const requestId = uuid(body.request, "消息请求");
       const status = String(body.status ?? "ignored");
-      const { error } = await db.rpc("dm_request_update", { request_id: requestId, status });
+      const { error } = await userDb.rpc("dm_request_update", { request_id: requestId, status });
       if (error) throw new ApiError(400, error.message || "操作失败");
       return { updated: true };
     }
