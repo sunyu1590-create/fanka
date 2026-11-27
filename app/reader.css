@@ -1745,3 +1745,73 @@ body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
     background: var(--rd-page);
   }
 }
+
+/* P0: 桌面端文章详情四区布局修复（解除 820px 硬限宽，正文与封面宽度解耦） */
+@media (min-width: 1024px) {
+  .overlay.detail-ready { inset-inline: max(24px, calc((100vw - 1720px) / 2)); inset-block: 24px; }
+  .detail .detail-body, .detail-page .detail-body {
+    max-width: none; width: 100%; display: grid; align-items: start;
+    grid-template-columns: 56px minmax(0, 760px);
+    column-gap: clamp(20px, 2vw, 32px); justify-content: center;
+  }
+  .detail .detail-body { padding: 28px clamp(20px, 2.4vw, 40px) 48px; }
+  .detail .detail-body > .detail-rail, .detail-page .detail-body > .detail-rail { grid-column: 1; grid-row: 1; }
+  .detail .detail-body > .detail-main, .detail-page .detail-body > .detail-main { grid-column: 2; grid-row: 1; min-width: 0; }
+  .detail .detail-body > .reader-toc-aside, .detail-page .detail-body > .reader-toc-aside { grid-column: 1; display: none; }
+  .detail-article-column { width: 100%; max-width: 760px; margin-inline: auto; }
+  .detail-article-column .article-markdown, .detail-article-column .markdown-content { max-width: 100%; min-width: 0; font-size: 17px; line-height: 1.9; }
+  .detail-article-column > .detail-gallery, .detail-article-column > .detail-image-button { width: 100%; margin: 0 0 22px; }
+  .detail-article-column .detail-image-button > img { width: 100%; max-width: 100%; max-height: var(--detail-media-max); object-fit: contain; margin-inline: auto; }
+  .detail-article-column .detail-image-button .progressive-image-stack { max-width: min(100%, calc(var(--detail-media-max) * var(--progressive-ratio, .8))); margin-inline: auto; }
+  .detail-article-column .markdown-content pre, .detail-article-column .markdown-content .md-code,
+  .detail-article-column .markdown-content .md-table, .detail-article-column .markdown-content table { max-width: 100%; overflow-x: auto; }
+  .detail-page-shell { max-width: 100%; padding-inline: clamp(20px, 2.4vw, 40px); }
+}
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .detail-article-column .article-markdown p:first-of-type::first-letter,
+  .detail-article-column .editorial-article p:first-of-type::first-letter {
+    float: none; font-size: inherit; font-weight: inherit; line-height: inherit; margin: 0;
+  }
+}
+@media (min-width: 1200px) {
+  .detail .detail-body, .detail-page .detail-body { grid-template-columns: 56px minmax(0, 760px) 300px; }
+  .detail .detail-body > .detail-aside, .detail-page .detail-body > .detail-aside { grid-column: 3; grid-row: 1; }
+  .app.is-detail-page { max-width: 1440px; }
+}
+@media (min-width: 1440px) {
+  .detail .detail-body, .detail-page .detail-body {
+    grid-template-columns: 200px 44px minmax(0, 760px) 280px;
+    column-gap: clamp(20px, 1.6vw, 28px); max-width: 1480px; margin-inline: auto;
+  }
+  .detail .detail-body > .reader-toc-aside, .detail-page .detail-body > .reader-toc-aside {
+    display: grid; position: sticky; left: auto; top: calc(var(--desktop-topbar-h, 64px) + 28px);
+    width: auto; max-height: calc(100dvh - var(--desktop-topbar-h, 64px) - 56px);
+    align-self: start; overflow: hidden;
+  }
+  .detail .detail-body > .reader-toc-aside .reader-toc-aside-list,
+  .detail-page .detail-body > .reader-toc-aside .reader-toc-aside-list { overflow-y: auto; min-height: 0; }
+  body:has(.comment-panel-layer) .detail .detail-body > .reader-toc-aside,
+  body:has(.comment-panel-layer) .detail-page .detail-body > .reader-toc-aside { display: none; }
+  .detail .detail-body > .detail-rail, .detail-page .detail-body > .detail-rail { grid-column: 2; }
+  .detail .detail-body > .detail-main, .detail-page .detail-body > .detail-main { grid-column: 3; }
+  .detail .detail-body > .detail-aside, .detail-page .detail-body > .detail-aside { grid-column: 4; }
+  .app.is-detail-page { max-width: 1520px; }
+}
+@media (min-width: 1720px) {
+  .detail .detail-body, .detail-page .detail-body {
+    grid-template-columns: 200px 52px minmax(0, 760px) 300px;
+    column-gap: clamp(24px, 2vw, 36px); max-width: 1680px;
+  }
+  .app.is-detail-page { max-width: 1720px; }
+}
+
+/* 浮层模式的底栏与评论区占满整行，不能被自动塞进 56px 操作轨列 */
+@media (min-width: 1024px) {
+  .detail:not(.detail-page) .detail-body > .detail-dock,
+  .detail:not(.detail-page) .detail-body > .detail-comments {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    max-width: none;
+  }
+}

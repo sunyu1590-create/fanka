@@ -6518,6 +6518,7 @@ export default function Community({
                 <div className="detail-scroll" id="detail-scroll" key={post.id}>
                   {post.cloudId && <PostReadTracker key={post.cloudId} postId={post.cloudId} seriesId={post.seriesId} />}
                   <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`} style={readerType.style}>
+                    <ReaderTocAside outline={detailOutline} activeId={detailActiveHeading} onJump={(item) => jumpToHeading(item.id)} />
                     <nav className="detail-rail" aria-label="作品操作栏">
                       <button type="button" className={`detail-rail-button${state.liked?.includes(post.id) ? " selected" : ""}`} aria-pressed={!!state.liked?.includes(post.id)} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} disabled={likeBusy} onClick={toggleDetailLike}>
                         <Heart size={20} fill={state.liked?.includes(post.id) ? "currentColor" : "none"} /><span>{detailLikeCounts[post.id] ?? post.likeCount ?? 0}</span>
@@ -6711,9 +6712,6 @@ export default function Community({
                   </div>}
                 </div>
               </div>
-              {detailPageMode && (
-                <ReaderTocAside outline={detailOutline} activeId={detailActiveHeading} onJump={(item) => jumpToHeading(item.id)} />
-              )}
               {readerTocOpen && (
                 <ReaderTocSheet
                   outline={detailOutline}
@@ -7053,6 +7051,8 @@ export default function Community({
             ) : (
               <div className="composer-workspace">
               <div className="composer-scroll">
+                <div className="composer-columns">
+                <div className="composer-column composer-column-main">
                 {(resumeTaskKey || composerError) && <section className={`composer-status-banner${composerError ? " is-error" : ""}`} role="status" aria-live="polite">
                   <span className="composer-status-icon" aria-hidden="true">{composerError ? "!" : <RefreshCw size={14} className="composer-check-spinner"/>}</span>
                   <div>
@@ -7088,6 +7088,8 @@ export default function Community({
                     {!aiWorkbenchOutput && <div className="ai-workbench-placeholder">可直接输入修改要求，或从当前正文开始；生成结果会先预览，不会自动覆盖原稿。</div>}
                   </div>}
                 </section>
+                </div>
+                <div className="composer-column composer-column-aside">
                 <section className="composer-media-picker is-single" aria-label="选择图片">
                   <div className="composer-media-choices" role="group" aria-label="媒体类型">
                     <label className={`composer-media-choice${composerImages.length ? " selected" : ""}${composerImages.length >= 9 ? " disabled" : ""}`}>
@@ -7112,6 +7114,8 @@ export default function Community({
                 <p className="fineprint">
                   {accountId ? "草稿先保留在此设备；云端同步状态请查看底部提示。" : "草稿保存在此设备；登录后可发布并同步到云端。"}
                 </p>
+                </div>
+                </div>
               </div>
               </div>
             )}

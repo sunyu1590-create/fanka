@@ -168,3 +168,19 @@ html.is-composing .bottom-nav,html.is-composing .compose,html.is-composing .floa
 .composer-outcome-hint{margin:2px 0 0;font-size:10.5px;color:var(--muted);opacity:.85}
 @keyframes composer-outcome-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.composer-outcome{animation:none}}
+
+/* composer desktop two-column */
+.composer-columns{min-width:0}
+.composer-column{display:flex;flex-direction:column;min-width:0}
+@media (max-width:1023px){
+.composer-columns{display:flex;flex-direction:column}
+}
+@media (min-width:1024px){
+.composer-modal .composer-scroll{width:min(100%,1180px);max-width:1180px;padding:24px 28px 32px}
+.composer-columns{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);gap:32px;align-items:start}
+.composer-column-aside{gap:0;padding:18px 18px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.composer-column-aside .composer-media-picker{margin:0 0 12px}
+.composer-column-aside .composer-setting-row{margin-top:10px}
+.composer-column-aside .composer-discard{margin-top:10px}
+.composer-column-aside>.fineprint{margin:10px 0 0;max-width:none;color:var(--muted);font-size:11px}
+}
