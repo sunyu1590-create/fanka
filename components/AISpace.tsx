@@ -57,7 +57,7 @@ function ResultsSection({ heading, eyebrow, total, error, loading, items, card, 
 }) {
   return <section className="ai-space-section ai-space-results">
     <div className="ai-space-section-head"><div><small>{eyebrow}</small><h2>{heading}</h2></div><span>{total} 项</span></div>
-    {error ? <div className="ai-space-empty">{error}</div> : items.length ? <MasonryFeed items={items} getKey={(post) => String(post.id)} render={(post) => card(post)} /> : loading ? <div className="ai-space-empty">正在加载 AI 内容…</div> : <div className="ai-space-empty">还没有相关内容，欢迎发布第一篇。</div>}
+    {error ? <div className="ai-space-empty">{error}</div> : items.length ? <MasonryFeed items={items} getKey={(post) => String(post.id)} render={(post) => card(post)} responsive /> : loading ? <div className="ai-space-empty">正在加载 AI 内容…</div> : <div className="ai-space-empty">还没有相关内容，欢迎发布第一篇。</div>}
     {hasMore && <button type="button" className="ai-space-more" disabled={loading} onClick={onMore}>{loading ? "正在加载…" : "加载更多"}</button>}
   </section>;
 }
@@ -82,7 +82,7 @@ function ResourceCard({ post, saved, onOpen, onToggleSave }: {
       {rawCover ? <>
         {coverFailed ? <span className="ai-resource-cover-failed"><ImageOff size={15}/><strong>封面加载失败</strong><button type="button" onClick={(event) => { event.stopPropagation(); setCoverAttempt((value) => value + 1); setCoverFailed(false); }}><RotateCcw size={12}/>重试</button></span>
           : <span className="ai-resource-cover"><img key={coverAttempt} src={rawCover} alt="" loading="lazy" onError={() => setCoverFailed(true)} /><span className="ai-resource-cover-labels"><span className="discovery-glass-label"><Icon size={13}/>{typeLabel}</span></span></span>}
-        <span className="ai-resource-copy"><small>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/>{post.seriesTitle ? <em className="ai-resource-series">合集 · {post.seriesTitle}</em> : null}</small><strong>{post.title}</strong><span>{excerpt}</span><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
+        <span className="ai-resource-copy"><small>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/>{post.seriesTitle ? <em className="ai-resource-series">合集 · {post.seriesTitle}</em> : null}</small><strong>{post.title}</strong><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
       </> : <>
         <span className="ai-resource-text-type"><Icon size={13}/>{typeLabel}</span>
         <span className="ai-resource-copy"><strong>{post.title}</strong><span>{excerpt}</span></span>

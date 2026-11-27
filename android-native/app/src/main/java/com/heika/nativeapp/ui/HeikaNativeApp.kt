@@ -154,6 +154,15 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                 }
             }
         }
+        // 聊天内分享卡片：以真实资源 id 打开已有原生详情；无效 id 交给导航错误页兜底。
+        val openSharedContent: (String) -> Unit = remember(nav, openDestination) {
+            { link ->
+                val uuid = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+                val clean = link.trim().trim('/').substringAfterLast('/')
+                if (uuid.matches(clean)) openDestination(HeikaDestination.CommunityPost(id = 0, cloudId = clean.lowercase()))
+                else nav.navigate("destination-error?message=${Uri.encode("内容不可用")}")
+            }
+        }
         val openPost: (HeikaPost) -> Unit = remember(nav, sharedPosts) {
             { post ->
                 val key = post.sharedImageKey()
@@ -281,6 +290,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onNotifications = { openDestination(HeikaDestination.Notifications) },
                         onConversationChange = { chatConversationOpen = it },
                         hazeState = hazeState,
+                        onOpenContent = openSharedContent,
                     )
                 }
                 composable("profile") {
@@ -443,6 +453,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onBack = { nav.popBackStack() },
                         onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
                         onLogin = { nav.navigate("account") },
+                        onOpenContent = openSharedContent,
                     )
                 }
                 composable(
@@ -454,6 +465,7 @@ fun HeikaNativeApp(imageLoader: ImageLoader, pageTransition: String = "shared") 
                         onBack = { nav.popBackStack() },
                         onProfile = { id -> openDestination(HeikaDestination.UserProfile(id)) },
                         onLogin = { nav.navigate("account") },
+                        onOpenContent = openSharedContent,
                     )
                 }
                 composable(

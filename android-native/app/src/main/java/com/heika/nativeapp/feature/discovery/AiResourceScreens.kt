@@ -80,7 +80,7 @@ fun AiResourceCenterScreen(
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AiResourceHeader("AI 资源中心", onBack, onSearch)
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp)) {
-            Text("按资源类型探索，找到真正有用的 AI 内容。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text("按类型探索 AI 资源。", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             when {
                 state.loading && state.items.isEmpty() -> HeikaPulsePage(Modifier.weight(1f).fillMaxWidth(), cards = 3, cardHeight = 92.dp)
                 state.error != null && state.items.isEmpty() -> Column(Modifier.weight(1f).fillMaxWidth().padding(vertical = 44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -110,21 +110,22 @@ fun AiResourceCenterScreen(
 @Composable
 private fun AiResourceTypeTile(item: AiResourceType, onClick: () -> Unit) {
     val (icon, fallbackTitle, fallbackDescription) = resourceTypePresentation(item.id)
+    // 紧凑功能入口：弱底色 + 细边框替代厚卡片，图标/标题/箭头/辅助文字一套尺寸。
     Column(
-        Modifier.fillMaxWidth().heightIn(min = 142.dp).clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .46f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick).padding(13.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        Modifier.fillMaxWidth().heightIn(min = 94.dp).clip(RoundedCornerShape(HeikaRadii.control))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f))
+            .border(.6.dp, MaterialTheme.colorScheme.outline.copy(alpha = .22f), RoundedCornerShape(HeikaRadii.control))
+            .clickable(onClick = onClick).padding(11.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(21.dp))
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
             Spacer(Modifier.weight(1f))
             Icon(HeikaIcons.Forward, contentDescription = "查看${item.label}资源", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
         }
-        Text(item.label.ifBlank { fallbackTitle }, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(item.description.ifBlank { fallbackDescription }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text("${item.publishedCount} 项资源", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+        Text(item.label.ifBlank { fallbackTitle }, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item.description.ifBlank { fallbackDescription }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("${item.publishedCount} 项资源", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.5.sp)
     }
 }
 

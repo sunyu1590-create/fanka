@@ -1108,8 +1108,9 @@ class HeikaRepository @Inject constructor(
         request(NativeMessagesApi.conversationPath(id, before), authenticated = true) as? JSONObject ?: JSONObject()
     }
 
-    suspend fun markConversationRead(id: String): JSONObject = withContext(Dispatchers.IO) {
-        request(NativeMessagesApi.PATH, method = "POST", body = NativeMessagesApi.action("read", id).toString(), authenticated = true) as? JSONObject ?: JSONObject().put("read", true)
+    suspend fun markConversationRead(id: String, lastMessage: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        val payload = NativeMessagesApi.action("read", id).apply { lastMessage?.takeIf(String::isNotBlank)?.let { put("last_message", it) } }
+        request(NativeMessagesApi.PATH, method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject().put("read", true)
     }
 
     suspend fun searchPeople(query: String): JSONObject = withContext(Dispatchers.IO) {
@@ -1130,6 +1131,129 @@ class HeikaRepository @Inject constructor(
      */
     suspend fun recallMessage(conversationId: String, messageId: String): JSONObject = withContext(Dispatchers.IO) {
         request(NativeMessagesApi.PATH, method = "POST", body = JSONObject().put("action", "recall").put("conversation", conversationId).put("message", messageId).toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    // ---------------------------------------------------------------------
+    // Chat 2.0. All methods go through /api/v1/messages; request() already
+    // unwraps the { data: ... } envelope.
+    // ---------------------------------------------------------------------
+
+    suspend fun chatSettings(conversationId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(conversationId)) { "会话编号无效" }
+        request(NativeMessagesApi.viewPath("settings", conversationId), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun chatSearch(query: String, conversationId: String? = null, before: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        request(NativeMessagesApi.viewPath("search", conversationId, before, query.take(60)), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun chatMedia(conversationId: String, kind: String = "all", before: String? = null): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(conversationId)) { "会话编号无效" }
+        val safeKind = kind.takeIf { it in setOf("all", "image", "video", "file", "work", "collection") } ?: "all"
+        request(NativeMessagesApi.viewPath("media", conversationId, before, kind = safeKind), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun chatRequests(): JSONObject = withContext(Dispatchers.IO) {
+        request(NativeMessagesApi.viewPath("requests"), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun chatFavorites(): JSONObject = withContext(Dispatchers.IO) {
+        request(NativeMessagesApi.viewPath("favorites"), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun chatPrivacy(): JSONObject = withContext(Dispatchers.IO) {
+        request(NativeMessagesApi.viewPath("privacy"), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    suspend fun chatReactions(conversationId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(isUuid(conversationId)) { "会话编号无效" }
+        request(NativeMessagesApi.viewPath("reactions", conversationId), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /** Generic authenticated POST against the messages endpoint. */
+    suspend fun messageAction(payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request(NativeMessagesApi.PATH, method = "POST", body = payload.toString(), authenticated = true) as? JSONObject ?: JSONObject()
+    }
+
+    /**
+     * Idempotent send. The server uses (sender, nonce) as the message id: retrying
+     * with the same nonce always resolves to the original row instead of a duplicate.
+     */
+    suspend fun sendMessage2(
+        conversationId: String,
+        content: String,
+        nonce: String,
+        kind: String = "text",
+        reply: String? = null,
+        meta: JSONObject = JSONObject(),
+    ): JSONObject = messageAction(
+        JSONObject().put("action", "send2").put("conversation", conversationId)
+            .put("content", content).put("nonce", nonce).put("kind", kind)
+            .put("reply", reply).put("meta", meta)
+    )
+
+    suspend fun editMessage(conversationId: String, messageId: String, content: String, version: Int?): JSONObject =
+        messageAction(
+            JSONObject().put("action", "edit").put("conversation", conversationId)
+                .put("message", messageId).put("content", content).put("version", version)
+        )
+
+    suspend fun reactMessage(conversationId: String, messageId: String, emoji: String): JSONObject =
+        messageAction(
+            JSONObject().put("action", "react").put("conversation", conversationId)
+                .put("message", messageId).put("emoji", emoji)
+        )
+
+    suspend fun favoriteMessage(conversationId: String, messageId: String): JSONObject =
+        messageAction(
+            JSONObject().put("action", "favorite").put("conversation", conversationId).put("message", messageId)
+        )
+
+    suspend fun forwardMessage(conversationId: String, messageId: String, nonce: String): JSONObject =
+        messageAction(
+            JSONObject().put("action", "forward").put("conversation", conversationId)
+                .put("message", messageId).put("nonce", nonce)
+        )
+
+    suspend fun updateChatSettings(conversationId: String, patch: JSONObject): JSONObject =
+        messageAction(patch.put("action", "settings").put("conversation", conversationId))
+
+    suspend fun markConversationUnread(conversationId: String, unread: Boolean): JSONObject =
+        messageAction(
+            JSONObject().put("action", "mark_unread").put("conversation", conversationId).put("unread", unread)
+        )
+
+    suspend fun sendMessageRequest(peerId: String, content: String, imagePath: String? = null): JSONObject =
+        messageAction(
+            JSONObject().put("action", "request_send").put("peer", peerId)
+                .put("content", content).put("image_path", imagePath)
+        )
+
+    suspend fun acceptMessageRequest(requestId: String): JSONObject =
+        messageAction(JSONObject().put("action", "request_accept").put("request", requestId))
+
+    suspend fun updateMessageRequest(requestId: String, status: String): JSONObject =
+        messageAction(JSONObject().put("action", "request_update").put("request", requestId).put("status", status))
+
+    suspend fun updatePrivacy(patch: JSONObject): JSONObject =
+        messageAction(patch.put("action", "privacy"))
+
+    // ---- Account-isolated chat caches (cleared by clearUserCache on logout) ----
+
+    suspend fun cachedConversation(userId: String, conversationId: String): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get(NativeCacheKeys.conversation(userId, conversationId))?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveConversationCache(userId: String, conversationId: String, value: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put(NativeCacheKeys.conversation(userId, conversationId), value.toString())
+    }
+
+    suspend fun cachedChatSettings(userId: String, conversationId: String): JSONObject? = withContext(Dispatchers.IO) {
+        cache.get(NativeCacheKeys.conversationSettings(userId, conversationId))?.let { runCatching { JSONObject(it) }.getOrNull() }
+    }
+
+    suspend fun saveChatSettingsCache(userId: String, conversationId: String, value: JSONObject) = withContext(Dispatchers.IO) {
+        cache.put(NativeCacheKeys.conversationSettings(userId, conversationId), value.toString())
     }
 
     suspend fun createOrUpdateDraft(id: Int? = null, title: String, body: String, tag: String, topics: List<String> = emptyList(), mediaPaths: List<String> = emptyList()): JSONObject = withContext(Dispatchers.IO) {

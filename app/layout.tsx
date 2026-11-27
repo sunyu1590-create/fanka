@@ -5,6 +5,7 @@ import InAppDialogHost from '../components/InAppDialogHost';
 import NativeSessionBridge from '../components/NativeSessionBridge';
 import './style.css';
 import './design-system.css';
+import './chat2.css';
 import './motion.css';
 import './settings.css';
 import './composer.css';

@@ -49,6 +49,8 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
     private val homeBannersSavedAtKey = longPreferencesKey("home_banners_saved_at")
     /** 阅读进度：{ "postId": {"u": userId, "f": 0.42, "t": 时间戳} }，按用户隔离。 */
     private val readingProgressKey = stringPreferencesKey("reading_progress")
+    /** 聊天装扮：{ "userId": {"theme":..,"bubble":..,"scale":..} }，按账号隔离。 */
+    private val chatDecorKey = stringPreferencesKey("chat_decor")
 
     val theme: Flow<String> = dataStore.data.map { it[themeKey] ?: "system" }
     val imageCacheMb: Flow<Int> = dataStore.data.map { it[imageCacheKey] ?: 256 }
@@ -149,6 +151,29 @@ class NativePreferences @Inject constructor(@ApplicationContext context: Context
         }
     }
     suspend fun clearRecentSearches() { dataStore.edit { it.remove(searchHistoryKey) } }
+
+    /** 聊天装扮按账号隔离读取；未设置过返回 null，由调用方使用默认主题。 */
+    suspend fun chatDecorJson(userId: String): String? {
+        if (userId.isBlank()) return null
+        return dataStore.data.map { prefs ->
+            val raw = prefs[chatDecorKey] ?: return@map null
+            runCatching { JSONObject(raw).optJSONObject(userId)?.toString() }.getOrNull()
+        }.first()
+    }
+
+    suspend fun setChatDecorJson(userId: String, theme: String, bubble: String, scale: Float) {
+        if (userId.isBlank()) return
+        dataStore.edit { prefs ->
+            val root = prefs[chatDecorKey]
+                ?.let { raw -> runCatching { JSONObject(raw) }.getOrDefault(JSONObject()) }
+                ?: JSONObject()
+            root.put(userId, JSONObject()
+                .put("theme", theme)
+                .put("bubble", bubble)
+                .put("scale", scale.coerceIn(0.85f, 1.25f).toDouble()))
+            prefs[chatDecorKey] = root.toString()
+        }
+    }
     suspend fun hasSeenNetworkNotice(version: String): Boolean =
         dataStore.data.map { it[networkNoticeVersionKey] == version }.first()
     suspend fun markNetworkNoticeSeen(version: String) {

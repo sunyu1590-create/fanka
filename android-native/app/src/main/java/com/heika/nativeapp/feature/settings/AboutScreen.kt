@@ -43,6 +43,17 @@ import com.heika.nativeapp.ui.HeikaRadii
 
 private data class NativeRelease(val build: Long, val date: String, val notes: List<String>)
 private val nativeReleases = listOf(
+    NativeRelease(103, "2026.11.27", listOf(
+        "HEIKA Chat 2.0：私信支持置顶、免打扰、标记未读与归档，个人会话设置多端同步。",
+        "新增引用回复、消息编辑、转发多选、收藏、表情回应与聊天记录搜索。",
+        "收到含 QQ、微信、手机、邮箱等联系方式的消息时，气泡下方显示轻量安全提醒，原文照常发送不拦截。",
+        "新增聊天详情设置、媒体资源库、陌生人消息请求与隐私已读设置。",
+        "聊天支持主题、背景与字号个性化，本地缓存优先显示并增量同步，发送失败可原样重试。",
+        "精选页顶栏改为轻量胶囊样式，AI 板块热门合集与推荐模块排版更紧凑。",
+    )),
+    NativeRelease(102, "2026.11.27", listOf(
+        "HEIKA Motion 2.0：全端动效体系统一，新增四档动效模式与惯性过渡。",
+    )),
     NativeRelease(99, "2026.11.26", listOf(
         "阅读顶栏恢复品牌标识：AI 内容显示 AI · HEIKA，其余显示黑卡 HEIKA，标题绝对居中，不再被文章标题挤位。",
         "正文与标题字号恢复为阅读系统 2.0 之前实际使用的参数，深色下的正文颜色与对比度保持不变。",

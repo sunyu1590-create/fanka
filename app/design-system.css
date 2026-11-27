@@ -8538,3 +8538,137 @@ a.discovery-read:focus-visible { outline: 2px solid var(--action); outline-offse
 .admin-decor-swatch i{display:block;height:44px;border-radius:8px;border:1px solid var(--line)}
 .admin-decor-swatch i:first-child{height:44px}
 .admin-decor-swatch i:last-child{height:18px;align-self:end}
+
+/* ==========================================================================
+   精选 / AI 内容列表卡片：紧凑型排版
+   仅作用于列表卡片本身；首页翻卡、悬浮底栏、正文详情页保持原样。
+   ========================================================================== */
+
+/* 精选内容卡：去掉外壳底色、描边与阴影，封面和作者栏靠留白分层 */
+.heika-discovery-card {
+  margin: 0 0 var(--feed-gap);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.heika-discovery-card:hover { border-color: transparent; }
+.heika-discovery-card .discovery-cover,
+.heika-discovery-card .discovery-cover:not(.is-text-only),
+.heika-discovery-card .discovery-cover:not(.is-text-only) > img,
+.heika-discovery-card .discovery-cover:not(.is-text-only) .discovery-cover-image {
+  border-radius: 11px;
+  background: var(--card-sunken);
+}
+.heika-discovery-card .discovery-cover-open>img { object-fit: cover; object-position: center 35%; }
+.heika-discovery-card .discovery-post-meta {
+  min-height: 30px;
+  gap: 4px;
+  padding: 6px 1px 0;
+  background: transparent;
+}
+.heika-discovery-card .discovery-cover-title {
+  right: 10px;
+  bottom: 9px;
+  left: 10px;
+  font-size: 13.5px;
+  line-height: 1.35;
+  -webkit-line-clamp: 2;
+}
+/* 分类标签弱化：更矮、无描边、半透明底；评分星标跟随品牌色 */
+.heika-discovery-card .discovery-glass-label {
+  min-height: 20px;
+  padding: 0 7px;
+  border: 0;
+  background: color-mix(in srgb, var(--bg) 66%, transparent);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 500;
+}
+.heika-discovery-card .discovery-rating-label svg { color: var(--brand-accent); }
+/* 作者名可截断，但不挤压认证图标与右侧收藏/阅读入口 */
+.heika-discovery-card .discovery-author { flex: 1 1 auto; min-width: 0; min-height: 28px; gap: 3px; }
+.heika-discovery-card .discovery-author-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: none;
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+.heika-discovery-card .profile-badge-marks.is-compact { gap: 1px; margin-left: 2px; }
+.heika-discovery-card .profile-badge-marks.is-compact svg { width: 11px; height: 11px; }
+.heika-discovery-card .discovery-post-actions { flex: 0 0 auto; gap: 2px; }
+.heika-discovery-card .discovery-post-actions button,
+.heika-discovery-card .discovery-post-actions a.discovery-read { width: 28px; height: 28px; }
+.heika-discovery-card .discovery-post-actions a.discovery-read svg { width: 14px; height: 14px; }
+.heika-discovery-card .discovery-like-count { font-size: 10px; color: var(--muted); }
+
+/* 无图作品：没有图片容器与占位高度，标题 + 摘要自然展开 */
+.heika-discovery-card .discovery-cover.is-text-only,
+.heika-discovery-card .discovery-text-cover { background: transparent; }
+.heika-discovery-card .discovery-text-cover { padding: 10px 10px 12px; gap: 0; }
+.heika-discovery-card .discovery-cover.is-text-only .discovery-cover-labels { margin: 0 0 8px; }
+.heika-discovery-card .discovery-cover.is-text-only .discovery-glass-label {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+.heika-discovery-card .discovery-text-copy { gap: 7px; }
+.heika-discovery-card .discovery-text-copy strong { font-size: 15px; line-height: 1.4; -webkit-line-clamp: 3; }
+.heika-discovery-card .discovery-text-copy>span { font-size: 10.5px; line-height: 1.55; -webkit-line-clamp: 3; color: var(--muted); }
+
+/* AI 内容卡：双列统一列距，桌面由 MasonryFeed 按容器宽度自适应更多列 */
+.ai-space .heika-masonry { gap: 10px; }
+.ai-space .heika-masonry-column { gap: 10px; }
+.ai-resource-card {
+  margin: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  box-shadow: none;
+}
+.ai-resource-card:hover { border-color: transparent; background: transparent; transform: none; }
+.ai-resource-open { border-radius: 11px; }
+.ai-resource-card .ai-resource-cover { border-radius: 11px; background: var(--card-sunken); }
+/* 真实图片完整适配，不裁掉用户上传图片里的标题文字 */
+.ai-resource-card .ai-resource-cover>img { object-fit: contain; }
+.ai-resource-card .ai-resource-copy { gap: 4px; padding: 7px 1px 2px; }
+.ai-resource-card .ai-resource-copy small { gap: 3px; font-size: 10px; color: var(--muted); }
+.ai-resource-card .ai-resource-copy strong { padding-right: 22px; font-size: 12.5px; line-height: 1.4; -webkit-line-clamp: 2; }
+/* 有图作品默认不展示正文摘要 */
+.ai-resource-card .ai-resource-copy>span { display: none; }
+.ai-resource-card .ai-resource-copy i { margin-top: 1px; font-size: 10px; color: var(--muted); }
+.ai-resource-card .ai-resource-series { max-width: 42%; margin-left: 4px; padding-left: 5px; font-size: 9.5px; }
+.ai-resource-save {
+  right: 0;
+  bottom: 8px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--muted);
+}
+.ai-resource-card.is-text-only .ai-resource-open,
+.ai-resource-card.is-cover-failed .ai-resource-open {
+  min-height: 0;
+  gap: 6px;
+  padding: 11px 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+.ai-resource-card.is-text-only .ai-resource-copy,
+.ai-resource-card.is-cover-failed .ai-resource-copy { padding: 0; gap: 5px; }
+.ai-resource-card.is-text-only .ai-resource-copy strong { padding-right: 0; font-size: 14px; }
+/* 无图作品保留适量摘要，保证纯文字信息量 */
+.ai-resource-card.is-text-only .ai-resource-copy>span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.ai-resource-text-meta { min-width: 0; }
+.ai-resource-text-meta i { font-size: 10px; color: var(--muted); }

@@ -6,7 +6,10 @@ type Props<T> = {
   items: T[];
   getKey: (item: T) => string;
   render: (item: T, index: number) => ReactNode;
+  /** 移动端列数（默认双列）。 */
   columns?: number;
+  /** 桌面按容器宽度自适应更多列，避免把移动端双列拉伸到全宽。 */
+  responsive?: boolean;
   className?: string;
 };
 
@@ -17,10 +20,11 @@ type Props<T> = {
  * 高度先按估算值分配，挂载后用 ResizeObserver 逐张测量再纠正一次；
  * 因为列宽一致，纠正不会改变卡片自身高度，所以只会收敛一次，不会来回抖。
  */
-export default function MasonryFeed<T>({ items, getKey, render, columns = 2, className = "" }: Props<T>) {
+export default function MasonryFeed<T>({ items, getKey, render, columns = 2, responsive = false, className = "" }: Props<T>) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const heights = useRef(new Map<string, number>());
   const frame = useRef(0);
+  const [columnCount, setColumnCount] = useState(Math.max(1, columns));
   const [assignment, setAssignment] = useState<string[][]>([]);
 
   const indexByKey = useMemo(() => {
@@ -30,7 +34,7 @@ export default function MasonryFeed<T>({ items, getKey, render, columns = 2, cla
   }, [items, getKey]);
 
   const distribute = useCallback(() => {
-    const count = Math.max(1, columns);
+    const count = Math.max(1, columnCount);
     const next: string[][] = Array.from({ length: count }, () => []);
     const totals = new Array(count).fill(0);
     for (const item of items) {
@@ -43,7 +47,27 @@ export default function MasonryFeed<T>({ items, getKey, render, columns = 2, cla
       totals[target] += heights.current.get(key) ?? 260;
     }
     return next;
-  }, [items, getKey, columns]);
+  }, [items, getKey, columnCount]);
+
+  // 只按容器宽度决定列数，不拉伸移动端双列；单列模式始终保留一列。
+  useEffect(() => {
+    const base = Math.max(1, columns);
+    if (!responsive) {
+      setColumnCount((current) => (current === base ? current : base));
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => {
+      const width = container.clientWidth;
+      const next = width >= 1024 ? Math.max(base, 4) : width >= 700 ? Math.max(base, 3) : base;
+      setColumnCount((current) => (current === next ? current : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [responsive, columns]);
 
   useEffect(() => {
     setAssignment(distribute());
@@ -95,7 +119,7 @@ export default function MasonryFeed<T>({ items, getKey, render, columns = 2, cla
   return <div
     ref={containerRef}
     className={`heika-masonry ${className}`.trim()}
-    style={{ gridTemplateColumns: `repeat(${Math.max(1, columns)}, minmax(0, 1fr))` }}
+    style={{ gridTemplateColumns: `repeat(${Math.max(1, columnCount)}, minmax(0, 1fr))` }}
   >
     {assignment.map((column, columnIndex) => <div className="heika-masonry-column" key={`masonry-${columnIndex}`}>
       {column.map((key) => {

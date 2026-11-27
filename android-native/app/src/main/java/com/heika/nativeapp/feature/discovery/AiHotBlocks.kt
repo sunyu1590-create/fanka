@@ -30,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -109,7 +108,7 @@ fun AiHotSections(
     }
     if (state.hot.isEmpty() && state.series.isEmpty() && state.picks.isEmpty()) return
 
-    Column(modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(modifier.fillMaxWidth().padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (state.hot.isNotEmpty()) {
             Column {
                 BlockHead(kicker = "近 72 小时互动", title = "近期热门", trailing = null)
@@ -153,15 +152,16 @@ fun AiHotSections(
 
 @Composable
 private fun BlockHead(kicker: String, title: String, trailing: String?) {
+    // 统一模块头：说明文字压到最小，标题/操作入口同一基线，靠留白而不是粗描边分层。
     Row(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        Modifier.fillMaxWidth().padding(bottom = 6.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(kicker, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 9.sp, letterSpacing = 1.sp)
-            Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(kicker, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 8.5.sp, letterSpacing = .8.sp)
+            Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
-        if (trailing != null) Text(trailing, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f), fontSize = 9.sp)
+        if (trailing != null) Text(trailing, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .72f), fontSize = 9.5.sp)
     }
 }
 
@@ -213,7 +213,7 @@ private fun AiSeriesCard(card: HeikaSeriesCard, onClick: () -> Unit) {
     // 同一行里每张卡的正文起点、统计行位置完全对齐，横向滑动时不会参差。
     Column(
         Modifier.width(AiSeriesCardWidth).clickable(onClick = onClick),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(AiSeriesCoverRatio)
@@ -265,14 +265,7 @@ private fun AiSeriesCard(card: HeikaSeriesCard, onClick: () -> Unit) {
 @Composable
 private fun CoverText(card: HeikaSeriesCard) {
     Box(
-        Modifier.fillMaxSize().background(
-            Brush.linearGradient(
-                listOf(
-                    MaterialTheme.colorScheme.primary.copy(alpha = .18f),
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f),
-                ),
-            ),
-        ),
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Text(card.kindLabel, color = MaterialTheme.colorScheme.primary, fontSize = 7.sp, letterSpacing = 1.sp)
@@ -291,19 +284,19 @@ private fun CoverText(card: HeikaSeriesCard) {
 
 @Composable
 private fun AiPickCard(post: HeikaRelatedPost, onClick: () -> Unit) {
-    // 紧凑横向图文卡：定宽定高，左图右文，滑动时高度一致、不会跳动。
+    // 紧凑横向图文卡：定宽定高，左图右文，滑动时高度一致、不会跳动；
+    // 弱底色替代厚描边，标题两行截断，尾部露出下一张提示可滑动。
     Row(
         Modifier.width(AiPickCardWidth).height(AiPickCardHeight)
             .clip(RoundedCornerShape(HeikaRadii.chip))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(.7.dp, MaterialTheme.colorScheme.outline.copy(alpha = .3f), RoundedCornerShape(HeikaRadii.chip))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .38f))
             .clickable(onClick = onClick)
-            .padding(7.dp),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.width(58.dp).height(64.dp)
+            Modifier.width(52.dp).height(58.dp)
                 .clip(RoundedCornerShape(7.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
@@ -369,9 +362,9 @@ private fun AiPickCard(post: HeikaRelatedPost, onClick: () -> Unit) {
 }
 
 /** 合集卡统一尺寸：3:4 封面，宽度固定，横向滑动时每张卡等宽等高。 */
-private val AiSeriesCardWidth = 118.dp
+private val AiSeriesCardWidth = 112.dp
 private const val AiSeriesCoverRatio = 0.75f
 
 /** 推荐卡统一尺寸：紧凑横向图文卡。 */
-private val AiPickCardWidth = 210.dp
-private val AiPickCardHeight = 78.dp
+private val AiPickCardWidth = 196.dp
+private val AiPickCardHeight = 72.dp

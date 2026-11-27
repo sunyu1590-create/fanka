@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.clipToBounds
@@ -86,6 +87,7 @@ import com.heika.nativeapp.data.HeikaPost
 import com.heika.nativeapp.data.imageCacheKey
 import com.heika.nativeapp.ui.BrandHeader
 import com.heika.nativeapp.ui.LocalHeikaImageLoader
+import com.heika.nativeapp.ui.LocalHeikaMotion
 import com.heika.nativeapp.ui.HeikaRadii
 import com.heika.nativeapp.ui.HeikaMotion
 import com.heika.nativeapp.ui.HeikaSolidBadgeSurface
@@ -101,7 +103,6 @@ import com.heika.nativeapp.ui.sharedTagKey
 import com.heika.nativeapp.ui.HeikaImageRatioCache
 import com.heika.nativeapp.ui.heikaPhotoTextShadow
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import java.util.Locale
@@ -192,8 +193,12 @@ fun DiscoveryScreen(
             onSearch = onSearch,
             onNotifications = onNotifications,
             trailing = {
+                // 方案A：外层胶囊只留一层很薄的暖灰底，不再靠厚重底色/描边强调；
+                // 选中态由内部按钮自己表达，普通频道不再重复描边。
                 Row(
-                    Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f)).padding(3.dp),
+                    Modifier.padding(start = 8.dp).clip(RoundedCornerShape(50))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .24f))
+                        .padding(3.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -270,7 +275,7 @@ fun DiscoveryScreen(
                         onClick = onSearch,
                         modifier = Modifier.size(38.dp),
                     ) {
-                        Icon(HeikaIcons.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(HeikaIcons.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
                     }
                     androidx.compose.material3.IconButton(
                         onClick = {
@@ -279,7 +284,7 @@ fun DiscoveryScreen(
                         },
                         modifier = Modifier.size(38.dp),
                     ) {
-                        Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(HeikaIcons.Filter, contentDescription = if (extraFiltersExpanded) "收起筛选" else "展开筛选", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(19.dp))
                     }
                 }
                 if (categoryExpanded && extraCategories.isNotEmpty()) {
@@ -402,88 +407,106 @@ fun DiscoveryScreen(
  */
 @Composable
 private fun AiResourceSpaceEntry(hazeState: HazeState, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(HeikaRadii.collectionCard)
+    // 紧凑功能入口：去掉双层背景与模糊，只用弱底色 + 细边框；
+    // 左右不再额外内缩，和下方内容卡共用 FeedGrid 的 18dp 边距。
+    val shape = RoundedCornerShape(HeikaRadii.control)
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)
+        Modifier.fillMaxWidth().padding(vertical = 3.dp)
             .clip(shape)
-            .hazeEffect(
-                state = hazeState,
-                style = dev.chrisbanes.haze.HazeStyle(
-                    backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = .93f),
-                    tint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .06f)),
-                    blurRadius = 18.dp,
-                    fallbackTint = dev.chrisbanes.haze.HazeTint(MaterialTheme.colorScheme.surface.copy(alpha = .96f)),
-                ),
-            )
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = .93f))
-            .border(.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = .45f), shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .38f))
+            .border(.6.dp, MaterialTheme.colorScheme.outline.copy(alpha = .24f), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 12.dp),
+            .padding(horizontal = 11.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
-            Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f)),
+            Modifier.size(28.dp).clip(RoundedCornerShape(9.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(HeikaIcons.BrainCircuit, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(17.dp))
+            Icon(HeikaIcons.BrainCircuit, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("探索 AI 资源", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text("Agent · Skills · Prompt · 更多", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("探索 AI 资源", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("Agent · Skills · Prompt", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Icon(HeikaIcons.ArrowUpRight, contentDescription = "进入 AI 资源中心", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        Icon(HeikaIcons.ArrowUpRight, contentDescription = "进入 AI 资源中心", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
     }
 }
 
 @Composable
 private fun ChannelOption(label: String, selected: Boolean, compact: Boolean = false, leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null, goldAccent: Boolean = false, onClick: () -> Unit) {
+    val motion = LocalHeikaMotion.current
+    val animSpec = tween<Color>(
+        HeikaMotion.scaled(HeikaMotion.quick, motion.mode, motion.speed),
+        easing = HeikaMotion.openEasing,
+    )
     val accent = if (goldAccent) com.heika.nativeapp.ui.HeikaPalette.Gold else MaterialTheme.colorScheme.primary
     val color by animateColorAsState(
         if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-        tween(220), label = "discover-channel-color",
+        animSpec, label = "discover-channel-color-$label",
+    )
+    // 选中只用轻量暖灰；AI 频道附一点品牌金，不铺满整条顶栏。普通频道不再描边。
+    val selectedBg = if (goldAccent) accent.copy(alpha = .14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .86f)
+    val background by animateColorAsState(
+        if (selected) selectedBg else Color.Transparent,
+        animSpec, label = "discover-channel-bg-$label",
     )
     Row(
-        Modifier.width(if (compact) if (leadingIcon != null) 72.dp else 58.dp else 74.dp).height(34.dp).clip(RoundedCornerShape(50))
-            .background(if (selected) MaterialTheme.colorScheme.surface else Color.Transparent)
-            .border(.7.dp, if (selected) accent.copy(alpha = .58f) else MaterialTheme.colorScheme.outline.copy(alpha = .48f), RoundedCornerShape(50))
-            .clickable(onClick = onClick),
+        Modifier.widthIn(min = if (compact) (if (leadingIcon != null) 54.dp else 46.dp) else 62.dp)
+            .height(32.dp)
+            .clip(RoundedCornerShape(50))
+            .background(background)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leadingIcon != null) {
             Icon(leadingIcon, contentDescription = null, tint = color, modifier = Modifier.size(11.dp))
-            Spacer(Modifier.width(3.dp))
+            Spacer(Modifier.width(2.dp))
         }
-        Text(label, color = color, fontSize = if (compact) 10.sp else 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
+        Text(
+            label,
+            color = color,
+            fontSize = 10.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+        )
     }
 }
 
 /**
- * 分类选中态与网页端同一套规则：圆角矩形底色 + 香槟金细描边 + 轻微字重变化。
- * 不再使用文字下方的金色横线。
+ * 分类选中态：轻量圆角矩形底色 + 字重变化，普通分类不再独立描边。
+ * 高度/字号/间距与主频道胶囊对齐，小屏横向滚动时不缩小字号。
  */
 @Composable
 private fun CategoryTab(label: String, selected: Boolean, onClick: () -> Unit) {
-    val accent = com.heika.nativeapp.ui.HeikaPalette.Gold
+    val motion = LocalHeikaMotion.current
+    val animSpec = tween<Color>(
+        HeikaMotion.scaled(HeikaMotion.quick, motion.mode, motion.speed),
+        easing = HeikaMotion.openEasing,
+    )
     val color by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant,
-        tween(200), label = "discover-category-color",
+        animSpec, label = "discover-category-color-$label",
     )
-    val shape = RoundedCornerShape(HeikaRadii.chip)
+    val background by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .68f) else Color.Transparent,
+        animSpec, label = "discover-category-bg-$label",
+    )
     Box(
-        Modifier.height(34.dp).clip(shape)
-            .background(if (selected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f) else Color.Transparent)
-            .border(if (selected) .8.dp else 0.dp, accent.copy(alpha = .55f), shape)
+        Modifier.height(32.dp).clip(RoundedCornerShape(HeikaRadii.chip))
+            .background(background)
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp),
+            .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             color = color,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1,
         )

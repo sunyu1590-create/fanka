@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { ArrowLeft, ArrowUp, Bell, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Users } from "lucide-react";
+import { ArrowLeft, ArrowUp, Bell, Bookmark, Check, FileImage, MessageCircle, MoreHorizontal, Pin, Search, Shield, Users, X } from "lucide-react";
 import { browserDb } from "@/lib/browser-db";
 import { authRedirectUrl } from "@/lib/auth-redirect";
 import { promptInApp } from "@/lib/in-app-dialog";
@@ -12,6 +12,8 @@ import InvitationWelcomePage, { type InvitationWelcome } from "./InvitationWelco
 import type { NoticeOptions } from "./NoticeBanner";
 import { compressUploadImage, MAX_UPLOAD_IMAGE_BYTES } from "@/lib/image-compression";
 import { ProfileBadgeMarks, type ProfileBadge } from "./ProfileBadgeList";
+import { chatApi, QUICK_REACTIONS, SAFETY_NOTICE, type ChatSettings } from "@/lib/chat-api";
+import { ChatSettingsPanel, ChatSearchPanel, ChatMediaPanel, ChatRequestsPanel, ChatPrivacyPanel } from "./ChatPanels";
 type Profile = { id: string; nickname: string; bio: string; avatar_url?: string | null; badges?: ProfileBadge[] };
 type Room = { id: string; user_a: string; user_b: string; created_at?: string };
 /** 撤回窗口（秒），与服务端 180 秒保持一致。 */
@@ -23,7 +25,15 @@ type Message = {
   sender_id: string;
   body: string;
   created_at: string;
-  media_path?: string;
+  media_path?: string | null;
+  message_type?: string;
+  reply_to?: string | null;
+  edited_at?: string | null;
+  edit_count?: number;
+  recalled?: boolean;
+  safety_flag?: string | null;
+  metadata?: Record<string, unknown>;
+  reactions?: Array<{ message_id: string; user_id: string; emoji: string }>;
 };
 type AuthView = "login" | "signup" | "forgot" | "verify-otp" | "recover-code" | "confirm" | "reset" | "codes" | "invite-welcome";
 export default function Messages({
@@ -82,6 +92,18 @@ export default function Messages({
     [newBelow, setNewBelow] = useState(false),
     [profile, setProfile] = useState<Profile | null>(null);
   const [pinnedRooms, setPinnedRooms] = useState<string[]>([]);
+  // ---- Chat 2.0 状态 ----
+  type PanelKind = "settings" | "search" | "media" | "requests" | "privacy" | null;
+  const [panel, setPanel] = useState<PanelKind>(null);
+  const [settings, setSettings] = useState<ChatSettings | null>(null);
+  const [reactions, setReactions] = useState<Record<string, Array<{ user_id: string; emoji: string }>>>({});
+  const [quote, setQuote] = useState<Message | null>(null);
+  const [editing, setEditing] = useState<Message | null>(null);
+  const [multiMode, setMultiMode] = useState(false);
+  const [multiSelected, setMultiSelected] = useState<string[]>([]);
+  const [requestCount, setRequestCount] = useState(0);
+  const typingSentAt = useRef(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const updateActiveConversation = useCallback((room: Room | null) => {
     setActive(room);
     onConversationChange?.(room !== null);
@@ -209,20 +231,44 @@ export default function Messages({
       cleanup();
     };
   }, [updateActiveConversation]);
+  // 置顶以服务端为准，多端同步；本地数组仅作即时渲染镜像。
   useEffect(() => {
     if (!user) { setPinnedRooms([]); return; }
-    try {
-      const saved = JSON.parse(localStorage.getItem(`heika-pinned-chats:${user.id}`) || "[]");
-      setPinnedRooms(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : []);
-    } catch { setPinnedRooms([]); }
+    void refresh(); // 服务端收件箱已返回 pinned 字段
   }, [user?.id]);
-  const togglePinnedRoom = (roomId: string) => {
-    setPinnedRooms((current) => {
-      const next = current.includes(roomId) ? current.filter((id) => id !== roomId) : [roomId, ...current];
-      if (user) localStorage.setItem(`heika-pinned-chats:${user.id}`, JSON.stringify(next));
-      return next;
-    });
+  const togglePinnedRoom = async (roomId: string) => {
+    const next = pinnedRooms.includes(roomId) ? pinnedRooms.filter((id) => id !== roomId) : [roomId, ...pinnedRooms];
+    setPinnedRooms(next); // 乐观更新
+    try {
+      await chatApi.updateSettings(roomId, { pinned: next.includes(roomId) });
+    } catch {
+      setPinnedRooms(pinnedRooms); // 回滚
+      setError("置顶设置失败，请稍后重试");
+    }
   };
+  // 打开会话时载入个人设置与表情回应。
+  const loadChatMeta = useCallback(async (roomId: string) => {
+    try {
+      const [s, r] = await Promise.all([
+        chatApi.settings(roomId),
+        chatApi.privacy().then(() => fetch(`/api/v1/messages?view=reactions&conversation=${roomId}`).then((x) => x.json()).catch(() => null)),
+      ]);
+      setSettings(s);
+      const map: Record<string, Array<{ user_id: string; emoji: string }>> = {};
+      for (const item of (r?.data?.items || r?.items || []) as Array<{ message_id: string; user_id: string; emoji: string }>) {
+        (map[item.message_id] ||= []).push({ user_id: item.user_id, emoji: item.emoji });
+      }
+      setReactions(map);
+    } catch { /* 元数据失败不影响消息展示 */ }
+  }, []);
+  // 请求待处理数与归档入口权重。
+  const refreshCounters = useCallback(async () => {
+    try {
+      const req = await chatApi.requests();
+      setRequestCount(req.pending_count || 0);
+    } catch { /* 忽略 */ }
+  }, []);
+  useEffect(() => { if (user) void refreshCounters(); }, [user?.id, refreshCounters]);
   const refresh = async () => {
     if (!db || !user) return;
     if (refreshing.current) { refreshQueued.current = true; return; }
@@ -261,6 +307,17 @@ export default function Messages({
           } satisfies Message]]
         : [])));
       setUnread(Object.fromEntries(summary.map((row) => [row.conversation_id, Number(row.unread)])));
+      // 服务端置顶状态同步（覆盖本地镜像，实现多端一致）。
+      // dm_inbox_summary 不含 pinned，单独拉取设置。
+      if (rows.length) {
+        void Promise.all(rows.map(async (room) => {
+          try { const s = await chatApi.settings(room.id); return [room.id, s.pinned] as const; }
+          catch { return [room.id, false] as const; }
+        })).then((pairs) => {
+          if (userIdRef.current !== user.id) return;
+          setPinnedRooms(pairs.filter(([, pinned]) => pinned).map(([id]) => id));
+        });
+      }
     } catch (cause) {
       if (userIdRef.current === user.id) setError(cause instanceof Error ? cause.message : "消息加载失败");
     } finally {
@@ -272,14 +329,8 @@ export default function Messages({
     }
   };
   const read = async (room: string) => {
-    if (db && user)
-      await db
-        .from("dm_reads")
-        .upsert({
-          conversation_id: room,
-          user_id: user.id,
-          read_at: new Date().toISOString(),
-        });
+    // 统一走服务端阅读游标，保证网页端与 APP 端未读状态一致且单调推进。
+    try { await chatApi.markRead(room); } catch { /* 离线时忽略，重连后由轮询补齐 */ }
     window.dispatchEvent(new Event("heika-read"));
   };
   const load = async (room: Room, older = false) => {
@@ -313,6 +364,7 @@ export default function Messages({
       });
     if (!older) {
       await read(room.id);
+      void loadChatMeta(room.id);
       requestAnimationFrame(() => {
         list.current?.scrollTo({ top: list.current.scrollHeight });
         nearBottom.current = true;
@@ -543,32 +595,83 @@ export default function Messages({
   }, [db, user?.id, initialPeer]);
   const send = async (retry?: { id: string; body: string }) => {
     if (!db || !active || busy) return;
-    const pending = retry || { id: crypto.randomUUID(), body: draft.trim() };
-    if (!pending.body) return;
+    const content = editing ? draft.trim() : (retry?.body ?? draft.trim());
+    if (!content) return;
+
+    // 编辑模式：更新原消息，不新建。
+    if (editing) {
+      const target = editing;
+      setBusy(true);
+      try {
+        const updated = await chatApi.edit(active.id, target.id, content, target.edit_count ?? 0);
+        setMessages((old) => old.map((m) => (m.id === target.id ? { ...m, ...updated } : m)));
+        setEditing(null);
+        setDraft("");
+      } catch (e) { setError(e instanceof Error ? e.message : "编辑失败"); }
+      finally { setBusy(false); }
+      return;
+    }
+
+    const nonce = retry?.id ?? crypto.randomUUID();
     setBusy(true);
     setFailed(null);
-    const { data, error } = await db.rpc("send_dm", {
-      room: active.id,
-      content: pending.body,
-      nonce: pending.id,
-    });
-    if (error) {
-      setFailed(pending);
-      setError(error.message);
-    } else {
+    // 乐观气泡：用 nonce 作临时 id，发送成功后替换为服务端消息。
+    const optimistic: Message = {
+      id: nonce, conversation_id: active.id, sender_id: user!.id,
+      body: content, created_at: new Date().toISOString(), reply_to: quote?.id ?? null,
+    };
+    setMessages((old) => (old.some((m) => m.id === nonce) ? old : [...old, optimistic]));
+    try {
+      const row = await chatApi.send(active.id, content, nonce, { reply: quote?.id ?? null });
+      setMessages((old) => old.map((m) => (m.id === nonce ? { ...(row as Message), reply_to: quote?.id ?? null } : m)).filter((m, i, arr) => arr.findIndex((x) => x.id === m.id) === i));
       setDraft("");
-      setMessages((old) =>
-        old.some((m) => m.id === data.id) ? old : [...old, data],
-      );
-      requestAnimationFrame(() =>
-        list.current?.scrollTo({
-          top: list.current.scrollHeight,
-          behavior: "smooth",
-        }),
-      );
+      setQuote(null);
+      requestAnimationFrame(() => list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "smooth" }));
       void refresh();
-    }
-    setBusy(false);
+    } catch (e) {
+      // 失败气泡保留，复用同一 nonce 重试（幂等）。
+      setFailed({ id: nonce, body: content });
+      setError(e instanceof Error ? e.message : "发送失败，可点击重试");
+    } finally { setBusy(false); }
+  };
+
+  // ---- Chat 2.0 消息操作 ----
+  const doRecall = async (message: Message) => {
+    if (!active) return;
+    setMessages((old) => old.filter((m) => m.id !== message.id));
+    try { await chatApi.recall(active.id, message.id); }
+    catch (e) { setError(e instanceof Error ? e.message : "撤回失败"); void load(active); }
+  };
+  const doReact = async (message: Message, emoji: string) => {
+    if (!active) return;
+    try {
+      await chatApi.react(active.id, message.id, emoji);
+      const r = await fetch(`/api/v1/messages?view=reactions&conversation=${active.id}`).then((x) => x.json());
+      const map: Record<string, Array<{ user_id: string; emoji: string }>> = {};
+      for (const item of (r?.data?.items || r?.items || []) as Array<{ message_id: string; user_id: string; emoji: string }>) {
+        (map[item.message_id] ||= []).push({ user_id: item.user_id, emoji: item.emoji });
+      }
+      setReactions(map);
+    } catch (e) { setError(e instanceof Error ? e.message : "回应失败"); }
+  };
+  const doFavorite = async (message: Message) => {
+    if (!active) return;
+    try { await chatApi.favorite(active.id, message.id); setError("已更新收藏"); }
+    catch (e) { setError(e instanceof Error ? e.message : "收藏失败"); }
+  };
+  const doForward = async (message: Message) => {
+    if (!active) return;
+    try {
+      await chatApi.forward(active.id, message.id, crypto.randomUUID());
+      void load(active); void refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "转发失败"); }
+  };
+  const clearChat = async () => {
+    if (!active) return;
+    try {
+      await chatApi.updateSettings(active.id, { archived: true });
+      setPanel(null); updateActiveConversation(null); setMessages([]); void refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "清空失败"); }
   };
   const search = async () => {
     if (!db || !user) return;
@@ -670,6 +773,14 @@ export default function Messages({
       <div className="messages-inbox-pane">
       <div className="messages-title-row"><div><h1>消息</h1><p>{Object.values(unread).reduce((sum, count) => sum + count, 0)} 条未读</p></div>{onOpenNotifications && <button type="button" className="messages-notification-button" onClick={onOpenNotifications} aria-label="打开通知中心"><Bell size={19}/></button>}</div>
       {!active && <AnimatedNotice message={error} className="settings-note" onClick={() => setError("")} />}
+      {!active && <div className="chat-quick-entries">
+        <button type="button" onClick={() => setPanel("requests")}>
+          <Users size={15} />消息请求{requestCount > 0 && <i className="chat-entry-badge">{requestCount > 99 ? "99+" : requestCount}</i>}
+        </button>
+        <button type="button" onClick={() => setPanel("settings")} disabled={!rooms.length}>
+          <Bookmark size={15} />聊天设置
+        </button>
+      </div>}
       <div className="messages-inbox-switch" role="tablist" aria-label="消息列表类别">
         <button type="button" role="tab" aria-selected={inboxMode === "chats"} className={inboxMode === "chats" ? "selected" : ""} onClick={() => { setInboxMode("chats"); setQuery(""); setPeople([]); }}>会话 <small>{rooms.length}</small></button>
         <button type="button" role="tab" aria-selected={inboxMode === "people"} className={inboxMode === "people" ? "selected" : ""} onClick={() => { setInboxMode("people"); setQuery(""); }}>找人 <Users size={14}/></button>
@@ -726,7 +837,10 @@ export default function Messages({
                   <span className="conversation-row-meta"><time>{preview[r.id] ? new Date(preview[r.id].created_at).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }) : ""}</time>{unread[r.id] ? <i className="conversation-unread">{unread[r.id] > 99 ? "99+" : unread[r.id]}</i> : null}</span>
                 </span>
               </button>
-              <button type="button" className={`conversation-pin${pinnedRooms.includes(r.id) ? " is-pinned" : ""}`} aria-label={pinnedRooms.includes(r.id) ? "取消置顶会话" : "置顶会话"} aria-pressed={pinnedRooms.includes(r.id)} onClick={() => togglePinnedRoom(r.id)}><Pin size={15}/></button>
+              <div className="conversation-row-actions">
+                <button type="button" className={`conversation-pin${pinnedRooms.includes(r.id) ? " is-pinned" : ""}`} aria-label={pinnedRooms.includes(r.id) ? "取消置顶会话" : "置顶会话"} aria-pressed={pinnedRooms.includes(r.id)} onClick={() => void togglePinnedRoom(r.id)}><Pin size={15}/></button>
+                <button type="button" className="conversation-pin" aria-label="会话设置（免打扰、标记未读、归档）" onClick={() => { const room = rooms.find((x) => x.id === r.id)!; updateActiveConversation(room); setMessages([]); void load(room).then(() => setPanel("settings")); }}><MoreHorizontal size={15}/></button>
+              </div>
             </div>
           );
         })}
@@ -774,7 +888,11 @@ export default function Messages({
         </div>
       )}
       {active && (
-        <div className="chat-screen">
+        <div className="chat-screen" style={{
+          ...(settings?.theme ? { ["--chat-theme" as string]: settings.theme } : {}),
+          ...(settings?.bubble_color ? { ["--chat-bubble" as string]: settings.bubble_color } : {}),
+          ...(settings?.font_scale ? { ["--chat-font-scale" as string]: settings.font_scale } : {}),
+        } as React.CSSProperties}>
           {selectedMessage && (
             <div className="modal-backdrop">
               <div className="modal">
@@ -788,6 +906,15 @@ export default function Messages({
                   >
                     复制文字
                   </button>
+                  <button onClick={() => { setQuote(selectedMessage); setSelectedMessage(null); textareaRef.current?.focus(); }}>引用回复</button>
+                  <button onClick={() => { void doFavorite(selectedMessage); setSelectedMessage(null); }}>收藏消息</button>
+                  <button onClick={() => { void doForward(selectedMessage); setSelectedMessage(null); }}>转发消息</button>
+                  <button onClick={() => { setMultiMode(true); setMultiSelected([selectedMessage.id]); setSelectedMessage(null); }}>多选</button>
+                  <div className="chat-quick-reactions">
+                    {QUICK_REACTIONS.map((emoji) => (
+                      <button key={emoji} onClick={() => { void doReact(selectedMessage, emoji); setSelectedMessage(null); }} aria-label={`回应 ${emoji}`}>{emoji}</button>
+                    ))}
+                  </div>
                   {selectedMessage.sender_id === user.id && (() => {
                     const sentAt = new Date(selectedMessage.created_at).getTime();
                     // 服务端窗口 180 秒，这里留 5 秒余量，避免"显示还剩 1 秒却失败"。
@@ -807,34 +934,17 @@ export default function Messages({
                           const target = selectedMessage;
                           setConfirmDelete(false);
                           setSelectedMessage(null);
-                          // 先乐观移除，失败再整段刷新回滚。
-                          setMessages((old) => old.filter((m) => m.id !== target.id));
-                          try {
-                            const response = await fetch("/api/v1/messages", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                action: "recall",
-                                conversation: active.id,
-                                message: target.id,
-                              }),
-                            });
-                            if (!response.ok) {
-                              const payload = await response.json().catch(() => null);
-                              setError(payload?.error || "撤回失败，请稍后重试");
-                              void refresh();
-                              if (active) void load(active);
-                            }
-                          } catch {
-                            setError("网络异常，消息未撤回");
-                            void refresh();
-                            if (active) void load(active);
-                          }
+                          await doRecall(target);
                         }}
                       >
                         {confirmDelete ? "确认撤回（对话双方都看不到）" : `撤回消息 · ${clock}`}
                       </button>
                     );
+                  })()}
+                  {selectedMessage.sender_id === user.id && !selectedMessage.recalled && !selectedMessage.media_path && (() => {
+                    const left = new Date(selectedMessage.created_at).getTime() + (900 - 5) * 1000 - now;
+                    if (left <= 0) return <button disabled aria-disabled="true">已超过 15 分钟，无法编辑</button>;
+                    return <button onClick={() => { setEditing(selectedMessage); setDraft(selectedMessage.body); setSelectedMessage(null); textareaRef.current?.focus(); }}>编辑消息</button>;
                   })()}
                   <button
                     onClick={() => {
@@ -870,7 +980,7 @@ export default function Messages({
               </span>
               <span className="chat-peer-copy"><strong>{names[peer]?.nickname || "探索者"}<ProfileBadgeMarks badges={names[peer]?.badges || []} compact/></strong><small>个人主页</small></span>
             </button>
-            <button className="chat-more" aria-label="会话选项" onClick={() => setProfile(names[peer] || { id: peer, nickname: "探索者", bio: "" })}>
+            <button className="chat-more" aria-label="聊天设置" onClick={() => setPanel("settings")}>
               <MoreHorizontal size={21} />
             </button>
           </header>
@@ -895,9 +1005,10 @@ export default function Messages({
               const previous = messages[index - 1];
               const day = new Date(m.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
               const previousDay = previous ? new Date(previous.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }) : "";
-              return <div key={m.id} className="chat-message-group">
+              return <div key={m.id} id={`msg-${m.id}`} className={`chat-message-group${multiSelected.includes(m.id) ? " multi-selected" : ""}`}>
               {day !== previousDay && <div className="chat-day-divider"><span>{day}</span></div>}
-              <div className={`message-row ${m.sender_id === user.id ? "own" : ""}`}>
+              <div className={`message-row ${m.sender_id === user.id ? "own" : ""}`}
+                onClick={multiMode ? () => setMultiSelected((s) => s.includes(m.id) ? s.filter((x) => x !== m.id) : [...s, m.id]) : undefined}>
                 <span className="chat-message-avatar" aria-hidden="true">
                   {(m.sender_id === user.id ? user.user_metadata?.nickname || user.email : names[peer]?.nickname || "探")?.toString().slice(0, 1) || "探"}
                   {m.sender_id === user.id && typeof user.user_metadata?.avatar_url === "string" && <img src={user.user_metadata.avatar_url} alt="" />}
@@ -941,17 +1052,45 @@ export default function Messages({
                       setSelectedMessage(m);
                     }}
                   >
-                    {m.body !== "[图片]" && <p>{m.body}</p>}
-                    {media[m.id] && (
-                      <img
-                        src={media[m.id]}
-                        alt="聊天图片"
-                        loading="lazy"
-                        onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}
-                        style={{ maxWidth: "100%", maxHeight: 300, objectFit: "contain" }}
-                      />
+                    {m.reply_to && (
+                      <div className="chat-quote" onClick={() => {
+                        const target = messages.find((x) => x.id === m.reply_to);
+                        if (target) { const el = document.getElementById(`msg-${target.id}`); el?.scrollIntoView({ behavior: "smooth", block: "center" }); }
+                      }}>
+                        <strong>{messages.find((x) => x.id === m.reply_to)?.sender_id === user.id ? "你" : names[peer]?.nickname || "原消息"}</strong>
+                        <span>{messages.find((x) => x.id === m.reply_to)?.body || "原消息不可用"}</span>
+                      </div>
+                    )}
+                    {m.recalled ? (
+                      <p className="message-recalled">{m.sender_id === user.id ? "你撤回了一条消息" : "对方撤回了一条消息"}</p>
+                    ) : (
+                      <>
+                        {m.body !== "[图片]" && m.message_type !== "image" && <p>{m.body}</p>}
+                        {media[m.id] && (
+                          <img
+                            src={media[m.id]}
+                            alt="聊天图片"
+                            loading="lazy"
+                            onError={(event) => { if (!event.currentTarget.dataset.fallback) { event.currentTarget.dataset.fallback = "true"; event.currentTarget.src = "/image-not-loaded.svg"; } }}
+                            style={{ maxWidth: "100%", maxHeight: 300, objectFit: "contain" }}
+                          />
+                        )}
+                        {m.edited_at && <small className="message-edited">已编辑</small>}
+                      </>
                     )}
                   </div>
+                  {/* 安全提醒：服务端标识驱动，位于气泡下方，跟随发送方对齐 */}
+                  {!m.recalled && m.safety_flag && (
+                    <div className="message-safety"><Shield size={12} /><span>{SAFETY_NOTICE}</span></div>
+                  )}
+                  {/* 表情回应：附着于气泡下方，紧凑标识 */}
+                  {!m.recalled && (reactions[m.id]?.length || 0) > 0 && (
+                    <div className="message-reactions">
+                      {Object.entries(reactions[m.id].reduce<Record<string, number>>((acc, r) => { acc[r.emoji] = (acc[r.emoji] || 0) + 1; return acc; }, {})).map(([emoji, count]) => (
+                        <button type="button" key={emoji} onClick={() => void doReact(m, emoji)}>{emoji} {count > 1 ? count : ""}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               </div>;
@@ -1026,12 +1165,19 @@ export default function Messages({
                 }}
               />
             </label>
+            {(quote || editing) && (
+              <div className="chat-compose-context">
+                <span>{editing ? "正在编辑消息" : `引用 ${quote?.sender_id === user.id ? "你" : names[peer]?.nickname || "原消息"}`}：{editing ? "" : quote?.body}</span>
+                <button type="button" onClick={() => { setQuote(null); setEditing(null); setDraft(""); }} aria-label="取消"><X size={15} /></button>
+              </div>
+            )}
             <textarea
+              ref={textareaRef}
               aria-label="消息内容，按 Enter 发送，Shift 加 Enter 换行"
               className="chat-compose-textarea"
               maxLength={2000}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => { setDraft(e.target.value); if (e.target.value && Date.now() - typingSentAt.current > 2500) { typingSentAt.current = Date.now(); /* 正在输入为轻量事件，此处不持久化 */ } }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
@@ -1039,15 +1185,57 @@ export default function Messages({
                 }
               }}
               rows={1}
-              placeholder="写下消息…"
+              placeholder={editing ? "编辑消息内容…" : "写下消息…"}
             />
-            <button className="chat-send" disabled={busy || !draft.trim()} aria-label="发送消息">
-              <ArrowUp size={18} strokeWidth={2.4}/>
+            <button className="chat-send" disabled={busy || !draft.trim()} aria-label={editing ? "保存编辑" : "发送消息"}>
+              {editing ? <Check size={18} strokeWidth={2.4}/> : <ArrowUp size={18} strokeWidth={2.4}/>}
             </button>
           </form>
+          {multiMode && (
+            <div className="chat-multi-toolbar">
+              <span>已选 {multiSelected.length} 条</span>
+              <button type="button" onClick={async () => {
+                const text = messages.filter((m) => multiSelected.includes(m.id)).map((m) => `[${new Date(m.created_at).toLocaleString("zh-CN")}] ${m.sender_id === user.id ? "我" : names[peer]?.nickname || "对方"}: ${m.body}`).join("\n");
+                await navigator.clipboard.writeText(text);
+                setMultiMode(false); setMultiSelected([]);
+              }}>复制</button>
+              <button type="button" onClick={() => {
+                if (!multiSelected.length) return;
+                void Promise.all(multiSelected.map((id) => chatApi.forward(active.id, id, crypto.randomUUID())));
+                setMultiMode(false); setMultiSelected([]); void refresh();
+              }}>逐条转发</button>
+              <button type="button" onClick={() => { setMultiMode(false); setMultiSelected([]); }}>取消</button>
+            </div>
+          )}
           <AnimatedNotice message={error} />
         </div>
       )}
+      {/* ---- Chat 2.0 功能面板 ---- */}
+      {panel === "settings" && active && (
+        <ChatSettingsPanel conversation={active.id} peer={names[peer] || { id: peer, nickname: "探索者", bio: "" }}
+          onClose={() => setPanel(null)} onNotice={(m) => setError(m)}
+          onOpenMedia={() => setPanel("media")} onOpenFavorites={() => setPanel("search")}
+          onOpenSearch={() => setPanel("search")} onOpenPrivacy={() => setPanel("privacy")}
+          onCleared={() => void clearChat()} />
+      )}
+      {panel === "search" && (
+        <ChatSearchPanel conversation={active?.id} onClose={() => setPanel(null)}
+          onJump={(messageId, fromConversation) => {
+            setPanel(null);
+            if (!active || active.id !== fromConversation) {
+              const room = rooms.find((r) => r.id === fromConversation);
+              if (room) { updateActiveConversation(room); setMessages([]); void load(room).then(() => {
+                setTimeout(() => document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+              }); }
+            } else setTimeout(() => document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+          }} />
+      )}
+      {panel === "media" && active && <ChatMediaPanel conversation={active.id} onClose={() => setPanel(null)} />}
+      {panel === "requests" && (
+        <ChatRequestsPanel onClose={() => setPanel(null)} onNotice={(m) => setError(m)}
+          onOpened={(id) => { setPanel(null); const room = rooms.find((r) => r.id === id); void refreshCounters(); void refresh(); if (room) { updateActiveConversation(room); void load(room); } }} />
+      )}
+      {panel === "privacy" && <ChatPrivacyPanel onClose={() => setPanel(null)} onNotice={(m) => setError(m)} />}
     </section>
   );
 }

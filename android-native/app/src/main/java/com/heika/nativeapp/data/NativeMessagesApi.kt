@@ -9,6 +9,24 @@ object NativeMessagesApi {
         before?.takeIf(String::isNotBlank)?.let { append("&before=").append(encode(it)) }
     }
 
+    /**
+     * Chat 2.0 GET views. All parameters are optional except the view itself;
+     * blank values are dropped so the server can apply its own defaults.
+     */
+    fun viewPath(
+        view: String,
+        conversationId: String? = null,
+        before: String? = null,
+        query: String? = null,
+        kind: String? = null,
+    ): String = buildString {
+        append(PATH).append("?view=").append(encode(view))
+        conversationId?.takeIf(String::isNotBlank)?.let { append("&conversation=").append(encode(it)) }
+        before?.takeIf(String::isNotBlank)?.let { append("&before=").append(encode(it)) }
+        query?.takeIf(String::isNotBlank)?.let { append("&q=").append(encode(it)) }
+        kind?.takeIf(String::isNotBlank)?.let { append("&kind=").append(encode(it)) }
+    }
+
     fun action(name: String, conversationId: String? = null): org.json.JSONObject =
         org.json.JSONObject().put("action", name).apply {
             conversationId?.let { put("conversation", it) }
