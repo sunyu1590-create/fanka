@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { ArrowLeft, Blocks, Bookmark, Bot, BrainCircuit, ChevronRight, Code2, Compass, ExternalLink, FileText, ImageOff, RotateCcw, Search, SlidersHorizontal, Sparkles, Terminal, Wrench } from "lucide-react";
+import { ArrowLeft, Blocks, Bookmark, Bot, BrainCircuit, ChevronRight, Code2, Compass, ExternalLink, FileText, Search, SlidersHorizontal, Sparkles, Terminal, Wrench } from "lucide-react";
 import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import type { Post } from "@/lib/content";
 import { ProfileBadgeMarks } from "./ProfileBadgeList";
 import MasonryFeed from "./MasonryFeed";
 import AIHotSections from "./AIHotSections";
+import CardCover from "./CardCover";
 import { plainText } from "@/lib/text";
 
 type Category = { id: number; name: string; description: string; sort_order: number; is_featured: boolean; parent_id: number | null };
@@ -62,35 +63,57 @@ function ResultsSection({ heading, eyebrow, total, error, loading, items, card, 
   </section>;
 }
 
-/** 单张 AI 资源卡：有图走封面布局，无图不渲染图片区，图片加载失败给可重试的错误态。 */
+/** 单张 AI 资源卡：数字杂志排版，封面自适应原始比例，分类标签位于封面下方。 */
 function ResourceCard({ post, saved, onOpen, onToggleSave }: {
   post: Post;
   saved: boolean;
   onOpen: (post: Post, source: Element | null) => void;
   onToggleSave: (post: Post, event: MouseEvent<HTMLButtonElement>) => void;
 }) {
-  const [coverFailed, setCoverFailed] = useState(false);
-  const [coverAttempt, setCoverAttempt] = useState(0);
-  const rawCover = typeof post.image === "string" ? post.image.trim() : "";
-  // null / undefined / 空串 / 纯空白都按无图处理：不渲染图片区、不保留高度、不生成占位。
-  const textOnly = !rawCover;
   const Icon = typeIcons[post.contentType || "knowledge_article"] || FileText;
   const typeLabel = typeLabels[post.contentType || "knowledge_article"] || "AI 内容";
   const excerpt = plainText(post.body, 160);
-  return <article className={`ai-resource-card${textOnly ? " is-text-only" : ""}${rawCover && coverFailed ? " is-cover-failed" : ""}`}>
-    <button className="ai-resource-open" type="button" data-discover-id={post.id} onClick={(event) => onOpen(post, event.currentTarget)}>
-      {rawCover ? <>
-        {coverFailed ? <span className="ai-resource-cover-failed"><ImageOff size={15}/><strong>封面加载失败</strong><button type="button" onClick={(event) => { event.stopPropagation(); setCoverAttempt((value) => value + 1); setCoverFailed(false); }}><RotateCcw size={12}/>重试</button></span>
-          : <span className="ai-resource-cover"><img key={coverAttempt} src={rawCover} alt="" loading="lazy" onError={() => setCoverFailed(true)} /><span className="ai-resource-cover-labels"><span className="discovery-glass-label"><Icon size={13}/>{typeLabel}</span></span></span>}
-        <span className="ai-resource-copy"><small>{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/>{post.seriesTitle ? <em className="ai-resource-series">合集 · {post.seriesTitle}</em> : null}</small><strong>{post.title}</strong><i>{post.date} · {post.viewCount || 0} 阅读</i></span>
-      </> : <>
-        <span className="ai-resource-text-type"><Icon size={13}/>{typeLabel}</span>
-        <span className="ai-resource-copy"><strong>{post.title}</strong><span>{excerpt}</span></span>
-        <span className="ai-resource-text-meta">{post.author}<ProfileBadgeMarks badges={post.authorBadges || []} compact/>{post.seriesTitle ? <em className="ai-resource-series">合集 · {post.seriesTitle}</em> : null}<i>{post.date} · {post.viewCount || 0} 阅读</i></span>
-      </>}
-    </button>
-    <button type="button" className={`ai-resource-save${saved ? " saved" : ""}`} aria-label={saved ? "取消收藏" : "收藏资源"} onClick={(event) => onToggleSave(post, event)}><Bookmark size={16} fill={saved ? "currentColor" : "none"}/></button>
-  </article>;
+  const size = post.imageSizes?.[0];
+  return (
+    <article className={`ai-resource-card${!post.image && !post.video ? " is-text-only" : ""}`}>
+      <CardCover
+        image={post.image}
+        thumbnail={post.thumbnailImages?.[0]}
+        video={post.video || post.videos?.[0]}
+        imageWidth={size?.width ?? null}
+        imageHeight={size?.height ?? null}
+        title={post.title}
+        excerpt={excerpt}
+        href={`/p/${post.id}`}
+        ariaLabel={`阅读：${post.title}`}
+        onOpen={(source) => onOpen(post, source)}
+        className="ai-unified-card"
+      >
+        {/* 分类标签移至封面下方 */}
+        <div className="ai-card-meta">
+          <span className="ai-card-type"><Icon size={13} />{typeLabel}</span>
+          <span className="ai-card-author">
+            {post.author || "创作者"}
+            <ProfileBadgeMarks badges={post.authorBadges || []} compact />
+          </span>
+        </div>
+        {/* 标题与摘要 */}
+        <div className="ai-card-copy">
+          <strong>{post.title}</strong>
+          <i>{post.date} · {post.viewCount || 0} 阅读</i>
+        </div>
+        {/* 收藏按钮 */}
+        <button
+          type="button"
+          className={`ai-resource-save${saved ? " saved" : ""}`}
+          aria-label={saved ? "取消收藏" : "收藏资源"}
+          onClick={(event) => onToggleSave(post, event)}
+        >
+          <Bookmark size={16} fill={saved ? "currentColor" : "none"} />
+        </button>
+      </CardCover>
+    </article>
+  );
 }
 
 export default function AISpace({ accountId, onOpen, onLogin, onNotice, hidden = false, onOpenPostById, onOpenSeries, onOpenSeriesChannel }: Props) {
