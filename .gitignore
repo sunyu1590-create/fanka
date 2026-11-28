@@ -33,3 +33,13 @@ shots-tmp/
 
 # 本地验收脚本，不入库
 qa-*.mjs
+# HEIKA Lite Android 工程：构建产物、本地 SDK 路径与工具链缓存不入库
+android-lite/**/build/
+android-lite/.gradle/
+android-lite/.kotlin/
+android-lite/local.properties
+android-lite/*.log
+# 签名材料永不入库（口令只存在于服务器 600 权限文件）
+*.jks
+*.keystore
+*.credentials

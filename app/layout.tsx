@@ -3,6 +3,7 @@ import Script from 'next/script';
 import ServiceWorkerRegistration from '../components/ServiceWorkerRegistration';
 import InAppDialogHost from '../components/InAppDialogHost';
 import NativeSessionBridge from '../components/NativeSessionBridge';
+import LiteRuntimeBridge from '../components/LiteRuntimeBridge';
 import './style.css';
 import './design-system.css';
 import './chat2.css';
@@ -23,6 +24,7 @@ import './home-banners.css';
 import './nexus.css';
 import './series-cover.css';
 import './reader.css';
+import './lite.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',
@@ -88,6 +90,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         } catch {}`}</Script>
         {children}
         <NativeSessionBridge />
+        <LiteRuntimeBridge />
         <InAppDialogHost />
         <ServiceWorkerRegistration />
       </body>

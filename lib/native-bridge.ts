@@ -12,7 +12,7 @@ export type NativeTransitionRect = {
 };
 
 type NativeMessage = {
-  version: 1;
+  version: 1 | 2;
   id: string;
   type: string;
   requestType?: string;
@@ -41,6 +41,9 @@ type PendingRequest = {
   timeout: number;
 };
 
+/** 与 Lite 原生容器对齐的协议版本；接收侧同时兼容 v1 与 v2。 */
+export const PROTOCOL_VERSION = 2;
+
 const pendingRequests = new Map<string, PendingRequest>();
 const handlers = new Map<string, Set<NativeEventHandler>>();
 let requestCounter = 0;
@@ -56,7 +59,7 @@ function post(type: string, payload: Record<string, unknown> = {}) {
   const bridge = typeof window === "undefined" ? undefined : window.HeikaNative;
   if (!bridge) return false;
   try {
-    bridge.postMessage(JSON.stringify({ version: 1, id: newId(), type, payload }));
+    bridge.postMessage(JSON.stringify({ version: PROTOCOL_VERSION, id: newId(), type, payload }));
     return true;
   } catch {
     return false;
@@ -81,7 +84,8 @@ function onNativeMessage(event: MessageEvent<string>) {
   } catch {
     return;
   }
-  if (message.version !== 1 || typeof message.id !== "string") return;
+  if (message.version !== 1 && message.version !== 2) return;
+  if (typeof message.id !== "string") return;
 
   if (message.type === "result") {
     const pending = pendingRequests.get(message.id);
@@ -305,13 +309,108 @@ function request(type: string, payload: Record<string, unknown> = {}, timeoutMs 
     }, timeoutMs);
     pendingRequests.set(id, { requestType: type, resolve, reject, timeout });
     try {
-      bridge.postMessage(JSON.stringify({ version: 1, id, type, payload }));
+      bridge.postMessage(JSON.stringify({ version: PROTOCOL_VERSION, id, type, payload }));
     } catch {
       window.clearTimeout(timeout);
       pendingRequests.delete(id);
       reject(new Error("原生通信失败"));
     }
   });
+}
+
+export type NativePerformanceMode = "auto" | "ultra-light" | "balanced" | "full";
+export type NativeWindowClass = "compact" | "medium" | "expanded";
+
+export type NativeEnvironment = {
+  clientType: "heika-lite";
+  clientVersion: string;
+  clientVersionCode: number;
+  protocolVersion: number;
+  mode: NativePerformanceMode;
+  modePreference: NativePerformanceMode;
+  recommendedMode: NativePerformanceMode;
+  autoDegrade: boolean;
+  themePreference: "system" | "light" | "dark";
+  dark: boolean;
+  windowClass: NativeWindowClass;
+  device: Record<string, unknown>;
+};
+
+function isPerformanceMode(value: unknown): value is NativePerformanceMode {
+  return value === "auto" || value === "ultra-light" || value === "balanced" || value === "full";
+}
+
+function isWindowClass(value: unknown): value is NativeWindowClass {
+  return value === "compact" || value === "medium" || value === "expanded";
+}
+
+/**
+ * 读取原生运行环境。
+ *
+ * 非 Lite 容器（普通浏览器、标准版 APP）一律返回 null，
+ * 因此所有调用方都必须按「没有环境即普通网页」处理，不能把它当成必有值。
+ */
+export async function getNativeEnvironment(): Promise<NativeEnvironment | null> {
+  if (!hasNativeBridge()) return null;
+  try {
+    const response = await request("environment.get");
+    if (!response.ok || !response.data) return null;
+    const data = response.data;
+    if (data.clientType !== "heika-lite") return null;
+    if (!isPerformanceMode(data.mode) || !isWindowClass(data.windowClass)) return null;
+    return {
+      clientType: "heika-lite",
+      clientVersion: String(data.clientVersion ?? ""),
+      clientVersionCode: Number(data.clientVersionCode ?? 0),
+      protocolVersion: Number(data.protocolVersion ?? 0),
+      mode: data.mode,
+      modePreference: isPerformanceMode(data.modePreference) ? data.modePreference : data.mode,
+      recommendedMode: isPerformanceMode(data.recommendedMode) ? data.recommendedMode : data.mode,
+      autoDegrade: data.autoDegrade === true,
+      themePreference:
+        data.themePreference === "light" || data.themePreference === "dark"
+          ? data.themePreference
+          : "system",
+      dark: data.dark === true,
+      windowClass: data.windowClass,
+      device: (data.device ?? {}) as Record<string, unknown>,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 请求原生切换性能模式；返回是否被原生接受。 */
+export async function setNativePerformanceMode(mode: NativePerformanceMode): Promise<boolean> {
+  if (!hasNativeBridge() || !isPerformanceMode(mode)) return false;
+  try {
+    const response = await request("performance.set", { mode });
+    return response.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 把网页当前深浅色同步到 Android 系统栏，避免浅色页面配深色状态栏。 */
+export async function syncNativeTheme(dark: boolean): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("theme.set", { mode: dark ? "dark" : "light", dark });
+    return response.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/** 清理 WebView 网页缓存；原生侧不会顺带删除本地草稿。 */
+export async function clearNativeWebCache(): Promise<boolean> {
+  if (!hasNativeBridge()) return false;
+  try {
+    const response = await request("cache.clearWeb");
+    return response.ok === true;
+  } catch {
+    return false;
+  }
 }
 
 function isTransitionRect(rect: NativeTransitionRect) {

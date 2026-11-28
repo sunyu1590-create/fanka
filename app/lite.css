@@ -1,0 +1,181 @@
+/*
+ * HEIKA Lite 专属样式。
+ *
+ * 作用域：所有规则都在 html[data-lite="true"] 之下。
+ * 普通浏览器与标准版 APP 不会命中任何一条，因此不会污染现有页面。
+ *
+ * 分工：
+ * - 性能降级（关玻璃、减动效）由 data-lite-mode 与 data-motion-glass 驱动；
+ * - 布局自适应由 data-lite-window（compact / medium / expanded）驱动；
+ * - 只处理结构与开销，不重做视觉语言。
+ */
+
+/* ── 一、极致轻量：关闭高开销材质 ─────────────────────────── */
+
+html[data-lite-mode="ultra-light"] .bottom-nav-shell,
+html[data-lite-mode="ultra-light"] .bottom-nav,
+html[data-lite-mode="ultra-light"] .reader-sheet,
+html[data-lite-mode="ultra-light"] .chat-panel,
+html[data-lite-mode="ultra-light"] .overlay,
+html[data-lite-mode="ultra-light"] .modal {
+  /* 用不透明实色替代高斯模糊，避免逐帧重采样整块背景。 */
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-lite] .bottom-nav-shell {
+  /* 阴影改为单层低开销投影，去掉内阴影与多层叠加。 */
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--bg) 22%, transparent);
+}
+
+html[data-lite-mode="ultra-light"] .home-banner-carousel,
+html[data-lite-mode="ultra-light"] .post-card-media,
+html[data-lite-mode="ultra-light"] .heika-masonry-item {
+  /* 轻量模式取消持续动画与过渡，保留最终状态。 */
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ── 二、正文独立阅读列宽 ─────────────────────────────────
+ * 正文宽度只由自身容器决定，不被封面图或侧栏挤压。
+ * 这是此前大屏出现「正文被压成窄条」的直接对策。
+ */
+
+html[data-lite] .editorial-article {
+  width: 100%;
+  max-width: 72ch;
+  margin-inline: auto;
+  min-width: 0;
+}
+
+html[data-lite-window="expanded"] .editorial-article {
+  max-width: 76ch;
+}
+
+/* 代码块与宽表格局部滚动，绝不撑破页面。 */
+html[data-lite] .editorial-article pre,
+html[data-lite] .editorial-article table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+html[data-lite] .editorial-article img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 封面图不得决定正文宽度。 */
+html[data-lite] .editorial-article > figure,
+html[data-lite] .editorial-article > img {
+  width: auto;
+  max-width: min(100%, 720px);
+}
+
+/* ── 三、瀑布流列数自适应 ─────────────────────────────────
+ * 按可用宽度决定列数，同时给卡片宽度设上下限，避免窄卡片或超大卡片。
+ */
+
+html[data-lite] .heika-masonry,
+html[data-lite] .home-waterfall,
+html[data-lite] .mine-works-masonry {
+  grid-template-columns: repeat(var(--lite-columns, 2), minmax(0, 1fr));
+}
+
+html[data-lite-window="compact"] {
+  --lite-columns: 2;
+}
+
+html[data-lite-window="medium"] {
+  --lite-columns: 3;
+}
+
+html[data-lite-window="expanded"] {
+  --lite-columns: 4;
+}
+
+html[data-lite] .heika-masonry-item {
+  min-width: 0;
+  /* 卡片最小可读宽度，防止多列后标题被压成竖排。 */
+  min-inline-size: 148px;
+}
+
+/* ── 四、扩展窗口：侧栏导航与双栏结构 ───────────────────
+ * 扩展窗口下隐藏手机底部悬浮导航，改用左侧竖排导航，
+ * 彻底避免「桌面侧栏与手机底栏同时出现」的历史问题。
+ */
+
+html[data-lite-window="expanded"] .bottom-nav-shell {
+  left: 0;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 208px;
+  height: 100dvh;
+  transform: none;
+  border-radius: 0;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 84px 12px 24px;
+}
+
+html[data-lite-window="expanded"] .bottom-nav {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-lite-window="expanded"] .bottom-nav button {
+  justify-content: flex-start;
+  padding-inline: 10px;
+}
+
+/* 侧栏存在时，主内容整体右移，避免被侧栏遮挡。 */
+html[data-lite-window="expanded"] body {
+  padding-left: 208px;
+  box-sizing: border-box;
+}
+
+/* 评论区：扩展窗口下正文与评论并排，正文继续可滚动，评论独立滚动。 */
+html[data-lite-window="expanded"] .reader-discuss {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  align-items: start;
+  gap: 20px;
+}
+
+html[data-lite-window="expanded"] .chat-panel-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+}
+
+/* ── 五、紧凑窗口：关闭三维与重型装饰 ───────────────────
+ * 仅在极致轻量模式下生效，均衡/完整体验模式保持原状。
+ */
+
+html[data-lite-mode="ultra-light"] .nexus-canvas,
+html[data-lite-mode="ultra-light"] .nexus-3d,
+html[data-lite-mode="ultra-light"] canvas {
+  display: none !important;
+}
+
+/* 视频在极致轻量模式默认只显示封面，点击后才播放（由组件层控制）。 */
+html[data-lite-mode="ultra-light"][data-lite-autoplay="off"] video[autoplay] {
+  visibility: hidden;
+}
+
+/* ── 六、减少动态效果对 Lite 同样生效 ───────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-lite] * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html[data-lite-motion="off"] * {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
