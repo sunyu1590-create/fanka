@@ -769,7 +769,14 @@
   z-index: 1;
 }
 
-.comment-panel.is-expanded {
+/* 移动端三档：半屏约 50% → 大屏约 80% → 全屏。高度用 dvh，键盘弹起时同步收缩。 */
+.comment-panel.is-stage-0 {
+  height: 52dvh;
+}
+.comment-panel.is-stage-1 {
+  height: 80dvh;
+}
+.comment-panel.is-stage-2 {
   height: 94dvh;
 }
 
@@ -1815,3 +1822,169 @@ body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
     max-width: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Discussion 2.0 · 桌面方案 A：正文与评论并列沉浸                       */
+/* 无全屏灰遮罩、不冻结正文滚动、不覆盖正文、无拖动横线与大阴影          */
+/* ------------------------------------------------------------------ */
+@media (min-width: 1024px) {
+  /* 遮罩退化为不可见且不接收点击，桌面不再出现灰色蒙层 */
+  .comment-panel-scrim {
+    background: transparent;
+    animation: none;
+    pointer-events: none;
+  }
+  .comment-panel-layer {
+    justify-content: flex-end;
+    align-items: stretch;
+    pointer-events: none;
+  }
+  .comment-panel {
+    pointer-events: auto;
+    width: clamp(300px, 28vw, 340px);
+    max-width: 340px;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    padding-bottom: 0;
+    border-radius: 0;
+    border-left: 1px solid var(--rd-line);
+    background: var(--rd-panel);
+    box-shadow: none;
+    animation: discussion-in var(--motion-page) var(--ease-open) both;
+  }
+  /* 保留头部与输入区固定，只有列表滚动 */
+  .comment-panel .comment-panel-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--rd-panel);
+    border-bottom: 1px solid var(--rd-line);
+    padding: 12px 16px 10px;
+  }
+  .comment-panel .comment-sort-row {
+    position: sticky;
+    top: 51px;
+    z-index: 2;
+    background: var(--rd-panel);
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--rd-line);
+  }
+  .comment-panel .comment-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 14px 16px 20px;
+  }
+  .comment-panel .comment-panel-composer {
+    flex: 0 0 auto;
+    position: sticky;
+    bottom: 0;
+    background: var(--rd-panel);
+    border-top: 1px solid var(--rd-line);
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+  /* 桌面不需要移动端的拖动横线与展开/收起按钮 */
+  .comment-panel .reader-sheet-handle { display: none; }
+  .comment-panel .comment-panel-tools button[aria-label="收起面板"],
+  .comment-panel .comment-panel-tools button[aria-label="展开到全屏"] { display: none; }
+}
+@media (min-width: 1280px) {
+  .comment-panel {
+    width: clamp(360px, 26vw, 420px);
+    max-width: 420px;
+  }
+}
+
+/* 正文让位：评论打开时右侧为面板预留空间，正文与评论并列不覆盖正文 */
+@media (min-width: 1024px) {
+  body.comment-panel-open .detail-page-shell,
+  body.comment-panel-open .overlay.detail-ready {
+    padding-right: clamp(300px, 28vw, 420px);
+    transition: padding-right var(--motion-page) var(--ease-open);
+  }
+  /* 作者/推荐区与评论在同一位置连续叠化：辅助栏淡出，把空间让给评论 */
+  body.comment-panel-open .detail-body > .detail-aside {
+    opacity: 0;
+    transform: translateX(10px);
+    pointer-events: none;
+    transition: opacity var(--motion-page) var(--ease-standard), transform var(--motion-page) var(--ease-standard);
+  }
+  body.comment-panel-open .detail-body > .reader-toc-aside { display: none; }
+  /* 辅助栏让出后，栅格收回该列，正文阅读宽稳定在 680-760px */
+  .detail-body.comments-open > .detail-aside { display: none; }
+}
+@media (min-width: 1200px) and (max-width: 1439px) {
+  .detail .detail-body.comments-open,
+  .detail-page .detail-body.comments-open {
+    grid-template-columns: 56px minmax(0, 760px);
+  }
+}
+@media (min-width: 1440px) and (max-width: 1719px) {
+  .detail .detail-body.comments-open,
+  .detail-page .detail-body.comments-open {
+    grid-template-columns: 200px 44px minmax(0, 760px);
+  }
+}
+@media (min-width: 1720px) {
+  .detail .detail-body.comments-open,
+  .detail-page .detail-body.comments-open {
+    grid-template-columns: 200px 52px minmax(0, 760px);
+  }
+}
+
+@keyframes discussion-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Discussion 2.0 · 评论内容：黑卡克制风格，不堆卡片                    */
+/* ------------------------------------------------------------------ */
+.comment-mention {
+  color: var(--rd-accent);
+  font-weight: 550;
+}
+.comment-edited {
+  color: var(--rd-muted);
+  font-size: 10px;
+  opacity: .85;
+}
+.comment-deleted {
+  color: var(--rd-muted);
+  font-style: italic;
+}
+.comment-pin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border: 1px solid var(--rd-line);
+  border-radius: 3px;
+  color: var(--rd-accent);
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: .04em;
+}
+.comment-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.comment-attachment {
+  display: block;
+  width: 76px;
+  height: 76px;
+  overflow: hidden;
+  border: 1px solid var(--rd-line);
+  border-radius: 4px;
+  background: var(--rd-field);
+}
+.comment-attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+

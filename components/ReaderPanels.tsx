@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ChevronDown, ChevronUp, Heart, ListTree, MessageSquare, MoreHorizontal, X } from "lucide-react";
 import { markdownOutline, type OutlineItem } from "./MarkdownContent";
 
+export type ReaderCommentAttachment = { path: string; width?: number; height?: number };
+
 type ReaderComment = {
   id: number;
   cloudId?: string;
@@ -17,7 +19,26 @@ type ReaderComment = {
   time: number;
   likes: number;
   liked?: boolean;
+  /** Discussion 2.0：作者置顶（服务端鉴权，每篇最多 1 条） */
+  pinned?: boolean;
+  /** 已删除占位：保留 id、时间与回复关系，正文不再展示 */
+  deleted?: boolean;
+  edited?: boolean;
+  editedAt?: number;
+  attachments?: ReaderCommentAttachment[];
+  mentions?: string[];
 };
+
+/** 正文中的 @昵称 高亮：纯前端展示，不额外调用任何接口 */
+function renderMentions(text: string): ReactNode {
+  if (!text || !text.includes("@")) return text;
+  const parts = text.split(/(@[\u4e00-\u9fa5A-Za-z0-9_-]{1,20})/g);
+  return parts.map((part, index) => (
+    /^@[\u4e00-\u9fa5A-Za-z0-9_-]{1,20}$/.test(part)
+      ? <span className="comment-mention" key={`mention-${index}`}>{part}</span>
+      : part
+  ));
+}
 
 export function relativeTime(time: number) {
   const diff = Date.now() - time;
@@ -443,7 +464,8 @@ export function CommentPanel({
   onNotice: (message: string) => void;
   focusToken: number;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  // 移动端抽屉三档：0 半屏（约 50%）、1 大屏（约 80%）、2 全屏；桌面端忽略档位。
+  const [stage, setStage] = useState(0);
   // 拖动位移允许为负（向上拉），负值只用于判定，不真的把面板拉出屏幕。
   const [dragging, setDragging] = useState(0);
   const dragStart = useRef<number | null>(null);
@@ -454,16 +476,20 @@ export function CommentPanel({
   const [expandedThreads, setExpandedThreads] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    if (!open) { setDragging(0); setExpanded(false); setSettled(false); return; }
+    if (!open) { setDragging(0); setStage(0); setSettled(false); return; }
     const settle = window.setTimeout(() => setSettled(true), 360);
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
+    // 桌面方案 A：评论与正文并列，正文必须继续可滚动，只有移动端抽屉才锁滚动。
+    const desktop = window.matchMedia("(min-width: 1024px)").matches;
     const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.classList.add("comment-panel-open");
+    if (!desktop) document.body.style.overflow = "hidden";
     return () => {
       window.clearTimeout(settle);
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
+      document.body.classList.remove("comment-panel-open");
+      if (!desktop) document.body.style.overflow = previous;
     };
   }, [open, onClose]);
 
@@ -481,7 +507,11 @@ export function CommentPanel({
     const all = comments;
     return all
       .filter((c) => !c.parent)
-      .sort((a, b) => (sort === "new" ? b.time - a.time : b.likes - a.likes || b.time - a.time));
+      .sort((a, b) => {
+        // 作者置顶始终在最前，其余保持当前排序规则
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+        return sort === "new" ? b.time - a.time : b.likes - a.likes || b.time - a.time;
+      });
   }, [comments, sort]);
 
   const childrenOf = useCallback((id: number) => comments.filter((c) => c.parent === id).sort((a, b) => a.time - b.time), [comments]);
@@ -502,10 +532,12 @@ export function CommentPanel({
     dragStart.current = null;
     setDragging(0);
     if (moved > 96) {
-      if (expanded) setExpanded(false);
+      // 下滑：逐档降低，已在最低档则关闭并恢复阅读位置与草稿
+      if (stage > 0) setStage((value) => Math.max(0, value - 1));
       else onClose();
     } else if (moved < -48) {
-      setExpanded(true);
+      // 上滑：逐档升高，最高到全屏
+      setStage((value) => Math.min(2, value + 1));
     }
   };
 
@@ -514,7 +546,7 @@ export function CommentPanel({
       <div className="comment-panel-scrim" role="presentation" onClick={onClose} />
       <section
         ref={panelRef}
-        className={`comment-panel${expanded ? " is-expanded" : ""}${dragging ? " is-dragging" : ""}${settled ? " is-settled" : ""}`}
+        className={`comment-panel is-stage-${stage}${dragging ? " is-dragging" : ""}${settled ? " is-settled" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label="评论"
@@ -535,8 +567,8 @@ export function CommentPanel({
           <h2>全部评论</h2>
           <small>{total > 0 ? total : comments.length}</small>
           <div className="comment-panel-tools">
-            <button type="button" aria-label={expanded ? "收起面板" : "展开到全屏"} onClick={() => setExpanded((value) => !value)}>
-              {expanded ? <ChevronDown size={17} /> : <ChevronUp size={17} />}
+            <button type="button" aria-label={stage === 2 ? "收起面板" : "展开到全屏"} onClick={() => setStage((value) => (value === 2 ? 0 : 2))}>
+              {stage === 2 ? <ChevronDown size={17} /> : <ChevronUp size={17} />}
             </button>
             <button type="button" aria-label="关闭评论" onClick={onClose}><X size={18} /></button>
           </div>
@@ -565,6 +597,7 @@ export function CommentPanel({
           {!loading && !error && roots.length === 0 && <p className="comments-empty">还没有评论，来聊聊你的想法。</p>}
           {roots.map((comment) => {
             const replies = childrenOf(comment.id);
+            const attachments = comment.attachments || [];
             const long = comment.body.length > 280;
             const shown = expandedBodies[comment.id] || !long ? comment.body : `${comment.body.slice(0, 280)}…`;
             const threadOpen = Boolean(expandedThreads[comment.id]);
@@ -578,8 +611,24 @@ export function CommentPanel({
                   <div className="comment-heading">
                     <strong>{comment.name || "探索者"}</strong>
                     {postAuthorId && comment.authorId === postAuthorId && <span className="comment-author-badge">作者</span>}
+                    {comment.pinned && <span className="comment-pin-badge">置顶</span>}
                   </div>
-                  <p className="comment-body">{shown}</p>
+                  {comment.deleted ? (
+                    <p className="comment-body comment-deleted">该评论已删除</p>
+                  ) : (
+                    <>
+                      <p className="comment-body">{renderMentions(shown)}</p>
+                      {attachments.length > 0 && (
+                        <div className="comment-attachments">
+                          {attachments.map((item) => (
+                            <a key={item.path} className="comment-attachment" href={item.path} target="_blank" rel="noreferrer noopener">
+                              <img src={item.path} alt="评论图片" loading="lazy" width={item.width} height={item.height} />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                   {long && (
                     <button type="button" className="comment-expand" onClick={() => setExpandedBodies((current) => ({ ...current, [comment.id]: !current[comment.id] }))}>
                       {expandedBodies[comment.id] ? "收起" : "展开全文"}
@@ -587,7 +636,8 @@ export function CommentPanel({
                   )}
                   <div className="comment-meta">
                     <time dateTime={new Date(comment.time).toISOString()}>{relativeTime(comment.time)}</time>
-                    <button type="button" onClick={() => onReply(comment)}>回复</button>
+                    {comment.edited && !comment.deleted && <span className="comment-edited">已编辑</span>}
+                    {!comment.deleted && <button type="button" onClick={() => onReply(comment)}>回复</button>}
                     <details className="comment-actions-menu">
                       <summary aria-label="评论操作"><MoreHorizontal size={15} /></summary>
                       <div className="comment-actions-panel">
@@ -611,7 +661,7 @@ export function CommentPanel({
                               <span>回复</span>
                               <strong>{reply.replyToName || comment.name || "探索者"}</strong>
                             </div>
-                            <p>{reply.body}</p>
+                            {reply.deleted ? <p className="comment-deleted">该评论已删除</p> : <p>{renderMentions(reply.body)}</p>}
                             <div className="comment-meta">
                               <time>{relativeTime(reply.time)}</time>
                               <button type="button" onClick={() => onReply({ ...reply, parent: comment.id })}>回复</button>

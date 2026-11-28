@@ -203,6 +203,8 @@ function discoverCoverRatio(postId: number) {
   return "4 / 5";
 }
 
+type CommentAttachment = { path: string; width?: number; height?: number };
+
 type Comment = {
   id: number;
   cloudId?: string;
@@ -216,6 +218,17 @@ type Comment = {
   time: number;
   likes: number;
   liked?: boolean;
+  /** 作者置顶（服务端鉴权，每篇最多 1 条） */
+  pinned?: boolean;
+  /** 已删除占位：保留位置，正文不再展示 */
+  deleted?: boolean;
+  edited?: boolean;
+  editedAt?: number;
+  attachments?: CommentAttachment[];
+  mentions?: string[];
+  /** 乐观更新：待发送 / 发送失败（可重试并复用幂等键） */
+  pending?: boolean;
+  failed?: boolean;
 };
 type ComposerImage = {
   id: string;
@@ -1121,6 +1134,35 @@ export default function Community({
     setAiVersionsAvailable(false);
   }, [detail]);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
+  /** 发送幂等键：一次发送（含失败重试）复用同一个值，服务端只接受一次 */
+  const pendingNonceRef = useRef<string | null>(null);
+  /** 评论草稿键：按「账号 + 作品ID + 回复对象」隔离，互不覆盖 */
+  const commentDraftKey = useCallback(
+    (postId: number | null, parentId: number | undefined, account: string | null) =>
+      `heika:comment-draft:${account || "guest"}:${postId ?? 0}:${parentId ?? 0}`,
+    [],
+  );
+  // 切换作品或回复对象时载入对应草稿，其它会话的输入不受影响
+  useEffect(() => {
+    if (detail === null) return;
+    let saved = "";
+    try {
+      saved = window.localStorage.getItem(commentDraftKey(detail, reply, accountId)) || "";
+    } catch { saved = ""; }
+    setDraft(saved);
+  }, [detail, reply, accountId, commentDraftKey]);
+  // 输入即持久化：防抖 300ms，隐私模式写入失败静默忽略
+  useEffect(() => {
+    if (detail === null) return;
+    const key = commentDraftKey(detail, reply, accountId);
+    const timer = window.setTimeout(() => {
+      try {
+        if (draft.trim()) window.localStorage.setItem(key, draft);
+        else window.localStorage.removeItem(key);
+      } catch { /* 存储不可用时不影响输入 */ }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [draft, detail, reply, accountId, commentDraftKey]);
   const lastDraftPayload = useRef("");
   const draftSaveTimer = useRef<number | null>(null);
   const draftCloudQueue = useRef<Promise<void>>(Promise.resolve());
@@ -2840,25 +2882,51 @@ export default function Community({
       setTab("messages");
       return;
     }
+    // 幂等键：失败重试复用同一个 client_nonce，服务端最多接受一次，避免重复评论。
+    const nonce = pendingNonceRef.current || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    pendingNonceRef.current = nonce;
+    const optimisticId = -Date.now();
+    const optimistic: Comment = {
+      id: optimisticId,
+      post: detail,
+      body: value,
+      parent: reply,
+      authorId: accountId,
+      name: state.name,
+      avatar: state.avatar,
+      time: Date.now(),
+      likes: 0,
+      liked: false,
+      pending: true,
+    };
+    // 乐观更新：先标记待发送，服务端成功后再替换为真实评论。
+    update((s) => ({ ...s, comments: [...s.comments, optimistic] }));
+    setDraft("");
     setCommentSending(true);
     try {
       const comment = await cloudRequest("/api/library-comments", {
         post: detail,
         body: value,
         parent: reply,
+        client_nonce: nonce,
       });
-      if (!comment) return;
-      update((s) => ({ ...s, comments: [...s.comments, comment] }));
+      if (!comment) throw new Error("评论未保存");
+      update((s) => ({ ...s, comments: s.comments.map((item) => item.id === optimisticId ? { ...comment, pending: false } : item) }));
       setCommentTotal((count) => count + 1);
+      pendingNonceRef.current = null;
+      // 成功只清当前这条草稿（账号 + 作品 + 回复对象），其它草稿保留
+      try { window.localStorage.removeItem(commentDraftKey(detail, reply, accountId)); } catch { /* 忽略 */ }
       const replyRoot = comment.parent || (reply ? state.comments.find((item) => item.id === reply)?.parent || reply : undefined);
       if (replyRoot) setExpandedReplies((current) => ({ ...current, [replyRoot]: true }));
-      setDraft("");
       setReply(undefined);
       setReplyTargetName(undefined);
       setCommentInputExpanded(false);
       toast("评论已发布");
       if (replyRoot) requestAnimationFrame(() => document.getElementById(`comment-${replyRoot}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     } catch (e) {
+      // 失败保留内容与幂等键：草稿回填、评论标记失败，重试不会产生重复评论。
+      update((s) => ({ ...s, comments: s.comments.map((item) => item.id === optimisticId ? { ...item, pending: false, failed: true } : item) }));
+      setDraft(value);
       toast(e instanceof Error ? e.message : "评论保存失败");
     } finally {
       setCommentSending(false);
@@ -2887,11 +2955,10 @@ export default function Community({
           post: c.post,
           id: c.id,
         });
+      // 软删除占位：保留位置、时间与回复关系，正文不再展示，子回复不级联删除。
       update((s) => ({
         ...s,
-        // The database keeps replies and clears their parent_id when a parent is deleted.
-        // Mirror that behavior locally so those replies remain visible as top-level comments.
-        comments: s.comments.filter((x) => x.id !== c.id).map((x) => x.parent === c.id ? { ...x, parent: undefined } : x),
+        comments: s.comments.map((x) => x.id === c.id ? { ...x, deleted: true, body: "", pinned: false } : x),
       }));
       setCommentTotal((count) => Math.max(0, count - 1));
     } catch (e) {
@@ -5495,7 +5562,7 @@ export default function Community({
     <div className={`detail-comment-input${reply ? " replying" : ""}${commentInputExpanded || draft ? " expanded" : ""}`}>
       <span className="comment-compose-avatar" aria-hidden="true"><span>{(state.name || "探").slice(0, 1)}</span>{state.avatar && <img src={state.avatar} alt="" onError={(event) => { event.currentTarget.dataset.failed = "true"; }} />}</span>
       {reply && <span className="reply-label">回复 @{replyTargetName || state.comments.find((c) => c.id === reply)?.name || "评论"}<button type="button" aria-label="取消回复" onClick={() => { setReply(undefined); setReplyTargetName(undefined); }}><X size={13} /></button></span>}
-      <textarea ref={commentInputRef} value={draft} onFocus={() => setCommentInputExpanded(true)} onBlur={(event) => { if (!draft.trim() && !reply && !event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setCommentInputExpanded(false); }} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void addComment(); } }} placeholder="说说你的想法…" rows={commentInputExpanded || draft ? 3 : 1} maxLength={1000} aria-label="评论内容" />
+      <textarea ref={commentInputRef} value={draft} onFocus={() => setCommentInputExpanded(true)} onBlur={(event) => { if (!draft.trim() && !reply && !event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setCommentInputExpanded(false); }} onChange={(e) => { setDraft(e.target.value); const el = e.currentTarget; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 160)}px`; }} onKeyDown={(e) => { /* 中文输入法选词期间不触发发送 */ if (e.nativeEvent.isComposing || e.keyCode === 229) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!draft.trim() || commentSending) return; void addComment(); } }} placeholder="分享你的想法……" rows={commentInputExpanded || draft ? 3 : 1} maxLength={1000} aria-label="评论内容" />
       {draft.trim() && <button type="button" className="comment-clear" aria-label="清除输入" onClick={() => setDraft("")}><X size={14} /></button>}
       {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><ArrowUp size={18} strokeWidth={2.4} /></button>}
     </div>
@@ -6521,7 +6588,7 @@ export default function Community({
                 </header>
                 <div className="detail-scroll" id="detail-scroll" key={post.id}>
                   {post.cloudId && <PostReadTracker key={post.cloudId} postId={post.cloudId} seriesId={post.seriesId} />}
-                  <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}`} style={readerType.style}>
+                  <div className={`detail-body reading-${state.readingMode}${readingTransition ? ` reading-${readingTransition}` : ""}${commentPanelOpen ? " comments-open" : ""}`} style={readerType.style}>
                     <ReaderTocAside outline={detailOutline} activeId={detailActiveHeading} onJump={(item) => jumpToHeading(item.id)} />
                     <nav className="detail-rail" aria-label="作品操作栏">
                       <button type="button" className={`detail-rail-button${state.liked?.includes(post.id) ? " selected" : ""}`} aria-pressed={!!state.liked?.includes(post.id)} aria-label={`${state.liked?.includes(post.id) ? "取消点赞" : "点赞"}，${detailLikeCounts[post.id] ?? post.likeCount ?? 0} 个赞`} disabled={likeBusy} onClick={toggleDetailLike}>
