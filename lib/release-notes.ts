@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.72.0",
+    date: "2026.11.28",
+    notes: [
+      { category: "问题修复", text: "修复分享链接被兴趣引导拦下：未完成方向选择的新设备打开作品分享链接时，此前会先被引导页整页拦下，看不到正文；现在路径形式的内容链接会直接进入作品详情，引导只保留在真正的首页入口。" },
+      { category: "问题修复", text: "修复下载页仍展示已失效兼容版入口的问题：该版本安装包早已停止分发，下载页与客户端版本检查统一只保留当前原生版，不再出现点了无法下载的按钮。" },
+    ],
+  },
+  {
     version: "2.71.0",
     date: "2026.11.28",
     notes: [

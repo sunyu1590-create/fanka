@@ -5285,7 +5285,11 @@ export default function Community({
   const deepLink = (() => {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
-    return ["admin", "mine", "series", "collection", "room", "chain", "decor", "post", "p"].some((key) => params.has(key));
+    if (["admin", "mine", "series", "collection", "room", "chain", "decor", "post", "p"].some((key) => params.has(key))) return true;
+    // 分享链接是路径形式（如 /p/1000160），没有查询参数，这里必须一并识别，
+    // 否则新设备打开分享链接会先被兴趣引导整体拦截，正文永远进不去。
+    const segment = window.location.pathname.split("/").filter(Boolean)[0] || "";
+    return ["p", "post", "series", "download", "membership", "link-warning"].includes(segment);
   })();
   if (!state.onboardingDone && !deepLink)
     return (
