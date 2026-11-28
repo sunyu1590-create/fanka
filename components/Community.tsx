@@ -6796,7 +6796,9 @@ export default function Community({
               requestAnimationFrame(() => openPostRef.current(id, "discover"));
               return;
             }
-            void fetch("/api/v1/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [id] }) })
+            // 这里要按客户端编号取单篇作品，公开卡片接口才提供该能力；
+            // 原先打的 /api/v1/posts 是发帖接口（需登录、只接标题正文），必然失败。
+            void cloudFetch("/api/demo/cards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [id] }), cache: "no-store" })
               .then((response) => response.json())
               .then(({ data }) => {
                 const post = data?.items?.[0] as Post | undefined;

@@ -7,6 +7,14 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.73.0",
+    date: "2026.11.28",
+    notes: [
+      { category: "问题修复", text: "修复个人主页点击作品偶发提示加载失败的问题：当作品不在当前浏览列表里时，此前会请求一个并不存在的读取接口，现在改由公开卡片接口按编号取回内容，点击即可正常打开。" },
+      { category: "问题修复", text: "修复管理后台内容图谱中「打开合集」跳到不存在页面的问题，合集入口改为站内真实可用的地址。" },
+    ],
+  },
+  {
     version: "2.72.0",
     date: "2026.11.28",
     notes: [

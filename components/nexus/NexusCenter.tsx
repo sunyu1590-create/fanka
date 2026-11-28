@@ -827,7 +827,9 @@ function SeriesDetail({ series }: { series: NexusContentScene["series"][number] 
   return (
     <div className="nx-detail">
       <div className="nx-detail__head"><span className="nx-status nx-status--healthy">合集聚合节点</span><h2>{series.title}</h2><p>{series.posts} 篇关联作品</p></div>
-      <div className="nx-detail__actions"><a href={`/series/${series.id.replace("series:", "")}`} target="_blank" rel="noreferrer"><ExternalLink size={13} />打开合集</a></div>
+      {/* 合集没有独立路径页，站内统一用首页的 ?series=<id> 查询参数进入合集视图；
+          原链接拼成 /series/<id>，该路径在项目里不存在，点击必然 404。 */}
+      <div className="nx-detail__actions"><a href={`/?series=${encodeURIComponent(series.id.replace("series:", ""))}`} target="_blank" rel="noreferrer"><ExternalLink size={13} />打开合集</a></div>
     </div>
   );
 }
