@@ -39,3 +39,14 @@
 
 - 终端会话发生切换：1e545040 → ba575290（同一台机器，已更新引用）。
 - 服务器无浏览器环境：H2-H7、H10-H14 等需真实浏览器操作的验证项，采用代码层审计 + HTTP 接口验证替代，浏览器实测仍需用户配合（与原 2.69.0 待办一致）。
+
+## Android 2.35.0 (build 104) 交付 — 2026-11-28
+
+- 构建条件：JDK 17.0.21；SDK /opt/android-sdk（android-35、build-tools 35.0.0）；Gradle 8.11.1 缓存 1.6G；keystore heika（SHA-256 C9:78:40:0E…BB:1F，有效期至 2056）
+- 版本：versionCode 103→104、versionName 2.34.0→2.35.0，README 同步；备份 /tmp/build.gradle.kts.bak.vc103
+- 构建：assembleRelease --no-daemon，BUILD SUCCESSFUL in 7m40s，54 tasks（24 executed / 30 up-to-date），lintVitalRelease 通过
+- 产物：30,673,387 字节，sha256 516a4cac77174e20ecd1acd91ce31b7f7572cc203ed4d063d28e0e36e6cb56d6；com.heika.community vc104/2.35.0，minSdk 26、targetSdk 35，四 ABI；apksigner v2 通过且证书与 release keystore 一致
+- 发布：/home/ubuntu/downloads 新增 heika-native-2.35.0-code104.apk 并切换 latest；manifest 更新 2.35.0/104；旧包保留可回滚（备份 /tmp/manifest.json.bak.vc103）
+- 验收：/api/v1/app-version 返回 2.35.0/104；HEAD /dl/heika-native-latest.apk 200 + 30673387 字节；/download 渲染 2.35.0 与 build 104
+- Git：c105e5d 已推送 origin/main（f99bb10..c105e5d）
+- 遗留：HeikaMarkdown.kt:527 LocalClipboardManager 弃用，待改用 LocalClipboard
