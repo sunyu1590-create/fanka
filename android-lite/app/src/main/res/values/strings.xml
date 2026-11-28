@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">黑卡轻量版</string>
+    <string name="app_name_en">HEIKA Lite</string>
+    <string name="loading">正在加载黑卡</string>
+    <string name="recovering">正在恢复页面</string>
+    <string name="retry">重新加载</string>
+    <string name="diagnose">网络诊断</string>
+    <string name="switch_lite">切换到极致轻量模式</string>
+    <string name="clear_cache">清理网页缓存</string>
+    <string name="exit">退出应用</string>
+    <string name="offline_title">网络不可用</string>
+    <string name="offline_desc">当前网络无法访问黑卡服务，请检查网络后重试。已缓存的页面仍可浏览。</string>
+    <string name="renderer_failed_title">页面渲染异常</string>
+    <string name="renderer_failed_desc">系统回收了网页渲染进程，本地草稿与待发送内容已保留。</string>
+    <string name="file_picker_missing">未找到可用的文件选择器</string>
+    <string name="download_started">已开始下载</string>
+    <string name="download_failed">下载失败</string>
+</resources>
