@@ -769,15 +769,18 @@
   z-index: 1;
 }
 
-/* 移动端三档：半屏约 50% → 大屏约 80% → 全屏。高度用 dvh，键盘弹起时同步收缩。 */
-.comment-panel.is-stage-0 {
-  height: 52dvh;
-}
-.comment-panel.is-stage-1 {
-  height: 80dvh;
-}
-.comment-panel.is-stage-2 {
-  height: 94dvh;
+/* 移动端三档：半屏约 50% → 大屏约 80% → 全屏。高度用 dvh，键盘弹起时同步收缩。
+   仅限移动端断点，桌面端评论面板为满高侧栏，不能套用档位高度。 */
+@media (max-width: 1023.98px) {
+  .comment-panel.is-stage-0 {
+    height: 52dvh;
+  }
+  .comment-panel.is-stage-1 {
+    height: 80dvh;
+  }
+  .comment-panel.is-stage-2 {
+    height: 94dvh;
+  }
 }
 
 /* 拖动过程中不要过渡，手指到哪里面板到哪里；入场动画结束后也停掉，避免再次触发 */
@@ -1843,7 +1846,8 @@ body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
     pointer-events: auto;
     width: clamp(300px, 28vw, 340px);
     max-width: 340px;
-    height: 100dvh;
+    /* 由 .comment-panel-layer 的 stretch 填满视口高度，避免与移动端档位高度冲突 */
+    height: auto;
     max-height: none;
     margin: 0;
     padding-bottom: 0;
@@ -1912,26 +1916,47 @@ body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
     transition: opacity var(--motion-page) var(--ease-standard), transform var(--motion-page) var(--ease-standard);
   }
   body.comment-panel-open .detail-body > .reader-toc-aside { display: none; }
-  /* 辅助栏让出后，栅格收回该列，正文阅读宽稳定在 680-760px */
-  .detail-body.comments-open > .detail-aside { display: none; }
+  /* 辅助栏与目录让出后，栅格收回对应列，正文阅读宽稳定在 680-760px */
+  .detail-body.comments-open > .detail-aside,
+  .detail-body.comments-open > .reader-toc-aside { display: none; }
+}
+/* 1024-1199：视口较窄，隐藏操作轨改为正文单列，正文仍保持 ≥680px */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .detail .detail-body.comments-open,
+  .detail-page .detail-body.comments-open {
+    grid-template-columns: minmax(0, 720px);
+    justify-content: center;
+  }
+  .detail-body.comments-open > .detail-rail { display: none; }
+  .detail-body.comments-open > .detail-main { grid-column: 1 / -1; }
+  /* 该区间仅靠栅格收列不够：外层 inset 与正文内边距叠加后会低于 680px */
+  body.comment-panel-open .overlay.detail-ready { inset-inline: 0; }
+  body.comment-panel-open .detail-page-shell { padding-inline: 8px 300px; }
+  body.comment-panel-open .detail-body { padding-inline: 12px; }
 }
 @media (min-width: 1200px) and (max-width: 1439px) {
   .detail .detail-body.comments-open,
   .detail-page .detail-body.comments-open {
     grid-template-columns: 56px minmax(0, 760px);
+    justify-content: center;
   }
+  .detail-body.comments-open > .detail-main { grid-column: 2; }
 }
 @media (min-width: 1440px) and (max-width: 1719px) {
   .detail .detail-body.comments-open,
   .detail-page .detail-body.comments-open {
-    grid-template-columns: 200px 44px minmax(0, 760px);
+    grid-template-columns: 44px minmax(0, 760px);
+    justify-content: center;
   }
+  .detail-body.comments-open > .detail-main { grid-column: 2; }
 }
 @media (min-width: 1720px) {
   .detail .detail-body.comments-open,
   .detail-page .detail-body.comments-open {
-    grid-template-columns: 200px 52px minmax(0, 760px);
+    grid-template-columns: 52px minmax(0, 760px);
+    justify-content: center;
   }
+  .detail-body.comments-open > .detail-main { grid-column: 2; }
 }
 
 @keyframes discussion-in {
