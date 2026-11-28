@@ -12,6 +12,7 @@ android/**/signing.properties
 .env.*
 !.env.example
 *.bak
+*.bak.*
 *.tsbuildinfo
 playwright-report/
 test-results/

@@ -78,6 +78,8 @@ const AdminModeration = dynamic(() => import("./AdminModeration"), {
 });
 import DiscoveryPostCard from "./DiscoveryPostCard";
 import SharePanel, { type SharePayload } from "./SharePanel";
+const DesktopLayout = dynamic(() => import("./DesktopLayout"));
+const DetailRecommendPanel = dynamic(() => import("./DetailRecommendPanel"));
 const EditorialArticle = dynamic(() => import("./EditorialArticle"));
 import { MarkdownContent, markdownToText } from "./MarkdownContent";
 import { ReaderTypeControls, useReaderTypePrefs } from "./ReaderTypeSettings";
@@ -5599,7 +5601,7 @@ export default function Community({
       {draft.trim() && <button type="submit" className="comment-send" disabled={commentSending} aria-label="发送评论"><ArrowUp size={18} strokeWidth={2.4} /></button>}
     </div>
   </form> : null;
-  return (
+  const content = (
     <main className={`app${detailPageMode ? " is-detail-page" : ""}${tab === "discover" ? " app-discover" : ""}${secondaryTitle ? " has-secondary-header" : ""}${isImmersive ? " app-immersive" : ""}${adminConsole ? " app-admin-console" : ""}${secondaryTitle || tab === "search" || (tab === "settings" && settingsDetail !== null) ? " app-nav-hidden-mobile" : ""}`}>
       {adminConsole ? null : (
       <>
@@ -6779,6 +6781,12 @@ export default function Community({
                       onOpenSeries={(seriesId) => openCollectionFromDetail(seriesId)}
                       onOpenTopic={(name) => void openTopic(name)}
                     />}
+                    {post.cloudId && <DetailRecommendPanel
+                      key={`detail-rec-${post.cloudId}`}
+                      postId={post.cloudId}
+                      onOpenPost={(cloudId) => void openSearchPost(cloudId, null)}
+                      onOpenSeries={(seriesId) => openCollectionFromDetail(seriesId)}
+                    />}
                     </div>
                     <DetailAside
                       post={post}
@@ -7353,4 +7361,9 @@ export default function Community({
       </div>}
     </main>
   );
+  return desktopLayout && !appEmbed ? (
+    <DesktopLayout>
+      {content}
+    </DesktopLayout>
+  ) : content;
 }

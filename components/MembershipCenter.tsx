@@ -78,7 +78,7 @@ export default function MembershipCenter({ tier, dailyAllowance, usedFlips, acco
   const percent = currentAllowance ? Math.min(100, currentUsed / currentAllowance * 100) : 0;
   const identityStatus = !accountId ? "登录后查询账号权益" : loading ? "正在同步会员状态" : loadError ? "同步失败" : membership?.expiresAt ? `有效期至 ${formatDate(membership.expiresAt)}` : currentTier === "free" ? "基础探索权益" : "长期有效权益";
 
-  return <div className="heika-membership" data-tier={currentTier}>
+  return <div className="heika-membership membership-enhanced" data-tier={currentTier}>
     <header className="heika-membership-heading">
       <div><h2>会员与支持</h2><p>探索未知，发现更多。</p></div>
       <Link href="/membership/redeem" className="heika-membership-redeem-link"><TicketCheck size={16}/>兑换会员</Link>

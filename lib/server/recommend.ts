@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getHotMap, loadConfig, type DistributionConfig } from "./distribution";
+import { getHotMap, loadConfig } from "./distribution";
 import { plainText } from "@/lib/text";
 import { filterSeen, recordSeen } from "./dedup";
 
