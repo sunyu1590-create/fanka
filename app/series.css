@@ -117,7 +117,7 @@
   font-size: 12.5px;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+  transition: background-color var(--motion-tag) var(--ease-standard), color var(--motion-tag) var(--ease-standard), border-color var(--motion-tag) var(--ease-standard);
 }
 .series-categories button i { font-style: normal; font-size: 10px; opacity: .62; }
 .series-categories button.selected { border-color: var(--ink); background: var(--ink); color: var(--bg); }
@@ -140,7 +140,7 @@
   color: var(--ink);
   text-align: left;
   cursor: pointer;
-  transition: border-color 200ms ease, transform 200ms ease;
+  transition: border-color var(--motion-tag) var(--ease-standard), transform var(--motion-tag) var(--ease-standard);
 }
 .series-hero-main:hover { border-color: color-mix(in srgb, var(--action) 46%, var(--line)); }
 .series-hero-main:active { transform: scale(.994); }
@@ -460,7 +460,8 @@
   .series-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .series-skeleton-hero span, .series-skeleton-row i { animation: none; }
+  .series-skeleton-hero span, .series-skeleton-row i,
+  .search-page-v2 .spin, .ai-hot-skeleton i { animation: none; }
 }
 
 /* ---------- 搜索页补充 ---------- */

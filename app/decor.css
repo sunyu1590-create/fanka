@@ -9,13 +9,13 @@
   border-color: var(--decor-bar-border) !important;
   -webkit-backdrop-filter: blur(20px) saturate(125%);
   backdrop-filter: blur(20px) saturate(125%);
-  transition: background-color .3s var(--ease, ease), border-color .3s var(--ease, ease);
+  transition: background-color var(--motion-base) var(--ease-standard), border-color var(--motion-base) var(--ease-standard);
 }
 
 :root[data-decor-bar="custom"] .bottom-nav button {
   color: var(--decor-bar-label) !important;
   border-radius: 12px;
-  transition: color .22s ease, transform .22s var(--ease, ease);
+  transition: color var(--motion-local) var(--ease-standard), transform var(--motion-local) var(--ease-standard);
 }
 
 :root[data-decor-bar="custom"] .bottom-nav button.active {
@@ -47,7 +47,7 @@
   border-radius: 10px;
   background: var(--decor-bar-pill);
   opacity: 0;
-  transition: opacity .24s ease, transform .24s var(--ease, ease);
+  transition: opacity var(--motion-indicator) var(--ease-standard), transform var(--motion-indicator) var(--ease-standard);
   pointer-events: none;
   z-index: -1;
 }

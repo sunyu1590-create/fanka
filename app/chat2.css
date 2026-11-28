@@ -15,8 +15,8 @@
 .chat-setting-row>small{display:block;margin:4px 0 0 24px;font-size:11px;color:var(--muted,#999);line-height:1.6}
 .chat-setting-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;border:0;background:transparent;padding:8px 0;color:var(--ink);font-size:14px}
 .chat-setting-toggle-label{display:flex;align-items:center;gap:10px}
-.chat-switch{flex:none;width:40px;height:23px;border-radius:20px;background:var(--line);position:relative;transition:background .18s ease}
-.chat-switch i{position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;transition:transform .18s ease;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.chat-switch{flex:none;width:40px;height:23px;border-radius:20px;background:var(--line);position:relative;transition:background var(--motion-toggle) var(--ease-standard)}
+.chat-switch i{position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;transition:transform var(--motion-toggle) var(--ease-standard);box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .chat-setting-toggle.on .chat-switch{background:var(--accent,#c9a227)}
 .chat-setting-toggle.on .chat-switch i{transform:translateX(17px)}
 .chat-setting-link{width:100%;display:flex;align-items:center;gap:11px;min-height:44px;border:0;background:transparent;color:var(--ink);font-size:14px;text-align:left;border-bottom:1px solid var(--line)}
@@ -66,7 +66,7 @@
 @supports(padding:max(0px)){.chat-action-sheet{margin-bottom:max(24px,env(safe-area-inset-bottom))}}
 .msg-action-preview{margin:0;padding:12px 18px;font-size:12px;line-height:1.5;color:var(--muted,#8b8b8b);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msg-react-row{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:8px 10px;border-bottom:1px solid var(--line)}
-.msg-react-row button{flex:1;min-width:0;height:38px;border:0;background:transparent;font-size:20px;line-height:1;border-radius:10px;transition:transform .15s ease,background-color .15s ease}
+.msg-react-row button{flex:1;min-width:0;height:38px;border:0;background:transparent;font-size:20px;line-height:1;border-radius:10px;transition:transform var(--motion-icon) var(--ease-standard),background-color var(--motion-icon) var(--ease-standard)}
 .msg-react-row button:active{transform:scale(1.18);background:var(--surface-muted,#f0eee8)}
 .msg-action-grid{display:grid;grid-template-columns:repeat(2,1fr)}
 .msg-action-grid button{height:46px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);font-size:14px;text-align:center;padding:0 6px}

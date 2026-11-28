@@ -39,8 +39,8 @@
   border: 0;
 }
 
-.hb-slide .hb-video { transition: opacity 320ms ease; }
-.hb-slide .hb-poster { transition: opacity 320ms ease; }
+.hb-slide .hb-video { transition: opacity var(--motion-theme) var(--ease-standard); }
+.hb-slide .hb-poster { transition: opacity var(--motion-theme) var(--ease-standard); }
 
 .hb-fallback {
   position: absolute;
@@ -67,7 +67,7 @@
   cursor: pointer;
   backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
-  transition: background 180ms ease, transform 180ms ease;
+  transition: background var(--motion-tag) var(--ease-standard), transform var(--motion-tag) var(--ease-standard);
 }
 
 .hb-mute:hover { background: rgba(18, 18, 20, 0.6); }
@@ -88,7 +88,7 @@
   display: block;
   height: 100%;
   background: rgba(255, 255, 255, 0.92);
-  transition: width 220ms linear;
+  transition: width var(--motion-indicator) linear;
 }
 
 .hb-play {
@@ -124,7 +124,7 @@
   border-radius: 999px;
   background: var(--muted, rgba(127, 127, 127, 0.36));
   cursor: pointer;
-  transition: width 240ms cubic-bezier(0.22, 0.61, 0.36, 1), background 240ms ease;
+  transition: width var(--motion-indicator) var(--ease-open), background var(--motion-indicator) var(--ease-standard);
 }
 
 .hb-dots button.is-active {

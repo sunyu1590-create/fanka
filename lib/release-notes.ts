@@ -7,6 +7,17 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.71.0",
+    date: "2026.11.28",
+    notes: [
+      { category: "体验优化", text: "网页端动效统一接入全局令牌：11 个页面级样式文件中 42 处硬编码的过渡时长与缓动曲线改为语义令牌，切换快、标准、舒缓三档速度时全站节奏同步变化，不再只有少数组件跟随。" },
+      { category: "体验优化", text: "减少动态效果覆盖更完整：列表骨架流光、搜索加载旋转、评论骨架脉冲等循环动画在开启减少动态效果后彻底静止，不再出现高频闪烁。" },
+      { category: "问题修复", text: "修复装饰中心加载指示器在减少动态效果模式下被全局规则压成近乎瞬时的极速旋转问题，改为静止圆环，不再产生视觉干扰。" },
+      { category: "问题修复", text: "修复设置页局部写死动效时长、覆盖全局令牌导致速度档位在该页失效的问题，设置页与其他页面节奏重新一致。" },
+      { category: "问题修复", text: "修正个人主页、装饰中心等页面引用不存在的缓动变量导致兜底曲线不一致的问题，全站过渡曲线收敛到统一标准。" },
+    ],
+  },
+  {
     version: "2.70.0",
     date: "2026.11.28",
     notes: [

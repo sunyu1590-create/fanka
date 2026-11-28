@@ -426,7 +426,7 @@
   height: 100%;
   width: 0;
   background: var(--rd-accent);
-  transition: width .12s linear;
+  transition: width var(--motion-press) linear;
 }
 
 .detail-page .reader-progress {
@@ -747,7 +747,7 @@
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, .42);
-  animation: reader-fade-in .2s ease both;
+  animation: reader-fade-in var(--motion-tag) var(--ease-standard) both;
 }
 
 .comment-panel {
@@ -759,13 +759,13 @@
   height: 70dvh;
   max-height: 96dvh;
   margin-top: auto;
-  transition: height .28s cubic-bezier(.2, .8, .2, 1);
+  transition: height var(--motion-page) var(--ease-open);
   background: var(--rd-panel);
   color: var(--rd-body);
   border-radius: 20px 20px 0 0;
   padding-bottom: env(safe-area-inset-bottom);
   box-shadow: 0 -18px 48px rgba(0, 0, 0, .38);
-  animation: reader-sheet-in .3s cubic-bezier(.2, .8, .2, 1) both;
+  animation: reader-sheet-in var(--motion-menu) var(--ease-open) both;
   z-index: 1;
 }
 
@@ -1059,7 +1059,7 @@
     max-height: none;
     border-radius: 16px 0 0 16px;
     border-left: 1px solid var(--rd-line);
-    animation: comment-drawer-in .28s cubic-bezier(.2, .8, .2, 1) both;
+    animation: comment-drawer-in var(--motion-page) var(--ease-open) both;
   }
 }
 
@@ -1204,7 +1204,7 @@
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background .18s ease, color .18s ease;
+  transition: background var(--motion-tag) var(--ease-standard), color var(--motion-tag) var(--ease-standard);
 }
 
 .reader-author-follow.is-following {
@@ -1662,7 +1662,7 @@ body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
   height: 22px;
   border-radius: 11px;
   background: color-mix(in srgb, var(--ink) 22%, transparent);
-  transition: background .18s ease;
+  transition: background var(--motion-tag) var(--ease-standard);
 }
 
 .reader-type-switch i::after {
@@ -1674,7 +1674,7 @@ body:has(.comment-panel-layer) .reader-toc-aside { display: none; }
   height: 16px;
   border-radius: 50%;
   background: #fff;
-  transition: transform .18s ease;
+  transition: transform var(--motion-tag) var(--ease-standard);
 }
 
 .reader-type-switch input:checked + i { background: var(--rd-accent); }

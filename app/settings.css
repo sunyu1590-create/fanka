@@ -2,8 +2,7 @@
 .app:has(.settings-home-page), .app:has(.settings-detail-page), .app:has(.about-heika-page) {
   --radius: 9px;
   --radius-panel: 9px;
-  --motion-fast: 170ms;
-  transition: background-color 220ms ease, color 220ms ease;
+  transition: background-color var(--motion-local) var(--ease-standard), color var(--motion-local) var(--ease-standard);
 }
 :root[data-theme="dark"] .app:has(.settings-home-page),
 :root[data-theme="dark"] .app:has(.settings-detail-page),
@@ -47,7 +46,7 @@
 .settings-home-page .settings-list button>span:not(.settings-row-icon) { min-width: 0; font-size: 14px; line-height: 1.4; }
 .settings-home-page .settings-list button>small { color: var(--muted); font-size: 12px; text-align: right; line-height: 1.45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16ch; }
 .settings-home-page .settings-list button>svg { color: var(--muted); }
-.settings-group, .settings-group .settings-list { transition: background-color 220ms ease, border-color 220ms ease; }
+.settings-group, .settings-group .settings-list { transition: background-color var(--motion-local) var(--ease-standard), border-color var(--motion-local) var(--ease-standard); }
 .settings-local-note { margin: 18px 0 0; font-size: 11px; }
 .settings-detail-page { width: min(100% - 40px, 880px); margin-inline: auto; padding: 30px 0 calc(104px + env(safe-area-inset-bottom)); }
 .settings-detail-page>h1 { font-size: clamp(26px, 4vw, 34px); }

@@ -52,7 +52,7 @@
   background-repeat: no-repeat;
   overflow: hidden;
   touch-action: pan-x;
-  transition: height .32s cubic-bezier(.22, .8, .28, 1);
+  transition: height var(--motion-page) var(--ease-open);
   will-change: height;
 }
 

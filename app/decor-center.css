@@ -139,7 +139,7 @@
   background: var(--card-bg);
   color: var(--ink);
   text-align: left;
-  transition: transform .2s var(--ease, ease), border-color .2s ease;
+  transition: transform var(--motion-tag) var(--ease-standard), border-color var(--motion-tag) var(--ease-standard);
 }
 
 .decor-theme-card:active { transform: scale(.985); }
@@ -414,7 +414,7 @@
 }
 
 .decor-demo-stage { display: grid; place-items: center; padding: 8px 0; perspective: 900px; }
-.decor-demo-card { width: min(240px, 66vw); border: 0; background: transparent; padding: 0; transition: transform .4s cubic-bezier(.22, .8, .28, 1); }
+.decor-demo-card { width: min(240px, 66vw); border: 0; background: transparent; padding: 0; transition: transform var(--motion-card) var(--ease-open); }
 .decor-demo-card:hover { transform: translateY(-3px) scale(1.01); }
 .decor-demo-inner > p, .decor-icon-editor-inner > p, .decor-submit-inner > p { margin: 0; font-size: 10.5px; color: var(--muted); line-height: 1.6; }
 .decor-demo-actions { display: flex; gap: 8px; }
@@ -541,7 +541,7 @@
 }
 @keyframes decor-button-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .decor-button-spinner { animation-duration: 1.4s; }
+  .decor-button-spinner { animation: none !important; border-right-color: currentColor; }
 }
 
 /* ---------- 三入口导航：二级内容用分段控件承载 ---------- */
@@ -563,7 +563,7 @@
   background: transparent;
   color: var(--muted);
   font-size: 12px;
-  transition: background .18s ease, color .18s ease;
+  transition: background var(--motion-tag) var(--ease-standard), color var(--motion-tag) var(--ease-standard);
 }
 
 .decor-segments button.active {
