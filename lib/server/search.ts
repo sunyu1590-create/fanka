@@ -358,7 +358,9 @@ export type TrendingPayload = {
 export async function getTrendingSearches(db: SupabaseClient): Promise<TrendingPayload> {
   const { config } = await loadConfig(db);
   const since = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
-  const { data } = await db.from("search_events")
+  // search_events 含用户搜索行为（user_id），属隐私数据：聚合读取走 service_role，
+  // 前端 anon/authenticated 不直接访问该表（RLS 默认拒绝）。
+  const { data } = await adminClient().from("search_events")
     .select("term,display_term,user_id,result_count,created_at")
     .gte("created_at", since)
     .order("created_at", { ascending: false })

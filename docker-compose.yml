@@ -41,6 +41,8 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - caddy_logs:/var/log/caddy:ro
+      # 采集脚本以宿主机仓库版本为准，避免容器内旧副本滞后于代码
+      - ./scripts/metrics-agent.mjs:/app/scripts/metrics-agent.mjs:ro
     command: ["node", "scripts/metrics-agent.mjs"]
     expose:
       - "3100"

@@ -7,6 +7,17 @@ import { HISTORICAL_RELEASES } from "./release-history";
 // are added here so the UI and version metadata stay centralized.
 export const RELEASES: Release[] = [
   {
+    version: "2.70.0",
+    date: "2026.11.28",
+    notes: [
+      { category: "问题修复", text: "修复 6 张数据表未启用行级安全保护的问题：管理员操作日志、搜索行为记录、内容分发配置及其历史版本、热榜评分与摘要备份表此前对匿名请求完全开放，现全部启用数据库层访问控制，按最小必要原则收回读写权限。" },
+      { category: "问题修复", text: "搜索行为记录不再对客户端开放读取：热搜统计改由服务端统一聚合，用户搜索词与账号的关联数据只在服务端处理，不再存在被外部批量读取的通道。" },
+      { category: "体验优化", text: "监控采集不再记录服务内部轮询与自身健康检查请求，访问日志只保留真实用户与业务流量，日志表体积下降约 37%，长期查询与后台日志页响应更快。" },
+      { category: "体验优化", text: "监控采集脚本改为随代码仓库版本运行，避免容器内旧副本与最新逻辑不一致导致的行为差异。" },
+      { category: "问题修复", text: "修正 Android 原生客户端说明文档中的版本号，与构建配置里的实际版本保持一致，避免下载与安装版本判断产生混淆。" },
+    ],
+  },
+  {
     version: "2.69.0",
     date: "2026.11.28",
     notes: [

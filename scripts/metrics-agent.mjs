@@ -595,6 +595,9 @@ const VIDEO_EXT = /\.(mp4|webm|mov|m4v|mkv)$/i;
 const AUDIO_EXT = /\.(mp3|m4a|aac|wav|flac|ogg|opus)$/i;
 const ARCHIVE_EXT = /\.(zip|rar|7z|pdf|docx?|xlsx?|pptx?|txt|md|json|ya?ml|apk)$/i;
 
+// 内部服务轮询（AI worker claim RPC）与监控自身查询：只计入 IP 聚合，不写 HTTP 访问日志明细。
+const TELEMETRY_PATH = /^\/rest\/v1\/(rpc\/(claim_ai_task_item|claim_ai_revision_review|heika_ip_stats_inc)|system_alerts|system_processes|system_metrics|http_access_logs|tcp_snapshots)\b/;
+
 function classifyPath(uri) {
   const path = uri.split("?")[0];
   if (path.startsWith("/dl/")) {
@@ -692,7 +695,8 @@ function ingestAccessLog() {
       ipAgg.set(key, row);
     }
     // 静态资源只计入 IP 流量，不单独写 HTTP 日志，避免日志表被冲垮。
-    if (httpAgg.length < 500 && !/^\/(_next|assets|favicon|icons)\b/.test(path) && ip) {
+    // 内部轮询与监控自身查询只计入 IP 聚合，不写访问日志明细，避免日志表被自身流量冲垮。
+    if (httpAgg.length < 500 && !/^\/(_next|assets|favicon|icons)\b/.test(path) && !TELEMETRY_PATH.test(path) && ip) {
       httpAgg.push({ ts: at.toISOString(), ip, method, path, status, ms, bytes, ua: userAgent });
     }
 
