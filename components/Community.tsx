@@ -6784,8 +6784,6 @@ export default function Community({
                     {post.cloudId && <DetailRecommendPanel
                       key={`detail-rec-${post.cloudId}`}
                       postId={post.cloudId}
-                      onOpenPost={(cloudId) => void openSearchPost(cloudId, null)}
-                      onOpenSeries={(seriesId) => openCollectionFromDetail(seriesId)}
                     />}
                     </div>
                     <DetailAside
