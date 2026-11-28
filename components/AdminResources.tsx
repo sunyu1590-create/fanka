@@ -6,11 +6,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowLeft, ChevronLeft, ChevronRight, Copy, FileText, Film, HardDrive, Image as ImageIcon, Package, RefreshCw, Search, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
+import { Archive, ArrowLeft, ChevronLeft, ChevronRight, Copy, FileText, Film, HardDrive, Image as ImageIcon, Package, Search, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { confirmInApp } from "@/lib/in-app-dialog";
 import { useRealtime } from "@/lib/admin-live";
-import { Bars, Collapse, Empty, fmtBytes, fmtNum, fmtTime, Group, Segmented } from "./admin/AdminUIKit";
+import { Collapse, Empty, fmtBytes, fmtNum, fmtTime, Group, Segmented } from "./admin/AdminUIKit";
 
 type Kind = "image" | "document" | "ai" | "archive" | "app" | "media" | "other";
 type Summary = {

@@ -5,7 +5,7 @@
  * 真实 NexusEngine，从而对八大场景做几何/材质/光照/粒子/标签的截图验收。
  * 这里的数值只用于驱动渲染，不代表任何线上业务数据。
  */
-import { NexusEngine, type QualityMode } from "../../lib/nexus/engine";
+import { NexusEngine } from "../../lib/nexus/engine";
 import type {
   NexusGlobeScene, NexusSnapshot, NexusStorageScene, NexusAiScene, NexusContentScene, NexusSecurityScene,
 } from "../../lib/nexus/types";

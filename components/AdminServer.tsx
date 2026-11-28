@@ -5,7 +5,7 @@ import { AlertTriangle, Power, RotateCw } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { privilegedRequest } from "@/lib/reauth-client";
 import { confirmInApp } from "@/lib/in-app-dialog";
-import { Empty, fmtBytes, fmtNum, fmtTime, Group } from "./admin/AdminUIKit";
+import { Empty, fmtBytes, fmtTime, Group } from "./admin/AdminUIKit";
 
 type Service = { key: string; label: string; kind: string; container: string; status: string; health: string; version: string | null; started_at: string | null; cpu_percent: number | null; mem_bytes: number | null; pid: number | null; updated_at: string | null };
 type Deployment = { id: number; version: string; image: string | null; status: string; note: string | null; deployed_at: string };

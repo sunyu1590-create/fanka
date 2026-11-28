@@ -5,7 +5,7 @@ import { ShieldAlert, Trash2 } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import { privilegedRequest } from "@/lib/reauth-client";
 import { confirmInApp } from "@/lib/in-app-dialog";
-import { Empty, fmtTime, Group, Segmented } from "./admin/AdminUIKit";
+import { Empty, fmtTime, Group } from "./admin/AdminUIKit";
 
 type Rule = { id: string; scope: string; target: string; action: string; max_concurrent: number | null; rate_per_minute: number | null; bandwidth_kbps: number | null; expires_at: string | null; reason: string; created_at: string; active: boolean };
 type AccountRestriction = { id: string; user_id: string; nickname: string; ability: string; until: string | null; reason: string; created_at: string };

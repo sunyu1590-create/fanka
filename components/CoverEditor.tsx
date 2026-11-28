@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Image as ImageIcon, Maximize2, Move, RotateCcw, X, ZoomIn } from "lucide-react";
 
 export type CoverMeta = { focusX: number; focusY: number; zoom: number; ratio: number; collapsedHeight: number };

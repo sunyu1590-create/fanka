@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
-import { BadgeCheck, Check, CreditCard, Download, FileCheck, Flag, Megaphone, MessageCircle, MessageSquare, Palette, RefreshCw, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Tags, Users, X } from "lucide-react";
+import { Check, ShieldCheck, X } from "lucide-react";
 import { cloudRequest } from "@/lib/cloud";
 import ChoiceSelect from "./ChoiceSelect";
 import { confirmInApp } from "@/lib/in-app-dialog";

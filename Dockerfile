@@ -1,7 +1,10 @@
+# syntax=docker/dockerfile:1
+
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# npm 缓存挂载：package.json 未变时命中层缓存；即使失效，tar 包也无需重新下载。
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
@@ -10,12 +13,18 @@ ENV NODE_OPTIONS=--max-old-space-size=2048
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_AUTH_REDIRECT_URL
+# 版本号通过构建参数注入，避免每次发版改动 package.json 导致 deps 层与 npm ci 全量失效。
+ARG APP_VERSION=0.0.0-dev
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_AUTH_REDIRECT_URL=$NEXT_PUBLIC_AUTH_REDIRECT_URL
+ENV APP_VERSION=$APP_VERSION
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# 把构建参数写回 package.json，lib/version.ts 与 SW 同步脚本都从 package.json 读取版本。
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version=process.env.APP_VERSION;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+# .next/cache 挂载：Next.js 编译缓存跨构建复用，二次构建可跳过大量重复编译。
+RUN --mount=type=cache,target=/app/.next/cache npm run build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app

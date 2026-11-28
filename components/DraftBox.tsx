@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CheckSquare, FileText, Image as ImageIcon, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, CheckSquare, FileText, Image as ImageIcon, Plus, Trash2 } from "lucide-react";
 import { clearDrafts, deleteDraft, getDraftFile, listDrafts, type LocalDraft } from "@/lib/local-drafts";
 
 function formatTime(value: number) {

@@ -9,7 +9,7 @@ import { cloudFetch, cloudRequest } from "@/lib/cloud";
 import { blobToFile, renderBackdrop, renderIcon } from "@/lib/decor/image";
 import { uploadDecorAsset } from "@/lib/decor/upload";
 import { OFFICIAL_PRESETS } from "@/lib/decor/official";
-import { loadDecor, saveDecor, useDecor, isDecorAppEmbed, installDecorAppliedHook } from "@/lib/decor/store";
+import { saveDecor, useDecor, isDecorAppEmbed, installDecorAppliedHook } from "@/lib/decor/store";
 import {
   DECOR_ICON_SLOTS, SLOT_LABELS, DEFAULT_BOTTOM_BAR, DEFAULT_CARD, normalizeBottomBar, normalizeCard,
   paletteFor, safeColor, withAlpha, type BottomBarConfig, type CardConfig, type DecorConfig, type DecorIconSlot, type DecorTheme,

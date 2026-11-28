@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { ArrowRight, Heart, Star } from "lucide-react";
 import { feedImageSource } from "@/lib/feed-images";
 import type { Post } from "@/lib/content";
