@@ -17,10 +17,37 @@ export const dynamic = "force-dynamic";
 
 const ROOT = "/srv/dl";
 const APK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.apk$/;
+/** 允许透传的静态清单文件（不受 apk 功能开关控制） */
+const MANIFEST_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(json|webmanifest)$/;
+
+function serveStaticFile(name: string, mime: string, cacheMaxAge = 0) {
+  const path = `${ROOT}/${name}`;
+  try {
+    const stat = statSync(path);
+    if (!stat.isFile()) return null;
+    const stream = Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>;
+    return new NextResponse(stream, {
+      headers: {
+        "content-type": mime,
+        "content-length": String(stat.size),
+        "cache-control": `public, max-age=${cacheMaxAge}`,
+        "x-content-type-options": "nosniff",
+      },
+    });
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ file: string }> }) {
   const { file } = await params;
   const name = decodeURIComponent(file || "");
+  // manifest.json / .webmanifest 等清单文件不受 apk 开关控制，直接返回
+  if (MANIFEST_NAME.test(name)) {
+    const res = serveStaticFile(name, name.endsWith(".webmanifest") ? "application/manifest+json" : "application/json", 300);
+    if (res) return res;
+    return new NextResponse("文件不存在", { status: 404 });
+  }
   if (!APK_NAME.test(name)) return new NextResponse("安装包不存在", { status: 404 });
 
   try {
@@ -59,6 +86,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ fil
 export async function HEAD(_req: NextRequest, { params }: { params: Promise<{ file: string }> }) {
   const { file } = await params;
   const name = decodeURIComponent(file || "");
+  // manifest.json 等清单文件直接返回 HEAD
+  if (MANIFEST_NAME.test(name)) {
+    try {
+      const stat = statSync(`${ROOT}/${name}`);
+      if (!stat.isFile()) return new NextResponse(null, { status: 404 });
+      return new NextResponse(null, {
+        status: 200,
+        headers: {
+          "content-type": name.endsWith(".webmanifest") ? "application/manifest+json" : "application/json",
+          "content-length": String(stat.size),
+        },
+      });
+    } catch {
+      return new NextResponse(null, { status: 404 });
+    }
+  }
   if (!APK_NAME.test(name)) return new NextResponse(null, { status: 404 });
   try {
     await requireFeature("apk");
