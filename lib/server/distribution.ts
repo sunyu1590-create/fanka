@@ -17,9 +17,18 @@ export type DistributionConfig = {
   recommend: {
     interest: number; hot: number; fresh: number; collection: number; explore: number;
     maxPerAuthor: number; maxPerCategory: number; freshHours: number;
+    /** 推荐理由权重：用于生成"因为您喜欢X"类自然语言理由 */
+    reasonWeights: { tag: number; author: number; series: number; hot: number };
+    /** 详情页七模块推荐条数 */
+    detailSlots: { sameSeries: number; sameTag: number; sameAuthor: number; hotInTag: number; exploreTag: number; simUsers: number; editorPick: number };
   };
   search: { minUsersForHot: number; ttlMinutes: number };
   series: { minChapters: number; featuredLimit: number; trendingLimit: number };
+  /** 趋势/简报/桌面右侧 */
+  trending: { windowHours: number; minEventCount: number; topN: number; ttlMinutes: number };
+  briefing: { enabled: boolean; postsPerSection: number; rotateHours: number };
+  /** 全站去重：同一会话内已展示过的内容在后续推荐中排除 */
+  dedup: { enabled: boolean; sessionWindowMinutes: number; maxHistorySize: number };
 };
 
 export const DEFAULT_CONFIG: DistributionConfig = {
@@ -27,9 +36,12 @@ export const DEFAULT_CONFIG: DistributionConfig = {
   decayHours: 72,
   windows: { recent: 72, rising: 24, long: 720 },
   ranking: { size: 20, ttlMinutes: 10, longTtlMinutes: 180 },
-  recommend: { interest: 0.4, hot: 0.2, fresh: 0.15, collection: 0.15, explore: 0.1, maxPerAuthor: 2, maxPerCategory: 3, freshHours: 72 },
+  recommend: { interest: 0.4, hot: 0.2, fresh: 0.15, collection: 0.15, explore: 0.1, maxPerAuthor: 2, maxPerCategory: 3, freshHours: 72, reasonWeights: { tag: 3, author: 2, series: 2, hot: 1 }, detailSlots: { sameSeries: 3, sameTag: 3, sameAuthor: 3, hotInTag: 3, exploreTag: 2, simUsers: 2, editorPick: 1 } },
   search: { minUsersForHot: 3, ttlMinutes: 20 },
   series: { minChapters: 1, featuredLimit: 6, trendingLimit: 12 },
+  trending: { windowHours: 24, minEventCount: 5, topN: 10, ttlMinutes: 15 },
+  briefing: { enabled: true, postsPerSection: 3, rotateHours: 6 },
+  dedup: { enabled: true, sessionWindowMinutes: 30, maxHistorySize: 200 },
 };
 
 const clamp = (value: unknown, min: number, max: number, fallback: number) => {
@@ -47,6 +59,17 @@ export function normalizeConfig(raw: unknown): DistributionConfig {
   const recommendRaw = (source.recommend && typeof source.recommend === "object" ? source.recommend : {}) as Record<string, unknown>;
   const searchRaw = (source.search && typeof source.search === "object" ? source.search : {}) as Record<string, unknown>;
   const seriesRaw = (source.series && typeof source.series === "object" ? source.series : {}) as Record<string, unknown>;
+
+  // 安全访问嵌套 Record 字段（避免 any 断言）
+  const nested = (obj: Record<string, unknown>, key: string): Record<string, unknown> => {
+    const v = obj[key];
+    return (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  };
+  const rw = nested(recommendRaw, "reasonWeights");
+  const ds = nested(recommendRaw, "detailSlots");
+  const ts = nested(source, "trending");
+  const bf = nested(source, "briefing");
+  const dd = nested(source, "dedup");
 
   const weights = {} as Record<EventKind, number>;
   for (const kind of ["like", "bookmark", "share", "read", "complete", "follow"] as EventKind[]) {
@@ -84,6 +107,21 @@ export function normalizeConfig(raw: unknown): DistributionConfig {
       maxPerAuthor: clamp(recommendRaw.maxPerAuthor, 1, 6, DEFAULT_CONFIG.recommend.maxPerAuthor),
       maxPerCategory: clamp(recommendRaw.maxPerCategory, 1, 8, DEFAULT_CONFIG.recommend.maxPerCategory),
       freshHours: clamp(recommendRaw.freshHours, 6, 336, DEFAULT_CONFIG.recommend.freshHours),
+      reasonWeights: {
+        tag: clamp(rw.tag, 1, 10, DEFAULT_CONFIG.recommend.reasonWeights.tag),
+        author: clamp(rw.author, 1, 10, DEFAULT_CONFIG.recommend.reasonWeights.author),
+        series: clamp(rw.series, 1, 10, DEFAULT_CONFIG.recommend.reasonWeights.series),
+        hot: clamp(rw.hot, 1, 10, DEFAULT_CONFIG.recommend.reasonWeights.hot),
+      },
+      detailSlots: {
+        sameSeries: clamp(ds.sameSeries, 0, 8, DEFAULT_CONFIG.recommend.detailSlots.sameSeries),
+        sameTag: clamp(ds.sameTag, 0, 8, DEFAULT_CONFIG.recommend.detailSlots.sameTag),
+        sameAuthor: clamp(ds.sameAuthor, 0, 8, DEFAULT_CONFIG.recommend.detailSlots.sameAuthor),
+        hotInTag: clamp(ds.hotInTag, 0, 8, DEFAULT_CONFIG.recommend.detailSlots.hotInTag),
+        exploreTag: clamp(ds.exploreTag, 0, 8, DEFAULT_CONFIG.recommend.detailSlots.exploreTag),
+        simUsers: clamp(ds.simUsers, 0, 8, DEFAULT_CONFIG.recommend.detailSlots.simUsers),
+        editorPick: clamp(ds.editorPick, 0, 4, DEFAULT_CONFIG.recommend.detailSlots.editorPick),
+      },
     },
     search: {
       minUsersForHot: clamp(searchRaw.minUsersForHot, 1, 50, DEFAULT_CONFIG.search.minUsersForHot),
@@ -93,6 +131,22 @@ export function normalizeConfig(raw: unknown): DistributionConfig {
       minChapters: clamp(seriesRaw.minChapters, 1, 10, DEFAULT_CONFIG.series.minChapters),
       featuredLimit: clamp(seriesRaw.featuredLimit, 1, 12, DEFAULT_CONFIG.series.featuredLimit),
       trendingLimit: clamp(seriesRaw.trendingLimit, 3, 30, DEFAULT_CONFIG.series.trendingLimit),
+    },
+    trending: {
+      windowHours: clamp(ts.windowHours, 1, 168, DEFAULT_CONFIG.trending.windowHours),
+      minEventCount: clamp(ts.minEventCount, 1, 100, DEFAULT_CONFIG.trending.minEventCount),
+      topN: clamp(ts.topN, 3, 50, DEFAULT_CONFIG.trending.topN),
+      ttlMinutes: clamp(ts.ttlMinutes, 1, 120, DEFAULT_CONFIG.trending.ttlMinutes),
+    },
+    briefing: {
+      enabled: bf.enabled !== undefined ? Boolean(bf.enabled) : DEFAULT_CONFIG.briefing.enabled,
+      postsPerSection: clamp(bf.postsPerSection, 1, 10, DEFAULT_CONFIG.briefing.postsPerSection),
+      rotateHours: clamp(bf.rotateHours, 1, 48, DEFAULT_CONFIG.briefing.rotateHours),
+    },
+    dedup: {
+      enabled: dd.enabled !== undefined ? Boolean(dd.enabled) : DEFAULT_CONFIG.dedup.enabled,
+      sessionWindowMinutes: clamp(dd.sessionWindowMinutes, 5, 1440, DEFAULT_CONFIG.dedup.sessionWindowMinutes),
+      maxHistorySize: clamp(dd.maxHistorySize, 20, 1000, DEFAULT_CONFIG.dedup.maxHistorySize),
     },
   };
 }

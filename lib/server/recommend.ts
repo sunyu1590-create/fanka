@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getHotMap, loadConfig, type DistributionConfig } from "./distribution";
 import { plainText } from "@/lib/text";
+import { filterSeen, recordSeen } from "./dedup";
 
 /** 规则推荐引擎：兴趣匹配 / 近期热门 / 新作品 / 优质合集 / 兴趣探索，带多样性重排。 */
 
@@ -72,11 +73,17 @@ export async function buildInterestProfile(db: SupabaseClient, userId: string | 
   return { tags, seriesIds, hasSignal: tags.size > 0 || seriesIds.size > 0 };
 }
 
+/** 推荐分发比例（仅暴露客户端必要的比例信息） */
+type PublicRatios = {
+  interest: number; hot: number; fresh: number; collection: number; explore: number;
+  maxPerAuthor: number; maxPerCategory: number; freshHours: number;
+};
+
 export type RecommendResult = {
   items: Candidate[];
   coldStart: boolean;
   profile: { tags: { id: number; weight: number }[]; followedSeries: number };
-  ratios: DistributionConfig["recommend"];
+  ratios: PublicRatios;
   computedAt: string;
 };
 
@@ -196,7 +203,7 @@ export async function recommendSeries(db: SupabaseClient, userId: string | null,
 }
 
 /** 首页/AI 等作品型推荐：同样走统一内容池，便于后台查看分发比例。 */
-export async function recommendPosts(db: SupabaseClient, userId: string | null, surface: "discover" | "ai", limit = 12): Promise<RecommendResult> {
+export async function recommendPosts(db: SupabaseClient, userId: string | null, surface: "discover" | "ai", limit = 12, sessionKey?: string): Promise<RecommendResult> {
   const { config } = await loadConfig(db);
   const profile = await buildInterestProfile(db, userId);
   let request = db.from("posts")
@@ -228,16 +235,28 @@ export async function recommendPosts(db: SupabaseClient, userId: string | null, 
     };
     const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
     const pool = best[1] > 0 ? best[0] : "explore";
+    const authorName = author?.nickname || "创作者";
+    const tagName = tag?.name || "";
+    const reason = pool === "interest" && tagName ? `因为喜欢「${tagName}」`
+      : pool === "interest" ? "符合你的兴趣"
+      : pool === "hot" ? "近期热门"
+      : pool === "fresh" ? "新发布"
+      : pool === "collection" ? "收藏较多"
+      : "换换口味";
     const candidate: Candidate = {
       type: "post" as const, id: row.id, title: row.title, excerpt: plainText(row.body_excerpt, 90),
       cover: mediaUrl(row.image_url) || mediaUrl(media?.storage_path), channel: row.channel, kind: row.content_type,
-      tagId: Number(row.tag_id), tag: tag?.name || null,
-      authorId: row.author_id || "", authorName: author?.nickname || "创作者", authorAvatar: author?.avatar_url || null,
+      tagId: Number(row.tag_id), tag: tagName || null,
+      authorId: row.author_id || "", authorName, authorAvatar: author?.avatar_url || null,
       createdAt: row.created_at, chapters: 0, follows: 0, likes, hot: hot.get(row.id) || 0,
-      pool, reason: pool === "interest" ? "符合你的兴趣" : pool === "hot" ? "近期热门" : pool === "fresh" ? "新发布" : pool === "collection" ? "收藏较多" : "换换口味",
+      pool, reason,
     };
     return { item: candidate, total: Object.values(scores).reduce((sum, value) => sum + value, 0) };
   }).sort((a, b) => b.total - a.total);
+
+  // 去重：过滤已推荐内容
+  const dedupEnabled = config.dedup.enabled && sessionKey;
+  const seenIds = dedupEnabled ? new Set(filterSeen(sessionKey!, weighted.map((e) => e.item.id))) : null;
 
   const picked: Candidate[] = [];
   const authorCount = new Map<string, number>();
@@ -245,6 +264,7 @@ export async function recommendPosts(db: SupabaseClient, userId: string | null, 
   for (const entry of weighted) {
     if (picked.length >= limit) break;
     const item = entry.item;
+    if (seenIds && !seenIds.has(item.id)) continue;
     const authorUsed = authorCount.get(item.authorId) || 0;
     if (authorUsed >= config.recommend.maxPerAuthor) continue;
     const key = item.tagId ? String(item.tagId) : "none";
@@ -259,8 +279,14 @@ export async function recommendPosts(db: SupabaseClient, userId: string | null, 
     for (const entry of weighted) {
       if (picked.length >= limit) break;
       if (picked.some((existing) => existing.id === entry.item.id)) continue;
+      if (seenIds && !seenIds.has(entry.item.id)) continue;
       picked.push({ ...entry.item, pool: "explore", reason: "补充推荐" });
     }
+  }
+
+  // 记录已推荐
+  if (dedupEnabled && picked.length > 0) {
+    recordSeen(sessionKey!, picked.map((p) => p.id), config.dedup.maxHistorySize);
   }
 
   return {

@@ -25,6 +25,7 @@ import './nexus.css';
 import './series-cover.css';
 import './reader.css';
 import './lite.css';
+import './phase2.css';
 
 export const metadata: Metadata = {
   applicationName: 'HEIKA',

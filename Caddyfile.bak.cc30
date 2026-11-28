@@ -1,0 +1,63 @@
+moonclean.shop {
+	encode gzip
+
+	# 访问日志：媒体流量统计的唯一真实来源（响应字节数、状态码、资源路径）。
+	# 写入独立卷，只读挂载给监控采集器增量解析；20MB 轮转、保留 5 份，上限约 100MB。
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20mb
+			roll_keep 5
+			roll_keep_for 72h
+		}
+		format json
+	}
+
+	# 安装包由 Caddy 直接托管，不经过 Next 容器：
+	# 支持 Range 断点续传，也不占用应用内存。
+	handle_path /dl/* {
+		root * /srv/dl
+		@apk path *.apk
+		header @apk Content-Type "application/vnd.android.package-archive"
+		header @apk Content-Disposition "attachment"
+		@json path *.json
+		header @json Cache-Control "public, max-age=60"
+		header @apk Cache-Control "public, max-age=600"
+		header X-Content-Type-Options "nosniff"
+		file_server
+	}
+
+	# Supabase 全部走本机自托管实例（同 docker 网络内的 rest/auth/storage/realtime）。
+	# 反代必须剥掉 /xxx/v1 前缀：PostgREST 只认 /{table}，GoTrue 只认 /token、/user，
+	# storage-api 只认 /object/...。此前这里指向一个已失效的云端项目，
+	# 会造成全站 REST 401「Invalid API key」，务必保持指向本机容器。
+	handle_path /storage/v1/* {
+		reverse_proxy storage:5000 {
+			header_down Cache-Control "public, max-age=86400"
+			header_down X-Content-Type-Options "nosniff"
+		}
+	}
+
+	handle_path /auth/v1/* {
+		reverse_proxy auth:9999
+	}
+
+	handle_path /rest/v1/* {
+		reverse_proxy rest:3000
+	}
+
+	# 实时通道：Supabase Realtime 是 multi-tenant 路由，靠 Host 头识别租户，
+	# 并把 WebSocket 端点固定在 /socket/websocket（不是 /websocket）。
+	# 少了这两点会一直 404「no route found for GET /websocket」。
+	handle_path /realtime/v1/* {
+		rewrite * /socket{uri}
+		reverse_proxy realtime:4000 {
+			header_up Host realtime-dev.supabase-realtime
+		}
+	}
+
+	reverse_proxy app:3000
+}
+
+www.moonclean.shop {
+	redir https://moonclean.shop{uri} permanent
+}
