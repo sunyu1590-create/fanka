@@ -12,18 +12,10 @@ moonclean.shop {
 		format json
 	}
 
-	# 安装包由 Caddy 直接托管，不经过 Next 容器：
-	# 支持 Range 断点续传，也不占用应用内存。
+	# 安装包下载收回到应用层：先过功能开关（管理中心可暂停），再流式回传文件。
 	handle_path /dl/* {
-		root * /srv/dl
-		@apk path *.apk
-		header @apk Content-Type "application/vnd.android.package-archive"
-		header @apk Content-Disposition "attachment"
-		@json path *.json
-		header @json Cache-Control "public, max-age=60"
-		header @apk Cache-Control "public, max-age=600"
 		header X-Content-Type-Options "nosniff"
-		file_server
+		reverse_proxy app:3000
 	}
 
 	# Supabase 全部走本机自托管实例（同 docker 网络内的 rest/auth/storage/realtime）。
