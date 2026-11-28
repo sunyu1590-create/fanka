@@ -27,6 +27,9 @@ type ReaderComment = {
   editedAt?: number;
   attachments?: ReaderCommentAttachment[];
   mentions?: string[];
+  /** 乐观更新：待发送 / 发送失败 */
+  pending?: boolean;
+  failed?: boolean;
 };
 
 /** 正文中的 @昵称 高亮：纯前端展示，不额外调用任何接口 */
@@ -438,6 +441,8 @@ export function CommentPanel({
   onDelete,
   onReport,
   onCopy,
+  onEdit,
+  onPin,
   onNotice,
   focusToken,
 }: {
@@ -461,6 +466,8 @@ export function CommentPanel({
   onDelete: (comment: ReaderComment) => void;
   onReport: (comment: ReaderComment) => void;
   onCopy: (comment: ReaderComment) => void;
+  onEdit: (comment: ReaderComment) => void;
+  onPin: (comment: ReaderComment) => void;
   onNotice: (message: string) => void;
   focusToken: number;
 }) {
@@ -612,6 +619,8 @@ export function CommentPanel({
                     <strong>{comment.name || "探索者"}</strong>
                     {postAuthorId && comment.authorId === postAuthorId && <span className="comment-author-badge">作者</span>}
                     {comment.pinned && <span className="comment-pin-badge">置顶</span>}
+                    {comment.pending && <span className="comment-edited">发送中…</span>}
+                    {comment.failed && <span className="comment-edited">发送失败，内容已恢复</span>}
                   </div>
                   {comment.deleted ? (
                     <p className="comment-body comment-deleted">该评论已删除</p>
@@ -642,7 +651,13 @@ export function CommentPanel({
                       <summary aria-label="评论操作"><MoreHorizontal size={15} /></summary>
                       <div className="comment-actions-panel">
                         <button type="button" onClick={() => onCopy(comment)}>复制</button>
-                        {accountId && comment.authorId === accountId && <button type="button" onClick={() => onDelete(comment)}>删除</button>}
+                        {accountId && comment.authorId === accountId && !comment.deleted && !comment.pending && !comment.failed && Date.now() - comment.time < 15 * 60 * 1000 && (
+                          <button type="button" onClick={() => onEdit(comment)}>编辑</button>
+                        )}
+                        {accountId && postAuthorId && accountId === postAuthorId && !comment.deleted && !comment.parent && (
+                          <button type="button" onClick={() => onPin(comment)}>{comment.pinned ? "取消置顶" : "置顶"}</button>
+                        )}
+                        {accountId && comment.authorId === accountId && !comment.deleted && !comment.pending && !comment.failed && <button type="button" onClick={() => onDelete(comment)}>删除</button>}
                         {accountId && comment.cloudId && comment.authorId !== accountId && <button type="button" onClick={() => onReport(comment)}>举报</button>}
                       </div>
                     </details>

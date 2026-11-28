@@ -2965,6 +2965,38 @@ export default function Community({
       toast(e instanceof Error ? e.message : "删除失败");
     }
   };
+  const editComment = async (c: Comment) => {
+    if (!c.cloudId) return;
+    const next = await promptInApp("修改评论内容", c.body, { title: "编辑评论", confirmLabel: "保存" });
+    if (next === null) return;
+    const body = next.trim();
+    if (!body) { toast("评论内容不能为空"); return; }
+    if (body === c.body) return;
+    if (body.length > 1000) { toast("评论长度须为 1-1000"); return; }
+    try {
+      const saved = await cloudRequest("/api/library-comments", { action: "edit", post: c.post, id: c.id, body });
+      const nextBody = (saved as { body?: string } | null)?.body || body;
+      update((s) => ({ ...s, comments: s.comments.map((x) => x.id === c.id ? { ...x, body: nextBody, edited: true, editedAt: Date.now() } : x) }));
+      toast("评论已更新");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "编辑失败");
+    }
+  };
+  const pinComment = async (c: Comment) => {
+    if (!c.cloudId) return;
+    const value = !c.pinned;
+    try {
+      await cloudRequest("/api/library-comments", { action: "pin", post: c.post, id: c.id, value });
+      // 服务端保证每篇仅一条置顶，本地同步取消其它置顶，避免界面出现两条
+      update((s) => ({
+        ...s,
+        comments: s.comments.map((x) => x.id === c.id ? { ...x, pinned: value } : (value && x.post === c.post ? { ...x, pinned: false } : x)),
+      }));
+      toast(value ? "已置顶" : "已取消置顶");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "置顶失败");
+    }
+  };
   const copyComment = async (comment: Comment) => {
     try {
       if (!navigator.clipboard) throw new Error("当前浏览器不支持复制");
@@ -6817,6 +6849,8 @@ export default function Community({
                   onDelete={(comment) => void deleteComment(comment)}
                   onReport={(comment) => { setReportCommentId(comment.cloudId ?? null); setReportPostId(null); setReportReason(""); setReportNote(""); setModal("report"); }}
                   onCopy={(comment) => void copyComment(comment)}
+                  onEdit={(comment) => void editComment(comment)}
+                  onPin={(comment) => void pinComment(comment)}
                   onNotice={toast}
                 />
               )}
